@@ -206,3 +206,5 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+mcp_servers/gmail/token.json
+mcp_servers/gmail/credentials.json
