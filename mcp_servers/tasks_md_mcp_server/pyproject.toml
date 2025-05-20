@@ -1,0 +1,22 @@
+[project]
+name = "tasks_md_mcp_server"
+version = "0.1.0"
+description = "MCP Server for tasks.md integration using fastmcp and tasks-md library."
+authors = [
+    { name = "Your Name", email = "you@example.com" },
+]
+dependencies = [
+    "fastmcp>2.0",
+    "tasks-md", # For interacting with tasks.md files
+    # Add uvicorn or other ASGI server if running independently
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "MIT" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata.hooks.fancy-pypi-readme]
+content-type = "text/markdown" 

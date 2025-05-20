@@ -1,0 +1,12 @@
+{
+    "name": "nova-frontend",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "echo 'TODO: setup dev script'",
+        "build": "echo 'TODO: setup build script'",
+        "start": "echo 'TODO: setup start script'"
+    },
+    "dependencies": {},
+    "devDependencies": {}
+}

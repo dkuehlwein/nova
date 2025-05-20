@@ -1,0 +1,32 @@
+[project]
+name = "nova_backend"
+version = "0.1.0"
+description = "Nova Backend Core (FastAPI, Celery)"
+authors = [
+    { name = "Your Name", email = "you@example.com" },
+]
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "celery",
+    "redis",
+    # Add fastmcp, langchain/llamaindex, gemini sdk later
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "MIT" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.rye]
+managed = true # If you use Rye, otherwise remove this section
+
+[tool.hatch.metadata.hooks.fancy-pypi-readme]
+content-type = "text/markdown"
+
+[tool.uv]
+# This section is not standard for pyproject.toml but might be used by uv or plugins in the future.
+# For now, uv primarily uses command-line arguments or its own configuration files. 

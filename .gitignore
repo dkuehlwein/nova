@@ -1,12 +1,8 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -25,6 +21,44 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Virtualenv
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# uv
+.uv_workspace/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.parcel-cache/
+frontend/.next/
+frontend/out/
+frontend/.svelte-kit/
+
+# Logs
+logs/
+*.log
+
+# Docker
+docker-compose.override.yml
+
+# Other
+.env
+.env.*
+!/.env.example
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
