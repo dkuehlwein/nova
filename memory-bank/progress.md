@@ -1,27 +1,30 @@
 # Nova AI Assistant: Progress
 
 ## Current Status
-- **Project Initialization Phase Complete:** The foundational monorepo structure, basic backend configuration, and initial agent test setup are complete.
-- **Working Agent Test:** A basic agent (`backend/src/nova/agent/agent.py`) can successfully initialize a Gemini LLM and connect to an example GMail MCP server. It can receive a response but further interaction debugging is needed.
-- **`.env` Configuration:** Environment variable loading via a root `.env` file and Pydantic `Settings` is functional.
-- **`uv` Environment Management:** A script (`scripts/setup_uv_envs.sh`) is available to automate `uv` virtual environment creation and dependency installation for Python projects.
+- **Core Agent Capabilities Enhanced:** The agent now successfully integrates with LangSmith for tracing and can reliably use tools from the GMail MCP server.
+- **Configuration Robustness:** Backend configuration (`config.py`) updated to include LangSmith settings and corrected `.env` path.
+- **GMail MCP Server Stability:** Resolved critical `AttributeError` bugs in the GMail MCP server, ensuring its tools are correctly invoked by the `GmailService` methods.
 
 ## What Works
-- **Monorepo Structure:** Core directories and essential configuration files (`.gitignore`, `.editorconfig`, main `README.md`, placeholder `pyproject.toml` files for backend and MCP servers) are in place.
-- **Backend Configuration (`backend/src/nova/config.py`):** Successfully loads settings from a root `.env` file (e.g., API keys, model names).
-- **Basic Agent (`backend/src/nova/agent/agent.py`):**
-    - Initializes `ChatGoogleGenerativeAI` (Gemini) using API key and model name from settings.
-    - Initializes `MultiServerMCPClient` to connect to a specified MCP server (currently the GMail MCP server).
-    - Fetches tools from the connected MCP server.
-    - Creates a LangGraph ReAct agent with the LLM and fetched tools.
-    - Can invoke the agent with user queries.
-- **Example GMail MCP Server:** An existing GMail MCP server is operational and used for the agent tests.
+- **Monorepo Structure:** Core directories and essential configuration files are in place.
+- **Backend Configuration (`backend/src/nova/config.py`):**
+    - Successfully loads settings from a root `.env` file (API keys, model names, LangSmith config).
+    - `Settings` class includes fields for LangSmith (`USE_LANGSMITH`, `LANGCHAIN_TRACING_V2`, `LANGCHAIN_ENDPOINT`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`).
+- **Core Agent (`backend/src/nova/agent/agent.py`):**
+    - Initializes `ChatGoogleGenerativeAI` (Gemini).
+    - Initializes `MultiServerMCPClient` for MCP server communication.
+    - Fetches tools from connected MCP servers.
+    - Creates a LangGraph ReAct agent.
+    - **LangSmith Integration:** Successfully configures and uses LangSmith for tracing if `USE_LANGSMITH` is true, by setting the required environment variables.
+    - Can invoke the agent with user queries, and interactions with MCP tools are traced in LangSmith.
+- **Example GMail MCP Server (`mcp_servers/gmail/main.py`):**
+    - Operational and its tools (e.g., `create_draft_email`) are now correctly implemented and callable by the agent after fixing `AttributeError` bugs. The tool definitions now correctly map to the `GmailService` methods.
+- **`.env` Configuration:** Environment variable loading via a root `.env` file and Pydantic `Settings` is functional.
+- **`uv` Environment Management:** Script for `uv` environment setup is available.
 
 ## What's Left to Build
-- **LangSmith Integration:** Crucial for debugging and observing agent-MCP interactions.
-- **Refined Agent-MCP Interaction Logic:** Debug and enhance the agent's ability to correctly use tools exposed by MCP servers (starting with GMail MCP).
-- **`tasks_md_mcp_server`:** Full implementation.
-- **Other Core MCP Servers:** `mem0_mcp_server`, `email_mcp_server` (beyond current GMail example, if more generic functionality is needed), `messaging_mcp_server`.
+- **Develop `tasks_md_mcp_server`:** Full implementation of the `tasks.md` MCP server.
+- **Other Core MCP Servers:** `mem0_mcp_server`, a more generic `email_mcp_server` (if needed beyond current GMail example), `messaging_mcp_server`.
 - **Backend Core Development:**
     - FastAPI application setup (API Gateway with routers, WebSocket manager).
     - Celery integration for task orchestration (define tasks, worker setup).
@@ -31,20 +34,22 @@
 - **Infrastructure:**
     - Dockerfiles for all services (backend, MCPs).
     - `docker-compose.yml` for local multi-container development.
-    - Centralized logging solution selection and setup.
+    - Centralized logging solution selection and setup (beyond LangSmith for application logs).
 - **Documentation:** ADRs for significant architectural/technical decisions, more detailed component guides.
 - **Testing:** Comprehensive E2E tests, unit/integration tests for backend and MCP components.
 
 ## Known Issues
-- **Agent-MCP Tool Usage:** While the agent can connect and fetch tools, the actual successful invocation and result processing of specific MCP tools (like the GMail draft creation) still needs debugging and refinement. LangSmith will be key here.
+- No major known issues with the recently implemented LangSmith integration or GMail MCP tool usage. Further testing will reveal any new issues.
 
 ## Evolution of Project Decisions
 - **Initial Conception:** Based on "Nova AI Assistant: Architecture, Structure, and Tools (v3)".
 - **Package Management:** `uv` confirmed.
-- **Backend Package Naming:** `nova` chosen 
-- **`.env` File Path:** Standardized to project root for Pydantic settings.
-- **`MultiServerMCPClient` Cleanup:** Determined that an explicit `client.close()` is likely not needed/available for the main client object; cleanup seems to be managed internally or via specific sessions.
+- **Backend Package Naming:** `nova` chosen.
+- **`.env` File Path:** Standardized to project root for Pydantic settings; path in `config.py` adjusted to `../../.env`.
+- **`MultiServerMCPClient` Cleanup:** Determined that an explicit `client.close()` is likely not needed.
 - **Agent Library:** Using `langchain-mcp-adapters` for `MultiServerMCPClient` and `langgraph` for agent creation.
+- **Debugging Strategy:** LangSmith adopted as the primary tool for tracing and debugging agent-MCP interactions.
+- **GMail MCP Server Implementation:** Refactored tool definitions to correctly call underlying `GmailService` methods, resolving widespread `AttributeError` issues.
 
 ## Current Status (Project Initialization)
 - The project "Nova AI Assistant: Architecture, Structure, and Tools" has been initiated.

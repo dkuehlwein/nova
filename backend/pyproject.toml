@@ -15,6 +15,7 @@ dependencies = [
     "langchain-google-genai>=2.1.4",
     "langchain-mcp-adapters>=0.1.1",
     "langgraph>=0.4.5",
+    "langsmith>=0.3.42",
 ]
 requires-python = ">=3.10"
 readme = "README.md"

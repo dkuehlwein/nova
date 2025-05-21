@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[SecretStr] = None
     GOOGLE_MODEL_NAME: Optional[str] = None  # e.g., gemini-pro, gemini-1.5-flash
 
+    # LangSmith Configuration
+    USE_LANGSMITH: bool = False
+    LANGCHAIN_TRACING_V2: Optional[str] = "true"
+    LANGCHAIN_ENDPOINT: Optional[str] = "https://api.smith.langchain.com"
+    LANGCHAIN_API_KEY: Optional[SecretStr] = None
+    LANGCHAIN_PROJECT: Optional[str] = None
+
     # Agent Loop Settings
     AGENT_POLLING_INTERVAL_SECONDS: int = 30
     AGENT_ERROR_RETRY_INTERVAL_SECONDS: int = 60

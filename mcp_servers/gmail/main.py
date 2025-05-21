@@ -568,7 +568,7 @@ async def run_server(creds_file_path: str, token_path: str, host: str, port: int
 
     @mcp.tool()
     async def create_draft_email(recipient_id: str, subject: str, message: str) -> Dict[str, str]:
-        """Creates a draft email message without sending it."""
+        """Creates a draft email message."""
         return await gmail_service.create_draft(recipient_id, subject, message)
 
     @mcp.tool()
@@ -733,17 +733,17 @@ if __name__ == "__main__":
     @mcp.tool()
     async def read_email_content(email_id: str) -> Union[Dict[str, str], str]:
         """Retrieves the full content of a specific email and marks it as read."""
-        return await gmail_service_instance.read_email_content(email_id)
+        return await gmail_service_instance.read_email(email_id)
 
     @mcp.tool()
     async def open_email_in_browser(email_id: str) -> str:
         """Attempts to open the specified email in the default web browser (on server)."""
-        return await gmail_service_instance.open_email_in_browser(email_id)
+        return await gmail_service_instance.open_email(email_id)
 
     @mcp.tool()
     async def trash_email(email_id: str) -> str: 
         """Moves the specified email to the trash."""
-        return await gmail_service_instance.trash_email_message(email_id) 
+        return await gmail_service_instance.trash_email(email_id) 
 
     @mcp.tool()
     async def mark_email_as_read(email_id: str) -> str:
@@ -753,57 +753,57 @@ if __name__ == "__main__":
     @mcp.tool()
     async def create_draft_email(recipient_id: str, subject: str, message: str) -> Dict[str, str]:
         """Creates a draft email message."""
-        return await gmail_service_instance.create_draft_email(recipient_id, subject, message)
+        return await gmail_service_instance.create_draft(recipient_id, subject, message)
 
     @mcp.tool()
     async def list_draft_emails() -> Union[List[Dict[str, str]], str]:
         """Lists all draft emails with their ID, subject, and recipient."""
-        return await gmail_service_instance.list_draft_emails()
+        return await gmail_service_instance.list_drafts()
 
     @mcp.tool()
     async def list_gmail_labels() -> Union[List[Dict[str, str]], str]:
         """Lists all labels in the user's mailbox."""
-        return await gmail_service_instance.list_gmail_labels()
+        return await gmail_service_instance.list_labels()
 
     @mcp.tool()
     async def create_new_label(label_name: str) -> Dict[str, str]:
         """Creates a new label in Gmail."""
-        return await gmail_service_instance.create_new_label(label_name)
+        return await gmail_service_instance.create_label(label_name)
 
     @mcp.tool()
     async def apply_label_to_email(email_id: str, label_id: str) -> str:
         """Applies an existing label to a specific email."""
-        return await gmail_service_instance.apply_label_to_email(email_id, label_id)
+        return await gmail_service_instance.apply_label(email_id, label_id)
 
     @mcp.tool()
     async def remove_label_from_email(email_id: str, label_id: str) -> str:
         """Removes a label from a specific email."""
-        return await gmail_service_instance.remove_label_from_email(email_id, label_id)
+        return await gmail_service_instance.remove_label(email_id, label_id)
 
     @mcp.tool()
     async def rename_gmail_label(label_id: str, new_name: str) -> Dict[str, str]:
         """Renames an existing label."""
-        return await gmail_service_instance.rename_gmail_label(label_id, new_name)
+        return await gmail_service_instance.rename_label(label_id, new_name)
 
     @mcp.tool()
     async def delete_gmail_label(label_id: str) -> str:
         """Permanently deletes a label."""
-        return await gmail_service_instance.delete_gmail_label(label_id)
+        return await gmail_service_instance.delete_label(label_id)
 
     @mcp.tool()
     async def search_emails_by_label(label_id: str) -> Union[List[Dict[str, str]], str]:
         """Searches for all emails that have a specific label applied."""
-        return await gmail_service_instance.search_emails_by_label(label_id)
+        return await gmail_service_instance.search_by_label(label_id)
 
     @mcp.tool()
     async def list_email_filters() -> Union[List[Dict[str, Any]], str]:
         """Lists all email filters set up in the user's Gmail account."""
-        return await gmail_service_instance.list_email_filters()
+        return await gmail_service_instance.list_filters()
 
     @mcp.tool()
     async def get_email_filter_details(filter_id: str) -> Union[Dict[str, Any], str]:
         """Gets the detailed configuration of a specific email filter by its ID."""
-        return await gmail_service_instance.get_email_filter_details(filter_id)
+        return await gmail_service_instance.get_filter(filter_id)
 
     @mcp.tool()
     async def create_new_email_filter(
@@ -815,57 +815,58 @@ if __name__ == "__main__":
             action_forward_to_email: Optional[str] = None
     ) -> Dict[str, Any]:
         """Creates a new email filter with specified criteria and actions."""
-        return await gmail_service_instance.create_new_email_filter(
-            criteria_from, criteria_to, criteria_subject, criteria_query,
-            criteria_has_attachment, criteria_exclude_chats,
-            criteria_size_comparison, criteria_size_bytes, # Pass directly
-            action_add_label_ids, action_remove_label_ids, action_forward_to_email
+        return await gmail_service_instance.create_filter(
+            from_email=criteria_from, to_email=criteria_to, subject=criteria_subject, query=criteria_query,
+            has_attachment=criteria_has_attachment, exclude_chats=criteria_exclude_chats,
+            size_comparison=criteria_size_comparison, size=criteria_size_bytes,
+            add_label_ids=action_add_label_ids, remove_label_ids=action_remove_label_ids,
+            forward_to=action_forward_to_email
         )
 
     @mcp.tool()
     async def delete_email_filter(filter_id: str) -> str:
         """Deletes a specific email filter by its ID."""
-        return await gmail_service_instance.delete_email_filter(filter_id)
+        return await gmail_service_instance.delete_filter(filter_id)
 
     @mcp.tool()
     async def search_all_emails(query: str, max_results: Optional[int] = 50) -> Union[List[Dict[str, Any]], str]:
         """Searches all emails using Gmail's search syntax. Returns basic message info."""
-        return await gmail_service_instance.search_all_emails(query, max_results)
+        return await gmail_service_instance.search_emails(query, max_results)
 
     @mcp.tool()
     async def create_new_folder(folder_name: str) -> Dict[str, str]:
         """Creates a new folder (which is a label in Gmail)."""
-        return await gmail_service_instance.create_new_folder(folder_name)
+        return await gmail_service_instance.create_folder(folder_name)
 
     @mcp.tool()
     async def move_email_to_folder(email_id: str, folder_id: str) -> str:
         """Moves an email to a specified folder (applies label, removes from inbox)."""
-        return await gmail_service_instance.move_email_to_folder(email_id, folder_id)
+        return await gmail_service_instance.move_to_folder(email_id, folder_id)
 
     @mcp.tool()
     async def list_email_folders() -> Union[List[Dict[str, str]], str]:
         """Lists all user-created folders (user-defined labels)."""
-        return await gmail_service_instance.list_email_folders()
+        return await gmail_service_instance.list_folders()
 
     @mcp.tool()
     async def archive_email(email_id: str) -> str: 
         """Archives an email (removes 'INBOX' label)."""
-        return await gmail_service_instance.archive_email_message(email_id)
+        return await gmail_service_instance.archive_email(email_id)
 
     @mcp.tool()
     async def batch_archive_emails(query: str, max_emails_to_archive: Optional[int] = 100) -> Dict[str, Any]:
         """Archives multiple emails from inbox matching a search query."""
-        return await gmail_service_instance.batch_archive_emails(query, max_emails_to_archive)
+        return await gmail_service_instance.batch_archive(query, max_emails_to_archive)
 
     @mcp.tool()
     async def list_archived_emails(max_results_to_list: Optional[int] = 50) -> Union[List[Dict[str, Any]], str]:
         """Lists emails that have been archived (not in inbox)."""
-        return await gmail_service_instance.list_archived_emails(max_results_to_list)
+        return await gmail_service_instance.list_archived(max_results_to_list)
 
     @mcp.tool()
     async def restore_email_to_inbox(email_id: str) -> str:
         """Restores an archived email back to the inbox."""
-        return await gmail_service_instance.restore_email_to_inbox(email_id)
+        return await gmail_service_instance.restore_to_inbox(email_id)
 
     # --- Run FastMCP Server ---
     try:

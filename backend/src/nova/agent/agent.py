@@ -1,5 +1,6 @@
 # langchain_client.py
 import asyncio
+import os 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 from langchain_google_genai import ChatGoogleGenerativeAI # Import Google LLM
@@ -9,6 +10,24 @@ from src.nova.config import settings
 
 
 async def main():
+    # 0. Configure LangSmith (if enabled)
+    if settings.USE_LANGSMITH:
+        # Ensure LangSmith environment variables are set
+        os.environ["LANGCHAIN_TRACING_V2"] = settings.LANGCHAIN_TRACING_V2 or "true"
+        os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGCHAIN_ENDPOINT or "https://api.smith.langchain.com"
+        if settings.LANGCHAIN_API_KEY:
+            os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY.get_secret_value()
+        if settings.LANGCHAIN_PROJECT:
+            os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
+        print("LangSmith tracing is ENABLED.")
+        print(f"  LANGCHAIN_TRACING_V2: {os.environ.get('LANGCHAIN_TRACING_V2')}")
+        print(f"  LANGCHAIN_ENDPOINT: {os.environ.get('LANGCHAIN_ENDPOINT')}")
+        print(f"  LANGCHAIN_PROJECT: {os.environ.get('LANGCHAIN_PROJECT')}")
+        print(f"  LANGCHAIN_API_KEY is set: {bool(os.environ.get('LANGCHAIN_API_KEY'))}")
+    else:
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+        print("LangSmith tracing is DISABLED.")
+
     # 1. Initialize the Google LLM
     try:
         print(f"Initializing Google LLM with model: {settings.GOOGLE_MODEL_NAME}")
@@ -18,8 +37,6 @@ async def main():
             model=settings.GOOGLE_MODEL_NAME,
             google_api_key=settings.GOOGLE_API_KEY,
         )
-        # Test the LLM (optional, but good for early debugging)
-        await llm.ainvoke("Hello!")
         print("Google LLM initialized successfully.")
     except Exception as e:
         print(f"Error initializing Google LLM. Ensure GOOGLE_API_KEY is valid and 'langchain-google-genai' is installed. Error: {e}")
