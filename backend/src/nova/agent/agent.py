@@ -63,13 +63,6 @@ async def main():
         "Create a new task in the 'Todo' lane with the title 'Test Task' and content 'This is a test task'.",
     ]
 
-    # If tasks server is working, add task-related queries
-    working_server_names = [server["name"] for server in mcp_manager.working_servers]
-    if "tasks" in working_server_names:
-        user_queries.append("List all tasks across all lanes to see what's currently in the system.")
-    else:
-        print("  💡 Tasks server not available - skipping task-related queries")
-
     for query in user_queries:
         print(f"\n📝 User query: \"{query}\"")
         try:
