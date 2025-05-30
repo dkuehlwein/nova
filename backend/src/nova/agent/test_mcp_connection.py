@@ -99,12 +99,25 @@ async def test_mcp_endpoint(server_name: str, url: str) -> Dict[str, Any]:
                     session_id = response.headers.get('mcp-session-id')
                     response_text = await response.text()
                     
-                    if session_id and ("initialize" in response_text or "event: message" in response_text):
+                    # Check if this is a valid MCP initialization response
+                    # Accept both SSE format (FastMCP) and regular JSON format
+                    is_valid_response = (
+                        session_id and (
+                            # FastMCP SSE format
+                            "event: message" in response_text or 
+                            # Regular JSON format with MCP response
+                            ('"jsonrpc":"2.0"' in response_text and '"result"' in response_text) or
+                            # Alternative check for "initialize" method
+                            "initialize" in response_text
+                        )
+                    )
+                    
+                    if is_valid_response:
                         result["status"] = "responding"
                         
                         # Step 2: Send notifications/initialized with session ID
                         notif_headers = fastmcp_headers.copy()
-                        notif_headers["Mcp-Session-Id"] = session_id
+                        notif_headers["mcp-session-id"] = session_id
                         
                         notif_payload = {
                             "jsonrpc": "2.0",
@@ -137,13 +150,23 @@ async def test_mcp_endpoint(server_name: str, url: str) -> Dict[str, Any]:
                                 if tools_response.status == 200:
                                     tools_text = await tools_response.text()
                                     try:
-                                        # FastMCP might return direct JSON for tools/list
+                                        # Parse JSON response for tools/list
                                         tools_data = await tools_response.json()
-                                        if "result" in tools_data and isinstance(tools_data["result"], list):
-                                            result["tools_available"] = True
-                                            result["tool_count"] = len(tools_data["result"])
+                                        if "result" in tools_data:
+                                            # Handle different response formats
+                                            tools_list = None
+                                            if isinstance(tools_data["result"], list):
+                                                # Direct list format
+                                                tools_list = tools_data["result"]
+                                            elif isinstance(tools_data["result"], dict) and "tools" in tools_data["result"]:
+                                                # Nested format: {"result": {"tools": [...]}}
+                                                tools_list = tools_data["result"]["tools"]
+                                            
+                                            if tools_list and isinstance(tools_list, list):
+                                                result["tools_available"] = True
+                                                result["tool_count"] = len(tools_list)
                                     except:
-                                        # Or it might be in SSE format
+                                        # Fallback for SSE format
                                         if "tools" in tools_text or "result" in tools_text:
                                             result["tools_available"] = True
                                             # Try to count tools from SSE response

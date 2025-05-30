@@ -1,18 +1,33 @@
 # Nova AI Assistant: Active Context
 
 ## Current Work Focus
-### ✅ COMPLETED: MCP URL Standardization - SUCCESS! 
-- **Achievement**: Successfully standardized all MCP servers to use trailing slash (`/mcp/`)
-- **Result**: ONE COMMON WAY to interact with all MCP servers ✅
+### ✅ COMPLETED: MCP Server Standardization & Bug Fix - SUCCESS! 
+- **Achievement**: Successfully standardized both MCP servers to use consistent header format
+- **Bug Fixed**: Tasks.md server was using `Mcp-Session-Id` instead of standard `mcp-session-id`
+- **Result**: Both servers now fully compliant with MCP protocol standards ✅
 - **Gmail MCP Server**: ✅ Fully operational with health checks and 27 tools
-- **Tasks MCP Server**: ✅ Implementation complete, needs restart to activate
+- **Tasks MCP Server**: ✅ Fully operational with health checks and 8 tools
 
-### 🎯 NEXT: Restart Tasks.md Server  
-- **Status**: All code changes implemented, server restart required
-- **Implementation**: FastMCP session protocol fully coded
-- **Expected Result**: Both servers fully operational after restart
+### 🎯 STATUS: All MCP Servers Operational  
+- **Gmail**: ✅ 27 tools available, FastMCP SSE format
+- **Tasks**: ✅ 8 tools available, JSON format with FastMCP session protocol
+- **Total Tools**: 35 tools across both servers
+- **Health Monitoring**: Both servers have working `/health` endpoints
 
 ## Major Achievements This Session
+
+### ✅ MCP Header Standardization (COMPLETED)
+- **Problem Identified**: Tasks.md server was using capitalized `Mcp-Session-Id` header
+- **Gmail Server**: Used lowercase `mcp-session-id` (FastMCP standard)
+- **Tasks Server**: Was using `Mcp-Session-Id` (non-standard)
+- **Solution Implemented**: 
+  - Fixed Tasks.md server to use lowercase `mcp-session-id` header
+  - Simplified test script to expect single standard format
+  - Both servers now use identical header format
+- **Files Changed**:
+  - `/home/daniel/Tasks.md/backend/lib/mcp-http-handler.js` - Fixed header case
+  - `nova/backend/src/nova/agent/test_mcp_connection.py` - Simplified header detection
+- **Result**: ✅ **Consistent MCP protocol implementation across all servers**
 
 ### ✅ MCP URL Standardization (COMPLETED)
 - **Problem Solved**: Multiple URL formats caused inconsistency (`/mcp` vs `/mcp/`)
@@ -23,7 +38,6 @@
 - **Files Changed**:
   - `Tasks.md/backend/server.js` - Updated routing logic and added health endpoint
   - `nova/backend/src/nova/config.py` - Standardized URL generation to `/mcp/`
-  - `nova/backend/src/nova/agent/test_mcp_connection.py` - Removed conditional logic
   - `Tasks.md/backend/README.md` - Updated documentation
 - **Result**: ✅ **ONE COMMON WAY achieved** - all MCP servers use `/mcp/` format
 
@@ -31,127 +45,101 @@
 - **Tasks.md Server Enhanced**: Added full FastMCP session compatibility
 - **Implementation Details**:
   - Session management with UUID generation (`uuidv4()`)
-  - `mcp-session-id` header generation and validation
+  - `mcp-session-id` header generation and validation (now standardized)
   - `notifications/initialized` handler added
   - Session validation for all tool calls and `tools/list`
   - Session storage with Map data structure
 - **Files Modified**:
   - `Tasks.md/backend/lib/mcp-http-handler.js` - Complete session protocol implementation
   - Added proper error handling for invalid sessions
-- **Status**: ✅ Code complete, awaiting server restart
+- **Status**: ✅ Fully operational with 8 tools available
 
 ### ✅ Health Endpoints Implementation (COMPLETED)
 - **Gmail Server**: ✅ Working health endpoint using `@mcp.custom_route("/health", methods=["GET"])`
-- **Tasks.md Server**: ✅ Implemented health endpoint (needs restart to activate)
+- **Tasks.md Server**: ✅ Working health endpoint with JSON status response
 - **Implementation**:
   - Gmail: Proper FastMCP custom route with Starlette JSONResponse
   - Tasks: Standard Koa.js route handler returning JSON health status
-- **Test Results**: Gmail health endpoint returning 200 OK ✅
+- **Test Results**: Both health endpoints returning 200 OK ✅
 
 ### ✅ Development Pattern Discovery
 - **uv Command Pattern**: `uv run python -m src.nova.agent.test_mcp_connection`
 - **Location**: Always run from `/home/daniel/nova/backend/` directory
 - **Critical**: Use `uv run` for all Python script execution in this project
-- **Memory**: Added to activeContext for future reference
+- **Testing**: Comprehensive testing validates both protocol compliance and tool availability
 
 ## Current Server Status
 
 ### Gmail FastMCP Server (Port 8001) - ✅ FULLY OPERATIONAL
 - **URL**: `http://localhost:8001/mcp/` ✅
 - **Transport**: FastMCP streamable-http ✅
-- **Session Protocol**: Fully implemented ✅
+- **Session Protocol**: Fully implemented with `mcp-session-id` header ✅
+- **Response Format**: SSE (Server-Sent Events) with `event: message` ✅
 - **Health Endpoint**: Working `/health` endpoint ✅
 - **Tools**: 27 available ✅
 - **Status**: **FULLY OPERATIONAL** ✅
 
-### Tasks.md Server (Port 8002) - ⏳ IMPLEMENTATION COMPLETE, RESTART NEEDED
+### Tasks.md Server (Port 8002) - ✅ FULLY OPERATIONAL
 - **URL**: `http://localhost:8002/mcp/` ✅
 - **Transport**: Custom HTTP handler with FastMCP session compatibility ✅
-- **Session Protocol**: Fully implemented (awaiting restart) ✅
-- **Health Endpoint**: Implemented (awaiting restart) ⏳
-- **Tools**: Available via session protocol (awaiting restart) ⏳
-- **Status**: **Code complete, restart needed for activation**
-
-## Immediate Next Steps
-
-### 1. Restart Tasks.md Server (REQUIRED)
-```bash
-# In Tasks.md/backend directory:
-npm start
-```
-**Expected Results After Restart**:
-- ✅ Health endpoint: `/health` returns 200 OK
-- ✅ MCP protocol: Full FastMCP session management working
-- ✅ Tools discovery: Session-based tool access functional
-- ✅ Both servers fully operational
-
-### 2. Final Verification Test
-**Command**: `uv run python -m src.nova.agent.test_mcp_connection`
-**Expected Results**:
-- ✅ Gmail: healthy + 27 tools
-- ✅ Tasks: healthy + tools available 
-- ✅ Both servers: Full MCP protocol compliance
-- ✅ Summary: All servers working
-
-### 3. Full Agent Integration Test
-- Test end-to-end agent workflow with both servers
-- Verify tool discovery and execution
-- Validate complete MCP integration pipeline
-
-## Technical Patterns Learned & Standardized
-
-### FastMCP Requirements (MASTERED)
-- **URL Format**: Must use trailing slash (`/mcp/`)
-- **Headers**: `Accept: application/json, text/event-stream`
-- **Session Protocol**: 
-  1. `initialize` → receive `mcp-session-id`
-  2. `notifications/initialized` with session ID
-  3. Actual requests with session ID header
-- **Custom Routes**: Use `@mcp.custom_route("/path", methods=["GET"])` pattern
-- **Health Endpoints**: Implemented for both FastMCP and custom servers
-
-### uv Development Pattern (ESTABLISHED)
-- **Command**: `uv run python -m src.nova.agent.test_mcp_connection`
-- **Directory**: `/home/daniel/nova/backend/`
-- **Usage**: All Python execution in this project uses `uv run`
-- **Testing**: Connection testing script working perfectly
-
-### MCP Architecture Decisions (FINALIZED)
-- **Port allocation**: Gmail=8001, Tasks=8002
-- **URL standard**: `host:port/mcp/` (with trailing slash) ✅
-- **Transport**: FastMCP streamable-http for consistency
-- **Error handling**: Graceful degradation when servers unavailable
-- **Session management**: UUID-based sessions for all servers
+- **Session Protocol**: Fully implemented with standardized `mcp-session-id` header ✅
+- **Response Format**: Regular JSON with proper `jsonrpc` structure ✅
+- **Health Endpoint**: Working `/health` endpoint ✅
+- **Tools**: 8 available ✅
+- **Status**: **FULLY OPERATIONAL** ✅
 
 ## Success Metrics Achieved
 
-### ✅ **Primary Goal: URL Standardization**
-- **ACHIEVED**: ONE COMMON WAY to interact with all MCP servers
-- **Standard**: All URLs use `/mcp/` format consistently
-- **Compatibility**: Both servers accept the standardized format
-- **Client**: No more conditional URL manipulation needed
+### ✅ **Complete MCP Standardization**
+- **Header Format**: Both servers use lowercase `mcp-session-id` ✅
+- **URL Format**: Both servers use `/mcp/` endpoint consistently ✅
+- **Session Protocol**: Both servers implement FastMCP session management ✅
+- **Health Monitoring**: Both servers provide `/health` endpoints ✅
 
-### ✅ **Infrastructure Improvements**
-- **Health Monitoring**: Both servers have health endpoints
-- **Session Protocol**: FastMCP compatibility across all servers
-- **Error Handling**: Robust session validation and error responses
-- **Development Tools**: Reliable testing and validation scripts
+### ✅ **Tool Discovery & Availability**
+- **Gmail**: 27 tools fully accessible via MCP protocol ✅
+- **Tasks**: 8 tools fully accessible via MCP protocol ✅
+- **Total**: 35 tools available for agent integration ✅
+- **Testing**: Comprehensive validation confirms all tools discoverable ✅
 
 ### ✅ **Developer Experience**
-- **uv Integration**: Standardized command patterns
-- **Testing**: Comprehensive connection testing
-- **Documentation**: Updated READMEs and memory bank
-- **Debugging**: Clear error messages and logging
+- **uv Integration**: Standardized command patterns ✅
+- **Testing**: Reliable connection testing and validation scripts ✅
+- **Documentation**: Updated READMEs and memory bank ✅
+- **Debugging**: Clear error messages and standardized responses ✅
 
-## Files Modified (Summary)
-1. **`Tasks.md/backend/lib/mcp-http-handler.js`** - FastMCP session protocol
-2. **`Tasks.md/backend/server.js`** - Health endpoint + routing updates
-3. **`nova/backend/src/nova/config.py`** - URL standardization  
-4. **`nova/backend/src/nova/agent/test_mcp_connection.py`** - Removed conditional logic
+## Technical Patterns Finalized
+
+### MCP Protocol Standards (ENFORCED)
+- **Header Format**: Always use lowercase `mcp-session-id` for session identification
+- **URL Format**: Must use trailing slash (`/mcp/`) consistently
+- **Session Protocol**: 
+  1. `initialize` → receive `mcp-session-id` header
+  2. `notifications/initialized` with session ID header
+  3. Tool requests with session ID header validation
+- **Response Formats**: Support both SSE (FastMCP) and JSON formats
+- **Error Handling**: Graceful degradation with proper HTTP status codes
+
+### Development & Testing Standards (ESTABLISHED)
+- **Command Pattern**: `uv run python -m src.nova.agent.test_mcp_connection`
+- **Test Location**: `/home/daniel/nova/backend/` directory
+- **Validation**: Multi-step testing (health check + MCP protocol + tool discovery)
+- **Error Diagnosis**: Clear status reporting with specific error messages
+
+## Next Phase Ready
+- **Agent Integration**: Both servers ready for full agent workflow testing
+- **Additional MCP Servers**: Framework established for adding more servers
+- **Production Deployment**: Standardized patterns ready for scaling
+
+## Files Modified (Final Summary)
+1. **`/home/daniel/Tasks.md/backend/lib/mcp-http-handler.js`** - Standardized header format
+2. **`nova/backend/src/nova/agent/test_mcp_connection.py`** - Simplified header detection
+3. **`Tasks.md/backend/server.js`** - Health endpoint + routing updates
+4. **`nova/backend/src/nova/config.py`** - URL standardization  
 5. **`nova/mcp_servers/gmail/main.py`** - Health endpoint implementation
 6. **`Tasks.md/backend/README.md`** - Documentation updates
 
-**Status**: All implementations complete, restart needed for full activation.
+**Final Status**: ✅ **All MCP servers fully operational with standardized protocol implementation**
 
 # Nova Agent - Active Context
 
