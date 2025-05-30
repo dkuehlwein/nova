@@ -1,46 +1,59 @@
 # Nova AI Assistant: Active Context
 
 ## Current Work Focus
-- Continued refinement of agent-MCP interactions.
-- Begin development of the `tasks_md_mcp_server`.
+- **MCP Server Integration:** Adding tasks.md MCP server (port 8002) to agent configuration
+- **Centralized MCP Configuration:** Implemented dynamic server discovery and connection testing
+- **Agent-MCP Debugging:** Testing connections and tool discovery across multiple MCP servers
 
 ## Recent Changes
-- **Basic Monorepo Structure Established:** Created the main directories (`frontend`, `backend`, `mcp_servers`, `docs`, `infrastructure`, `tests`, `scripts`, `memory-bank`) and placeholder files (e.g., `README.md`, `pyproject.toml`, `.gitignore`, `.editorconfig`).
-- **Backend Configuration (`config.py`):**
-    - Implemented Pydantic `Settings` for environment variable management.
-    - Added LangSmith configuration variables (`USE_LANGSMITH`, `LANGCHAIN_TRACING_V2`, `LANGCHAIN_ENDPOINT`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`).
-    - Corrected `.env` file path in `SettingsConfigDict` to `../../.env` for proper loading from the project root.
-- **Agent Implementation (`agent.py`):**
-    - Integrated LangSmith: Added logic to respect `USE_LANGSMITH` setting and configure necessary LangSmith environment variables (`LANGCHAIN_TRACING_V2`, `LANGCHAIN_ENDPOINT`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`) at runtime if enabled.
-    - Initial agent test script connects to Google LLM and GMail MCP server.
-- **GMail MCP Server (`mcp_servers/gmail/main.py`):**
-    - Debugged and resolved `AttributeError` related to tool definitions calling incorrectly named methods on the `GmailService` instance (e.g., `create_draft_email` tool now correctly calls `create_draft` service method). This was a widespread correction across multiple tool definitions.
-- **Troubleshooting:**
-    - Resolved Pydantic `Settings` configuration issues related to field validators and `.env` file path.
-    - Corrected `NameError` for `GOOGLE_MODEL_NAME` by accessing it via the `settings` object.
-    - Addressed `AttributeError` for `client.close()` by removing the call.
-    - Successfully debugged `AttributeError` in GMail MCP server tool calls.
+- **Enhanced MCP Configuration (`config.py`):**
+    - Added `TASKS_MCP_SERVER_*` configuration variables for port 8002
+    - Created `active_mcp_servers` property for centralized server management
+    - Added `enabled_mcp_servers` property for conditional logic
+    - Implemented dynamic URL assembly for both Gmail (8001) and Tasks (8002) servers
+    - **Standardized URL Format**: All MCP servers use `host:port/mcp` pattern
+- **Agent Refactoring (`agent.py`):**
+    - Updated `MultiServerMCPClient` to loop through all configured servers instead of hardcoded Gmail
+    - Added comprehensive logging for server discovery and connection status
+    - Improved error handling for when servers are not responding
+- **Connection Testing (`test_mcp_connection.py`):**
+    - Created standalone test script for MCP server health checks and endpoint validation
+    - Tests both `/health` endpoints and MCP protocol initialization
+    - Provides detailed diagnostics for troubleshooting server connectivity
+- **Tasks.md MCP Server Integration:**
+    - Identified routing issue: server mounts router at `/api` but needs direct `/mcp` endpoint
+    - Discovered `mcpServer.handleRequest is not a function` error in Tasks.md implementation
+    - Tasks.md server needs MCP protocol implementation fixes
 
 ## Next Steps
-- **Develop `tasks_md_mcp_server`:** Begin implementation of the `tasks_md_mcp_server` as the first custom MCP server.
-- **Refine Agent-MCP Interaction:** Further develop and test the communication flow between the core agent and the GMail MCP server, utilizing LangSmith for observability.
-- **Backend Core Development:** Continue building out the FastAPI application, Celery integration.
-- **Documentation:** Start drafting ADRs for key decisions.
+- **Fix Tasks.md MCP Implementation:** Resolve `handleRequest` method error in server
+- **Standardize MCP Routing:** Ensure Tasks.md server serves MCP at `/mcp` not `/api/mcp`
+- **Complete Tasks Server Integration:** Verify tool discovery and functionality after fixes
+- **Test Full Agent Workflow:** Run end-to-end test with both Gmail and Tasks tools
+- **Update Documentation:** Document the centralized MCP server management approach
 
 ## Active Decisions and Considerations
-- **Package Manager:** `uv` confirmed for all Python projects.
-- **Monorepo Structure:** Adopted as outlined and largely implemented.
-- **Core Technologies:** Python, FastAPI, Celery, Redis, Gemini 2.5 Pro, LangChain/LlamaIndex, `langchain-mcp-adapters` (for `MultiServerMCPClient`), `fastmcp`, Docker.
-- **`.env` File Location:** Standardized to the project root (`nova-assistant/.env`).
-- **LangSmith Usage:** Actively used for tracing and debugging agent-MCP interactions.
+- **Package Manager:** `uv` confirmed - all Python commands use `uv run python` pattern
+- **MCP Server Ports:** Gmail=8001, Tasks=8002, future servers will increment
+- **MCP URL Standard:** All servers MUST use `host:port/mcp` format (no variations)
+- **Centralized Configuration:** All MCP servers managed through `settings.active_mcp_servers`
+- **Transport Protocol:** Using `streamable_http` for all MCP servers
+- **Error Handling:** Graceful degradation when individual servers are unavailable
 
 ## Important Patterns and Preferences
-- **Modularity:** Achieved through MCP servers and a well-defined monorepo structure.
-- **AI-First:** Core agent and LLM integration are central.
-- **Configuration Management:** Pydantic `BaseSettings` with an `.env` file.
-- **Iterative Development & Debugging:** Utilizing LangSmith for observability.
+- **Python Execution:** Always use `uv run python` instead of `python` or `python3`
+- **MCP Server Testing:** Use `uv run python -m src.nova.agent.test_mcp_connection` for diagnostics
+- **Modular Architecture:** Each MCP server runs independently on its own port
+- **Configuration-Driven:** Server discovery and connection managed through Pydantic settings
 
 ## Learnings and Project Insights
+- **uv Integration:** Project uses `uv` for all Python package management and execution
+- **MCP URL Standardization:** Consistent `/mcp` endpoint across all servers is critical
+- **Tasks.md MCP Issues:** Server routing at `/api/mcp` + missing `handleRequest` method
+- **Server Health Checks:** Not all MCP servers implement `/health` endpoints (404 expected)
+- **Connection Testing:** Direct MCP protocol testing more reliable than health checks
+- **Port Management:** Clear port allocation strategy prevents conflicts (8001-Gmail, 8002-Tasks)
+- **MCP Implementation:** Need to verify proper MCP SDK usage in third-party servers
 - Pydantic\'s `env_file` path is relative to the config file\'s location.
 - `model_validator(mode=\'after\')` is useful for Pydantic fields dependent on others.
 - Verifying library APIs for resource management (e.g., `close()` methods) is crucial.

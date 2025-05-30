@@ -28,6 +28,7 @@ async def main():
         os.environ["LANGCHAIN_TRACING_V2"] = "false"
         print("LangSmith tracing is DISABLED.")
 
+    """
     # 1. Initialize the Google LLM
     try:
         print(f"Initializing Google LLM with model: {settings.GOOGLE_MODEL_NAME}")
@@ -41,38 +42,55 @@ async def main():
     except Exception as e:
         print(f"Error initializing Google LLM. Ensure GOOGLE_API_KEY is valid and 'langchain-google-genai' is installed. Error: {e}")
         return
+    #"""
 
-    # 2. Setup MultiServerMCPClient to connect to your FastMCP server
-    print(f"Initializing MCP client for server at: {settings.GMAIL_MCP_SERVER_URL}")
-    client = MultiServerMCPClient(
-        {
-            "GMail": {
-                "url": settings.GMAIL_MCP_SERVER_URL,
-                "transport": "streamable_http",
-                "description": "My local FastMCP server with a greet tool"
+    # 2. Setup MultiServerMCPClient to connect to all active MCP servers
+    active_servers = settings.active_mcp_servers
+    enabled_servers = settings.enabled_mcp_servers
+    
+    print(f"Found {len(active_servers)} configured MCP servers: {list(active_servers.keys())}")
+    print(f"Enabled servers: {enabled_servers}")
+    
+    # Prepare server configuration for MultiServerMCPClient
+    server_config = {}
+    for server_name, server_info in active_servers.items():
+        if server_info["url"]:  # Only include servers with valid URLs
+            server_config[server_name.title()] = {
+                "url": server_info["url"],
+                "transport": server_info["transport"],
+                "description": server_info["description"]
             }
-        }
-    )
+            print(f"  - {server_name.title()}: {server_info['url']}")
+        else:
+            print(f"  - {server_name.title()}: DISABLED (no URL configured)")
+    
+    if not server_config:
+        print("No MCP servers are configured and enabled. Please check your configuration.")
+        return
+    
+    client = MultiServerMCPClient(server_config)
 
-    # 3. Fetch tools from the FastMCP server
+    # 3. Fetch tools from all configured MCP servers
     mcp_tools = []
     try:
-        print("Attempting to fetch tools from FastMCP server...")
+        print(f"\nAttempting to fetch tools from {len(server_config)} MCP server(s)...")
         mcp_tools = await client.get_tools()
 
         if not mcp_tools:
-            print(f"No tools were fetched from the FastMCP server at {settings.GMAIL_MCP_SERVER_URL}.")
-            print("Please ensure your FastMCP server (fmcp_server.py) is running.")
+            print("No tools were fetched from any MCP servers.")
+            print("Please ensure your MCP servers are running and accessible.")
             return
 
-        print(f"\nSuccessfully fetched {len(mcp_tools)} tool(s):")
+        print(f"\nSuccessfully fetched {len(mcp_tools)} tool(s) total:")
         for tool in mcp_tools:
             print(f"  - Name: {tool.name}")
             print(f"    Description: {tool.description}")
             print(f"    Args schema: {tool.args}")
 
     except Exception as e:
-        print(f"Error connecting to FastMCP server or fetching tools: {e}")
+        print(f"Error connecting to MCP servers or fetching tools: {e}")
+        print("This might indicate that one or more MCP servers are not running.")
+        print(f"Configured servers: {list(server_config.keys())}")
         return
 
     # 4. Create a LangGraph agent with the fetched tools
