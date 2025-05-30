@@ -9,6 +9,7 @@ from email.header import decode_header
 from base64 import urlsafe_b64decode
 from email import message_from_bytes
 import webbrowser
+from datetime import datetime
 
 from fastmcp import FastMCP 
 
@@ -729,6 +730,20 @@ if __name__ == "__main__":
     async def restore_email_to_inbox(email_id: str) -> str:
         """Restores an archived email back to the inbox."""
         return await gmail_service.restore_to_inbox(email_id)
+
+    # Health endpoint for server monitoring
+    @mcp.custom_route("/health", methods=["GET"])
+    async def health_check(request):
+        """Health check endpoint for monitoring server status."""
+        from starlette.responses import JSONResponse
+        return JSONResponse({
+            "status": "healthy",
+            "service": "gmail-mcp-server", 
+            "version": "1.0.0",
+            "timestamp": str(datetime.now()),
+            "mcp_endpoint": "/mcp/",
+            "gmail_user": gmail_service.user_email
+        })
 
     # --- Run FastMCP Server ---
     try:

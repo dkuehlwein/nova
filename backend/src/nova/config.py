@@ -42,12 +42,12 @@ class Settings(BaseSettings):
         if values.GMAIL_MCP_SERVER_URL is None:
             host = values.GMAIL_MCP_SERVER_HOST
             port = values.GMAIL_MCP_SERVER_PORT
-            values.GMAIL_MCP_SERVER_URL = f"http://{host}:{port}/mcp"
+            values.GMAIL_MCP_SERVER_URL = f"http://{host}:{port}/mcp/"
         
         if values.TASKS_MCP_SERVER_URL is None:
             host = values.TASKS_MCP_SERVER_HOST
             port = values.TASKS_MCP_SERVER_PORT
-            values.TASKS_MCP_SERVER_URL = f"http://{host}:{port}/mcp"
+            values.TASKS_MCP_SERVER_URL = f"http://{host}:{port}/mcp/"
         
         return values
 

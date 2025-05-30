@@ -62,7 +62,9 @@ async def test_mcp_endpoint(server_name: str, url: str) -> Dict[str, Any]:
     }
     
     try:
-        # Test MCP initialization request
+        # All MCP URLs now use trailing slash consistently
+        
+        # Test MCP initialization request with FastMCP headers
         mcp_payload = {
             "jsonrpc": "2.0",
             "method": "initialize", 
@@ -77,40 +79,82 @@ async def test_mcp_endpoint(server_name: str, url: str) -> Dict[str, Any]:
             "id": "test-init"
         }
         
+        # FastMCP requires SSE-compatible headers
+        fastmcp_headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream"
+        }
+        
         async with aiohttp.ClientSession() as session:
+            # Step 1: Initialize
             async with session.post(
                 url,
                 json=mcp_payload,
-                headers={"Content-Type": "application/json"},
+                headers=fastmcp_headers,
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 
                 if response.status == 200:
-                    response_data = await response.json()
-                    if "result" in response_data:
+                    # Extract session ID from headers
+                    session_id = response.headers.get('mcp-session-id')
+                    response_text = await response.text()
+                    
+                    if session_id and ("initialize" in response_text or "event: message" in response_text):
                         result["status"] = "responding"
                         
-                        # Try to get tools list
-                        tools_payload = {
+                        # Step 2: Send notifications/initialized with session ID
+                        notif_headers = fastmcp_headers.copy()
+                        notif_headers["Mcp-Session-Id"] = session_id
+                        
+                        notif_payload = {
                             "jsonrpc": "2.0",
-                            "method": "tools/list",
-                            "params": {},
-                            "id": "test-tools"
+                            "method": "notifications/initialized",
+                            "params": {}
                         }
                         
                         async with session.post(
                             url,
-                            json=tools_payload,
-                            headers={"Content-Type": "application/json"},
+                            json=notif_payload,
+                            headers=notif_headers,
                             timeout=aiohttp.ClientTimeout(total=5)
-                        ) as tools_response:
+                        ) as notif_response:
                             
-                            if tools_response.status == 200:
-                                tools_data = await tools_response.json()
-                                if "result" in tools_data and "tools" in tools_data["result"]:
-                                    result["tools_available"] = True
-                                    result["tool_count"] = len(tools_data["result"]["tools"])
-                    
+                            # Step 3: Try to get tools list
+                            tools_payload = {
+                                "jsonrpc": "2.0",
+                                "method": "tools/list",
+                                "params": {},
+                                "id": "test-tools"
+                            }
+                            
+                            async with session.post(
+                                url,
+                                json=tools_payload,
+                                headers=notif_headers,
+                                timeout=aiohttp.ClientTimeout(total=5)
+                            ) as tools_response:
+                                
+                                if tools_response.status == 200:
+                                    tools_text = await tools_response.text()
+                                    try:
+                                        # FastMCP might return direct JSON for tools/list
+                                        tools_data = await tools_response.json()
+                                        if "result" in tools_data and isinstance(tools_data["result"], list):
+                                            result["tools_available"] = True
+                                            result["tool_count"] = len(tools_data["result"])
+                                    except:
+                                        # Or it might be in SSE format
+                                        if "tools" in tools_text or "result" in tools_text:
+                                            result["tools_available"] = True
+                                            # Try to count tools from SSE response
+                                            if '"tools"' in tools_text:
+                                                import re
+                                                tool_matches = re.findall(r'"name":', tools_text)
+                                                result["tool_count"] = len(tool_matches)
+                    else:
+                        result["status"] = "error"
+                        result["error"] = "No session ID or invalid initialization response"
+                        
                 else:
                     result["status"] = "error"
                     result["error"] = f"HTTP {response.status}"
