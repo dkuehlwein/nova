@@ -50,7 +50,7 @@ async def main():
     # 3. Create a LangGraph agent with the fetched tools
     try:
         agent_executor = create_react_agent(llm, mcp_tools)
-        print("\n🤖 LangGraph ReAct agent created successfully.")
+        print(f"\n🤖 LangGraph ReAct agent created successfully with {len(mcp_tools)} tools.")
     except Exception as e:
         print(f"❌ Error creating LangGraph agent: {e}")
         return
@@ -59,14 +59,14 @@ async def main():
     print("\n--- 🚀 Interacting with the Agent ---")
 
     user_queries = [
-        "Send an email to John Doe at daniel.kuehlwein@gmail.com with the subject 'Test Email from Agent' and body 'This is a test email sent from the Nova agent.'.",
-        "List my unread emails.",
+        #"Send an email to John Doe at daniel.kuehlwein@gmail.com with the subject 'Test Email from Agent' and body 'This is a test email sent from the Nova agent.'.",
+        "Create a new task in the 'Todo' lane with the title 'Test Task' and content 'This is a test task'.",
     ]
 
     # If tasks server is working, add task-related queries
     working_server_names = [server["name"] for server in mcp_manager.working_servers]
     if "tasks" in working_server_names:
-        user_queries.append("Create a new task in the 'Todo' lane with the title 'Test Task' and content 'This is a test task'.")
+        user_queries.append("List all tasks across all lanes to see what's currently in the system.")
     else:
         print("  💡 Tasks server not available - skipping task-related queries")
 
@@ -80,6 +80,9 @@ async def main():
             print(f"🤖 Agent's response: {ai_response}")
         except Exception as e:
             print(f"❌ Error during agent invocation for query '{query}': {e}")
+            import traceback
+            print("Detailed error:")
+            traceback.print_exc()
 
     print("\n✅ Processing complete.")
 
