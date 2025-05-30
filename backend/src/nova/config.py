@@ -37,51 +37,56 @@ class Settings(BaseSettings):
     AGENT_POLLING_INTERVAL_SECONDS: int = 30
     AGENT_ERROR_RETRY_INTERVAL_SECONDS: int = 60
 
-    @model_validator(mode='after')
-    def assemble_urls_if_not_set(cls, values: Any) -> Any:
-        if values.GMAIL_MCP_SERVER_URL is None:
-            host = values.GMAIL_MCP_SERVER_HOST
-            port = values.GMAIL_MCP_SERVER_PORT
-            values.GMAIL_MCP_SERVER_URL = f"http://{host}:{port}/mcp/"
+    @model_validator(mode="after")
+    def compute_urls(self):
+        """Compute MCP server URLs if not explicitly provided"""
+        if not self.GMAIL_MCP_SERVER_URL:
+            self.GMAIL_MCP_SERVER_URL = f"http://{self.GMAIL_MCP_SERVER_HOST}:{self.GMAIL_MCP_SERVER_PORT}"
         
-        if values.TASKS_MCP_SERVER_URL is None:
-            host = values.TASKS_MCP_SERVER_HOST
-            port = values.TASKS_MCP_SERVER_PORT
-            values.TASKS_MCP_SERVER_URL = f"http://{host}:{port}/mcp/"
+        if not self.TASKS_MCP_SERVER_URL:
+            self.TASKS_MCP_SERVER_URL = f"http://{self.TASKS_MCP_SERVER_HOST}:{self.TASKS_MCP_SERVER_PORT}"
         
-        return values
+        return self
 
     @property
-    def active_mcp_servers(self) -> Dict[str, Dict[str, str]]:
-        """
-        Returns a dictionary of active MCP servers for the agent to connect to.
-        Each server entry contains the URL and description.
-        """
-        return {
-            "gmail": {
-                "url": self.GMAIL_MCP_SERVER_URL,
+    def MCP_SERVERS(self) -> List[Dict[str, Any]]:
+        """List of MCP servers to connect to"""
+        enabled = []
+        
+        # Gmail MCP Server
+        if self.GMAIL_MCP_SERVER_URL:
+            enabled.append({
+                "name": "gmail",
+                "url": f"{self.GMAIL_MCP_SERVER_URL}/mcp",
+                "description": "Gmail MCP Server for email operations"
+            })
+        
+        # Tasks MCP Server - Using official SDK on port 8002
+        if self.TASKS_MCP_SERVER_URL:
+            enabled.append({
+                "name": "tasks",
+                "url": f"{self.TASKS_MCP_SERVER_URL}/mcp", 
+                "description": "Tasks.md MCP Server for task management"
+            })
+        
+        return enabled
+
+    @property
+    def active_mcp_servers(self) -> Dict[str, Dict[str, Any]]:
+        """Active MCP servers in the format expected by agent.py"""
+        servers = {}
+        for server in self.MCP_SERVERS:
+            servers[server["name"]] = {
+                "url": server["url"],
                 "transport": "streamable_http",
-                "description": "Gmail integration server for email operations via Google API"
-            },
-            "tasks": {
-                "url": self.TASKS_MCP_SERVER_URL,
-                "transport": "streamable_http", 
-                "description": "Tasks.md file management server for task operations"
+                "description": server["description"]
             }
-        }
+        return servers
 
     @property
     def enabled_mcp_servers(self) -> List[str]:
-        """
-        Returns a list of enabled MCP server names.
-        Useful for conditional logic based on which servers are available.
-        """
-        enabled = []
-        if self.GMAIL_MCP_SERVER_URL:
-            enabled.append("gmail")
-        if self.TASKS_MCP_SERVER_URL:
-            enabled.append("tasks")
-        return enabled
+        """List of enabled MCP server names"""
+        return [server["name"] for server in self.MCP_SERVERS]
 
 
 settings = Settings()

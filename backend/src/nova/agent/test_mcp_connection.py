@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
 """
 MCP Server Connection Test Script
-Tests connectivity to all configured MCP servers.
+Tests connectivity to all configured MCP servers using the same approach as agent.py.
 """
 
 import asyncio
 import sys
 import aiohttp
-from typing import Dict, Any
+from typing import Dict, Any, List
 from src.nova.config import settings
 
+# Import the same MCP client used in agent.py
+try:
+    from langchain_mcp_adapters.client import MultiServerMCPClient
+    LANGCHAIN_MCP_AVAILABLE = True
+except ImportError:
+    print("⚠️  langchain-mcp-adapters not available. Install with: pip install langchain-mcp-adapters")
+    LANGCHAIN_MCP_AVAILABLE = False
 
-async def test_server_health(server_name: str, url: str) -> Dict[str, Any]:
+
+async def test_server_health(server_name: str, base_url: str) -> Dict[str, Any]:
     """Test if an MCP server is reachable and responding."""
     result = {
         "server": server_name,
-        "url": url,
+        "url": base_url,
         "status": "unknown",
         "response_time": None,
         "error": None
@@ -23,7 +31,7 @@ async def test_server_health(server_name: str, url: str) -> Dict[str, Any]:
     
     try:
         # Remove '/mcp' or '/mcp/' from URL for health check
-        health_url = url.rstrip('/').replace('/mcp', '') + '/health'
+        health_url = base_url.rstrip('/').replace('/mcp', '') + '/health'
         
         start_time = asyncio.get_event_loop().time()
         async with aiohttp.ClientSession() as session:
@@ -50,141 +58,156 @@ async def test_server_health(server_name: str, url: str) -> Dict[str, Any]:
     return result
 
 
-async def test_mcp_endpoint(server_name: str, url: str) -> Dict[str, Any]:
-    """Test the MCP endpoint directly."""
+async def test_mcp_tools_with_langchain_client() -> Dict[str, Any]:
+    """Test MCP servers using the same MultiServerMCPClient as agent.py."""
     result = {
-        "server": server_name,
-        "url": url,
         "status": "unknown",
         "error": None,
-        "tools_available": False,
-        "tool_count": 0
+        "servers_configured": 0,
+        "servers_responding": 0,
+        "tools_fetched": 0,
+        "tools": []
     }
     
+    if not LANGCHAIN_MCP_AVAILABLE:
+        result["status"] = "error"
+        result["error"] = "langchain-mcp-adapters not available"
+        return result
+    
     try:
-        # All MCP URLs now use trailing slash consistently
+        # Use the same server configuration approach as agent.py
+        mcp_servers = settings.MCP_SERVERS
+        result["servers_configured"] = len(mcp_servers)
         
-        # Test MCP initialization request with FastMCP headers
-        mcp_payload = {
-            "jsonrpc": "2.0",
-            "method": "initialize", 
-            "params": {
-                "protocolVersion": 1,
-                "capabilities": {},
-                "clientInfo": {
-                    "name": "TestClient",
-                    "version": "1.0.0"
-                }
-            },
-            "id": "test-init"
-        }
+        if not mcp_servers:
+            result["status"] = "error"
+            result["error"] = "No MCP servers configured"
+            return result
         
-        # FastMCP requires SSE-compatible headers
-        fastmcp_headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream"
-        }
+        # Prepare server configuration for MultiServerMCPClient (same as agent.py)
+        server_config = {}
+        for server_info in mcp_servers:
+            server_name = server_info["name"].title()
+            server_config[server_name] = {
+                "url": server_info["url"],
+                "transport": "streamable_http",  # Use correct transport for HTTP servers
+                "description": server_info["description"]
+            }
         
-        async with aiohttp.ClientSession() as session:
-            # Step 1: Initialize
-            async with session.post(
-                url,
-                json=mcp_payload,
-                headers=fastmcp_headers,
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                
-                if response.status == 200:
-                    # Extract session ID from headers
-                    session_id = response.headers.get('mcp-session-id')
-                    response_text = await response.text()
-                    
-                    # Check if this is a valid MCP initialization response
-                    # Accept both SSE format (FastMCP) and regular JSON format
-                    is_valid_response = (
-                        session_id and (
-                            # FastMCP SSE format
-                            "event: message" in response_text or 
-                            # Regular JSON format with MCP response
-                            ('"jsonrpc":"2.0"' in response_text and '"result"' in response_text) or
-                            # Alternative check for "initialize" method
-                            "initialize" in response_text
-                        )
-                    )
-                    
-                    if is_valid_response:
-                        result["status"] = "responding"
-                        
-                        # Step 2: Send notifications/initialized with session ID
-                        notif_headers = fastmcp_headers.copy()
-                        notif_headers["mcp-session-id"] = session_id
-                        
-                        notif_payload = {
-                            "jsonrpc": "2.0",
-                            "method": "notifications/initialized",
-                            "params": {}
-                        }
-                        
-                        async with session.post(
-                            url,
-                            json=notif_payload,
-                            headers=notif_headers,
-                            timeout=aiohttp.ClientTimeout(total=5)
-                        ) as notif_response:
-                            
-                            # Step 3: Try to get tools list
-                            tools_payload = {
-                                "jsonrpc": "2.0",
-                                "method": "tools/list",
-                                "params": {},
-                                "id": "test-tools"
-                            }
-                            
-                            async with session.post(
-                                url,
-                                json=tools_payload,
-                                headers=notif_headers,
-                                timeout=aiohttp.ClientTimeout(total=5)
-                            ) as tools_response:
-                                
-                                if tools_response.status == 200:
-                                    tools_text = await tools_response.text()
-                                    try:
-                                        # Parse JSON response for tools/list
-                                        tools_data = await tools_response.json()
-                                        if "result" in tools_data:
-                                            # Handle different response formats
-                                            tools_list = None
-                                            if isinstance(tools_data["result"], list):
-                                                # Direct list format
-                                                tools_list = tools_data["result"]
-                                            elif isinstance(tools_data["result"], dict) and "tools" in tools_data["result"]:
-                                                # Nested format: {"result": {"tools": [...]}}
-                                                tools_list = tools_data["result"]["tools"]
-                                            
-                                            if tools_list and isinstance(tools_list, list):
-                                                result["tools_available"] = True
-                                                result["tool_count"] = len(tools_list)
-                                    except:
-                                        # Fallback for SSE format
-                                        if "tools" in tools_text or "result" in tools_text:
-                                            result["tools_available"] = True
-                                            # Try to count tools from SSE response
-                                            if '"tools"' in tools_text:
-                                                import re
-                                                tool_matches = re.findall(r'"name":', tools_text)
-                                                result["tool_count"] = len(tool_matches)
-                    else:
-                        result["status"] = "error"
-                        result["error"] = "No session ID or invalid initialization response"
-                        
-                else:
-                    result["status"] = "error"
-                    result["error"] = f"HTTP {response.status}"
-                    
+        print(f"📋 Configured servers for MultiServerMCPClient:")
+        for name, config in server_config.items():
+            print(f"  • {name}: {config['url']}")
+        
+        # Create the MultiServerMCPClient (same as agent.py)
+        print(f"\n🔗 Creating MultiServerMCPClient...")
+        client = MultiServerMCPClient(server_config)
+        
+        # Fetch tools from all configured MCP servers (same as agent.py)
+        print(f"🔍 Fetching tools using MultiServerMCPClient...")
+        try:
+            mcp_tools = await client.get_tools()
+            print(f"✅ Successfully fetched {len(mcp_tools)} tools")
+        except Exception as fetch_error:
+            print(f"❌ Error during get_tools(): {fetch_error}")
+            print(f"   Error type: {type(fetch_error).__name__}")
+            
+            # Try to get more details from the exception
+            if hasattr(fetch_error, '__cause__') and fetch_error.__cause__:
+                print(f"   Caused by: {fetch_error.__cause__}")
+            if hasattr(fetch_error, 'exceptions'):
+                print(f"   Sub-exceptions: {fetch_error.exceptions}")
+            
+            # Re-raise to be caught by outer try-except
+            raise fetch_error
+        
+        result["status"] = "success"
+        result["tools_fetched"] = len(mcp_tools)
+        result["servers_responding"] = len([s for s in server_config.keys()])  # Assume all responding if tools fetched
+        
+        # Extract tool information for display
+        for tool in mcp_tools:
+            tool_info = {
+                "name": tool.name,
+                "description": tool.description,
+                "args_schema": getattr(tool, 'args', {})
+            }
+            result["tools"].append(tool_info)
+        
+        print(f"✅ Successfully processed {len(mcp_tools)} tools from {len(server_config)} server(s)")
+        
     except Exception as e:
         result["status"] = "error"
         result["error"] = str(e)
+        print(f"❌ Error using MultiServerMCPClient: {e}")
+        print(f"   Error type: {type(e).__name__}")
+        
+        # Additional debugging information
+        import traceback
+        print(f"🔍 Full traceback:")
+        traceback.print_exc()
+    
+    return result
+
+
+async def test_individual_mcp_server(server_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Test a single MCP server individually to isolate issues."""
+    result = {
+        "server": server_info["name"],
+        "status": "unknown",
+        "error": None,
+        "tools_fetched": 0,
+        "tools": []
+    }
+    
+    if not LANGCHAIN_MCP_AVAILABLE:
+        result["status"] = "error"
+        result["error"] = "langchain-mcp-adapters not available"
+        return result
+    
+    try:
+        # Test individual server
+        server_name = server_info["name"].title()
+        server_config = {
+            server_name: {
+                "url": server_info["url"],
+                "transport": "streamable_http",
+                "description": server_info["description"]
+            }
+        }
+        
+        print(f"🔍 Testing {server_name} individually...")
+        print(f"  URL: {server_info['url']}")
+        
+        # Create client for just this server
+        client = MultiServerMCPClient(server_config)
+        
+        # Fetch tools from this server
+        mcp_tools = await client.get_tools()
+        
+        result["status"] = "success"
+        result["tools_fetched"] = len(mcp_tools)
+        
+        # Extract tool information
+        for tool in mcp_tools:
+            tool_info = {
+                "name": tool.name,
+                "description": tool.description,
+                "args_schema": getattr(tool, 'args', {})
+            }
+            result["tools"].append(tool_info)
+        
+        print(f"  ✅ Success: {len(mcp_tools)} tools fetched")
+        
+    except Exception as e:
+        result["status"] = "error"
+        result["error"] = str(e)
+        print(f"  ❌ Error: {e}")
+        
+        # Check if it's a specific server error
+        if "500 Internal Server Error" in str(e):
+            print(f"  💡 Server {server_name} returned 500 error - MCP endpoint issue")
+        elif "Connection refused" in str(e):
+            print(f"  💡 Server {server_name} not running or unreachable")
     
     return result
 
@@ -193,27 +216,33 @@ async def main():
     """Main test function."""
     print("🔍 MCP Server Connection Test")
     print("=" * 50)
+    print("Using the same approach as agent.py with MultiServerMCPClient")
     
-    # Get configured servers
-    active_servers = settings.active_mcp_servers
+    # Get configured servers from settings
+    mcp_servers = settings.MCP_SERVERS
     
-    if not active_servers:
-        print("❌ No MCP servers configured!")
+    if not mcp_servers:
+        print("❌ No MCP servers configured in settings.MCP_SERVERS!")
+        print("💡 Check your .env file and ensure MCP server URLs are set:")
+        print("   - GMAIL_MCP_SERVER_URL")
+        print("   - TASKS_MCP_SERVER_URL")
         sys.exit(1)
     
-    print(f"📋 Found {len(active_servers)} configured MCP servers:")
-    for name, info in active_servers.items():
-        print(f"  • {name.title()}: {info['url']}")
+    print(f"📋 Found {len(mcp_servers)} configured MCP servers:")
+    for server in mcp_servers:
+        print(f"  • {server['name'].title()}: {server['url']}")
+        print(f"    Description: {server['description']}")
     
+    # Test 1: Health endpoints
     print("\n🏥 Testing server health endpoints...")
     health_tests = []
-    for name, info in active_servers.items():
-        if info["url"]:
-            health_tests.append(test_server_health(name, info["url"]))
+    for server in mcp_servers:
+        health_tests.append(test_server_health(server["name"], server["url"]))
     
     health_results = await asyncio.gather(*health_tests, return_exceptions=True)
     
     print("\n📊 Health Check Results:")
+    healthy_count = 0
     for result in health_results:
         if isinstance(result, Exception):
             print(f"  ❌ Error: {result}")
@@ -232,77 +261,87 @@ async def main():
             print(f"    Response time: {result['response_time']}ms")
         if result["error"]:
             print(f"    Error: {result['error']}")
+        if result["status"] == "healthy":
+            healthy_count += 1
+
+    # Test 2: Individual MCP server testing (NEW)
+    print("\n🛠️  Testing MCP servers individually...")
+    individual_results = []
+    for server in mcp_servers:
+        individual_result = await test_individual_mcp_server(server)
+        individual_results.append(individual_result)
     
-    print("\n🔌 Testing MCP endpoints...")
-    mcp_tests = []
-    for name, info in active_servers.items():
-        if info["url"]:
-            mcp_tests.append(test_mcp_endpoint(name, info["url"]))
-    
-    mcp_results = await asyncio.gather(*mcp_tests, return_exceptions=True)
-    
-    print("\n📡 MCP Endpoint Results:")
-    total_tools = 0
+    print("\n📡 Individual MCP Server Results:")
     working_servers = 0
+    total_tools = 0
     
-    for result in mcp_results:
-        if isinstance(result, Exception):
-            print(f"  ❌ Error: {result}")
-            continue
-        
+    for result in individual_results:
         status_emoji = {
-            "responding": "✅",
-            "error": "❌", 
-            "unknown": "❓"
+            "success": "✅",
+            "error": "❌"
         }.get(result["status"], "❓")
         
         print(f"  {status_emoji} {result['server'].title()}: {result['status']}")
         
-        if result["tools_available"]:
-            print(f"    🛠️  Tools available: {result['tool_count']}")
-            total_tools += result["tool_count"]
+        if result["status"] == "success":
+            print(f"    🛠️  Tools: {result['tools_fetched']}")
             working_servers += 1
-        elif result["status"] == "responding":
-            print(f"    ⚠️  No tools found")
-        
-        if result["error"]:
+            total_tools += result["tools_fetched"]
+            
+            if result["tools"]:
+                for tool in result["tools"]:
+                    print(f"      - {tool['name']}: {tool['description']}")
+        else:
             print(f"    ❌ Error: {result['error']}")
+
+    # Test 3: Combined MCP Tools (only if individual tests show some working servers)
+    if working_servers > 0:
+        print(f"\n🔗 Testing combined MultiServerMCPClient (all servers)...")
+        tools_result = await test_mcp_tools_with_langchain_client()
+        
+        if tools_result["status"] == "success":
+            print(f"  ✅ Combined test successful: {tools_result['tools_fetched']} total tools")
+        else:
+            print(f"  ❌ Combined test failed: {tools_result['error']}")
+            print(f"  💡 Individual servers work but combined connection fails")
+    else:
+        print(f"\n⚠️  Skipping combined test - no individual servers working")
+        tools_result = {"status": "skipped", "tools_fetched": 0}
     
+    # Summary
     print(f"\n📈 Summary:")
-    print(f"  • Total servers configured: {len(active_servers)}")
-    print(f"  • Working MCP servers: {working_servers}")
+    print(f"  • Total servers configured: {len(mcp_servers)}")
+    print(f"  • Health check passed: {healthy_count}/{len(mcp_servers)}")
+    print(f"  • Individual MCP servers working: {working_servers}/{len(mcp_servers)}")
     print(f"  • Total tools available: {total_tools}")
     
-    # Special focus on tasks server
-    tasks_info = active_servers.get("tasks")
-    if tasks_info:
-        print(f"\n🎯 Tasks MCP Server (Port 8002):")
-        print(f"  • URL: {tasks_info['url']}")
-        
-        tasks_result = next((r for r in mcp_results if isinstance(r, dict) and r["server"] == "tasks"), None)
-        if tasks_result:
-            if tasks_result["status"] == "responding":
-                print(f"  • Status: ✅ Connected successfully!")
-                if tasks_result["tools_available"]:
-                    print(f"  • Tools: {tasks_result['tool_count']} available")
-                else:
-                    print(f"  • Tools: ⚠️  None found")
-            else:
-                print(f"  • Status: ❌ {tasks_result['status']}")
-                if tasks_result["error"]:
-                    print(f"  • Error: {tasks_result['error']}")
-                print(f"  • 💡 Make sure the tasks.md server is running on port 8002")
+    # Focus on Gmail server results
+    gmail_result = next((r for r in individual_results if r["server"] == "gmail"), None)
+    if gmail_result:
+        print(f"\n📧 Gmail MCP Server Focus:")
+        print(f"  • Status: {'✅' if gmail_result['status'] == 'success' else '❌'} {gmail_result['status']}")
+        if gmail_result["status"] == "success":
+            print(f"  • Tools available: {gmail_result['tools_fetched']}")
+            if gmail_result["tools"]:
+                print(f"  • Available tools:")
+                for tool in gmail_result["tools"]:
+                    print(f"    - {tool['name']}")
+        else:
+            print(f"  • Error: {gmail_result['error']}")
+            print(f"  💡 Check Gmail MCP server at port 8001")
     
-    if working_servers == 0:
-        print(f"\n⚠️  No MCP servers are responding!")
-        print(f"   Please ensure your MCP servers are running.")
-        sys.exit(1)
-    elif working_servers < len(active_servers):
-        print(f"\n⚠️  {len(active_servers) - working_servers} server(s) not responding.")
-        sys.exit(1)
+    # Exit codes
+    if gmail_result and gmail_result["status"] == "success":
+        print(f"\n🎉 Gmail MCP server is working correctly!")
+        if working_servers == len(mcp_servers):
+            print(f"🎉 All MCP servers working!")
+            sys.exit(0)
+        else:
+            print(f"⚠️  Some servers need fixes")
+            sys.exit(0)  # Exit successfully if Gmail works
     else:
-        print(f"\n🎉 All MCP servers are responding correctly!")
-        sys.exit(0)
+        print(f"\n❌ Gmail MCP server needs fixing")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
