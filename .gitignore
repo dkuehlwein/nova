@@ -40,13 +40,19 @@ venv.bak/
 *~
 .DS_Store
 
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.parcel-cache/
-frontend/.next/
-frontend/out/
-frontend/.svelte-kit/
+# Frontend / Node.js (global patterns to catch all subdirectories)
+**/node_modules/
+**/dist/
+**/dev-dist/
+**/.parcel-cache/
+**/.next/
+**/out/
+**/.svelte-kit/
+# Package lock files are usually kept in version control, but backup/temp files are not
+package-lock.json.bak
+yarn.lock.bak
+# Windows Zone.Identifier files from file downloads
+*:Zone.Identifier
 
 # Logs
 logs/
@@ -59,6 +65,9 @@ docker-compose.override.yml
 .env
 .env.*
 !/.env.example
+
+# Tasks data/cache directories
+tasks/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

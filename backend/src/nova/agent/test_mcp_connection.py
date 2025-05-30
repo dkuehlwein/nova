@@ -220,22 +220,55 @@ async def test_mcp_tools_with_langchain_client() -> Dict[str, Any]:
             mcp_tools = await client.get_tools()
             print(f"✅ Successfully fetched {len(mcp_tools)} tools")
             
-            # Detailed tool analysis
+            # Detailed tool analysis with better error handling
             print(f"\n🔬 Detailed tool analysis:")
             for i, tool in enumerate(mcp_tools):
-                print(f"  {i+1}. {tool.name}")
-                print(f"     Description: '{tool.description}'")
-                print(f"     Type: {type(tool)}")
-                
-                # Try to access tool schema/args
-                if hasattr(tool, 'args'):
-                    print(f"     Args schema: {tool.args}")
-                if hasattr(tool, 'args_schema'): 
-                    print(f"     Args schema (alt): {tool.args_schema}")
-                if hasattr(tool, 'schema'):
-                    print(f"     Schema: {tool.schema}")
-                if hasattr(tool, '__dict__'):
-                    print(f"     All attributes: {list(tool.__dict__.keys())}")
+                try:
+                    print(f"  {i+1}. {tool.name}")
+                    print(f"     Description: '{tool.description}'")
+                    print(f"     Type: {type(tool)}")
+                    
+                    # Try to access tool schema/args with error handling
+                    try:
+                        if hasattr(tool, 'args'):
+                            args_value = tool.args
+                            print(f"     Args schema: {args_value}")
+                    except Exception as args_error:
+                        print(f"     ❌ Error accessing args: {args_error}")
+                        print(f"     ❌ Error type: {type(args_error).__name__}")
+                        
+                        # Try to get the raw args_schema to see what's wrong
+                        if hasattr(tool, 'args_schema'):
+                            try:
+                                raw_schema = tool.args_schema
+                                print(f"     🔍 Raw args_schema: {raw_schema}")
+                                print(f"     🔍 Raw args_schema type: {type(raw_schema)}")
+                                if hasattr(raw_schema, '__dict__'):
+                                    print(f"     🔍 Raw args_schema attributes: {list(raw_schema.__dict__.keys())}")
+                                    if isinstance(raw_schema, dict):
+                                        print(f"     🔍 Raw args_schema keys: {list(raw_schema.keys())}")
+                                        if 'properties' in raw_schema:
+                                            print(f"     🔍 Has properties: {raw_schema['properties']}")
+                                        else:
+                                            print(f"     🔍 Missing 'properties' key!")
+                            except Exception as schema_error:
+                                print(f"     ❌ Error accessing raw args_schema: {schema_error}")
+                        
+                        # This is the problematic tool - raise the error to stop here
+                        raise args_error
+                    
+                    if hasattr(tool, 'args_schema'): 
+                        print(f"     Args schema (alt): {tool.args_schema}")
+                    if hasattr(tool, 'schema'):
+                        print(f"     Schema: {tool.schema}")
+                    if hasattr(tool, '__dict__'):
+                        print(f"     All attributes: {list(tool.__dict__.keys())}")
+                        
+                except Exception as tool_error:
+                    print(f"     ❌ Error processing tool {tool.name}: {tool_error}")
+                    print(f"     ❌ Error type: {type(tool_error).__name__}")
+                    # Re-raise to stop processing and show the problematic tool
+                    raise tool_error
                     
         except Exception as fetch_error:
             print(f"❌ Error during get_tools(): {fetch_error}")
