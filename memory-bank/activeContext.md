@@ -1,158 +1,157 @@
 # Nova AI Assistant: Active Context
 
 ## Current Work Focus
-### ✅ COMPLETED: Tasks.md Official MCP SDK Integration - FULLY OPERATIONAL!
-- **Major Achievement**: Successfully replaced custom MCPHttpHandler with official `@modelcontextprotocol/sdk`
-- **Architecture**: Integrated official StreamableHTTPServerTransport into existing Koa.js backend
-- **Port Configuration**: Tasks.md running on port 8002, Nova configured to connect properly
-- **Session Management**: UUID-based sessions with proper transport lifecycle management
-- **Tool Implementation**: All 6 task management tools implemented using official SDK patterns
-- **Status**: ✅ **Tasks.md server fully operational with official MCP SDK**
+### ✅ COMPLETED: Agent Architecture Refactoring - MCP Client Management Separation
 
-### 🎯 STATUS: Both MCP Servers Fully Operational with Official SDK
-- **Gmail**: ✅ 27 tools available, FastMCP streamable_http, full LangGraph integration
-- **Tasks**: ✅ 6 tools available, Official MCP SDK with StreamableHTTPServerTransport
-- **Agent**: ✅ LangGraph ReAct agent ready for testing with both servers
-- **Architecture**: Maintained 2-process model (frontend + backend) as requested
+**Major Achievement**: Successfully refactored Nova agent architecture for better separation of concerns
+- **New Architecture**: Created dedicated `MCPClientManager` class in `src.nova.mcp_client` module
+- **Health Checking**: Implemented `/health` endpoint checking to ensure only alive servers are used
+- **Configuration Cleanup**: Simplified `config.py` by removing redundant `active_mcp_servers` and `enabled_mcp_servers` properties
+- **Agent Simplification**: Cleaned up `agent.py` to focus only on LLM initialization and agent execution
+- **Status**: ✅ **All MCP servers operational with clean, maintainable architecture**
 
 ## Major Achievements This Session
 
-### ✅ Official MCP SDK Integration (COMPLETED)
-- **Problem Identified**: Tasks.md using custom MCPHttpHandler incompatible with langchain-mcp-adapters
-- **Solution Implemented**: Replaced with official `@modelcontextprotocol/sdk`
-- **Key Components**:
-  - `StreamableHTTPServerTransport` for HTTP transport layer
-  - `McpServer` class with proper tool registration
-  - UUID-based session management with transport cleanup
-  - Express-style req/res adapter for Koa.js compatibility
-- **Tools Implemented**: list_tasks, add_task, update_task, delete_task, move_task, get_task
-- **Result**: ✅ **Full compatibility with Nova's MultiServerMCPClient**
+### ✅ MCP Client Manager Implementation (COMPLETED)
+- **New Module**: `src.nova.mcp_client.py` with `MCPClientManager` class
+- **Health Checking**: Concurrent health checks via `/health` endpoints with timeout handling
+- **Server Discovery**: Automatic discovery of working servers before tool fetching
+- **Tool Testing**: Individual server tool testing to ensure functional servers only
+- **Client Caching**: Reusable client instance with proper tool caching
+- **Error Handling**: Comprehensive error handling with detailed debugging output
 
-### ✅ Architecture Preservation (COMPLETED)
-- **Maintained Koa.js Backend**: Kept existing REST API and server structure
-- **Port Configuration**: Tasks.md on 8002, Nova properly configured
-- **2-Process Model**: Frontend (port 3000) + Backend (port 8002) as requested
-- **Docker Integration**: Updated Dockerfile to use port 8002
-- **No New Files**: Integrated into existing server.js, no separate MCP server process
+### ✅ Configuration Simplification (COMPLETED)
+- **Removed Properties**: Eliminated `active_mcp_servers` and `enabled_mcp_servers` methods
+- **Added Health URLs**: Added `health_url` field to server configurations
+- **Streamlined Logic**: Simplified `MCP_SERVERS` property to return clean server list
+- **Backward Compatibility**: Maintained existing URL construction logic
 
-### ✅ Session Management Implementation (COMPLETED)
-- **UUID Generation**: Using `uuid` package for unique session IDs
-- **Transport Lifecycle**: Proper cleanup handlers for session termination
-- **Session Tracking**: `mcpTransports` object managing active sessions
-- **Header Management**: `mcp-session-id` header handling for all requests
-- **Initialize Protocol**: Proper MCP initialization with session creation
-
-### ✅ Compatibility Layer (COMPLETED)
-- **Koa to Express Adapter**: Converting Koa context to Express-like req/res objects
-- **Body Parsing**: Proper JSON-RPC request handling
-- **Response Management**: StreamableHTTPServerTransport response handling
-- **Error Handling**: Comprehensive error catching with proper JSON-RPC error responses
-- **Health Monitoring**: Enhanced health endpoint with MCP session tracking
+### ✅ Agent Architecture Cleanup (COMPLETED)
+- **Removed Complexity**: Extracted all MCP server initialization logic to dedicated manager
+- **Simplified Flow**: Agent now focuses on LLM initialization and tool execution
+- **Better Separation**: Clear separation between MCP management and agent execution
+- **Enhanced UX**: Added emojis and better status messages for user experience
 
 ## Current Server Status
 
 ### Gmail FastMCP Server (Port 8001) - ✅ FULLY OPERATIONAL
 - **URL**: `http://localhost:8001/mcp/` ✅
+- **Health Check**: `http://localhost:8001/health` ✅
 - **Transport**: FastMCP streamable_http ✅
-- **Agent Integration**: ✅ Successfully integrated with LangGraph ReAct agent
 - **Tools**: 27 Gmail tools fully operational ✅
 - **Status**: **PRODUCTION READY** ✅
 
 ### Tasks.md Official SDK Server (Port 8002) - ✅ FULLY OPERATIONAL  
 - **URL**: `http://localhost:8002/mcp/` ✅
+- **Health Check**: `http://localhost:8002/health` ✅
 - **Transport**: Official MCP SDK StreamableHTTPServerTransport ✅
 - **Tools**: 6 task management tools implemented ✅
-- **Session Management**: UUID-based with proper cleanup ✅
-- **Health Endpoint**: Enhanced with MCP session tracking ✅
 - **Status**: **PRODUCTION READY** ✅
 
 ## Implementation Details
 
-### Official MCP SDK Integration
-- **Package**: `@modelcontextprotocol/sdk`
-- **Transport**: `StreamableHTTPServerTransport` with session management
-- **Server Class**: `McpServer` with proper tool registration
-- **Session Strategy**: UUID generation with `sessionIdGenerator` function
-- **Cleanup**: `onclose` handlers for transport lifecycle management
-
-### Tool Implementation Pattern
-```javascript
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
-    {
-      name: "list_tasks",
-      description: "List all tasks across all lanes",
-      inputSchema: { type: "object", properties: {} }
-    }
-    // ... other tools
-  ]
-}));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  switch (name) {
-    case "list_tasks":
-      return await handleListTasks();
-    // ... other cases
-  }
-});
+### MCPClientManager Class Architecture
+```python
+class MCPClientManager:
+    def __init__(self):
+        self.working_servers: List[Dict[str, Any]] = []
+        self.client: Optional[MultiServerMCPClient] = None
+        self.tools: List[Any] = []
+    
+    async def check_server_health(server_info, timeout=5.0) -> bool
+    async def discover_working_servers() -> List[Dict[str, Any]]
+    async def test_server_tools(server_info) -> Dict[str, Any]
+    async def initialize_client() -> Tuple[Optional[MultiServerMCPClient], List[Any]]
+    async def get_client_and_tools() -> Tuple[Optional[MultiServerMCPClient], List[Any]]
 ```
 
-### Session Management Pattern
-```javascript
-async function createAndConnectTransport(sessionId) {
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => sessionId,
-    enableJsonResponse: true,
-    eventSourceEnabled: true
-  });
-  
-  transport.onclose = () => {
-    delete mcpTransports[sessionId];
-  };
-  
-  await server.connect(transport);
-  return transport;
-}
+### Health Check Implementation
+- **Concurrent Checks**: All servers checked simultaneously using `asyncio.gather()`
+- **Timeout Handling**: 5-second timeout with proper error catching
+- **Fallback Logic**: Automatic health URL construction from base URL if not provided
+- **Status Reporting**: Clear success/failure reporting with detailed error messages
+
+### Tool Testing Flow
+1. **Health Check**: First verify server responds to `/health`
+2. **Tool Fetch Test**: Test individual server tool fetching capability
+3. **Aggregation**: Combine working servers into single MultiServerMCPClient
+4. **Final Validation**: Fetch all tools from combined client
+5. **Caching**: Store client and tools for reuse
+
+## Configuration Changes
+
+### Updated config.py Structure
+```python
+@property
+def MCP_SERVERS(self) -> List[Dict[str, Any]]:
+    servers = []
+    
+    if self.GMAIL_MCP_SERVER_URL:
+        servers.append({
+            "name": "gmail",
+            "url": f"{self.GMAIL_MCP_SERVER_URL}/mcp",
+            "health_url": f"{self.GMAIL_MCP_SERVER_URL}/health",
+            "description": "Gmail MCP Server for email operations"
+        })
+    
+    if self.TASKS_MCP_SERVER_URL:
+        servers.append({
+            "name": "tasks",
+            "url": f"{self.TASKS_MCP_SERVER_URL}/mcp", 
+            "health_url": f"{self.TASKS_MCP_SERVER_URL}/health",
+            "description": "Tasks.md MCP Server for task management"
+        })
+    
+    return servers
+```
+
+### Simplified Agent Flow
+```python
+async def main():
+    # 1. Configure LangSmith
+    # 2. Initialize Google LLM
+    # 3. Get MCP client and tools from manager
+    client, mcp_tools = await mcp_manager.get_client_and_tools()
+    # 4. Create LangGraph agent
+    # 5. Execute queries
 ```
 
 ## Success Metrics Achieved
 
-### ✅ **Complete MCP Integration**
-- **Official SDK**: ✅ Using @modelcontextprotocol/sdk instead of custom implementation
-- **langchain-mcp-adapters**: ✅ Full compatibility with MultiServerMCPClient
-- **Session Protocol**: ✅ Proper initialize/notifications/requests flow
-- **Tool Discovery**: ✅ All 6 task tools accessible to agent
-- **Transport Layer**: ✅ StreamableHTTPServerTransport working with Koa.js
+### ✅ **Architecture Quality**
+- **Separation of Concerns**: ✅ MCP management separated from agent logic
+- **Health Checking**: ✅ Automatic server health validation
+- **Error Resilience**: ✅ Graceful handling of failed servers
+- **Code Maintainability**: ✅ Cleaner, more focused modules
+- **Reusability**: ✅ MCPClientManager can be used across different components
 
-### ✅ **Architecture Requirements Met**
-- **No Language Mixing**: ✅ Node.js/npm only, no Python components added
-- **Port Management**: ✅ Tasks.md on 8002, no conflicts with frontend on 3000
-- **Process Count**: ✅ Maintained 2 processes (frontend + backend)
-- **Docker Integration**: ✅ Updated existing Dockerfile, no new files
-- **Existing API**: ✅ All REST endpoints preserved and functional
+### ✅ **Operational Improvements**
+- **Server Discovery**: ✅ Automatic detection of working servers
+- **Configuration**: ✅ Simplified config with health URLs
+- **Debugging**: ✅ Enhanced error reporting and status messages
+- **Performance**: ✅ Concurrent health checks for faster startup
+- **User Experience**: ✅ Clear status indicators and emojis
 
-### ✅ **Nova Integration Ready**
-- **Configuration**: ✅ Nova config updated to expect port 8002
-- **MCP Client**: ✅ MultiServerMCPClient ready to connect to both servers
-- **Agent Integration**: ✅ Ready for LangGraph ReAct agent testing
-- **Tool Availability**: ✅ Both Gmail (27) and Tasks (6) tools available
+### ✅ **System Integration**
+- **Both Servers Operational**: ✅ Gmail (27 tools) + Tasks (6 tools) = 33 total tools
+- **Agent Functionality**: ✅ LangGraph ReAct agent fully operational
+- **Tool Execution**: ✅ All tool categories (email, tasks) working correctly
+- **Dependencies**: ✅ Added `aiohttp` for health checking functionality
 
 ## Files Modified Summary
-1. **`nova/backend/src/nova/config.py`** - Updated Tasks server port to 8002
-2. **`Tasks.md/backend/lib/mcp-server-official.js`** - NEW: Official SDK implementation
-3. **`Tasks.md/backend/server.js`** - Integrated official MCP transport with Koa.js
-4. **`Tasks.md/Dockerfile`** - Updated to use port 8002
-5. **`Tasks.md/backend/package.json`** - Added @modelcontextprotocol/sdk and uuid deps
-6. **Cleanup**: Removed temporary/duplicate files (mcp-server-http.js, Dockerfile.mcp, etc.)
+1. **`nova/backend/src/nova/config.py`** - Simplified by removing redundant properties, added health URLs
+2. **`nova/backend/src/nova/mcp_client.py`** - NEW: Dedicated MCP client management module
+3. **`nova/backend/src/nova/agent/agent.py`** - Refactored to use MCPClientManager, simplified main flow
+4. **`nova/backend/pyproject.toml`** - Added aiohttp dependency for health checking
 
 ## Next Phase Priorities
-1. **Integration Testing**: Test Nova agent with both Gmail and Tasks MCP servers
-2. **End-to-End Validation**: Verify tool discovery and execution through LangGraph agent
-3. **Performance Monitoring**: Monitor session management and transport lifecycle
-4. **Additional MCP Servers**: Apply official SDK patterns to future server implementations
+1. **FastAPI Integration**: Integrate MCPClientManager into FastAPI backend for web API usage
+2. **Caching Strategy**: Implement smarter caching and refresh logic for long-running services  
+3. **Monitoring**: Add metrics and monitoring for MCP server health and performance
+4. **Additional Servers**: Apply the new architecture patterns to future MCP server implementations
+5. **Error Recovery**: Implement automatic retry and recovery mechanisms for failed servers
 
-**Final Status**: ✅ **Tasks.md fully operational with official MCP SDK integration - ready for agent testing**
+**Final Status**: ✅ **Nova agent architecture successfully refactored with clean MCP client management - ready for production integration**
 
 # Nova Agent - Active Context
 

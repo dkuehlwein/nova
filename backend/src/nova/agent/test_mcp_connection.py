@@ -7,6 +7,7 @@ Tests connectivity to all configured MCP servers using the same approach as agen
 import asyncio
 import sys
 import aiohttp
+import json
 from typing import Dict, Any, List
 from src.nova.config import settings
 
@@ -41,6 +42,11 @@ async def test_server_health(server_name: str, base_url: str) -> Dict[str, Any]:
                 
                 if response.status == 200:
                     result["status"] = "healthy"
+                    try:
+                        health_data = await response.json()
+                        print(f"  📊 Health response: {json.dumps(health_data, indent=2)}")
+                    except:
+                        pass
                 else:
                     result["status"] = "unhealthy"
                     result["error"] = f"HTTP {response.status}"
@@ -54,6 +60,112 @@ async def test_server_health(server_name: str, base_url: str) -> Dict[str, Any]:
     except Exception as e:
         result["status"] = "error"
         result["error"] = str(e)
+    
+    return result
+
+
+async def test_raw_mcp_protocol(server_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Test MCP server using raw JSON-RPC protocol to debug tool descriptions."""
+    result = {
+        "server": server_info["name"],
+        "status": "unknown",
+        "error": None,
+        "tools": [],
+        "raw_responses": {}
+    }
+    
+    try:
+        base_url = server_info["url"].rstrip('/')
+        
+        print(f"\n🔬 Testing {server_info['name']} with raw MCP protocol...")
+        print(f"  URL: {base_url}")
+        
+        async with aiohttp.ClientSession() as session:
+            # Test tools/list request
+            list_tools_request = {
+                "jsonrpc": "2.0",
+                "id": "test-list-tools",
+                "method": "tools/list",
+                "params": {}
+            }
+            
+            print(f"  📤 Sending tools/list request...")
+            async with session.post(
+                base_url,
+                json=list_tools_request,
+                headers={"Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                response_text = await response.text()
+                print(f"  📥 Response status: {response.status}")
+                print(f"  📥 Response text: {response_text[:500]}...")
+                
+                if response.status == 200:
+                    try:
+                        response_data = json.loads(response_text)
+                        result["raw_responses"]["tools_list"] = response_data
+                        
+                        if "result" in response_data and "tools" in response_data["result"]:
+                            tools = response_data["result"]["tools"]
+                            result["tools"] = tools
+                            result["status"] = "success"
+                            
+                            print(f"  ✅ Found {len(tools)} tools:")
+                            for i, tool in enumerate(tools):
+                                print(f"    {i+1}. {tool.get('name', 'UNNAMED')}")
+                                print(f"       Description: '{tool.get('description', 'NO DESCRIPTION')}'")
+                                print(f"       Schema: {json.dumps(tool.get('inputSchema', {}), indent=6)}")
+                        else:
+                            result["status"] = "error"
+                            result["error"] = f"Unexpected response format: {response_data}"
+                    except json.JSONDecodeError as e:
+                        result["status"] = "error"
+                        result["error"] = f"Invalid JSON response: {e}"
+                else:
+                    result["status"] = "error"
+                    result["error"] = f"HTTP {response.status}: {response_text}"
+            
+            # Test a simple tool call if we found tools
+            if result["status"] == "success" and result["tools"]:
+                # Try to call list_tasks if it exists
+                list_task_tool = next((t for t in result["tools"] if t.get('name') == 'list_tasks'), None)
+                if list_task_tool:
+                    print(f"  🧪 Testing list_tasks tool call...")
+                    
+                    call_tool_request = {
+                        "jsonrpc": "2.0",
+                        "id": "test-call-tool",
+                        "method": "tools/call",
+                        "params": {
+                            "name": "list_tasks",
+                            "arguments": {}
+                        }
+                    }
+                    
+                    async with session.post(
+                        base_url,
+                        json=call_tool_request,
+                        headers={"Content-Type": "application/json"},
+                        timeout=aiohttp.ClientTimeout(total=10)
+                    ) as call_response:
+                        call_response_text = await call_response.text()
+                        print(f"    📥 Call response status: {call_response.status}")
+                        print(f"    📥 Call response: {call_response_text[:300]}...")
+                        
+                        if call_response.status == 200:
+                            try:
+                                call_data = json.loads(call_response_text)
+                                result["raw_responses"]["tool_call"] = call_data
+                                print(f"    ✅ Tool call successful!")
+                            except json.JSONDecodeError:
+                                print(f"    ❌ Tool call returned invalid JSON")
+                        else:
+                            print(f"    ❌ Tool call failed: HTTP {call_response.status}")
+                            
+    except Exception as e:
+        result["status"] = "error"
+        result["error"] = str(e)
+        print(f"  ❌ Raw protocol test failed: {e}")
     
     return result
 
@@ -94,7 +206,7 @@ async def test_mcp_tools_with_langchain_client() -> Dict[str, Any]:
                 "description": server_info["description"]
             }
         
-        print(f"📋 Configured servers for MultiServerMCPClient:")
+        print(f"\n📋 Configured servers for MultiServerMCPClient:")
         for name, config in server_config.items():
             print(f"  • {name}: {config['url']}")
         
@@ -107,6 +219,24 @@ async def test_mcp_tools_with_langchain_client() -> Dict[str, Any]:
         try:
             mcp_tools = await client.get_tools()
             print(f"✅ Successfully fetched {len(mcp_tools)} tools")
+            
+            # Detailed tool analysis
+            print(f"\n🔬 Detailed tool analysis:")
+            for i, tool in enumerate(mcp_tools):
+                print(f"  {i+1}. {tool.name}")
+                print(f"     Description: '{tool.description}'")
+                print(f"     Type: {type(tool)}")
+                
+                # Try to access tool schema/args
+                if hasattr(tool, 'args'):
+                    print(f"     Args schema: {tool.args}")
+                if hasattr(tool, 'args_schema'): 
+                    print(f"     Args schema (alt): {tool.args_schema}")
+                if hasattr(tool, 'schema'):
+                    print(f"     Schema: {tool.schema}")
+                if hasattr(tool, '__dict__'):
+                    print(f"     All attributes: {list(tool.__dict__.keys())}")
+                    
         except Exception as fetch_error:
             print(f"❌ Error during get_tools(): {fetch_error}")
             print(f"   Error type: {type(fetch_error).__name__}")
@@ -201,147 +331,92 @@ async def test_individual_mcp_server(server_info: Dict[str, Any]) -> Dict[str, A
     except Exception as e:
         result["status"] = "error"
         result["error"] = str(e)
-        print(f"  ❌ Error: {e}")
-        
-        # Check if it's a specific server error
-        if "500 Internal Server Error" in str(e):
-            print(f"  💡 Server {server_name} returned 500 error - MCP endpoint issue")
-        elif "Connection refused" in str(e):
-            print(f"  💡 Server {server_name} not running or unreachable")
+        print(f"  ❌ Failed: {e}")
     
     return result
 
 
 async def main():
     """Main test function."""
-    print("🔍 MCP Server Connection Test")
+    print("🚀 MCP Server Connection Test")
     print("=" * 50)
-    print("Using the same approach as agent.py with MultiServerMCPClient")
     
-    # Get configured servers from settings
+    # Get configured MCP servers
     mcp_servers = settings.MCP_SERVERS
+    print(f"📡 Found {len(mcp_servers)} configured MCP server(s):")
+    for server in mcp_servers:
+        print(f"  • {server['name']}: {server['url']}")
     
     if not mcp_servers:
-        print("❌ No MCP servers configured in settings.MCP_SERVERS!")
-        print("💡 Check your .env file and ensure MCP server URLs are set:")
-        print("   - GMAIL_MCP_SERVER_URL")
-        print("   - TASKS_MCP_SERVER_URL")
-        sys.exit(1)
+        print("❌ No MCP servers configured. Check your .env file.")
+        return
     
-    print(f"📋 Found {len(mcp_servers)} configured MCP servers:")
+    print("\n" + "=" * 50)
+    print("🏥 HEALTH CHECK TESTS")
+    print("=" * 50)
+    
+    # Test server health
+    health_results = []
     for server in mcp_servers:
-        print(f"  • {server['name'].title()}: {server['url']}")
-        print(f"    Description: {server['description']}")
-    
-    # Test 1: Health endpoints
-    print("\n🏥 Testing server health endpoints...")
-    health_tests = []
-    for server in mcp_servers:
-        health_tests.append(test_server_health(server["name"], server["url"]))
-    
-    health_results = await asyncio.gather(*health_tests, return_exceptions=True)
-    
-    print("\n📊 Health Check Results:")
-    healthy_count = 0
-    for result in health_results:
-        if isinstance(result, Exception):
-            print(f"  ❌ Error: {result}")
-            continue
-            
+        print(f"\n🔍 Testing {server['name']} health...")
+        health_result = await test_server_health(server['name'], server['url'])
+        health_results.append(health_result)
+        
         status_emoji = {
             "healthy": "✅",
-            "unhealthy": "⚠️", 
+            "unhealthy": "⚠️",
             "timeout": "⏰",
             "unreachable": "❌",
             "error": "💥"
-        }.get(result["status"], "❓")
+        }.get(health_result["status"], "❓")
         
-        print(f"  {status_emoji} {result['server'].title()}: {result['status']}")
-        if result["response_time"]:
-            print(f"    Response time: {result['response_time']}ms")
-        if result["error"]:
-            print(f"    Error: {result['error']}")
-        if result["status"] == "healthy":
-            healthy_count += 1
-
-    # Test 2: Individual MCP server testing (NEW)
-    print("\n🛠️  Testing MCP servers individually...")
-    individual_results = []
+        print(f"  {status_emoji} Status: {health_result['status']}")
+        if health_result["response_time"]:
+            print(f"  ⏱️  Response time: {health_result['response_time']}ms")
+        if health_result["error"]:
+            print(f"  ❌ Error: {health_result['error']}")
+    
+    print("\n" + "=" * 50)
+    print("🔬 RAW MCP PROTOCOL TESTS")
+    print("=" * 50)
+    
+    # Test raw MCP protocol for each server
     for server in mcp_servers:
-        individual_result = await test_individual_mcp_server(server)
-        individual_results.append(individual_result)
+        await test_raw_mcp_protocol(server)
     
-    print("\n📡 Individual MCP Server Results:")
-    working_servers = 0
-    total_tools = 0
+    print("\n" + "=" * 50)
+    print("🔗 LANGCHAIN MCP CLIENT TESTS")
+    print("=" * 50)
     
-    for result in individual_results:
-        status_emoji = {
-            "success": "✅",
-            "error": "❌"
-        }.get(result["status"], "❓")
+    # Test with LangChain MCP client (what agent.py uses)
+    if LANGCHAIN_MCP_AVAILABLE:
+        langchain_result = await test_mcp_tools_with_langchain_client()
         
-        print(f"  {status_emoji} {result['server'].title()}: {result['status']}")
-        
-        if result["status"] == "success":
-            print(f"    🛠️  Tools: {result['tools_fetched']}")
-            working_servers += 1
-            total_tools += result["tools_fetched"]
+        if langchain_result["status"] == "success":
+            print(f"\n📊 Summary:")
+            print(f"  • Servers configured: {langchain_result['servers_configured']}")
+            print(f"  • Servers responding: {langchain_result['servers_responding']}")
+            print(f"  • Tools fetched: {langchain_result['tools_fetched']}")
             
-            if result["tools"]:
-                for tool in result["tools"]:
-                    print(f"      - {tool['name']}: {tool['description']}")
+            print(f"\n🛠️  Tool Details:")
+            for tool in langchain_result["tools"]:
+                print(f"  • {tool['name']}: {tool['description'][:50]}...")
         else:
-            print(f"    ❌ Error: {result['error']}")
-
-    # Test 3: Combined MCP Tools (only if individual tests show some working servers)
-    if working_servers > 0:
-        print(f"\n🔗 Testing combined MultiServerMCPClient (all servers)...")
-        tools_result = await test_mcp_tools_with_langchain_client()
+            print(f"❌ LangChain MCP client test failed: {langchain_result['error']}")
         
-        if tools_result["status"] == "success":
-            print(f"  ✅ Combined test successful: {tools_result['tools_fetched']} total tools")
-        else:
-            print(f"  ❌ Combined test failed: {tools_result['error']}")
-            print(f"  💡 Individual servers work but combined connection fails")
+        # Test individual servers for isolation
+        print(f"\n🔍 Individual server tests:")
+        for server in mcp_servers:
+            individual_result = await test_individual_mcp_server(server)
+            status_emoji = "✅" if individual_result["status"] == "success" else "❌"
+            print(f"  {status_emoji} {server['name']}: {individual_result['tools_fetched']} tools")
+            if individual_result["error"]:
+                print(f"    Error: {individual_result['error']}")
     else:
-        print(f"\n⚠️  Skipping combined test - no individual servers working")
-        tools_result = {"status": "skipped", "tools_fetched": 0}
+        print("⚠️  Skipping LangChain tests - package not available")
     
-    # Summary
-    print(f"\n📈 Summary:")
-    print(f"  • Total servers configured: {len(mcp_servers)}")
-    print(f"  • Health check passed: {healthy_count}/{len(mcp_servers)}")
-    print(f"  • Individual MCP servers working: {working_servers}/{len(mcp_servers)}")
-    print(f"  • Total tools available: {total_tools}")
-    
-    # Focus on Gmail server results
-    gmail_result = next((r for r in individual_results if r["server"] == "gmail"), None)
-    if gmail_result:
-        print(f"\n📧 Gmail MCP Server Focus:")
-        print(f"  • Status: {'✅' if gmail_result['status'] == 'success' else '❌'} {gmail_result['status']}")
-        if gmail_result["status"] == "success":
-            print(f"  • Tools available: {gmail_result['tools_fetched']}")
-            if gmail_result["tools"]:
-                print(f"  • Available tools:")
-                for tool in gmail_result["tools"]:
-                    print(f"    - {tool['name']}")
-        else:
-            print(f"  • Error: {gmail_result['error']}")
-            print(f"  💡 Check Gmail MCP server at port 8001")
-    
-    # Exit codes
-    if gmail_result and gmail_result["status"] == "success":
-        print(f"\n🎉 Gmail MCP server is working correctly!")
-        if working_servers == len(mcp_servers):
-            print(f"🎉 All MCP servers working!")
-            sys.exit(0)
-        else:
-            print(f"⚠️  Some servers need fixes")
-            sys.exit(0)  # Exit successfully if Gmail works
-    else:
-        print(f"\n❌ Gmail MCP server needs fixing")
-        sys.exit(1)
+    print("\n" + "=" * 50)
+    print("✅ Test completed!")
 
 
 if __name__ == "__main__":

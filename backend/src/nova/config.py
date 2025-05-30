@@ -51,42 +51,27 @@ class Settings(BaseSettings):
     @property
     def MCP_SERVERS(self) -> List[Dict[str, Any]]:
         """List of MCP servers to connect to"""
-        enabled = []
+        servers = []
         
         # Gmail MCP Server
         if self.GMAIL_MCP_SERVER_URL:
-            enabled.append({
+            servers.append({
                 "name": "gmail",
                 "url": f"{self.GMAIL_MCP_SERVER_URL}/mcp",
+                "health_url": f"{self.GMAIL_MCP_SERVER_URL}/health",
                 "description": "Gmail MCP Server for email operations"
             })
         
         # Tasks MCP Server - Using official SDK on port 8002
         if self.TASKS_MCP_SERVER_URL:
-            enabled.append({
+            servers.append({
                 "name": "tasks",
                 "url": f"{self.TASKS_MCP_SERVER_URL}/mcp", 
+                "health_url": f"{self.TASKS_MCP_SERVER_URL}/health",
                 "description": "Tasks.md MCP Server for task management"
             })
         
-        return enabled
-
-    @property
-    def active_mcp_servers(self) -> Dict[str, Dict[str, Any]]:
-        """Active MCP servers in the format expected by agent.py"""
-        servers = {}
-        for server in self.MCP_SERVERS:
-            servers[server["name"]] = {
-                "url": server["url"],
-                "transport": "streamable_http",
-                "description": server["description"]
-            }
         return servers
-
-    @property
-    def enabled_mcp_servers(self) -> List[str]:
-        """List of enabled MCP server names"""
-        return [server["name"] for server in self.MCP_SERVERS]
 
 
 settings = Settings()
