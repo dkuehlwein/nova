@@ -43,6 +43,10 @@ show_help() {
     echo "  logs <service> - Show logs for a specific service"
     echo "  build     - Build all Docker images"
     echo "  clean     - Stop and remove all containers and images"
+    echo "  prune     - Clean up Docker resources (interactive)"
+    echo "  prune images - Remove unused images"
+    echo "  prune all    - Remove all unused Docker resources"
+    echo "  prune system - Remove unused containers, networks, and build cache"
     echo "  health    - Check health of all services"
     echo "  help      - Show this help message"
     echo ""
@@ -136,6 +140,93 @@ check_health() {
     done
 }
 
+# Function to show Docker space usage
+show_docker_usage() {
+    print_status "Current Docker space usage:"
+    docker system df
+    echo ""
+}
+
+# Function to prune Docker resources
+prune_docker() {
+    local prune_type="${2:-interactive}"
+    
+    case "$prune_type" in
+        images)
+            print_status "Removing unused Docker images..."
+            show_docker_usage
+            print_warning "This will remove all unused images (not just dangling ones)."
+            read -p "Continue? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                docker image prune -a -f
+                print_success "Unused images removed!"
+                show_docker_usage
+            else
+                print_status "Image cleanup cancelled."
+            fi
+            ;;
+        system)
+            print_status "Removing unused containers, networks, and build cache..."
+            show_docker_usage
+            print_warning "This will remove:"
+            echo "  • Stopped containers"
+            echo "  • Unused networks"
+            echo "  • Dangling images"
+            echo "  • Build cache"
+            read -p "Continue? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                docker system prune -f
+                print_success "System cleanup completed!"
+                show_docker_usage
+            else
+                print_status "System cleanup cancelled."
+            fi
+            ;;
+        all)
+            print_status "Removing ALL unused Docker resources..."
+            show_docker_usage
+            print_warning "This will remove:"
+            echo "  • Stopped containers"
+            echo "  • Unused networks"
+            echo "  • ALL unused images (not just dangling ones)"
+            echo "  • Build cache"
+            echo "  • Unused volumes"
+            read -p "Are you sure? This is aggressive cleanup! (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                docker system prune -a -f --volumes
+                print_success "Aggressive cleanup completed!"
+                show_docker_usage
+            else
+                print_status "Cleanup cancelled."
+            fi
+            ;;
+        interactive|*)
+            print_status "Docker Cleanup Options:"
+            show_docker_usage
+            echo "Choose cleanup level:"
+            echo "  1) Images only - Remove unused images"
+            echo "  2) System - Remove containers, networks, build cache"
+            echo "  3) All - Remove everything unused (aggressive)"
+            echo "  4) Show usage only"
+            echo "  5) Cancel"
+            echo ""
+            read -p "Select option (1-5): " -n 1 -r
+            echo
+            case $REPLY in
+                1) prune_docker "" images ;;
+                2) prune_docker "" system ;;
+                3) prune_docker "" all ;;
+                4) show_docker_usage ;;
+                5) print_status "Cleanup cancelled." ;;
+                *) print_error "Invalid option. Cleanup cancelled." ;;
+            esac
+            ;;
+    esac
+}
+
 # Main script logic
 case "${1:-help}" in
     start)
@@ -158,6 +249,9 @@ case "${1:-help}" in
         ;;
     clean)
         clean_up
+        ;;
+    prune)
+        prune_docker "$@"
         ;;
     health)
         check_health
