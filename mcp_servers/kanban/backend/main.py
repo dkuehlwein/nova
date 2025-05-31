@@ -65,8 +65,8 @@ if __name__ == "__main__":
     logger.info(f"🚀 Starting Kanban MCP Server")
     logger.info(f"📁 Tasks directory: {args.tasks_dir}")
     logger.info(f"🔌 Server port: {args.port}")
-    logger.info(f"🌐 MCP endpoint: http://127.0.0.1:{args.port}/mcp/")
-    logger.info(f"🔗 REST API: http://127.0.0.1:{args.port}/api/")
-    logger.info(f"🏥 Health check: http://127.0.0.1:{args.port}/health")
+    logger.info(f"🌐 MCP endpoint: http://0.0.0.0:{args.port}/mcp/")
+    logger.info(f"🔗 REST API: http://0.0.0.0:{args.port}/api/")
+    logger.info(f"🏥 Health check: http://0.0.0.0:{args.port}/health")
     
-    mcp.run(transport="streamable-http", host="127.0.0.1", port=args.port) 
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=args.port) 

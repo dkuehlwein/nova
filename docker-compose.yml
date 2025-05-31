@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Kanban MCP Server
   kanban-mcp:
@@ -12,7 +10,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
     volumes:
-      - ./mcp_servers/kanban/backend/tasks:/app/tasks
+      - ./tasks:/app/tasks
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -31,7 +29,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
     volumes:
-      - ./mcp_servers/gmail/token.json:/app/token.json:ro
+      - ./mcp_servers/gmail/token.json:/app/token.json
       - ./mcp_servers/gmail/credentials.json:/app/credentials.json:ro
     restart: unless-stopped
     healthcheck:

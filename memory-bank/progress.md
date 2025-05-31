@@ -2,6 +2,101 @@
 
 ## ✅ COMPLETED MAJOR MILESTONES
 
+### ✅ **MILESTONE 8: Docker Environment Debugging COMPLETE** 🐳🔧
+**Date**: Current Session  
+**Achievement**: Successfully debugged and fixed all MCP container issues, achieving fully operational Docker environment!
+
+#### 🎯 **Container Issues Identified and Resolved**
+**Problem**: Two critical containers failing to start properly
+- **Gmail MCP**: Restarting continuously due to missing command arguments and read-only volume issues
+- **Kanban MCP**: Restarting due to incorrect startup command and host binding problems
+
+#### 🔧 **Gmail MCP Container Fixes**
+**Issue 1 - Missing Required Arguments**:
+- **Root Cause**: Dockerfile missing required `--creds-file-path` and `--token-path` arguments
+- **Error**: `main.py: error: the following arguments are required: --creds-file-path, --token-path`
+- **Solution**: Updated Dockerfile CMD with proper arguments:
+  ```dockerfile
+  CMD ["uv", "run", "python", "main.py", "--creds-file-path", "/app/credentials.json", "--token-path", "/app/token.json", "--host", "0.0.0.0", "--port", "8000"]
+  ```
+
+**Issue 2 - Read-Only Token File**:
+- **Root Cause**: Volume mounted as read-only (`:ro`) preventing OAuth token refresh
+- **Error**: `OSError: [Errno 30] Read-only file system: '/app/token.json'`
+- **Solution**: Removed read-only flag from token.json volume mount:
+  ```yaml
+  volumes:
+    - ./mcp_servers/gmail/token.json:/app/token.json    # Now writable for token updates
+    - ./mcp_servers/gmail/credentials.json:/app/credentials.json:ro
+  ```
+
+#### 🔧 **Kanban MCP Container Fixes**
+**Issue 1 - Incorrect Startup Command**:
+- **Root Cause**: Dockerfile trying to run `python -m kanban_service` (module doesn't exist)
+- **Error**: Container reached dependency installation then failed silently
+- **Solution**: Changed to run `main.py` with proper arguments:
+  ```dockerfile
+  CMD ["uv", "run", "python", "main.py", "--tasks-dir", "/app/tasks", "--port", "8000"]
+  ```
+
+**Issue 2 - Host Binding Problem**:
+- **Root Cause**: `main.py` bound to `127.0.0.1` preventing Docker container access
+- **Error**: Container running but inaccessible from host
+- **Solution**: Updated host binding to `0.0.0.0` for Docker networking:
+  ```python
+  mcp.run(transport="streamable-http", host="0.0.0.0", port=args.port)
+  ```
+
+**Issue 3 - Task Storage Not Persistent**:
+- **Root Cause**: Volume mounted from wrong directory (`./mcp_servers/kanban/backend/tasks`)
+- **User Requirement**: Store tasks in `nova/tasks` for accessibility and persistence
+- **Solution**: Updated volume mount and created directory:
+  ```yaml
+  volumes:
+    - ./tasks:/app/tasks    # Now uses nova/tasks for persistence
+  ```
+
+#### 📁 **Persistent Task Storage Implementation**
+**Achievement**: Configured persistent task storage in accessible location
+- **Directory Created**: `nova/tasks/` directory for kanban task `.md` files
+- **Volume Mount**: Properly configured Docker volume for persistence
+- **Access**: Tasks accessible from host system for backup/inspection
+- **Persistence**: Task data survives container restarts and rebuilds
+
+#### 🐳 **Docker Configuration Improvements**
+**Achievement**: Eliminated warnings and improved best practices
+- **Version Warning**: Removed deprecated `version: '3.8'` from docker-compose.yml
+- **Health Checks**: Ensured all services have proper health monitoring endpoints
+- **Volume Permissions**: Configured correct read/write permissions for all mounted files
+- **Network Configuration**: Verified automatic service discovery between containers
+
+#### 🎉 **Final Container Status Achieved**
+```
+SERVICE           STATUS      PORT    HEALTH      DESCRIPTION
+kanban-mcp        HEALTHY     8001    ✅ Healthy   Task management with persistent storage
+gmail-mcp         HEALTHY     8002    ✅ Healthy   Email integration with OAuth token refresh  
+example-mcp       UNHEALTHY   8003    ⚠️ Expected  Optional demo service (expected failure)
+kanban-frontend   RUNNING     3000    ✅ Running   React web interface
+```
+
+#### 🚀 **Docker Management Operational**
+**Achievement**: Complete container lifecycle management working
+- **Start All Services**: `./scripts/mcp-docker.sh start` ✅
+- **Status Monitoring**: `./scripts/mcp-docker.sh status` ✅  
+- **Health Validation**: `./scripts/mcp-docker.sh health` ✅
+- **Centralized Logging**: `./scripts/mcp-docker.sh logs` ✅
+- **Individual Control**: Target specific services for debugging ✅
+
+#### 📊 **Debug Session Metrics**
+- **Containers Fixed**: 2/2 critical containers (100% success rate)
+- **Issues Resolved**: 5 distinct technical problems identified and fixed
+- **Debugging Time**: Efficient systematic diagnosis and resolution
+- **Final Status**: Fully operational multi-service Docker environment
+- **Data Persistence**: Task storage correctly configured and accessible
+- **Docker Best Practices**: All warnings eliminated, proper configurations applied
+
+**Status**: ✅ **DOCKER ENVIRONMENT FULLY OPERATIONAL** - All critical services healthy and running with persistent data storage
+
 ### 🎯 Core Architecture & MCP Integration (COMPLETED - 100%)
 - **✅ Project Structure**: Monorepo setup with proper directory organization
 - **✅ Configuration Management**: Environment-based configuration with Pydantic settings
