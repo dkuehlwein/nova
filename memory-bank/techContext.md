@@ -11,6 +11,16 @@
 - **Agent Architecture:** MCPClientManager with health checking and tool discovery ✅ **OPERATIONAL**
 - **LLM Integration:** Gemini 2.5 Pro via LangChain ✅ **OPERATIONAL** 
 - **Transport Layer:** FastMCP streamable-http ✅ **ZERO ISSUES**
+- **Testing Framework:** pytest + pytest-asyncio ✅ **COMPREHENSIVE COVERAGE**
+
+### Testing Infrastructure ✅ **PROFESSIONAL GRADE**
+- **Test Framework:** pytest with async support
+- **Test Categories:** Health, protocol, integration, execution testing
+- **Test Structure:** Organized test classes with smart fixtures
+- **Coverage:** 37 MCP tools across all servers validated
+- **Performance Monitoring:** Response time tracking and health validation
+- **Convenience Scripts:** `tests/test-mcp.sh` with multiple execution options
+- **Documentation:** Complete testing guide in `tests/README.md`
 
 ### MCP Server Infrastructure ✅ **PRODUCTION READY**
 - **Gmail MCP Server:** Port 8001, 27 tools, FastMCP ✅ **OPERATIONAL**
@@ -26,7 +36,7 @@
   └── README.md        # Documentation
   ```
 - **Health Monitoring:** All servers include `/health` endpoints ✅ **OPERATIONAL**
-- **Testing:** Comprehensive test suites for all servers ✅ **COMPLETE**
+- **Testing:** Comprehensive pytest suites for all servers ✅ **COMPLETE**
 
 ### Task Management ✅ **MIGRATION COMPLETE**
 - **Application:** Custom kanban implementation (replaces tasks.md)
@@ -40,6 +50,7 @@
 - **Multi-Query Support:** Continuous operation without hanging
 - **Error Handling:** Comprehensive debugging and resilience
 - **Tool Discovery:** Automatic health checking and tool aggregation
+- **Test Validation:** Automated testing confirms agent integration
 
 ### Frontend **🔄 READY FOR DEVELOPMENT**
 - **Structure:** Separate frontend directories for each service
@@ -52,6 +63,7 @@
 - **Local Development:** Direct Python execution + uv virtual environments
 - **Logging:** Python logging with structured output
 - **Monitoring:** Health endpoints for all MCP servers
+- **Testing:** Automated pytest validation for CI/CD pipelines
 
 ## Development Setup ✅ **STREAMLINED**
 
@@ -60,6 +72,10 @@
 nova/
 ├── backend/                    # Nova core agent
 ├── frontend/                   # Nova main frontend
+├── tests/                      # Testing infrastructure
+│   ├── test_mcp_connection.py  # Pytest suite
+│   ├── test-mcp.sh            # Convenience script
+│   └── README.md              # Testing documentation
 ├── mcp_servers/
 │   ├── gmail/                  # Gmail MCP server
 │   ├── kanban/
@@ -74,11 +90,29 @@ nova/
 - **Gmail Server:** `cd mcp_servers/gmail && python main.py`
 - **Agent Testing:** Direct execution with 37 available tools
 - **Health Monitoring:** `curl http://localhost:800X/health`
+- **Test Validation:** `./tests/test-mcp.sh fast` for quick validation
+- **Comprehensive Testing:** `./tests/test-mcp.sh all` for full test suite
+
+### Testing Workflows ✅ **PROFESSIONAL**
+```bash
+# Quick validation (recommended for development)
+./tests/test-mcp.sh fast
+
+# Specific test categories
+./tests/test-mcp.sh health      # Health endpoint validation
+./tests/test-mcp.sh langchain   # LangChain integration testing
+./tests/test-mcp.sh protocol    # Raw MCP protocol testing
+./tests/test-mcp.sh slow        # Tool execution testing
+
+# Manual pytest execution
+cd backend && uv run pytest ../tests/test_mcp_connection.py -v
+```
 
 ### Virtual Environment Management
 - **Backend/Agent:** `uv` virtual environments for core components
 - **MCP Servers:** Individual `uv` environments per server backend
 - **Frontend:** Node.js/npm for frontend components
+- **Testing:** pytest and pytest-asyncio in backend dev dependencies
 - **Isolation:** Clean separation between Python and JavaScript dependencies
 
 ## Technical Constraints ✅ **SATISFIED**
@@ -86,12 +120,18 @@ nova/
 - ✅ **Modular MCP Design:** All functionality via independent MCP servers
 - ✅ **FastMCP Framework:** Unified architecture eliminates compatibility issues
 - ✅ **Backend/Frontend Separation:** Clean project structure achieved
+- ✅ **Professional Testing:** Pytest infrastructure for quality assurance
 
 ## Dependencies ✅ **LOCKED AND STABLE**
 
 ### Core Agent Dependencies
 - `langchain`, `langgraph`, `google-generativeai`
 - `fastmcp`, `requests` for MCP client integration
+
+### Testing Dependencies
+- `pytest` 8.3.5+ for test framework
+- `pytest-asyncio` 1.0.0+ for async test support
+- Test-specific dependencies handled via dev dependency groups
 
 ### MCP Server Dependencies (Per Server)
 - `fastmcp` 2.3.4+ (unified framework)
@@ -114,11 +154,22 @@ nova/
   - Comprehensive testing and health monitoring
   - Simplified development and debugging
 
+### ✅ Testing Infrastructure Maturity
+- **Previous:** Manual test script requiring specific navigation
+- **Current:** Professional pytest suite with convenience scripts
+- **Benefits:**
+  - Automated test execution
+  - Comprehensive coverage validation
+  - CI/CD pipeline ready
+  - Performance monitoring
+  - Error resilience and detailed reporting
+
 ### ✅ Architecture Maturity
 - **Agent Stability:** Multi-query continuous operation
 - **Tool Integration:** 37 tools seamlessly available
 - **Error Resilience:** Comprehensive error handling
 - **Production Readiness:** All critical issues resolved
+- **Quality Assurance:** Automated testing validates all components
 
 ## Tool Usage Patterns ✅ **ESTABLISHED**
 
@@ -135,6 +186,10 @@ uv pip install fastmcp requests
 python main.py              # Start server
 python test_main.py         # Run tests
 curl http://localhost:800X/health  # Check health
+
+# Validate with pytest suite
+cd ../../../tests
+./test-mcp.sh health        # Quick health validation
 ```
 
 ### Agent Development
@@ -143,6 +198,22 @@ curl http://localhost:800X/health  # Check health
 cd backend
 source .venv/bin/activate
 python main.py              # Direct agent execution
+
+# Validate MCP integration
+cd ../tests
+./test-mcp.sh langchain     # Test agent-compatible integration
+```
+
+### Testing Development
+```bash
+# Run comprehensive test suite
+./tests/test-mcp.sh all     # Full validation
+
+# Development testing
+./tests/test-mcp.sh fast    # Quick validation during development
+
+# Targeted debugging
+./tests/test-mcp.sh verbose # Detailed output for troubleshooting
 ```
 
 ### Frontend Development
@@ -158,4 +229,4 @@ npm run build              # Production build
 
 ## Current Operational Status ✅ **FULLY FUNCTIONAL**
 
-**All technical components are operational and production-ready. The system has achieved its core technical goals with zero outstanding critical issues.** 
+**All technical components are operational and production-ready. The system has achieved its core technical goals with zero outstanding critical issues. Professional testing infrastructure ensures continued reliability and quality assurance.** 

@@ -1,7 +1,7 @@
 [project]
-name = "nova_backend"
+name = "nova-backend"
 version = "0.1.0"
-description = "Nova Backend Core (FastAPI, Celery)"
+description = "Nova AI assistant backend"
 authors = [
     { name = "Your Name", email = "you@example.com" },
 ]
@@ -23,5 +23,25 @@ readme = "README.md"
 license = { text = "MIT" }
 
 [tool.uv]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=1.0.0",
+]
 # This section is not standard for pyproject.toml but might be used by uv or plugins in the future.
-# For now, uv primarily uses command-line arguments or its own configuration files. 
+# For now, uv primarily uses command-line arguments or its own configuration files.
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = ["-ra", "-q", "--strict-markers"]
+testpaths = ["../tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "asyncio: marks tests as async",
+]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function" 
