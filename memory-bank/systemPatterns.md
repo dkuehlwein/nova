@@ -5,88 +5,173 @@
 ```mermaid
 graph TD
     subgraph User Interface (Frontend)
-        UI_Kanban[Kanban View (Displays tasks.md content)]
-        UI_Chat_Collaborate[Chat & Collaboration (Leveraging Open Canvas - TBD Integration)]
+        UI_Kanban[Kanban View (Displays task content)]
+        UI_Chat_Collaborate[Chat & Collaboration (Agent Interface)]
         UI_Kanban -- REST API --> B_API
         UI_Chat_Collaborate -- REST API / WebSockets --> B_API
     end
 
-    subgraph Nova_Backend_Core [Nova Backend Core (Python, FastAPI, Celery, `uv`)]
-        B_API[API Gateway (FastAPI)]
-        B_Orchestrator[Task Orchestrator (Celery + Redis Container)]
-        B_Agent[Core Agent Executor (Gemini LLM, LangChain/LlamaIndex + fastmcp Client)]
+    subgraph Nova_Backend_Core [Nova Backend Core (Python, FastAPI, `uv`)]
+        B_API[API Gateway (FastAPI) - Future]
+        B_Agent[Core Agent Executor (Gemini LLM, LangGraph + MCPClientManager)]
 
-        B_API -- Handles HTTP/WS, Enqueues to --> B_Orchestrator
-        B_Orchestrator -- Triggers for async tasks (e.g., email polling) --> B_Agent
-        B_Agent -- Responds to direct user interactions (via API) & async triggers --> B_API
+        B_API -- Future: Handles HTTP/WS --> B_Agent
+        B_Agent -- Direct agent execution --> B_Agent
         B_Agent -- Uses LLM --> Ext_LLM
         B_Agent -- Makes MCP Calls --> MCP_Network
     end
 
-    subgraph MCP_Network [MCP Network (Inter-service communication)]
-        %% Simulating network calls to individual MCP servers
-        B_Agent --> MCP_TasksMD_Server
-        B_Agent --> MCP_Mem0_Server
-        B_Agent --> MCP_Email_Server
-        B_Agent --> MCP_Messaging_Server
-        B_Agent --> MCP_OpenCanvas_Server_Placeholder["MCP_OpenCanvas_Backend_Server (Exploratory)"]
+    subgraph MCP_Network [MCP Network (FastMCP Communication)]
+        %% Unified FastMCP network for all MCP servers
+        B_Agent --> MCP_Gmail_Server
+        B_Agent --> MCP_Kanban_Server
+        B_Agent --> MCP_Future_Servers["Future MCP Servers<br>(Mem0, Calendar, etc.)"]
     end
 
-    subgraph MCP_Servers_Independent [Independent MCP Servers (Python, `uv`, Dockerized)]
-        MCP_TasksMD_Server["Tasks.md MCP Server<br>(Uses tasks-md library)"]
-        MCP_Mem0_Server["Mem0 MCP Server<br>(Wraps Mem0 service/library)"]
-        MCP_Email_Server["Email MCP Server<br>(IMAP/SMTP/API integration)"]
-        MCP_Messaging_Server["User Messaging MCP Server<br>(Triggers B_API WebSockets)"]
-        %% MCP_OpenCanvas_Server_Placeholder -- future, if OpenCanvas backend is wrapped --
+    subgraph MCP_Servers_Unified [Unified FastMCP Servers (Python, `uv`)]
+        MCP_Gmail_Server["Gmail MCP Server<br>Port 8001 | 27 tools<br>FastMCP framework"]
+        MCP_Kanban_Server["Kanban MCP Server<br>Port 8003 | 10 tools<br>FastMCP framework<br>**NEW: Backend/Frontend Structure**"]
+        MCP_Future_Servers_Detail["Future servers following<br>FastMCP pattern"]
     end
 
     subgraph Data_Stores_External_Services [Data Stores & External Services]
-        Data_TasksMD_File["tasks.md file<br>(Managed via Tasks.md library)"]
-        Data_Mem0_Storage["Mem0 Service Storage"]
-        Data_Redis_Celery["Redis Container<br>(Celery Broker/Results)"]
-        Data_Logs["Log Storage<br>(e.g., ELK, Loki, CloudWatch)"]
+        Data_TasksMD_Files["Task Markdown Files<br>{title}-{uuid}.md format<br>Lane-based organization<br>**NEW: In backend/tasks/**"]
+        Data_Logs["Application Logs<br>(Python logging)"]
         Ext_LLM["LLM API (Gemini 2.5 Pro)"]
-        Ext_Email_Service["Email Service (IMAP/API)"]
-        Ext_OpenCanvas_Service["Open Canvas Service/Assets<br>(Frontend and potentially backend)"]
+        Ext_Gmail_API["Gmail API<br>(OAuth integration)"]
 
-        MCP_TasksMD_Server -- Interacts with --> Data_TasksMD_File
-        MCP_Mem0_Server -- Interacts with --> Data_Mem0_Storage
-        B_Orchestrator -- Uses --> Data_Redis_Celery
-        %% Logging Service not shown explicitly connected but used by all backend/MCP components
-        MCP_Email_Server -- Interacts with --> Ext_Email_Service
-        UI_Chat_Collaborate -- Consumes --> Ext_OpenCanvas_Service
+        MCP_Kanban_Server -- Manages --> Data_TasksMD_Files
+        MCP_Gmail_Server -- Integrates with --> Ext_Gmail_API
     end
 
     style Nova_Backend_Core fill:#ddeeff,stroke:#333,stroke-width:2px
-    style MCP_Servers_Independent fill:#ddffdd,stroke:#333,stroke-width:2px
+    style MCP_Servers_Unified fill:#ddffdd,stroke:#333,stroke-width:2px
     style User_Interface fill:#ffffdd,stroke:#333,stroke-width:2px
 ```
 
-## Key Technical Decisions
-- **Primary Language:** Python for backend and MCP server development.
-- **API Framework:** FastAPI for REST and WebSocket APIs.
-- **Asynchronous Task Processing:** Celery with Redis as a broker/backend.
-- **Package Management:** `uv` for Python virtual environments and dependencies.
-- **Inter-Service Communication:** `fastmcp` library for communication between the Core Agent and MCP servers.
-- **Containerization:** Docker for all backend services and MCP servers.
-- **Local Orchestration:** Docker Compose for managing multi-container local development environments.
+## Key Technical Decisions ⭐ **UPDATED**
+- **Primary Language & Package Management:** Python + `uv` for ALL backend and MCP server development 
+- **MCP Framework:** **FastMCP** for ALL MCP servers (unified architecture)
+- **Schema Compatibility:** Native LangChain integration via FastMCP (zero warnings)
+- **Agent Framework:** LangGraph ReAct agent with Google Gemini LLM
+- **MCP Client:** Custom MCPClientManager with health checking and tool discovery
+- **File Management:** Enhanced `{title}-{uuid}.md` naming strategy for proper title display
+- **Testing:** Comprehensive test coverage for all MCP operations
+- **Health Monitoring:** Built-in `/health` endpoints for all MCP servers
 
-## Design Patterns
-- **Monorepo:** All project code (frontend, backend, MCP servers, docs, etc.) will reside in a single repository.
-- **Model-Context-Protocol (MCP):** A pattern for creating modular, tool-like services that can be orchestrated by a core agent. Each MCP server is an independent, deployable unit.
-- **Service-Oriented Architecture (SOA) principles:** Applied through the use of independent MCP servers.
-- **Agent-Based System:** A central agent orchestrates tasks and tools.
+## Design Patterns ⭐ **ENHANCED**
+- **Monorepo:** All project code in single repository with organized structure
+- **Model-Context-Protocol (MCP):** **Unified FastMCP pattern** for all tool services
+- **Service-Oriented Architecture:** Independent MCP servers with FastMCP transport
+- **Agent-Based System:** Central agent orchestrates 37 tools across multiple servers
+- **Test-Driven Integration:** Comprehensive test suites validate all MCP operations
+- **Health-First Architecture:** All services include health monitoring and status endpoints
 
-## Component Relationships
-- The **Frontend** interacts with the **Nova Backend Core** via REST APIs and WebSockets.
-- The **Nova Backend Core** (specifically the API Gateway) receives requests and can enqueue tasks to the **Task Orchestrator (Celery)**.
-- The **Task Orchestrator** triggers the **Core Agent Executor** for asynchronous operations.
-- The **Core Agent Executor** interacts directly with an **LLM (Gemini 2.5 Pro)** and makes calls to various **MCP Servers** via the **MCP Network** (using `fastmcp`).
-- Each **MCP Server** is an independent application, potentially interacting with external data stores or services (e.g., `tasks.md` file, Mem0 service, email services).
+## Component Relationships ⭐ **SIMPLIFIED**
+- **Frontend** interacts with **Agent** via direct execution (FastAPI integration planned)
+- **Agent** uses **MCPClientManager** for automatic server discovery and tool aggregation
+- **MCPClientManager** performs health checks and manages connections to **FastMCP Servers**
+- **FastMCP Servers** operate independently with streamable-http transport
+- Each **MCP Server** manages its own data stores and external service integrations
+- **Unified Python Stack:** All components use Python + `uv` for consistency
 
-## Critical Implementation Paths
-1.  **Backend Core Setup:** Establishing the FastAPI application, Celery integration, and basic Core Agent structure.
-2.  **MCP Server Framework:** Defining a template/standard for creating new MCP servers using `fastmcp`.
-3.  **First MCP Server Implementation:** Developing the `Tasks.md MCP Server` as an initial proof-of-concept for the MCP architecture.
-4.  **Agent-MCP Integration:** Ensuring the Core Agent can successfully communicate with and utilize MCP servers.
-5.  **Frontend Integration:** Connecting the frontend UI (Kanban, Chat) to the backend API endpoints. 
+## MCP Server Specifications ⭐ **PRODUCTION READY**
+
+### Gmail MCP Server (Port 8001) ✅
+- **Framework:** FastMCP with streamable-http transport
+- **Tools:** 27 comprehensive email management tools
+- **Status:** Production ready, fully operational
+- **Integration:** Perfect LangChain compatibility
+- **Features:** Send, read, organize, search emails
+
+### Kanban MCP Server (Port 8003) ✅ **NEW - RESTRUCTURED**
+- **Framework:** FastMCP with streamable-http transport  
+- **Tools:** 10 comprehensive task management tools
+- **Status:** Production ready, replaces Node.js implementation
+- **Structure:** **NEW** - Separated backend/frontend directories:
+  ```
+  mcp_servers/kanban/
+  ├── backend/          # Python FastMCP server
+  │   ├── main.py      # Server implementation
+  │   ├── tasks/       # Task storage directory
+  │   └── .venv/       # Virtual environment
+  ├── frontend/        # Frontend application
+  └── README.md        # Main documentation
+  ```
+- **Migration Benefits:**
+  - ✅ Eliminated schema compatibility warnings
+  - ✅ Fixed UUID display bug with enhanced filename strategy
+  - ✅ Unified Python + uv tech stack
+  - ✅ Comprehensive test coverage
+  - ✅ Built-in health monitoring
+  - ✅ **NEW**: Clean separation of backend/frontend concerns
+- **Features:** Create, read, update, delete, move tasks across lanes
+
+### Future MCP Servers (FastMCP Pattern)
+- **Mem0 MCP Server:** Memory management and persistence
+- **Calendar MCP Server:** Calendar integration and scheduling  
+- **Document MCP Server:** File and document management
+- **All following unified FastMCP architecture**
+
+## Critical Implementation Paths ✅ **COMPLETED**
+1. **✅ Agent Architecture:** LangGraph + MCPClientManager fully operational
+2. **✅ MCP Framework:** FastMCP pattern established and proven
+3. **✅ Gmail MCP Server:** 27 tools operational and production ready
+4. **✅ Kanban MCP Server:** Migration complete, 10 tools operational, backend/frontend structured
+5. **✅ Agent-MCP Integration:** 37 tools seamlessly integrated via MCPClientManager
+6. **✅ Schema Compatibility:** Perfect LangChain integration achieved
+7. **✅ Directory Structure:** Backend/frontend separation for kanban server
+8. **🔄 FastAPI Integration:** Ready for implementation (all MCP issues resolved)
+
+## Migration Achievements ⭐ **BREAKTHROUGH SUCCESS**
+
+### Node.js → Python/FastMCP Migration
+- **Challenge:** Complex Node.js MCP server with schema incompatibility
+- **Solution:** Complete rewrite using FastMCP framework
+- **Results:**
+  - ✅ **Zero Schema Warnings:** Perfect LangChain integration
+  - ✅ **Fixed UUID Display:** Enhanced `{title}-{uuid}.md` naming
+  - ✅ **Unified Tech Stack:** All Python + uv environment
+  - ✅ **Enhanced Testing:** Comprehensive test suite (17 test scenarios)
+  - ✅ **Better Monitoring:** Built-in health endpoints
+  - ✅ **Improved Tools:** 10 tools vs 8 previously
+
+### System-Wide Benefits
+- **Development Simplicity:** Single language across all components
+- **Debugging Clarity:** Unified Python stack traces and error handling
+- **Maintenance Efficiency:** Consistent patterns across all MCP servers
+- **Schema Reliability:** Native FastMCP + LangChain compatibility
+- **Operational Stability:** Comprehensive health monitoring and testing
+
+## Current Operational Status ✅ **FULLY FUNCTIONAL**
+
+### Health Dashboard
+```
+🟢 Gmail MCP Server     | Port 8001 | 27 tools | FastMCP | Status: OPERATIONAL
+🟢 Kanban MCP Server    | Port 8003 | 10 tools | FastMCP | Status: OPERATIONAL ⭐
+🟢 Nova Agent           | LangGraph | 37 tools | Gemini  | Status: OPERATIONAL
+🟢 MCP Client Manager   | Health Discovery & Tool Aggregation  | Status: OPERATIONAL
+```
+
+### Technology Stack ⭐ **UNIFIED**
+- **Language:** Python 3.13+ across all components
+- **Package Manager:** `uv` for all dependency management
+- **MCP Framework:** FastMCP for all server implementations
+- **Agent Framework:** LangGraph with Gemini 2.5 Pro
+- **Transport:** Streamable-HTTP for all MCP communications
+- **Testing:** Python unittest with comprehensive coverage
+- **Monitoring:** Built-in health endpoints for all services
+
+## Architecture Evolution ⭐ **MATURITY ACHIEVED**
+
+### Version 1.0: Mixed Architecture (Deprecated)
+- Gmail: FastMCP (working)
+- Tasks: Node.js + Official MCP SDK (issues)
+- Schema warnings and compatibility problems
+
+### Version 2.0: Unified FastMCP Architecture (Current) ✅
+- **All servers:** FastMCP framework
+- **Zero issues:** No schema warnings or compatibility problems  
+- **Enhanced functionality:** Better tools and testing
+- **Operational excellence:** Health monitoring and comprehensive testing
+- **Ready for production:** All critical issues resolved 

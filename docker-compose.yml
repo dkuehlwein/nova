@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # Kanban MCP Server
+  kanban-mcp:
+    build:
+      context: ./mcp_servers/kanban/backend
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./mcp_servers/kanban/backend/tasks:/app/tasks
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Gmail MCP Server
+  gmail-mcp:
+    build:
+      context: ./mcp_servers/gmail
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./mcp_servers/gmail/token.json:/app/token.json:ro
+      - ./mcp_servers/gmail/credentials.json:/app/credentials.json:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Fast MCP Example Server
+  example-mcp:
+    build:
+      context: ./mcp_servers/fast_mcp_example
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Kanban Frontend (optional - for testing the kanban UI)
+  kanban-frontend:
+    build:
+      context: ./mcp_servers/kanban/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - kanban-mcp
+    environment:
+      - VITE_API_URL=http://localhost:8001
+    restart: unless-stopped
+
+networks:
+  default:
+    name: mcp-network 
