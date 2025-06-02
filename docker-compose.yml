@@ -1,19 +1,43 @@
 services:
-  # Kanban MCP Server
+  # PostgreSQL Database for Kanban MCP
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nova_kanban}
+      POSTGRES_USER: ${POSTGRES_USER:-nova}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nova_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./mcp_servers/kanban/backend-v2/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nova} -d ${POSTGRES_DB:-nova_kanban}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Kanban MCP Server v2 (with PostgreSQL backend)
   kanban-mcp:
     build:
-      context: ./mcp_servers/kanban/backend
+      context: ./mcp_servers/kanban/backend-v2
       dockerfile: Dockerfile
     ports:
-      - "8001:8000"
+      - "${PORT:-8001}:${PORT:-8001}"
     environment:
-      - HOST=0.0.0.0
-      - PORT=8000
-    volumes:
-      - ./tasks:/app/tasks
+      DATABASE_URL: postgresql+asyncpg://nova:nova_dev_password@postgres:5432/nova_kanban
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8001}
+      SQL_DEBUG: ${SQL_DEBUG:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      CREATE_TABLES: ${CREATE_TABLES:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-8001}/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -67,6 +91,9 @@ services:
     environment:
       - VITE_API_URL=http://localhost:8001
     restart: unless-stopped
+
+volumes:
+  postgres_data:
 
 networks:
   default:

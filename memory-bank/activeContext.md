@@ -1,125 +1,201 @@
 # Nova AI Assistant: Active Context
 
-## 🎯 **CURRENT FOCUS: PHASE 1 FRONTEND SETUP** ⭐
+## 🎯 **CURRENT FOCUS: FRONTEND API INTEGRATION** ⭐
 
-### **Frontend Stack Finalized** ✅
-- **Core**: Next.js 15.1 + React 19 + TypeScript 5.x
-- **UI**: Tailwind CSS + shadcn/ui (business/clean + dark theme) + Lucide React
-- **State**: React built-in state + API state management (TBD: SWR/TanStack when needed)
-- **Real-time**: Simple polling for overview dashboard
-- **API**: Direct fetch() to MCP server `/api/` endpoints (no proxy needed)
+### **✅ MAJOR MILESTONE COMPLETED: KANBAN BACKEND v2 REWRITE**
 
-### **Architecture Decisions Finalized** ✅
-**API Integration Pattern:**
-- **Direct Connection**: `localhost:8001/api/cards`, `localhost:8002/api/messages`
-- **No Proxy Needed**: Frontend connects directly to MCP server `/api/` endpoints
-- **MCP Protocol**: Agent uses `/mcp/` endpoints, frontend uses `/api/` endpoints
+**Just Completed (December 2024):**
+- **✅ PostgreSQL Backend**: Complete rewrite from file storage to robust database
+- **✅ Modern Architecture**: Python 3.13+, SQLAlchemy 2.0, FastMCP 2.3.4+, async/await
+- **✅ Dual Interface**: MCP tools for agent + comprehensive REST API for frontend
+- **✅ Code Organization**: Split monolithic files into proper packages, centralized config
+- **✅ Docker Integration**: Unified docker-compose.yml, environment variables, health monitoring
+- **✅ Data Models**: Rich relationships between Tasks, Persons, Projects, Chats, Artifacts
+- **✅ Simplified Schema**: Removed Priority enum, Artifacts are just links
 
-**UI Integration Strategy:**
-- **✅ Chat Component**: Fully integrated Nova component with direct LangGraph communication  
-- **✅ Kanban Component**: Fully integrated Nova component using kanban MCP API endpoints
-- **Benefits**: Consistent architecture, seamless UX, shared state, unified theming, single codebase
+### **Frontend Implementation Status** 🚀
+- **✅ Project Setup**: Next.js 15.1 + React 19 + TypeScript + Tailwind + shadcn/ui  
+- **✅ Component Structure**: Navbar-based navigation with Chat, Kanban, Overview pages
+- **✅ Design System**: Dark theme, modern business aesthetic
+- **⏳ API Integration**: Need to connect to new Kanban MCP v2 endpoints
+- **⏳ Priority Cleanup**: Remove priority fields from UI to match simplified backend
 
 ### **🚀 IMMEDIATE NEXT STEPS**
 
-#### **1. Frontend Project Setup** 🎯
-**Priority**: Highest - Establish foundation
-- **Create**: `nova/frontend/` with Next.js 15.1 + TypeScript + Tailwind + shadcn/ui
-- **Setup**: Project structure with Overview, Chat, KanbanBoard, Settings components
-- **Goal**: Hello world unified interface with modern tech stack
+#### **1. Frontend Priority Cleanup** 🎯
+**Priority**: Highest - Match backend simplification
+- **Remove**: All priority fields and selectors from TaskCard, CreateTask, etc.
+- **Update**: TaskResponse interfaces to match new backend schema
+- **Goal**: Frontend matches simplified backend model (no priority enum)
 
-#### **2. Design System Implementation** 🎨
-**After Setup**: Establish visual foundation
-- **Implement**: Dark theme business/clean design with shadcn/ui
-- **Create**: Component library and design tokens
-- **Goal**: Professional, modern interface ready for component development
+#### **2. API Integration** 🔌
+**Priority**: High - Connect to real data
+- **Replace**: Mock data with real API calls to `localhost:8001/api/`
+- **Implement**: Full CRUD operations using new endpoints
+- **Test**: With sample data from `test_sample_data.py`
+- **Endpoints Available**:
+  - `GET /api/overview` - Dashboard stats, pending decisions, recent activity
+  - `GET /api/tasks/by-status` - Tasks organized by kanban lanes
+  - `GET /api/pending-decisions` - Tasks needing user decisions
+  - Full CRUD for tasks, persons, projects, chats
 
-#### **3. Direct MCP Integration** 🔌
-**After Design**: Connect to existing MCP servers
-- **Connect**: Direct fetch() to `localhost:8001/api/` and `localhost:8002/api/`
-- **Test**: Integration with existing kanban MCP (10 tools operational)
-- **Goal**: Unified frontend communicating with MCP services directly
+#### **3. Decision Workflow Implementation** 🤖
+**Priority**: Medium - Enhance UX
+- **Implement**: Pending decisions UI using `/api/pending-decisions`
+- **Add**: Decision approval/rejection workflows
+- **Goal**: Seamless user decision-making experience
 
-#### **4. Fully Integrated Components** 🤖
-**After MCP Integration**: Complete component integration
-- **Implement**: Fully integrated Chat and KanbanBoard components
-- **Goal**: Complete Nova orchestration with seamless user experience
+#### **4. Database & Testing** 🗄️
+**Priority**: Medium - Development workflow
+- **Setup**: PostgreSQL via `docker-compose up postgres kanban-mcp`
+- **Populate**: Test data via `uv run python test_sample_data.py`
+- **Verify**: API endpoints work with real data
 
-## 📋 **CONFIRMED ARCHITECTURAL DECISIONS**
+## 📋 **NEW BACKEND ARCHITECTURE OVERVIEW**
 
-### **Frontend Structure** 🖥️
-```
-nova/frontend/
-├── app/                    # Next.js 15.1 App Router
-│   ├── page.tsx           # Overview dashboard (task counts, agent status)
-│   ├── chat/page.tsx      # Fully integrated agent communication
-│   ├── kanban/page.tsx    # Fully integrated task management
-│   ├── settings/page.tsx  # System configuration
-│   └── api/               # Optional internal API routes
-├── components/
-│   ├── ui/                # shadcn/ui components
-│   ├── Overview.tsx       # Quick overview dashboard
-│   ├── Chat.tsx          # Fully integrated agent interface
-│   ├── KanbanBoard.tsx   # Fully integrated task management
-│   ├── TaskCard.tsx      # Reusable task components
-│   ├── Settings.tsx      # Configuration panel
-│   └── shared/           # Shared UI components
-├── hooks/
-│   ├── useTasks.ts       # Kanban API integration
-│   ├── useAgentStatus.ts # Agent status and communication
-│   └── useNovaConfig.ts  # Configuration management
-├── lib/
-│   └── api.ts            # Direct MCP server API client
-└── styles/
-    └── globals.css       # Tailwind + dark theme
-```
-
-### **API Integration Pattern** 🔗
+### **Kanban MCP v2 API Endpoints** 🔗
 ```typescript
-// Direct MCP server communication (no proxy)
-// lib/api.ts
-export async function getTasks() {
-  const response = await fetch('http://localhost:8001/api/cards');
-  return response.json();
-}
+// Overview Dashboard
+GET /api/overview → OverviewStats
+GET /api/pending-decisions → TaskResponse[]
 
-export async function getEmails() {
-  const response = await fetch('http://localhost:8002/api/messages');
-  return response.json();
-}
+// Task Management (Kanban Board)
+GET /api/tasks/by-status → Record<TaskStatus, TaskResponse[]>
+GET /api/tasks → TaskResponse[]
+POST /api/tasks → TaskResponse
+PUT /api/tasks/{id} → TaskResponse
+DELETE /api/tasks/{id}
 
-export async function getTaskCounts() {
-  const response = await fetch('http://localhost:8001/api/stats');
-  return response.json();
-}
+// Task Comments
+GET /api/tasks/{id}/comments → Comment[]
+POST /api/tasks/{id}/comments
 
-// MCP Server Structure (existing):
-// localhost:8001/mcp/  → LangGraph/agent communication  
-// localhost:8001/api/  → Frontend REST API
-// localhost:8001/health → Health check
+// Entity Management
+GET /api/persons → PersonResponse[]
+POST /api/persons → PersonResponse
+GET /api/projects → ProjectResponse[]
+POST /api/projects → ProjectResponse
+
+// Chat Management
+GET /api/chats → ChatResponse[]
+POST /api/chats → ChatResponse
+GET /api/chats/{id}/messages → ChatMessageResponse[]
+POST /api/chats/{id}/messages
+
+// Health & Status
+GET /health → Health status
 ```
 
-### **Technology Decisions** ⚙️
-- **Framework**: Next.js 15.1 (latest stable, Dec 2024) with App Router
-- **React**: React 19 (stable) - required for LangGraph integration
-- **Styling**: Tailwind CSS + shadcn/ui (business theme + dark mode)
-- **HTTP**: Direct fetch() to MCP server `/api/` endpoints
-- **State Management**: Deferred until needed (React built-in sufficient for now)
-- **UI Integration**: ✅ Fully integrated components (Chat + Kanban)
+### **Simplified Data Models** 📊
+```typescript
+// Task (Priority removed!)
+interface TaskResponse {
+  id: string;
+  title: string;
+  description: string;
+  summary?: string;
+  status: TaskStatus; // NEW | USER_INPUT_RECEIVED | NEEDS_REVIEW | WAITING | IN_PROGRESS | DONE | FAILED
+  created_at: string;
+  updated_at: string;
+  due_date?: string;
+  completed_at?: string;
+  tags: string[];
+  needs_decision: boolean;
+  decision_type?: string;
+  persons: string[]; // Names for UI
+  projects: string[]; // Names for UI  
+  comments_count: number;
+}
+
+// Person
+interface PersonResponse {
+  id: string;
+  name: string;
+  email: string;
+  role?: string;
+  description?: string;
+  current_focus?: string;
+  created_at: string;
+}
+
+// Artifact (Simplified to just links)
+interface ArtifactResponse {
+  id: string;
+  link: string; // Just URLs to emails, documents, etc.
+  title?: string;
+  summary?: string;
+  created_at: string;
+}
+```
+
+### **Environment Configuration** ⚙️
+**Root-level `env.example` now available:**
+```bash
+# Server Configuration
+HOST=0.0.0.0
+PORT=8001
+
+# PostgreSQL Database
+POSTGRES_DB=nova_kanban
+POSTGRES_USER=nova
+POSTGRES_PASSWORD=nova_dev_password
+DATABASE_URL=postgresql+asyncpg://nova:nova_dev_password@postgres:5432/nova_kanban
+
+# Development Settings
+CREATE_TABLES=true
+SQL_DEBUG=false
+CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+```
+
+## 📱 **UPDATED FRONTEND INTEGRATION PLAN**
+
+### **Frontend Updates Needed** 🛠️
+```typescript
+// Remove from components:
+- priority field in TaskCard
+- priority selector in CreateTask
+- priority filters in TaskList
+- Priority enum and related types
+
+// Add new API integration:
+- Overview dashboard real-time stats
+- Pending decisions notifications
+- Task workflow state management
+- Entity relationship display
+```
+
+### **Testing Workflow** 🧪
+```bash
+# 1. Start services (from project root)
+docker-compose up postgres kanban-mcp
+
+# 2. Populate test data
+cd mcp_servers/kanban/backend-v2
+uv run python test_sample_data.py
+
+# 3. Test API
+curl http://localhost:8001/api/overview
+curl http://localhost:8001/api/tasks/by-status
+
+# 4. Start frontend development
+cd frontend
+npm run dev
+```
 
 ## 🎉 **STABLE FOUNDATION** ✅
 
 ### **Production Ready Infrastructure**
-- **37 Tools**: Gmail MCP (27) + Kanban MCP (10) fully operational
-- **MCP Endpoints**: Each server exposes `/mcp/` (protocol) + `/api/` (REST) + `/health`
-- **Agent Platform**: LangGraph + Gemini 2.5 Pro with continuous operation
-- **Docker Environment**: Complete orchestration with health monitoring
-- **Testing**: Comprehensive pytest suite
+- **✅ 37 Tools**: Gmail MCP (27) + Kanban MCP v2 (10) fully operational  
+- **✅ Modern Backend**: PostgreSQL, async SQLAlchemy, comprehensive API
+- **✅ MCP Endpoints**: Protocol + REST + Health monitoring
+- **✅ Agent Platform**: LangGraph + Gemini 2.5 Pro with continuous operation
+- **✅ Docker Environment**: Unified orchestration with database persistence
+- **✅ Code Quality**: Modular structure, type safety, environment management
 
 ### **Clear Next Steps Path**
-1. **Setup** → Frontend project with hello-world page
-2. **Design** → Implement design system and component library
-3. **Connect** → Direct MCP server integration via `/api/` endpoints
-4. **Integrate** → Fully integrated Chat and KanbanBoard components
+1. **Cleanup** → Remove priority from frontend components
+2. **Connect** → Replace mock data with real API calls  
+3. **Test** → Verify with PostgreSQL and sample data
+4. **Enhance** → Implement decision workflows and real-time features
 
-**Status**: ✅ **FRONTEND ARCHITECTURE UNIFIED, READY FOR IMPLEMENTATION**
+**Status**: ✅ **BACKEND v2 COMPLETE, FRONTEND READY FOR API INTEGRATION**
