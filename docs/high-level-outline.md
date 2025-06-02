@@ -7,12 +7,11 @@ This is the high-level requirements document for Nova.
 ## Agent Techstack:
 - python 3.13 with uv for venvs and pytest for tests
 - langchain/langgraph 
-- memory: TO BE DISCUSSED. 
-    - Preference for OpenMemory https://mem0.ai/openmemory-mcp but not sure how well it works with langgraph
+- memory: OpenMemory MCP for contextual memory (#person, #project relationships). Separate from kanban task management.
+    - Preference for OpenMemory https://mem0.ai/openmemory-mcp 
     - Benefit: Works with Ollama https://github.com/mem0ai/mem0/discussions/2811
-    - TO RESEARCH/TEST: How does this work with out Data Structures? Do we need e.g #person seperate, or can we just use OpenMemory?
 - fastMCP for mcp servers
-- celery for recurrings tasks (loading new mails)
+- celery for recurring tasks (loading new mails → creating tasks, NOT triggering agent actions)
 
 
 # MCP Servers
@@ -25,7 +24,7 @@ To be defined. Nova should look modern, business and clean with a dark theme and
 But we need React for best integration with langchain: https://langchain-ai.github.io/langgraph/cloud/how-tos/use_stream_react/#loading-states
 
 # UI
-The UI needs to offer:
+Nova needs a unified frontend (nova/frontend/) that orchestrates individual MCP frontends while providing Nova-specific features.
 
 ## A quick overview of the current state. 
 - # of open tasks (on click, linked to kanban lane)
@@ -48,9 +47,8 @@ A canvas to show e.g. e-mail drafts would be nice, but not for the first iterati
 
 ## Kanban board
 The Kanban board shows all tasks, the lane, status, and all related info (comments, project, chats, etc). The user can add new comments. Adding a new comment will put the task back in "Todo"
-TO DISCUSS: 
-- Do we integrate the frontend from the Kanban MCP server (preferred for keeping things modular) or create a new one (might be better because we need deep integration?)
-- We probably need to rewrite the kanban board from scratch - the task.md approach is too simple for the requirements
+The unified frontend embeds/integrates the kanban MCP frontend while maintaining modularity.
+The existing backend+frontend needs to be rewritten due to the new requirements!
 
 
 # Data Structures
@@ -58,11 +56,13 @@ TO DISCUSS:
 ## Task
 - Unique ID
 - Status 
-    - ToDo - not yet started. 
-    - Doing - currently being worked on. This should only be ONE task -> this will be displayed in the chat overview
-    - Blocked - waiting for user feedback/approval
-    - Done - finished
-  TO DISCUSS: Do we need more lanes? Maybe we want to seperate New tasks (e.g. new e-mail arrived, check it out) vs tasks with new info (e.g. user added a comment to the task, or answered a chat request)
+    - New: For brand new tasks (e.g., new email).
+    - User Input Received: Tasks where the user has provided feedback and are ready for Nova to continue.
+    - Needs Review: Tasks processed by Nova that require user attention (e.g., a summary of an email, a question).
+    - Waiting: Waiting for external factors e.g. e-mail reply from another person
+    - In Progress: Actively being worked on by Nova.
+    - Done.
+    - Failed: In case anything goes wrong
 - Title (short, descriptive, will be shown in the UI overview)
 - Description (the inital task)
 - Comments (potentially multiple follow-up comments/notes while we work on it)
@@ -96,8 +96,8 @@ TO DISCUSS:
 - Unique ID
 - Type (E-Mail, Link, PDF, ...)
 - Link
-- Summary
-- TO DISCUSS: Do we need to actual content? I think a summary is enough, the AI could then pull more info if required
+- Summary (We will only store the summary for now. The AI can pull more info via the MarkItDown MCP if required.)
+
 
 
 # Workflow Examples:
@@ -107,21 +107,28 @@ Nova only works on ONE tasks. This is to make sure we don't get racing condition
 
 ## New EMail
 - New Mail arrives in users inbox
-- Celery check_new_mail task finds the the new mail
-- New task is created (Read new mail)
+- Celery check_new_mail job finds the new mail
+- New task is created in kanban (Read new mail)
     For the task we want to prepare/extract:
-    - involved #people
-    - related #project, and 
-    - attached or linked #artifacts -> This will be done with MarkItDown
-- When Nova picks up the task we:
-    - Prepare context: pull in info on all related #people, #projects, #chats, #artifacts, current tasks
+    - involved #people (email addresses → easy identification)
+    - related #project (content analysis + OpenMemory context + potential project ID from Nova)
+    - attached or linked #artifacts -> This will be done with MarkItDown MCP + API endpoints
+- When Nova picks up the task in her main loop:
+    - Prepare context: pull info from OpenMemory (#people, #projects), kanban board (current task, #chats and #artifacts that are related to the task), and project DB
     - Run the AI/Langgraph with the context and the system prompt
     - Nova decides what to do next, e.g. ask the user a question
-    - The task is moved the the new lane (e.g. blocked) and updated (new comment)
-    - The memory / database is updated. I.e. related #people, and #projects
-
+    - The task is moved to the new lane (e.g. "Waiting") and updated (new comment)
+    - The memory/context of #people and #projects is updated in OpenMemory and potentially the project DB
 
 ## User Feedback
 - User answers a chat request 
 - The task gets a new comment that summarizes the users answer.
-- Related task is moved back to "Todo" (or other name, see discussion above)
+- Related task is moved back to "User Input Received"
+- Nova picks it up in next loop iteration
+
+
+# Error Handling and Resilience
+Tasks will go to the "Failed" lane if things go wrong.
+
+# Security and Authentication
+The app will run locally. We use a .env file for configuration. Nova will always be single-user.
