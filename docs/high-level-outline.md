@@ -20,11 +20,17 @@ This is the high-level requirements document for Nova.
 - Markitdown for conversions (https://github.com/microsoft/markitdown). This also needs normal API endpoints like the Kanban board
 
 ## UI Techstack:
-To be defined. Nova should look modern, business and clean with a dark theme and only use well established frameworks.
-But we need React for best integration with langchain: https://langchain-ai.github.io/langgraph/cloud/how-tos/use_stream_react/#loading-states
+- **Framework**: Next.js 15.1 + React 19 + TypeScript 5.x
+- **UI/Styling**: Tailwind CSS + shadcn/ui (business/clean + dark theme) + Lucide React
+- **State Management**: React built-in + API state management (deferred until needed)
+- **HTTP Layer**: Direct fetch() API to MCP servers
+- **Integration**: Direct connection to MCP server `/api/` endpoints (no proxy needed)
+
+Nova should look modern, business and clean with a dark theme and only use well established frameworks.
+React 19 is required for best integration with langchain: https://langchain-ai.github.io/langgraph/cloud/how-tos/use_stream_react/#loading-states
 
 # UI
-Nova needs a unified frontend (nova/frontend/) that orchestrates individual MCP frontends while providing Nova-specific features.
+Nova needs a unified frontend (nova/frontend/) that provides Nova-specific features with fully integrated components.
 
 ## A quick overview of the current state. 
 - # of open tasks (on click, linked to kanban lane)
@@ -47,8 +53,14 @@ A canvas to show e.g. e-mail drafts would be nice, but not for the first iterati
 
 ## Kanban board
 The Kanban board shows all tasks, the lane, status, and all related info (comments, project, chats, etc). The user can add new comments. Adding a new comment will put the task back in "Todo"
-The unified frontend embeds/integrates the kanban MCP frontend while maintaining modularity.
-The existing backend+frontend needs to be rewritten due to the new requirements!
+
+**Integration**: Fully integrated Nova component using kanban MCP API endpoints. This provides:
+- Consistent architecture with chat component
+- Seamless UX with shared state and theming  
+- Single codebase maintenance
+- Direct API integration without embedding complexity
+
+The kanban MCP server continues to provide both `/mcp/` endpoints (for agent) and `/api/` endpoints (for frontend).
 
 
 # Data Structures
