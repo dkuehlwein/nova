@@ -1,47 +1,33 @@
 [project]
-name = "nova-backend"
+name = "nova-kanban-mcp"
 version = "0.1.0"
-description = "Nova AI assistant backend"
+description = "Nova Kanban MCP Server with PostgreSQL backend"
 authors = [
-    { name = "Your Name", email = "you@example.com" },
+    {name = "Nova Team", email = "daniel.kuehlwein@gmail.com"},
 ]
 dependencies = [
-    "fastapi",
-    "uvicorn[standard]",
-    "pydantic",
-    "celery",
-    "redis",
-    # Add fastmcp, langchain/llamaindex, gemini sdk later
-    "langchain-google-genai>=2.1.4",
-    "langchain-mcp-adapters>=0.1.1",
-    "langgraph>=0.4.5",
-    "langsmith>=0.3.42",
-    "aiohttp>=3.12.4",
+    "fastmcp>=2.3.4",
+    "fastapi>=0.104.1",
+    "uvicorn>=0.24.0",
+    "sqlalchemy>=2.0.23",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.0",
+    "pydantic>=2.5.0",
+    "python-multipart>=0.0.6",
+    "python-dateutil>=2.8.2",
+    "uuid6>=2023.5.2",
+    "python-dotenv>=1.0.0",
 ]
-requires-python = ">=3.10"
-readme = "README.md"
-license = { text = "MIT" }
+requires-python = ">=3.13"
 
-[tool.uv]
-
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
-    "pytest>=8.3.5",
-    "pytest-asyncio>=1.0.0",
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.21.1",
+    "httpx>=0.25.2",
+    "pytest-postgresql>=5.0.0",
 ]
-# This section is not standard for pyproject.toml but might be used by uv or plugins in the future.
-# For now, uv primarily uses command-line arguments or its own configuration files.
 
-[tool.pytest.ini_options]
-minversion = "6.0"
-addopts = ["-ra", "-q", "--strict-markers"]
-testpaths = ["../tests"]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "asyncio: marks tests as async",
-]
-python_files = "test_*.py"
-python_classes = "Test*"
-python_functions = "test_*"
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function" 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build" 

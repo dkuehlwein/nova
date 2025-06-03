@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Send, AlertCircle, CheckCircle, MessageSquare, Bot, User } from "lucide-react";
+import { Send, AlertTriangle, CheckCircle, MessageSquare, Bot, User, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,6 +45,10 @@ export default function ChatPage() {
       isActive: false
     }
   ];
+
+  // Find active conversation
+  const activeConversation = conversations.find(c => c.isActive);
+  const pendingCount = conversations.filter(c => c.hasDecision).length;
 
   // Mock current conversation messages
   const currentMessages = [
@@ -105,95 +109,105 @@ Would you like me to send this email, or would you prefer to make any changes fi
     }
   };
 
-  const activeConversation = conversations.find(c => c.isActive);
-
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
       <div className="flex h-[calc(100vh-4rem)]">
-        {/* Sidebar - Conversation History */}
-        <div className="w-80 border-r border-border bg-card flex flex-col">
+        {/* Sidebar */}
+        <div className="w-80 border-r border-border bg-card">
           <div className="p-4 border-b border-border">
-            <h2 className="text-lg font-semibold text-foreground mb-2">Conversations</h2>
-            <Button className="w-full" size="sm">
-              <MessageSquare className="h-4 w-4 mr-2" />
-              New Conversation
-            </Button>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold text-foreground">Conversations</h2>
+              <Button size="sm" variant="outline">
+                New Chat
+              </Button>
+            </div>
+            {pendingCount > 0 && (
+              <div className="flex items-center space-x-2 text-sm">
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+                <span className="text-red-500 font-medium">
+                  {pendingCount} need{pendingCount > 1 ? '' : 's'} your input
+                </span>
+              </div>
+            )}
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="overflow-y-auto flex-1">
             <div className="p-2">
-              {/* Pending Decisions Section */}
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-muted-foreground mb-2 px-2">
-                  Pending Decisions ({conversations.filter(c => c.hasDecision).length})
-                </h3>
-                {conversations
-                  .filter(c => c.hasDecision)
-                  .map((conversation) => (
-                    <div
-                      key={conversation.id}
-                      className={`p-3 rounded-lg mb-2 cursor-pointer transition-colors ${
-                        conversation.isActive 
-                          ? "bg-red-500/10 border border-red-500/20" 
-                          : "bg-red-500/5 border border-red-500/10 hover:bg-red-500/10"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-1">
-                            <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+              {/* Priority Conversations - Ones needing decisions */}
+              {conversations.filter(c => c.hasDecision).length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-xs font-medium text-muted-foreground mb-2 px-2 uppercase tracking-wide">
+                    Awaiting Input
+                  </h3>
+                  {conversations
+                    .filter(c => c.hasDecision)
+                    .map((conversation) => (
+                      <div
+                        key={conversation.id}
+                        className={`p-3 rounded-lg mb-2 cursor-pointer transition-colors ${
+                          conversation.isActive 
+                            ? "bg-red-500/15 border border-red-500/30" 
+                            : "bg-red-500/5 border border-red-500/10 hover:bg-red-500/10"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="text-sm font-medium text-foreground truncate mb-1">
+                              {conversation.title}
+                            </h4>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {conversation.lastMessage}
+                            </p>
+                            <div className="flex items-center justify-between mt-2">
+                              <p className="text-xs text-muted-foreground">
+                                {conversation.lastActivity}
+                              </p>
+                              <AlertTriangle className="h-3 w-3 text-red-500 flex-shrink-0" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* Regular Conversations */}
+              {conversations.filter(c => !c.hasDecision).length > 0 && (
+                <div>
+                  <h3 className="text-xs font-medium text-muted-foreground mb-2 px-2 uppercase tracking-wide">
+                    Recent
+                  </h3>
+                  {conversations
+                    .filter(c => !c.hasDecision)
+                    .map((conversation) => (
+                      <div
+                        key={conversation.id}
+                        className={`p-3 rounded-lg mb-2 cursor-pointer transition-colors ${
+                          conversation.isActive 
+                            ? "bg-muted" 
+                            : "hover:bg-muted/50"
+                        }`}
+                      >
+                        <div className="flex items-start space-x-2">
+                          <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
                             <h4 className="text-sm font-medium text-foreground truncate">
                               {conversation.title}
                             </h4>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {conversation.lastMessage}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {conversation.lastActivity}
+                            </p>
                           </div>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {conversation.lastMessage}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {conversation.lastActivity}
-                          </p>
                         </div>
-                        <Badge variant="destructive" className="text-xs">
-                          Decision
-                        </Badge>
                       </div>
-                    </div>
-                  ))}
-              </div>
-
-              {/* Regular Conversations */}
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-2 px-2">
-                  Recent Conversations
-                </h3>
-                {conversations
-                  .filter(c => !c.hasDecision)
-                  .map((conversation) => (
-                    <div
-                      key={conversation.id}
-                      className={`p-3 rounded-lg mb-2 cursor-pointer transition-colors ${
-                        conversation.isActive 
-                          ? "bg-muted" 
-                          : "hover:bg-muted/50"
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2 mb-1">
-                        <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
-                        <h4 className="text-sm font-medium text-foreground truncate">
-                          {conversation.title}
-                        </h4>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {conversation.lastMessage}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {conversation.lastActivity}
-                      </p>
-                    </div>
-                  ))}
-              </div>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -207,7 +221,7 @@ Would you like me to send this email, or would you prefer to make any changes fi
                 <div className="flex items-center space-x-3">
                   <div className="flex items-center space-x-2">
                     {activeConversation.hasDecision ? (
-                      <AlertCircle className="h-5 w-5 text-red-500" />
+                      <AlertTriangle className="h-5 w-5 text-red-500" />
                     ) : (
                       <CheckCircle className="h-5 w-5 text-green-500" />
                     )}
@@ -216,7 +230,9 @@ Would you like me to send this email, or would you prefer to make any changes fi
                     </h2>
                   </div>
                   {activeConversation.hasDecision && (
-                    <Badge variant="destructive">Decision Required</Badge>
+                    <Badge variant="destructive" className="text-xs">
+                      Input Required
+                    </Badge>
                   )}
                 </div>
                 <div className="text-sm text-muted-foreground">
@@ -251,11 +267,11 @@ Would you like me to send this email, or would you prefer to make any changes fi
                     <div className="flex-1">
                       <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                       {msg.needsDecision && (
-                        <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                        <div className="mt-4 p-3 bg-gradient-to-r from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-lg">
                           <div className="flex items-center space-x-2 mb-2">
-                            <AlertCircle className="h-4 w-4 text-red-500" />
+                            <AlertTriangle className="h-4 w-4 text-red-500" />
                             <span className="text-sm font-medium text-red-500">
-                              Decision Required
+                              Your Decision Needed
                             </span>
                           </div>
                           <p className="text-xs text-muted-foreground mb-3">
@@ -288,29 +304,16 @@ Would you like me to send this email, or would you prefer to make any changes fi
           <div className="p-4 border-t border-border bg-card">
             <div className="flex space-x-2">
               <Textarea
-                value={message}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setMessage(e.target.value)}
                 placeholder="Type your message..."
-                className="flex-1 min-h-[40px] max-h-[120px]"
-                onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                className="flex-1 min-h-[60px] resize-none"
+                rows={2}
               />
-              <Button 
-                onClick={handleSendMessage}
-                disabled={!message.trim()}
-                size="icon"
-                className="h-[40px] w-[40px]"
-              >
+              <Button className="self-end">
                 <Send className="h-4 w-4" />
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Press Enter to send, Shift+Enter for new line
-            </p>
           </div>
         </div>
       </div>

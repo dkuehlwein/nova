@@ -1,3 +1,11 @@
+# Nova Data Server
+
+## Overview
+
+This is Nova's core data server, containing the essential models and API for tasks, people, projects, and chats that power the Nova AI Assistant interface.
+
+**Important**: This directory has been moved from `mcp_servers/kanban/backend-v2` for better organization. Nova's core concepts (tasks, people, projects) deserve to be at the root level as they're fundamental to the entire system.
+
 # Nova Kanban MCP Server v2
 
 A modern FastMCP server providing comprehensive kanban management for the Nova AI assistant. Built with FastAPI, PostgreSQL, and SQLAlchemy, offering both MCP protocol endpoints for the Nova agent and REST API endpoints for the frontend.
@@ -286,4 +294,46 @@ The dual interface approach ensures optimal integration patterns while maintaini
 For more detailed troubleshooting, check the application logs:
 ```bash
 docker-compose logs kanban-mcp
+```
+
+## Testing the Server
+
+### 1. Start the services
+
+From the **project root directory**:
+
+```bash
+# Start PostgreSQL and the data server
+docker-compose up postgres kanban-mcp
+```
+
+### 2. Test the basic endpoints
+
+```bash
+# Health check
+curl http://localhost:8001/health
+
+# Get overview stats  
+curl http://localhost:8001/api/overview
+
+# Get tasks by status (kanban board)
+curl http://localhost:8001/api/tasks/by-status
+```
+
+### 3. Populate test data
+
+From the **data directory**:
+
+```bash
+cd data
+uv run python test_sample_data.py
+```
+
+### 4. Test with sample data
+
+```bash
+# Should now return real data
+curl http://localhost:8001/api/overview
+curl http://localhost:8001/api/tasks/by-status
+curl http://localhost:8001/api/pending-decisions
 ``` 

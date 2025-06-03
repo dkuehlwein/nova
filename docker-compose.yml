@@ -10,7 +10,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./mcp_servers/kanban/backend-v2/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./data/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nova} -d ${POSTGRES_DB:-nova_kanban}"]
       interval: 10s
@@ -21,7 +21,7 @@ services:
   # Kanban MCP Server v2 (with PostgreSQL backend)
   kanban-mcp:
     build:
-      context: ./mcp_servers/kanban/backend-v2
+      context: ./data
       dockerfile: Dockerfile
     ports:
       - "${PORT:-8001}:${PORT:-8001}"

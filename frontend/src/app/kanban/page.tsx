@@ -156,13 +156,13 @@ export default function KanbanPage() {
 
   const TaskCard = ({ task }: { task: Task }) => (
     <div className={`bg-card border rounded-lg p-4 mb-3 cursor-pointer hover:shadow-md transition-shadow ${
-      task.needsDecision ? "border-red-500/20 bg-red-500/5" : "border-border"
+      task.needsDecision ? "border-red-500/30 bg-red-500/5" : "border-border"
     }`}>
       <div className="flex items-start justify-between mb-2">
         <h4 className="font-medium text-foreground text-sm">{task.title}</h4>
         <div className="flex items-center space-x-1">
           {task.needsDecision && (
-            <AlertCircle className="h-4 w-4 text-red-500" />
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
           )}
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
             <MoreHorizontal className="h-3 w-3" />
@@ -174,22 +174,17 @@ export default function KanbanPage() {
         {task.description}
       </p>
 
-      {task.needsDecision && (
-        <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded">
-          <div className="flex items-center space-x-1 mb-1">
-            <AlertCircle className="h-3 w-3 text-red-500" />
-            <span className="text-xs font-medium text-red-500">Decision Required</span>
-          </div>
-          <p className="text-xs text-muted-foreground">Click to review and respond</p>
-        </div>
-      )}
-
       <div className="flex flex-wrap gap-1 mb-3">
         {task.tags.map((tag: string) => (
           <Badge key={tag} variant="secondary" className="text-xs px-1 py-0">
             {tag}
           </Badge>
         ))}
+        {task.needsDecision && (
+          <Badge variant="destructive" className="text-xs px-1 py-0">
+            Review
+          </Badge>
+        )}
       </div>
 
       <div className="flex items-center justify-between text-xs">

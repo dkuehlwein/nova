@@ -5,7 +5,7 @@ import {
   MessageSquare, 
   KanbanSquare, 
   Settings, 
-  AlertCircle,
+  AlertTriangle,
   CheckCircle,
   Clock
 } from "lucide-react";
@@ -96,51 +96,39 @@ export default function Navbar() {
           </Link>
         </div>
 
-        {/* Compact Status Overview */}
+        {/* Streamlined Status - Focus on Core Metrics */}
         <div className="ml-auto flex items-center space-x-4">
-          {/* Quick Lane Indicators */}
+          {/* Task Status Overview */}
           <div className="flex items-center space-x-3 text-sm">
             <div className="flex items-center space-x-1">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span className="text-muted-foreground">TODO</span>
-              <Badge variant="secondary" className="text-xs px-1 py-0">
-                {statusData.openTasks}
-              </Badge>
-            </div>
-            
-            <div className="flex items-center space-x-1">
               <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-              <span className="text-muted-foreground">IN PROGRESS</span>
+              <span className="text-muted-foreground">Active</span>
               <Badge variant="secondary" className="text-xs px-1 py-0">
-                {statusData.inProgressTasks}
+                {statusData.openTasks + statusData.inProgressTasks}
               </Badge>
             </div>
             
-            <div className="flex items-center space-x-1">
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-              <span className="text-muted-foreground">BLOCKED</span>
-              <Badge variant="destructive" className="text-xs px-1 py-0">
-                {statusData.blockedTasks}
-              </Badge>
-            </div>
-            
-            <div className="flex items-center space-x-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-muted-foreground">DONE</span>
-              <Badge variant="outline" className="text-xs px-1 py-0">
-                {statusData.completedTasks}
-              </Badge>
-            </div>
+            {statusData.blockedTasks > 0 && (
+              <div className="flex items-center space-x-1">
+                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                <span className="text-muted-foreground">Blocked</span>
+                <Badge variant="destructive" className="text-xs px-1 py-0">
+                  {statusData.blockedTasks}
+                </Badge>
+              </div>
+            )}
           </div>
 
-          {/* Decision Alert */}
+          {/* Single Decision Alert - Primary Source of Truth */}
           {statusData.pendingDecisions > 0 && (
-            <div className="flex items-center space-x-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-md">
-              <AlertCircle className="h-4 w-4 text-red-500" />
-              <span className="text-sm text-red-500 font-medium">
-                {statusData.pendingDecisions} decision{statusData.pendingDecisions > 1 ? 's' : ''} pending
-              </span>
-            </div>
+            <Link href="/">
+              <div className="flex items-center space-x-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-md cursor-pointer hover:bg-red-500/20 transition-colors">
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+                <span className="text-sm text-red-500 font-medium">
+                  {statusData.pendingDecisions} pending
+                </span>
+              </div>
+            </Link>
           )}
 
           {/* Agent Status */}
@@ -153,15 +141,11 @@ export default function Navbar() {
                 <Clock className="h-4 w-4 text-yellow-500 animate-spin" />
               )}
               {statusData.agentStatus === "offline" && (
-                <AlertCircle className="h-4 w-4 text-red-500" />
+                <AlertTriangle className="h-4 w-4 text-red-500" />
               )}
               <span className="text-sm text-muted-foreground capitalize">
                 {statusData.agentStatus}
               </span>
-            </div>
-            
-            <div className="text-sm text-muted-foreground">
-              {statusData.mcpServices} tools
             </div>
           </div>
         </div>
