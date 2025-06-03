@@ -1,13 +1,9 @@
 """
 Nova Backend Server
 
-Provides both:
-1. MCP tools for the Nova agent (/mcp/ endpoints)
-2. REST API for the frontend (/api/ endpoints)
-3. Health monitoring (/health endpoint)
-
-This is Nova's core backend, containing essential models and API for tasks, people, 
-projects, and chats that power the Nova AI Assistant interface.
+Provides REST API endpoints for the Nova frontend.
+This backend serves the kanban board functionality with PostgreSQL backend
+and provides native LangChain tools for Nova agent integration.
 """
 
 import asyncio
@@ -19,11 +15,9 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastmcp import FastMCP
 
 from api.api_endpoints import router as api_router
 from database.database import db_manager
-from tools.mcp_tools import get_mcp_tools
 
 # Load environment variables
 load_dotenv()
@@ -60,7 +54,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Nova Backend Server",
-    description="Core Nova backend with MCP protocol and REST API",
+    description="Core Nova backend with REST API and LangChain tools",
     version="2.0.0",
     lifespan=lifespan
 )
@@ -75,19 +69,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create FastMCP instance
-mcp = FastMCP("Nova Backend MCP")
-
-# Register MCP tools
-tools = get_mcp_tools()
-for tool in tools:
-    mcp.add_tool(tool)
-
-logger.info(f"Registered {len(tools)} MCP tools")
-
-# Mount MCP server
-app.mount("/mcp", mcp.app)
-
 # Mount API routes
 app.include_router(api_router)
 
@@ -98,9 +79,8 @@ async def root():
     return {
         "service": "nova-backend",
         "version": "2.0.0",
-        "description": "Nova Backend Server with PostgreSQL backend",
+        "description": "Nova Backend Server with PostgreSQL backend and LangChain tools",
         "endpoints": {
-            "mcp": "/mcp/ (for Nova agent)",
             "api": "/api/ (for frontend)",
             "health": "/health",
             "docs": "/docs"
@@ -126,9 +106,7 @@ async def health_check():
         "service": "nova-backend",
         "version": "2.0.0",
         "database": db_status,
-        "mcp_tools": len(tools),
         "endpoints": {
-            "mcp_available": True,
             "api_available": True
         }
     }
@@ -137,7 +115,7 @@ async def health_check():
 async def main():
     """Main entry point."""
     # Use standard Nova environment variables
-    port = int(os.getenv("PORT", 8001))
+    port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
     
     logger.info(f"Starting server on {host}:{port}")

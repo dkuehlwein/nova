@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from models import Base
+from models.models import Base
 
 # Load environment variables
 load_dotenv()

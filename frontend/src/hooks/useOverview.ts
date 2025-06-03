@@ -44,7 +44,7 @@ export function useOverview() {
   const fetchOverview = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8001/api/overview');
+      const response = await fetch('http://localhost:8000/api/overview');
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

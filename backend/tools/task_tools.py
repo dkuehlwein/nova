@@ -1,5 +1,5 @@
 """
-Task management MCP tools.
+Task management LangChain tools.
 """
 
 import json
@@ -7,14 +7,50 @@ from datetime import datetime
 from typing import List
 from uuid import UUID
 
-from fastmcp.tools import Tool
+from langchain.tools import StructuredTool
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from database.database import db_manager
 from models.models import Task, TaskComment, TaskStatus
 from .helpers import find_person_by_email, find_project_by_name, format_task_for_agent
-from .schemas import CreateTaskParams, UpdateTaskParams, AddCommentParams, SearchTasksParams
+
+
+class CreateTaskParams(BaseModel):
+    """Parameters for creating a task."""
+    title: str = Field(description="Task title")
+    description: str = Field(description="Task description")
+    due_date: str = Field(None, description="Due date in ISO format (optional)")
+    tags: List[str] = Field(default_factory=list, description="List of tags")
+    person_emails: List[str] = Field(default_factory=list, description="List of person emails to assign")
+    project_names: List[str] = Field(default_factory=list, description="List of project names to associate")
+
+
+class UpdateTaskParams(BaseModel):
+    """Parameters for updating a task."""
+    task_id: str = Field(description="Task ID to update")
+    title: str = Field(None, description="New title (optional)")
+    description: str = Field(None, description="New description (optional)")
+    summary: str = Field(None, description="Task summary (optional)")
+    status: str = Field(None, description="New status (optional)")
+    due_date: str = Field(None, description="New due date in ISO format (optional)")
+    tags: List[str] = Field(None, description="New tags list (optional)")
+
+
+class SearchTasksParams(BaseModel):
+    """Parameters for searching tasks."""
+    status: str = Field(None, description="Filter by status (optional)")
+    person_email: str = Field(None, description="Filter by person email (optional)")
+    project_name: str = Field(None, description="Filter by project name (optional)")
+    limit: int = Field(20, description="Maximum number of results")
+
+
+class AddCommentParams(BaseModel):
+    """Parameters for adding a comment to a task."""
+    task_id: str = Field(description="Task ID to comment on")
+    content: str = Field(description="Comment content")
+    author: str = Field("nova", description="Comment author")
 
 
 async def create_task_tool(params: CreateTaskParams) -> str:
@@ -245,43 +281,47 @@ async def get_pending_decisions_tool() -> str:
         return f"Found {len(formatted_tasks)} tasks needing decisions: {json.dumps(formatted_tasks, indent=2)}"
 
 
-def get_task_tools() -> List[Tool]:
-    """Get task management MCP tools."""
+def get_task_tools() -> List[StructuredTool]:
+    """Get task management LangChain tools."""
     return [
-        Tool(
+        StructuredTool.from_function(
+            func=create_task_tool,
             name="create_task",
             description="Create a new task with optional person and project relationships",
-            func=create_task_tool,
-            args_schema=CreateTaskParams
+            args_schema=CreateTaskParams,
+            coroutine=create_task_tool
         ),
-        Tool(
+        StructuredTool.from_function(
+            func=update_task_tool,
             name="update_task", 
             description="Update an existing task (status, description, etc.)",
-            func=update_task_tool,
-            args_schema=UpdateTaskParams
+            args_schema=UpdateTaskParams,
+            coroutine=update_task_tool
         ),
-        Tool(
+        StructuredTool.from_function(
+            func=get_tasks_tool,
             name="get_tasks",
             description="Get tasks with optional filtering by status, person, or project",
-            func=get_tasks_tool,
-            args_schema=SearchTasksParams
+            args_schema=SearchTasksParams,
+            coroutine=get_tasks_tool
         ),
-        Tool(
+        StructuredTool.from_function(
+            func=get_task_by_id_tool,
             name="get_task_by_id",
             description="Get detailed information about a specific task by ID",
-            func=get_task_by_id_tool,
-            args_schema=str
+            coroutine=get_task_by_id_tool
         ),
-        Tool(
+        StructuredTool.from_function(
+            func=add_task_comment_tool,
             name="add_task_comment",
             description="Add a comment to a task and optionally update its status",
-            func=add_task_comment_tool,
-            args_schema=AddCommentParams
+            args_schema=AddCommentParams,
+            coroutine=add_task_comment_tool
         ),
-        Tool(
+        StructuredTool.from_function(
+            func=get_pending_decisions_tool,
             name="get_pending_decisions",
             description="Get all tasks that need user review/decisions",
-            func=get_pending_decisions_tool,
-            args_schema=None
+            coroutine=get_pending_decisions_tool
         ),
     ] 

@@ -1,84 +1,107 @@
 # Nova AI Assistant: Active Context
 
-## 🎯 **CURRENT FOCUS: FRONTEND POLISH & TESTING** ⭐
+## 🎯 **CURRENT FOCUS: ARCHITECTURE SIMPLIFIED - LANGCHAIN TOOLS** ⭐
 
-### **✅ JUST COMPLETED: UI IMPROVEMENTS & STRUCTURAL CLEANUP**
+### **✅ MAJOR ARCHITECTURAL DECISION IMPLEMENTED: NATIVE LANGCHAIN TOOLS**
 
-**UI Fixes:**
-- **✅ Overview Page**: Removed redundant "Decision pending" displays - streamlined from 3 mentions to clean integrated messaging
-- **✅ Kanban Board**: Removed unnecessary "Decision required" indicators from "Waiting for user" lane (everything there already requires decisions)
-- **✅ UX Enhancement**: Cleaner, less cluttered interface with better information hierarchy
+**🔥 BREAKING CHANGE - MCP REMOVED:**
+- **✅ Decision Made**: Kanban backend is core Nova functionality, not external service
+- **✅ Architecture Simplified**: Converted from FastMCP to native LangChain tools
+- **✅ Dependencies Updated**: Removed FastMCP, added LangChain dependencies
+- **✅ Tools Converted**: All task/person/project tools now native LangChain StructuredTool
+- **✅ Backend Streamlined**: Now just FastAPI server + LangChain tools for Nova
 
-**Structural Improvements:**
-- **✅ Clean Architecture**: Moved from messy `/data` directory to organized `/backend + /tests` structure
-- **✅ Functional Organization**: 
-  - `/backend/api` - REST endpoints for frontend
-  - `/backend/tools` - MCP tools for agent  
-  - `/backend/models` - Database schemas
-  - `/backend/database` - Database management
-  - `/tests` - Integration tests and sample data
-- **✅ Better Maintainability**: Clear separation of concerns, easier navigation
+**Why This Change?**
+- **Core vs External**: Kanban is core Nova functionality, not external integration
+- **Simplicity**: No MCP protocol overhead for internal tools
+- **Integration**: Direct LangChain tool usage by Nova agent
+- **Maintainability**: Cleaner architecture without MCP layer
 
-### **✅ MAJOR MILESTONE COMPLETED: KANBAN BACKEND v2 REWRITE**
+### **✅ FRONTEND FIX COMPLETED: MERGED NAVBAR**
 
-**Recently Completed:**
-- **✅ PostgreSQL Backend**: Complete rewrite from file storage to robust database
-- **✅ Modern Architecture**: Python 3.13+, SQLAlchemy 2.0, FastMCP 2.3.4+, async/await
-- **✅ Dual Interface**: MCP tools for agent + comprehensive REST API for frontend
-- **✅ Code Organization**: Split monolithic files into proper packages, centralized config
-- **✅ Docker Integration**: Unified docker-compose.yml, environment variables, health monitoring
-- **✅ Data Models**: Rich relationships between Tasks, Persons, Projects, Chats, Artifacts
-- **✅ Simplified Schema**: Removed Priority enum, Artifacts are just links
+**UI Improvements:**
+- **✅ Navbar Merged**: Combined lane counts, current task, and navigation into single cohesive bar
+- **✅ Layout Optimization**: Logo/nav left, current task center, lane counts/status right
+- **✅ Visual Hierarchy**: Better organization and information density
+- **✅ Space Efficiency**: From 3 separate bars to 1 comprehensive navigation
 
-### **Frontend Implementation Status** 🚀
-- **✅ Project Setup**: Next.js 15.1 + React 19 + TypeScript + Tailwind + shadcn/ui  
-- **✅ Component Structure**: Navbar-based navigation with Chat, Kanban, Overview pages
-- **✅ Design System**: Dark theme, modern business aesthetic
-- **✅ UI Polish**: Clean decision workflows, removed redundant indicators
-- **⏳ API Integration**: Need to connect to new Kanban MCP v2 endpoints
-- **⏳ Priority Cleanup**: Remove priority fields from UI to match simplified backend
+### **✅ BACKEND STATUS: FULLY FUNCTIONAL**
+
+**Implementation Details:**
+- **✅ FastAPI Server**: Pure REST API server for frontend (no MCP endpoints)
+- **✅ LangChain Tools**: 10 native tools for Nova agent integration
+- **✅ PostgreSQL**: Same robust database backend maintained
+- **✅ Dependencies**: Removed fastmcp, added langchain + langchain-core
+- **✅ Testing**: Backend starts successfully, tools load correctly
+
+**Available LangChain Tools:**
+```python
+# Task Management (6 tools)
+- create_task: Create a new task with optional person and project relationships
+- update_task: Update an existing task (status, description, etc.)
+- get_tasks: Get tasks with optional filtering by status, person, or project
+- get_task_by_id: Get detailed information about a specific task by ID
+- add_task_comment: Add a comment to a task and optionally update its status
+- get_pending_decisions: Get all tasks that need user review/decisions
+
+# Person Management (2 tools)
+- create_person: Create a new person with contact info and role
+- get_persons: Get all persons in the system
+
+# Project Management (2 tools)
+- create_project: Create a new project with client and booking info
+- get_projects: Get all projects in the system
+```
 
 ### **🚀 IMMEDIATE NEXT STEPS**
 
-#### **1. API Integration** 🔌
-**Priority**: Highest - Connect to real data
-- **Replace**: Mock data with real API calls to `localhost:8001/api/`
-- **Implement**: Full CRUD operations using new endpoints
-- **Test**: With sample data from `test_sample_data.py`
-- **Endpoints Available**:
-  - `GET /api/overview` - Dashboard stats, pending decisions, recent activity
-  - `GET /api/tasks/by-status` - Tasks organized by kanban lanes
-  - `GET /api/pending-decisions` - Tasks needing user decisions
-  - Full CRUD for tasks, persons, projects, chats
+#### **1. Nova Agent Integration** 🤖
+**Priority**: Highest - Connect Nova to new tools
+- **Import**: LangChain tools from backend into Nova agent
+- **Test**: Tool execution and parameter handling
+- **Verify**: Database operations work correctly with Nova
+- **Goal**: Nova can manage kanban board via native tools
 
-#### **2. Frontend Priority Cleanup** 🎯
-**Priority**: High - Match backend simplification
-- **Remove**: All priority fields and selectors from TaskCard, CreateTask, etc.
-- **Update**: TaskResponse interfaces to match new backend schema
-- **Goal**: Frontend matches simplified backend model (no priority enum)
+#### **2. Memory Bank Update** 📚
+**Priority**: High - Document new architecture
+- **Update**: systemPatterns.md with LangChain architecture
+- **Update**: techContext.md with new dependencies
+- **Document**: Tool usage patterns for Nova
+- **Goal**: Complete documentation of simplified architecture
 
-#### **3. Testing & Validation** 🧪
+#### **3. Frontend API Integration** 🔌
+**Priority**: Medium - Connect to real data
+- **Connect**: Frontend to `localhost:8001/api/` endpoints
+- **Replace**: Mock data with real API calls
+- **Test**: Full CRUD operations with live backend
+- **Goal**: Working end-to-end system
+
+#### **4. Testing & Validation** 🧪
 **Priority**: Medium - Ensure everything works
-- **Setup**: PostgreSQL via `docker-compose up postgres kanban-mcp`
-- **Populate**: Test data via `uv run python test_sample_data.py`
-- **Verify**: API endpoints work with real data
-- **Frontend**: Test with live backend integration
+- **Database**: Setup PostgreSQL via docker-compose
+- **Sample Data**: Load test data for development
+- **Integration**: Test Nova → LangChain tools → Database → Frontend
+- **Goal**: Complete system validation
 
-#### **4. Decision Workflow Enhancement** 🤖
-**Priority**: Medium - Enhance UX
-- **Implement**: Pending decisions UI using `/api/pending-decisions`
-- **Add**: Decision approval/rejection workflows
-- **Goal**: Seamless user decision-making experience
+### **✅ STRUCTURAL IMPROVEMENTS COMPLETED**
 
+**Clean Architecture:**
+- **✅ Backend Directory**: `/backend` - Clean FastAPI + LangChain tools
+- **✅ Tools Structure**: `/backend/tools` - Native LangChain tools
+- **✅ API Endpoints**: `/backend/api` - REST endpoints for frontend
+- **✅ Models**: `/backend/models` - SQLAlchemy database models
+- **✅ Database**: `/backend/database` - Database management
+- **✅ Dependencies**: Updated pyproject.toml with correct packages
 
+**Benefits of LangChain Architecture:**
+- **Direct Integration**: Nova directly uses tools without MCP protocol
+- **Simplified Stack**: FastAPI + LangChain (removed MCP layer)
+- **Better Performance**: No protocol translation overhead
+- **Cleaner Code**: Tools are just async Python functions
+- **Easier Testing**: Direct function calls for testing
 
-**Benefits of New Structure:**
-- **Clear Separation**: No more mixed concerns in single directory
-- **Functional Organization**: Each directory has single, clear purpose
-- **Better Navigation**: Developers can find files more intuitively
-- **Maintainability**: Easier to understand and modify codebase
-
-### **Kanban MCP v2 API Endpoints** 🔗
+### **Kanban API Endpoints** 🔗
+*Unchanged - same REST API for frontend*
 ```typescript
 // Overview Dashboard
 GET /api/overview → OverviewStats
@@ -101,126 +124,64 @@ POST /api/persons → PersonResponse
 GET /api/projects → ProjectResponse[]
 POST /api/projects → ProjectResponse
 
-// Chat Management
-GET /api/chats → ChatResponse[]
-POST /api/chats → ChatResponse
-GET /api/chats/{id}/messages → ChatMessageResponse[]
-POST /api/chats/{id}/messages
-
 // Health & Status
 GET /health → Health status
 ```
 
-### **Simplified Data Models** 📊
-```typescript
-// Task (Priority removed!)
-interface TaskResponse {
-  id: string;
-  title: string;
-  description: string;
-  summary?: string;
-  status: TaskStatus; // NEW | USER_INPUT_RECEIVED | NEEDS_REVIEW | WAITING | IN_PROGRESS | DONE | FAILED
-  created_at: string;
-  updated_at: string;
-  due_date?: string;
-  completed_at?: string;
-  tags: string[];
-  needs_decision: boolean;
-  decision_type?: string;
-  persons: string[]; // Names for UI
-  projects: string[]; // Names for UI  
-  comments_count: number;
-}
+### **LangChain Tool Usage Example** 🛠️
+```python
+# How Nova will use the tools
+from backend.tools import get_all_tools
 
-// Person
-interface PersonResponse {
-  id: string;
-  name: string;
-  email: string;
-  role?: string;
-  description?: string;
-  current_focus?: string;
-  created_at: string;
-}
-
-// Artifact (Simplified to just links)
-interface ArtifactResponse {
-  id: string;
-  link: string; // Just URLs to emails, documents, etc.
-  title?: string;
-  summary?: string;
-  created_at: string;
-}
-```
-
-### **Environment Configuration** ⚙️
-**Root-level `env.example` now available:**
-```bash
-# Server Configuration
-HOST=0.0.0.0
-PORT=8001
-
-# PostgreSQL Database
-POSTGRES_DB=nova_kanban
-POSTGRES_USER=nova
-POSTGRES_PASSWORD=nova_dev_password
-DATABASE_URL=postgresql+asyncpg://nova:nova_dev_password@postgres:5432/nova_kanban
-
-# Development Settings
-CREATE_TABLES=true
-SQL_DEBUG=false
-CORS_ORIGINS=http://localhost:3000,http://localhost:3001
-```
-
-## 📱 **UPDATED FRONTEND INTEGRATION PLAN**
-
-### **Frontend Updates Needed** 🛠️
-```typescript
-// Remove from components:
-- priority field in TaskCard
-- priority selector in CreateTask
-- priority filters in TaskList
-- Priority enum and related types
-
-// Add new API integration:
-- Overview dashboard real-time stats
-- Pending decisions notifications
-- Task workflow state management
-- Entity relationship display
+async def nova_task_management():
+    tools = get_all_tools()
+    
+    # Find specific tool
+    create_task_tool = next(t for t in tools if t.name == "create_task")
+    
+    # Use tool with parameters
+    result = await create_task_tool.arun({
+        "title": "Review quarterly reports",
+        "description": "Analyze Q4 performance metrics",
+        "tags": ["reports", "analysis"]
+    })
+    
+    return result
 ```
 
 ### **Testing Workflow** 🧪
 ```bash
-# 1. Start services (from project root)
-docker-compose up postgres kanban-mcp
+# 1. Start database
+docker-compose up postgres
 
-# 2. Populate test data
-cd mcp_servers/kanban/backend-v2
-uv run python test_sample_data.py
+# 2. Start backend (from /backend directory)
+uv run main.py
 
-# 3. Test API
-curl http://localhost:8001/api/overview
-curl http://localhost:8001/api/tasks/by-status
+# 3. Test tools (from /backend directory)  
+uv run example_usage.py
 
-# 4. Start frontend development
-cd frontend
+# 4. Start frontend (from /frontend directory)
 npm run dev
 ```
 
-## 🎉 **STABLE FOUNDATION** ✅
+## 📱 **FRONTEND INTEGRATION STATUS**
 
-### **Production Ready Infrastructure**
-- **✅ 37 Tools**: Gmail MCP (27) + Kanban MCP v2 (10) fully operational  
-- **✅ Modern Backend**: PostgreSQL, async SQLAlchemy, comprehensive API
-- **✅ MCP Endpoints**: Protocol + REST + Health monitoring
-- **✅ Agent Platform**: LangGraph + Gemini 2.5 Pro with continuous operation
-- **✅ Docker Environment**: Unified orchestration with database persistence
-- **✅ Code Quality**: Modular structure, type safety, environment management
+### **Current Status** ✅
+- **✅ UI Merged**: Single cohesive navbar with all information
+- **✅ Mock Data**: Frontend works with placeholder data
+- **⏳ API Integration**: Ready to connect to live backend
+- **⏳ Priority Cleanup**: Remove priority fields (backend simplified)
 
-### **Clear Next Steps Path**
-1. **Cleanup** → Remove priority from frontend components
-2. **Connect** → Replace mock data with real API calls  
-3. **Test** → Verify with PostgreSQL and sample data
-4. **Enhance** → Implement decision workflows and real-time features
+### **Next Frontend Steps** 🛠️
+```typescript
+// Remove priority fields from:
+- TaskCard component
+- CreateTask forms  
+- Task filters
+- TaskResponse interface
 
-**Status**: ✅ **BACKEND v2 COMPLETE, FRONTEND READY FOR API INTEGRATION**
+// Add API integration:
+- useOverview hook → /api/overview
+- useKanban hook → /api/tasks/by-status
+- CRUD operations → respective endpoints
+```

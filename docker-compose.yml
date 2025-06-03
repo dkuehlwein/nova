@@ -24,11 +24,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "${PORT:-8001}:${PORT:-8001}"
+      - "${PORT:-8000}:${PORT:-8000}"
     environment:
       DATABASE_URL: postgresql+asyncpg://nova:nova_dev_password@postgres:5432/nova_kanban # TODO: get this from env vars
       HOST: ${HOST:-0.0.0.0}
-      PORT: ${PORT:-8001}
+      PORT: ${PORT:-8000}
       SQL_DEBUG: ${SQL_DEBUG:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
       CREATE_TABLES: ${CREATE_TABLES:-true}
@@ -37,7 +37,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-8001}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-8000}/health"]
       interval: 30s
       timeout: 10s
       retries: 3

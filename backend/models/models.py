@@ -88,7 +88,7 @@ class Task(Base):
     
     # JSON fields for flexibility
     tags: Mapped[List[str]] = mapped_column(JSONB, default=list)
-    metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    task_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
     
     # Relationships
     comments: Mapped[List["TaskComment"]] = relationship("TaskComment", back_populates="task", cascade="all, delete-orphan")

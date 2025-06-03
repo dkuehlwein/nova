@@ -1,17 +1,25 @@
 """
-Project management MCP tools.
+Project management LangChain tools.
 """
 
 import json
 from typing import List
 
-from fastmcp.tools import Tool
+from langchain.tools import StructuredTool
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from database.database import db_manager
 from models.models import Project
 from .helpers import find_project_by_name
-from .schemas import CreateProjectParams
+
+
+class CreateProjectParams(BaseModel):
+    """Parameters for creating a project."""
+    name: str = Field(description="Project name")
+    client: str = Field(description="Client name")
+    booking_code: str = Field(None, description="Project booking code (optional)")
+    summary: str = Field(None, description="Project summary (optional)")
 
 
 async def create_project_tool(params: CreateProjectParams) -> str:
@@ -55,19 +63,20 @@ async def get_projects_tool() -> str:
         return f"Found {len(project_list)} projects: {json.dumps(project_list, indent=2)}"
 
 
-def get_project_tools() -> List[Tool]:
-    """Get project management MCP tools."""
+def get_project_tools() -> List[StructuredTool]:
+    """Get project management LangChain tools."""
     return [
-        Tool(
+        StructuredTool.from_function(
+            func=create_project_tool,
             name="create_project",
             description="Create a new project with client and booking info",
-            func=create_project_tool,
-            args_schema=CreateProjectParams
+            args_schema=CreateProjectParams,
+            coroutine=create_project_tool
         ),
-        Tool(
+        StructuredTool.from_function(
+            func=get_projects_tool,
             name="get_projects",
             description="Get all projects in the system",
-            func=get_projects_tool,
-            args_schema=None
+            coroutine=get_projects_tool
         ),
     ] 

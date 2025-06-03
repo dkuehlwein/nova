@@ -1,17 +1,26 @@
 """
-Person management MCP tools.
+Person management LangChain tools.
 """
 
 import json
 from typing import List
 
-from fastmcp.tools import Tool
+from langchain.tools import StructuredTool
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from database.database import db_manager
 from models.models import Person
 from .helpers import find_person_by_email
-from .schemas import CreatePersonParams
+
+
+class CreatePersonParams(BaseModel):
+    """Parameters for creating a person."""
+    name: str = Field(description="Person's full name")
+    email: str = Field(description="Person's email address")
+    role: str = Field(None, description="Person's role or job title (optional)")
+    description: str = Field(None, description="Description of the person (optional)")
+    current_focus: str = Field(None, description="Person's current focus or priority (optional)")
 
 
 async def create_person_tool(params: CreatePersonParams) -> str:
@@ -57,19 +66,20 @@ async def get_persons_tool() -> str:
         return f"Found {len(person_list)} persons: {json.dumps(person_list, indent=2)}"
 
 
-def get_person_tools() -> List[Tool]:
-    """Get person management MCP tools."""
+def get_person_tools() -> List[StructuredTool]:
+    """Get person management LangChain tools."""
     return [
-        Tool(
+        StructuredTool.from_function(
+            func=create_person_tool,
             name="create_person",
             description="Create a new person with contact info and role",
-            func=create_person_tool,
-            args_schema=CreatePersonParams
+            args_schema=CreatePersonParams,
+            coroutine=create_person_tool
         ),
-        Tool(
+        StructuredTool.from_function(
+            func=get_persons_tool,
             name="get_persons",
             description="Get all persons in the system",
-            func=get_persons_tool,
-            args_schema=None
+            coroutine=get_persons_tool
         ),
     ] 
