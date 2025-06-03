@@ -15,6 +15,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from api.api_endpoints import router as api_router
 from database.database import db_manager
@@ -60,7 +61,8 @@ app = FastAPI(
 )
 
 # Add CORS middleware for frontend
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001").split(",")
+default_cors_origins = "http://localhost:3000,http://localhost:3001,http://172.29.172.59:3000"
+cors_origins = os.getenv("CORS_ORIGINS", default_cors_origins).split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -94,7 +96,7 @@ async def health_check():
     try:
         # Test database connection
         async with db_manager.get_session() as session:
-            await session.execute("SELECT 1")
+            await session.execute(text("SELECT 1"))
         
         db_status = "healthy"
     except Exception as e:

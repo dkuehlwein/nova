@@ -5,9 +5,7 @@ import {
   MessageSquare, 
   KanbanSquare, 
   Settings, 
-  AlertTriangle,
   CheckCircle,
-  Clock,
   PlayCircle,
   InboxIcon,
   UserCheck,
@@ -197,28 +195,13 @@ export default function Navbar() {
 
           {/* System Status & Alert */}
           <div className="flex items-center space-x-3">
-            {/* Awaiting Input Alert */}
-            {pendingDecisions > 0 ? (
-              <Link href="/">
-                <div className="flex items-center space-x-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-md cursor-pointer hover:bg-red-500/20 transition-colors">
-                  <AlertTriangle className="h-4 w-4 text-red-500" />
-                  <span className="text-sm text-red-500 font-medium">
-                    Awaiting Input
-                  </span>
-                  <Badge variant="destructive" className="text-xs px-1 py-0 h-4">
-                    {pendingDecisions}
-                  </Badge>
-                </div>
-              </Link>
-            ) : (
-              /* System Status */
-              <div className="flex items-center space-x-1">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-muted-foreground">
-                  {data.system_status}
-                </span>
-              </div>
-            )}
+            {/* System Status */}
+            <div className="flex items-center space-x-1">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span className="text-sm text-muted-foreground">
+                {data.system_status}
+              </span>
+            </div>
           </div>
         </div>
       </div>

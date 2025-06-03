@@ -1,22 +1,18 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Plus, MoreHorizontal, AlertTriangle, Clock, CheckCircle, User, Calendar, PlayCircle, ArrowRight } from "lucide-react";
+import { Plus, MoreHorizontal, AlertTriangle, User, Calendar, Trash2, Eye, Clock, FileText, MessageCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-interface Task {
-  id: string;
-  title: string;
-  description: string;
-  priority: string;
-  assignee: string;
-  dueDate: string;
-  tags: string[];
-  needsDecision?: boolean;
-  decisionType?: string;
-  completedAt?: string;
-}
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useKanban, Task } from "@/hooks/useKanban";
+import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 
 interface Lane {
   id: string;
@@ -25,151 +21,224 @@ interface Lane {
   tasks: Task[];
 }
 
+interface CreateTaskData {
+  title: string;
+  description: string;
+  tags: string[];
+}
+
 export default function KanbanPage() {
-  // Mock kanban data - updated to match real task statuses
-  const currentTask: Task | null = {
-    id: "task-current",
-    title: "Implement user dashboard",
-    description: "Build the main dashboard with charts and metrics. This includes setting up the React components, integrating with the backend API, and ensuring responsive design across all devices.",
-    priority: "high",
-    assignee: "Nova AI",
-    dueDate: "2024-01-20",
-    tags: ["frontend", "dashboard", "react"]
+  const { 
+    tasksByStatus, 
+    loading, 
+    error, 
+    formatStatusName, 
+    getStatusColor, 
+    createTask,
+    deleteTask,
+    getTaskById
+  } = useKanban();
+
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isTaskDetailOpen, setIsTaskDetailOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [urlTaskProcessed, setUrlTaskProcessed] = useState(false);
+  const [newTask, setNewTask] = useState<CreateTaskData>({
+    title: '',
+    description: '',
+    tags: []
+  });
+  const [commentText, setCommentText] = useState('');
+  const [isAddingComment, setIsAddingComment] = useState(false);
+
+  // Handle URL task parameter to auto-open task dialog
+  useEffect(() => {
+    const taskId = searchParams.get('task');
+    if (taskId && !loading && !urlTaskProcessed) {
+      handleTaskClick({ id: taskId } as Task);
+      setUrlTaskProcessed(true);
+    }
+  }, [searchParams, loading, urlTaskProcessed]);
+
+  // Convert API data to lanes format
+  const lanes: Lane[] = Object.entries(tasksByStatus).map(([status, tasks]) => ({
+    id: status,
+    title: formatStatusName(status),
+    color: getStatusColor(status),
+    tasks: tasks || []
+  }));
+
+  const handleCreateTask = async () => {
+    if (!newTask.title.trim()) return;
+    
+    try {
+      setIsCreating(true);
+      await createTask({
+        title: newTask.title,
+        description: newTask.description,
+        status: 'new', // Always create tasks in "new" status
+        tags: newTask.tags
+      });
+      
+      // Reset form and close dialog
+      setNewTask({
+        title: '',
+        description: '',
+        tags: []
+      });
+      setIsCreateDialogOpen(false);
+      
+      // Reset URL processing flag to allow future URL-based task openings
+      setUrlTaskProcessed(false);
+    } catch (err) {
+      console.error('Failed to create task:', err);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const lanes: Lane[] = [
-    {
-      id: "new",
-      title: "NEW",
-      color: "bg-blue-500",
-      tasks: [
-        {
-          id: "task-1",
-          title: "Review quarterly reports",
-          description: "Analyze Q4 performance metrics and prepare summary",
-          priority: "high",
-          assignee: "John Doe",
-          dueDate: "2024-01-15",
-          tags: ["reports", "analysis"]
-        },
-        {
-          id: "task-2", 
-          title: "Update client presentation",
-          description: "Incorporate feedback from last meeting",
-          priority: "medium",
-          assignee: "Jane Smith",
-          dueDate: "2024-01-18",
-          tags: ["presentation", "client"]
-        }
-      ]
-    },
-    {
-      id: "user-input-received",
-      title: "USER INPUT RECEIVED", 
-      color: "bg-green-500",
-      tasks: [
-        {
-          id: "task-3",
-          title: "Code review for authentication module",
-          description: "Review pull request #234 with user's requested changes",
-          priority: "high",
-          assignee: "Mike Johnson",
-          dueDate: "2024-01-12",
-          tags: ["code-review", "security"]
-        }
-      ]
-    },
-    {
-      id: "needs-review",
-      title: "NEEDS REVIEW",
-      color: "bg-red-500",
-      tasks: [
-        {
-          id: "task-6",
-          title: "Email approval for John Smith",
-          description: "Draft email response needs approval before sending",
-          priority: "high",
-          assignee: "Nova AI",
-          dueDate: "2024-01-10",
-          tags: ["email", "approval"],
-          needsDecision: true,
-          decisionType: "email_approval"
-        },
-        {
-          id: "task-7",
-          title: "Choose deployment strategy",
-          description: "Select between AWS and Azure for new microservice",
-          priority: "medium",
-          assignee: "DevOps Team",
-          dueDate: "2024-01-15", 
-          tags: ["deployment", "infrastructure"],
-          needsDecision: true,
-          decisionType: "strategy_choice"
-        }
-      ]
-    },
-    {
-      id: "waiting",
-      title: "WAITING",
-      color: "bg-orange-500",
-      tasks: [
-        {
-          id: "task-8",
-          title: "Client feedback on proposal",
-          description: "Waiting for client response on project proposal",
-          priority: "medium",
-          assignee: "Sales Team",
-          dueDate: "2024-01-22",
-          tags: ["client", "proposal"]
-        }
-      ]
-    },
-    {
-      id: "done",
-      title: "DONE",
-      color: "bg-gray-500", 
-      tasks: [
-        {
-          id: "task-9",
-          title: "Setup CI/CD pipeline",
-          description: "Configured GitHub Actions for automated deployment",
-          priority: "high",
-          assignee: "DevOps Team",
-          dueDate: "2024-01-05",
-          tags: ["devops", "automation"],
-          completedAt: "2024-01-05"
-        },
-        {
-          id: "task-10",
-          title: "User authentication implementation",
-          description: "Implemented JWT-based authentication system",
-          priority: "high",
-          assignee: "Security Team", 
-          dueDate: "2024-01-08",
-          tags: ["security", "auth"],
-          completedAt: "2024-01-07"
-        }
-      ]
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      setIsDeleting(taskId);
+      await deleteTask(taskId);
+      
+      // Reset URL processing flag to allow future URL-based task openings
+      setUrlTaskProcessed(false);
+      
+      // If we're deleting the currently viewed task, close the dialog
+      if (selectedTask && selectedTask.id === taskId) {
+        handleTaskDetailClose(false);
+      }
+    } catch (err) {
+      console.error('Failed to delete task:', err);
+    } finally {
+      setIsDeleting(null);
     }
-  ];
+  };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high": return "bg-red-500";
-      case "medium": return "bg-yellow-500";
-      case "low": return "bg-green-500";
-      default: return "bg-gray-500";
+  const handleTaskClick = async (task: Task) => {
+    try {
+      // Fetch latest task details
+      const taskDetails = await getTaskById(task.id);
+      setSelectedTask(taskDetails);
+      setIsTaskDetailOpen(true);
+    } catch (err) {
+      console.error('Failed to fetch task details:', err);
+      // Fallback to using the task data we already have
+      setSelectedTask(task);
+      setIsTaskDetailOpen(true);
+    }
+  };
+
+  const handleTagInput = (value: string) => {
+    const tags = value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+    setNewTask(prev => ({ ...prev, tags }));
+  };
+
+  const handleAddComment = async () => {
+    if (!selectedTask || !commentText.trim()) return;
+    
+    try {
+      setIsAddingComment(true);
+      const response = await fetch(`http://localhost:8000/api/tasks/${selectedTask.id}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: commentText,
+          author: 'user'
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to add comment');
+      }
+      
+      // Refresh task details to get updated comment count
+      const updatedTask = await getTaskById(selectedTask.id);
+      setSelectedTask(updatedTask);
+      setCommentText('');
+    } catch (err) {
+      console.error('Failed to add comment:', err);
+    } finally {
+      setIsAddingComment(false);
     }
   };
 
   const TaskCard = ({ task }: { task: Task }) => (
-    <div className="bg-card border border-border rounded-lg p-4 mb-3 cursor-pointer hover:shadow-md transition-shadow">
+    <div 
+      className="bg-card border border-border rounded-lg p-4 mb-3 cursor-pointer hover:shadow-md transition-shadow"
+      onClick={() => handleTaskClick(task)}
+    >
       <div className="flex items-start justify-between mb-2">
         <h4 className="font-medium text-foreground text-sm">{task.title}</h4>
         <div className="flex items-center space-x-1">
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-            <MoreHorizontal className="h-3 w-3" />
-          </Button>
+          {task.needs_decision && (
+            <AlertTriangle className="h-3 w-3 text-red-500" />
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-6 w-6 p-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem onClick={(e: React.MouseEvent) => {
+                e.stopPropagation();
+                handleTaskClick(task);
+              }}>
+                <Eye className="h-3 w-3 mr-2" />
+                View Details
+              </DropdownMenuItem>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <DropdownMenuItem 
+                    className="text-red-600"
+                    onSelect={(e: Event) => {
+                      e.preventDefault();
+                    }}
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3 mr-2" />
+                    Delete Task
+                  </DropdownMenuItem>
+                </AlertDialogTrigger>
+                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Task</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete &quot;{task.title}&quot;? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={(e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        handleDeleteTask(task.id);
+                      }}
+                      disabled={isDeleting === task.id}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      {isDeleting === task.id ? 'Deleting...' : 'Delete'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       
@@ -188,135 +257,364 @@ export default function KanbanPage() {
       <div className="flex items-center justify-between text-xs">
         <div className="flex items-center space-x-1">
           <User className="h-3 w-3" />
-          <span className="text-muted-foreground">{task.assignee}</span>
+          <span className="text-muted-foreground">
+            {task.persons.length > 0 ? task.persons[0] : 'Unassigned'}
+          </span>
         </div>
         <div className="flex items-center space-x-2">
-          <div className={`w-2 h-2 rounded-full ${getPriorityColor(task.priority)}`}></div>
+          {task.needs_decision && (
+            <div className="w-2 h-2 rounded-full bg-red-500"></div>
+          )}
           <div className="flex items-center space-x-1">
             <Calendar className="h-3 w-3" />
             <span className="text-muted-foreground">
-              {task.completedAt || task.dueDate}
+              {task.completed_at 
+                ? new Date(task.completed_at).toLocaleDateString()
+                : task.due_date 
+                  ? new Date(task.due_date).toLocaleDateString()
+                  : new Date(task.updated_at).toLocaleDateString()
+              }
             </span>
           </div>
         </div>
       </div>
+
+      {task.needs_decision && (
+        <div className="mt-2 pt-2 border-t border-border">
+          <div className="flex items-center space-x-1">
+            <AlertTriangle className="h-3 w-3 text-red-500" />
+            <span className="text-xs text-red-500 font-medium">Decision Required</span>
+          </div>
+          {task.decision_type && (
+            <span className="text-xs text-muted-foreground">
+              Type: {task.decision_type.replace('_', ' ')}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
+
+  // Handle dialog close to clean up URL
+  const handleTaskDetailClose = (open: boolean) => {
+    setIsTaskDetailOpen(open);
+    if (!open) {
+      setSelectedTask(null);
+      // Clean up URL parameter when dialog is closed
+      const currentParams = new URLSearchParams(window.location.search);
+      if (currentParams.has('task')) {
+        currentParams.delete('task');
+        const newUrl = currentParams.toString() ? 
+          `${window.location.pathname}?${currentParams.toString()}` : 
+          window.location.pathname;
+        router.replace(newUrl);
+      }
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="flex items-center justify-center h-96">
+          <div className="text-muted-foreground">Loading kanban board...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="flex items-center justify-center h-96">
+          <div className="text-red-500">Error loading kanban board: {error}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-
-      <div className="p-6">
-        <div className="mx-auto max-w-7xl">
-          {/* Header */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-foreground mb-1">Task Board</h1>
-                <p className="text-muted-foreground">
-                  Manage and track your tasks across different stages
-                </p>
-              </div>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Task
-              </Button>
-            </div>
+      
+      <main className="p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Kanban Board</h1>
+            <p className="text-sm text-muted-foreground">
+              Manage your tasks across different stages
+            </p>
           </div>
-
-          {/* Current In-Progress Task - Highlighted Section */}
-          {currentTask && (
-            <div className="mb-8 bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 rounded-lg p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <PlayCircle className="h-6 w-6 text-yellow-500" />
-                    <h2 className="text-lg font-semibold text-foreground">Currently Working On</h2>
-                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-700">
-                      In Progress
-                    </Badge>
-                  </div>
-                  
-                  <h3 className="text-xl font-medium text-foreground mb-2">{currentTask.title}</h3>
-                  <p className="text-muted-foreground mb-4 max-w-3xl">{currentTask.description}</p>
-                  
-                  <div className="flex items-center space-x-4 text-sm">
-                    <div className="flex items-center space-x-1">
-                      <User className="h-4 w-4" />
-                      <span className="text-muted-foreground">{currentTask.assignee}</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <Calendar className="h-4 w-4" />
-                      <span className="text-muted-foreground">Due {currentTask.dueDate}</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <div className={`w-3 h-3 rounded-full ${getPriorityColor(currentTask.priority)}`}></div>
-                      <span className="text-muted-foreground capitalize">{currentTask.priority} priority</span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {currentTask.tags.map((tag: string) => (
-                      <Badge key={tag} variant="outline" className="text-xs">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="flex items-center space-x-2">
+                <Plus className="h-4 w-4" />
+                <span>Add Task</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Create New Task</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="title">Title</Label>
+                  <Input
+                    id="title"
+                    value={newTask.title}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewTask(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Enter task title..."
+                  />
                 </div>
-                
-                <div className="flex flex-col space-y-2">
-                  <Button size="sm">
-                    <ArrowRight className="h-4 w-4 mr-1" />
-                    View Details
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={newTask.description}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewTask(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Enter task description..."
+                    rows={3}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="tags">Tags (comma-separated)</Label>
+                  <Input
+                    id="tags"
+                    value={newTask.tags.join(', ')}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleTagInput(e.target.value)}
+                    placeholder="tag1, tag2, tag3..."
+                  />
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                    Cancel
                   </Button>
-                  <Button size="sm" variant="outline">
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    Mark Complete
+                  <Button onClick={handleCreateTask} disabled={!newTask.title.trim() || isCreating}>
+                    {isCreating ? 'Creating...' : 'Create Task'}
                   </Button>
                 </div>
               </div>
-            </div>
-          )}
+            </DialogContent>
+          </Dialog>
+        </div>
 
-          {/* Kanban Board - Without In Progress Lane */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-            {lanes.map((lane) => (
-              <div key={lane.id} className="bg-muted/50 rounded-lg p-4">
-                {/* Lane Header */}
-                <div className="flex items-center justify-between mb-4">
+        {/* Task Detail Dialog */}
+        <Dialog open={isTaskDetailOpen} onOpenChange={handleTaskDetailClose}>
+          <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader className="border-b pb-4">
+              <DialogTitle className="text-xl font-semibold">Task Details</DialogTitle>
+            </DialogHeader>
+            {selectedTask && (
+              <div className="space-y-8 py-6">
+                {/* Header Section with Status and Key Info */}
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h1 className="text-2xl font-bold text-foreground mb-2">{selectedTask.title}</h1>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <div className="flex items-center space-x-2">
+                        <Calendar className="h-4 w-4" />
+                        <span>Created {new Date(selectedTask.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Clock className="h-4 w-4" />
+                        <span>Updated {new Date(selectedTask.updated_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  </div>
                   <div className="flex items-center space-x-2">
-                    <div className={`w-3 h-3 rounded-full ${lane.color}`}></div>
-                    <h3 className="font-semibold text-foreground text-sm">
-                      {lane.title}
-                    </h3>
-                    <Badge variant="secondary" className="text-xs">
-                      {lane.tasks.length}
+                    <div className={`w-3 h-3 rounded-full ${getStatusColor(selectedTask.status)}`}></div>
+                    <Badge variant="secondary" className="text-sm font-medium">
+                      {formatStatusName(selectedTask.status)}
                     </Badge>
                   </div>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                    <Plus className="h-3 w-3" />
-                  </Button>
                 </div>
 
-                {/* Tasks */}
-                <div className="space-y-3 min-h-[400px]">
-                  {lane.tasks.map((task) => (
-                    <TaskCard key={task.id} task={task} />
-                  ))}
-                  
-                  {/* Drop Zone */}
-                  <div className="border-2 border-dashed border-muted-foreground/20 rounded-lg p-4 text-center hover:border-muted-foreground/40 transition-colors">
-                    <p className="text-xs text-muted-foreground">
-                      Drop tasks here or click + to add
+                {/* Description Card */}
+                <div className="bg-muted/30 border border-border rounded-lg p-6">
+                  <Label className="text-base font-semibold text-foreground mb-3 block">Description</Label>
+                  <p className="text-foreground leading-relaxed">
+                    {selectedTask.description || 'No description provided.'}
+                  </p>
+                </div>
+
+                {/* Summary Card (if exists) */}
+                {selectedTask.summary && (
+                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
+                    <Label className="text-base font-semibold text-foreground mb-3 block flex items-center">
+                      <FileText className="h-4 w-4 mr-2" />
+                      Summary
+                    </Label>
+                    <p className="text-foreground leading-relaxed">
+                      {selectedTask.summary}
                     </p>
                   </div>
+                )}
+
+                {/* Decision Required Alert */}
+                {selectedTask.needs_decision && (
+                  <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-6">
+                    <div className="flex items-center space-x-3 text-red-700 dark:text-red-300 mb-3">
+                      <AlertTriangle className="h-5 w-5" />
+                      <span className="font-semibold text-base">Decision Required</span>
+                    </div>
+                    {selectedTask.decision_type && (
+                      <p className="text-sm text-red-600 dark:text-red-400 mb-2">
+                        Type: {selectedTask.decision_type.replace('_', ' ')}
+                      </p>
+                    )}
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      This task requires your attention before Nova can continue.
+                    </p>
+                  </div>
+                )}
+
+                {/* Metadata Grid */}
+                <div className="grid grid-cols-2 gap-6">
+                  {/* Dates */}
+                  <div className="space-y-4">
+                    {(selectedTask.due_date || selectedTask.completed_at) && (
+                      <div className="bg-card border border-border rounded-lg p-4">
+                        <Label className="text-sm font-medium text-muted-foreground mb-2 block">
+                          {selectedTask.completed_at ? 'Completed' : 'Due Date'}
+                        </Label>
+                        <div className="flex items-center space-x-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm text-foreground">
+                            {selectedTask.completed_at 
+                              ? new Date(selectedTask.completed_at).toLocaleDateString()
+                              : selectedTask.due_date 
+                                ? new Date(selectedTask.due_date).toLocaleDateString()
+                                : 'Not set'
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tags */}
+                  {selectedTask.tags.length > 0 && (
+                    <div className="bg-card border border-border rounded-lg p-4">
+                      <Label className="text-sm font-medium text-muted-foreground mb-3 block">Tags</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedTask.tags.map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Related Entities */}
+                {(selectedTask.persons.length > 0 || selectedTask.projects.length > 0) && (
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <Label className="text-base font-semibold text-foreground mb-4 block">Related Entities</Label>
+                    <div className="grid grid-cols-1 gap-4">
+                      {selectedTask.persons.length > 0 && (
+                        <div>
+                          <Label className="text-sm font-medium text-muted-foreground mb-2 block">People</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedTask.persons.map((person) => (
+                              <Badge key={person} variant="outline" className="flex items-center space-x-2 px-3 py-1">
+                                <User className="h-3 w-3" />
+                                <span>{person}</span>
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {selectedTask.projects.length > 0 && (
+                        <div>
+                          <Label className="text-sm font-medium text-muted-foreground mb-2 block">Projects</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedTask.projects.map((project) => (
+                              <Badge key={project} variant="outline" className="px-3 py-1">
+                                {project}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Comments Section */}
+                <div className="bg-card border border-border rounded-lg p-6">
+                  <Label className="text-base font-semibold text-foreground mb-4 block">Comments</Label>
+                  
+                  {/* Comment Count Status */}
+                  <div className="mb-4">
+                    {selectedTask.comments_count > 0 ? (
+                      <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <MessageCircle className="h-4 w-4" />
+                        <span>{selectedTask.comments_count} comment{selectedTask.comments_count !== 1 ? 's' : ''}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <MessageCircle className="h-4 w-4" />
+                        <span>No comments yet</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Add Comment */}
+                  <div className="border-t pt-4">
+                    <Label className="text-sm font-medium text-foreground mb-2 block">Add a comment</Label>
+                    <div className="space-y-3">
+                      <Textarea
+                        placeholder="Share your thoughts, updates, or questions about this task..."
+                        className="min-h-[80px] resize-none"
+                        rows={3}
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                      />
+                      <div className="flex justify-end">
+                        <Button 
+                          size="sm" 
+                          className="px-6"
+                          onClick={handleAddComment}
+                          disabled={!commentText.trim() || isAddingComment}
+                        >
+                          <MessageCircle className="h-4 w-4 mr-2" />
+                          {isAddingComment ? 'Adding...' : 'Add Comment'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
+          {lanes.map((lane) => (
+            <div key={lane.id} className="bg-card border border-border rounded-lg">
+              <div className="p-4 border-b border-border">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-3 h-3 rounded-full ${lane.color}`}></div>
+                    <h3 className="font-semibold text-sm text-foreground">{lane.title}</h3>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">
+                    {lane.tasks.length}
+                  </Badge>
+                </div>
+              </div>
+              
+              <div className="p-4 space-y-3">
+                {lane.tasks.map((task) => (
+                  <TaskCard key={task.id} task={task} />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
+      </main>
     </div>
   );
 } 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { apiRequest, API_ENDPOINTS } from '@/lib/api';
 
 interface TaskCounts {
   NEW: number;
@@ -8,6 +9,17 @@ interface TaskCounts {
   IN_PROGRESS: number;
   DONE: number;
   FAILED: number;
+}
+
+// API response format (lowercase with underscores)
+interface ApiTaskCounts {
+  new: number;
+  user_input_received: number;
+  needs_review: number;
+  waiting: number;
+  in_progress: number;
+  done: number;
+  failed: number;
 }
 
 interface ActivityItem {
@@ -35,36 +47,77 @@ interface OverviewData {
   system_status: string;
 }
 
+interface ApiOverviewResponse {
+  task_counts: ApiTaskCounts;
+  total_tasks: number;
+  pending_decisions: number;
+  recent_activity: ActivityItem[];
+  system_status: string;
+}
+
+interface TasksByStatusResponse {
+  in_progress: Array<{
+    id: string;
+    title: string;
+    persons: string[];
+  }>;
+  [key: string]: Array<any>;
+}
+
+// Function to transform API response to frontend format
+const transformTaskCounts = (apiCounts: ApiTaskCounts): TaskCounts => ({
+  NEW: apiCounts.new || 0,
+  USER_INPUT_RECEIVED: apiCounts.user_input_received || 0,
+  NEEDS_REVIEW: apiCounts.needs_review || 0,
+  WAITING: apiCounts.waiting || 0,
+  IN_PROGRESS: apiCounts.in_progress || 0,
+  DONE: apiCounts.done || 0,
+  FAILED: apiCounts.failed || 0,
+});
+
 export function useOverview() {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentTask, setCurrentTask] = useState<CurrentTask | null>(null);
 
-  const fetchOverview = async () => {
+  const fetchCurrentTask = async () => {
     try {
-      setLoading(true);
-      const response = await fetch('http://localhost:8000/api/overview');
+      const tasksByStatus = await apiRequest<TasksByStatusResponse>(API_ENDPOINTS.tasksByStatus);
+      const inProgressTasks = tasksByStatus.in_progress || [];
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const result = await response.json();
-      setData(result);
-      
-      // For now, mock the current task since we only have one in progress at a time
-      // TODO: Update backend to return current in-progress task details
-      if (result.task_counts.IN_PROGRESS > 0) {
+      if (inProgressTasks.length > 0) {
+        const task = inProgressTasks[0];
         setCurrentTask({
-          id: 'current',
-          title: 'Implement user dashboard', // This will come from API later
-          assignee: 'Nova AI',
-          priority: 'high'
+          id: task.id,
+          title: task.title,
+          assignee: task.persons.length > 0 ? task.persons[0] : 'Nova AI',
+          priority: 'high' // Could be derived from task data if needed
         });
       } else {
         setCurrentTask(null);
       }
+    } catch (err) {
+      console.error('Failed to fetch current task:', err);
+      setCurrentTask(null);
+    }
+  };
+
+  const fetchOverview = async () => {
+    try {
+      setLoading(true);
+      const apiResult: ApiOverviewResponse = await apiRequest<ApiOverviewResponse>(API_ENDPOINTS.overview);
+      
+      // Transform API response to frontend format
+      const transformedData: OverviewData = {
+        ...apiResult,
+        task_counts: transformTaskCounts(apiResult.task_counts),
+      };
+      
+      setData(transformedData);
+      
+      // Fetch current task details from kanban API
+      await fetchCurrentTask();
       
       setError(null);
     } catch (err) {

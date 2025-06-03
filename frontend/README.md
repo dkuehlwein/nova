@@ -20,6 +20,89 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## API Configuration
+
+The Nova frontend automatically detects the backend API URL. However, if you encounter connection issues, you can manually configure it:
+
+### Quick Setup for WSL2
+
+For WSL2 users, there's an automated setup script in the root directory:
+
+```bash
+cd scripts
+./setup-wsl2.sh
+```
+
+This script will:
+- Detect your WSL2 IP address
+- Test backend connectivity
+- Update the root `.env` file automatically
+- Provide troubleshooting guidance
+
+### Manual Configuration
+
+#### For WSL2 Users
+
+If you're running the backend in WSL2 and the frontend in Windows:
+
+1. Find your WSL2 IP address:
+   ```bash
+   hostname -I
+   ```
+
+2. Add to the root `.env` file (create if it doesn't exist):
+   ```bash
+   # .env (in nova/ root directory)
+   NEXT_PUBLIC_API_URL=http://YOUR_WSL2_IP:8000
+   ```
+
+   Replace `YOUR_WSL2_IP` with the actual IP from step 1.
+
+3. Restart the frontend development server.
+
+#### For Docker Users
+
+If running the entire stack in Docker:
+
+```bash
+# .env (in nova/ root directory)
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+#### For Production
+
+Set the production API URL:
+
+```bash
+# .env (in nova/ root directory)
+NEXT_PUBLIC_API_URL=https://your-backend-domain.com
+```
+
+## Troubleshooting
+
+### Backend Connection Issues
+
+1. **Check if backend is running:**
+   ```bash
+   curl http://localhost:8000/health
+   ```
+
+2. **Check the browser console** for auto-detection logs. Look for:
+   - ✅ Backend detected at: [URL]
+   - ⚠️ Could not auto-detect backend URL
+
+3. **CORS Issues:** If you see CORS errors, ensure the backend is configured to allow your frontend origin.
+
+4. **WSL2 IP Changes:** If your WSL2 IP changes (after restart), run the setup script again:
+   ```bash
+   cd scripts && ./setup-wsl2.sh
+   ```
+
+### Environment Variables
+
+- `NEXT_PUBLIC_API_URL`: Override the auto-detected backend URL
+- All `NEXT_PUBLIC_*` variables are exposed to the browser
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

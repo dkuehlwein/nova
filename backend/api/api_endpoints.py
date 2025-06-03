@@ -9,13 +9,13 @@ Provides REST API endpoints that match the UI requirements:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, text, desc
 from sqlalchemy.orm import selectinload
 
 from database.database import db_manager
@@ -234,13 +234,13 @@ async def get_recent_activity():
 
 
 async def get_recent_activity_items(session, limit: int = 10) -> List[ActivityItem]:
-    """Helper function to get recent activity items."""
+    """Get recent activity items."""
     activities = []
     
-    # Get recent task activities (created, completed, status changes)
+    # Get recent tasks (created or updated in the last 24 hours)
     recent_tasks_query = (
         select(Task)
-        .options(selectinload(Task.comments))
+        .where(Task.updated_at >= func.now() - text("INTERVAL '24 hours'"))
         .order_by(Task.updated_at.desc())
         .limit(limit)
     )
@@ -248,8 +248,8 @@ async def get_recent_activity_items(session, limit: int = 10) -> List[ActivityIt
     recent_tasks = result.scalars().all()
     
     for task in recent_tasks:
-        # Calculate time difference
-        time_diff = datetime.utcnow() - task.updated_at
+        # Calculate time difference using timezone-aware datetime
+        time_diff = datetime.now(timezone.utc) - task.updated_at
         if time_diff.seconds < 60:
             time_str = "Just now"
         elif time_diff.seconds < 3600:
@@ -429,23 +429,26 @@ async def create_task(task_data: TaskCreate):
         await session.flush()  # Get the task ID
         
         # Add person relationships
+        persons_list = []
         if task_data.person_ids:
             persons_result = await session.execute(
                 select(Person).where(Person.id.in_(task_data.person_ids))
             )
             persons = persons_result.scalars().all()
             task.persons.extend(persons)
+            persons_list = [p.name for p in persons]
         
         # Add project relationships
+        projects_list = []
         if task_data.project_ids:
             projects_result = await session.execute(
                 select(Project).where(Project.id.in_(task_data.project_ids))
             )
             projects = projects_result.scalars().all()
             task.projects.extend(projects)
+            projects_list = [p.name for p in projects]
         
         await session.commit()
-        await session.refresh(task)
         
         return TaskResponse(
             id=task.id,
@@ -459,8 +462,8 @@ async def create_task(task_data: TaskCreate):
             completed_at=task.completed_at,
             tags=task.tags or [],
             needs_decision=task.status == TaskStatus.NEEDS_REVIEW,
-            persons=[p.name for p in task.persons],
-            projects=[p.name for p in task.projects],
+            persons=persons_list,
+            projects=projects_list,
             comments_count=0
         )
 
