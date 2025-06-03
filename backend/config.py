@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[SecretStr] = None
     GOOGLE_MODEL_NAME: Optional[str] = None  # e.g., gemini-pro, gemini-1.5-flash
 
+    # Database Configuration
+    DATABASE_URL: Optional[str] = None  # PostgreSQL connection string for checkpointer
+    
     # LangSmith Configuration
     USE_LANGSMITH: bool = False
     LANGCHAIN_TRACING_V2: Optional[str] = "true"

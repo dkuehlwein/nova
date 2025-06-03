@@ -7,17 +7,18 @@ A LangGraph chat agent that integrates with Nova's tools and follows the agent-c
 from __future__ import annotations
 
 import os
-from typing import Annotated, Any, Dict, List, Sequence, TypedDict
+from typing import Annotated, Any, Dict, List, TypedDict
 
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import MessagesState
-from langgraph.prebuilt import ToolNode
+from langgraph.graph import StateGraph, START
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.checkpoint.memory import MemorySaver
 
 from tools import get_all_tools
 from config import settings
+from .llm import create_llm
 
 
 class Configuration(TypedDict):
@@ -29,41 +30,24 @@ class Configuration(TypedDict):
     temperature: float
 
 
-def create_model(config: RunnableConfig) -> ChatGoogleGenerativeAI:
-    """Create and configure the Google Gemini model."""
-    api_key = settings.GOOGLE_API_KEY.get_secret_value() if settings.GOOGLE_API_KEY else os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise ValueError("GOOGLE_API_KEY environment variable is required")
-    
-    # Get configuration values with defaults
-    configuration = config.get("configurable", {})
-    model_name = configuration.get("model_name", settings.GOOGLE_MODEL_NAME or "gemini-2.5-flash-preview-04-17")
-    temperature = configuration.get("temperature", 0.7)
-    
-    return ChatGoogleGenerativeAI(
-        model=model_name,
-        google_api_key=api_key,
-        temperature=temperature,
-        max_tokens=2048,
-    )
+class State(TypedDict):
+    """Agent state with message history."""
+    messages: Annotated[list, add_messages]
 
 
-async def call_model(state: MessagesState, config: RunnableConfig) -> Dict[str, Any]:
+def chatbot(state: State, config: RunnableConfig) -> Dict[str, Any]:
     """Generate a response using Google Gemini with Nova tools.
     
     Takes the conversation history and generates an AI response, potentially using tools.
     """
-    model = create_model(config)
-    
-    # Get Nova tools
+    # Create model with tools
+    llm = create_llm(config)
     tools = get_all_tools()
-    
-    # Bind tools to the model
-    model_with_tools = model.bind_tools(tools)
+    llm_with_tools = llm.bind_tools(tools)
     
     # Add system message with Nova's personality and capabilities
     messages = state["messages"]
-    if not messages or not any(isinstance(msg, type(messages[0])) and hasattr(msg, 'type') and getattr(msg, 'type', None) == 'system' for msg in messages):
+    if not messages or not any(isinstance(msg, HumanMessage) and "You are Nova" in str(msg.content) for msg in messages):
         system_message = HumanMessage(content="""You are Nova, an AI assistant for managers. You help with:
 
 1. **Task Management**: Creating, updating, organizing tasks in the kanban board
@@ -83,56 +67,135 @@ Available tools:
         messages = [system_message] + messages
     
     # Generate response
-    response = await model_with_tools.ainvoke(messages)
+    response = llm_with_tools.invoke(messages)
     
-    # Return the new AI message - LangGraph will handle appending to conversation
     return {"messages": [response]}
 
 
-def should_continue(state: MessagesState) -> str:
-    """Determine whether to continue with tool calls or end."""
-    messages = state["messages"]
-    last_message = messages[-1]
+def create_checkpointer():
+    """Create checkpointer based on configuration.
     
-    # If the last message has tool calls, continue to tools
-    if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
-        return "tools"
-    
-    # Otherwise, end the conversation turn
-    return END
+    Returns PostgreSQL checkpointer if DATABASE_URL is set, 
+    otherwise returns in-memory checkpointer.
+    """
+    if settings.DATABASE_URL:
+        try:
+            # Try to import PostgreSQL checkpointer
+            from langgraph.checkpoint.postgres import PostgresSaver
+            checkpointer = PostgresSaver.from_conn_string(settings.DATABASE_URL)
+            
+            # Setup tables on first use
+            try:
+                checkpointer.setup()
+            except Exception as setup_error:
+                print(f"Warning: Could not setup PostgreSQL tables: {setup_error}")
+                print("Make sure the database exists and is accessible.")
+                return MemorySaver()
+            
+            return checkpointer
+        except ImportError:
+            print("PostgreSQL checkpointer not available. Install with: pip install langgraph-checkpoint-postgres")
+            return MemorySaver()
+    else:
+        print("Using in-memory checkpointer. Set DATABASE_URL for persistent conversations.")
+        return MemorySaver()
 
 
-# Create the graph
+async def create_async_checkpointer():
+    """Create async checkpointer based on configuration.
+    
+    Returns async PostgreSQL checkpointer if DATABASE_URL is set, 
+    otherwise returns in-memory checkpointer.
+    """
+    if settings.DATABASE_URL:
+        try:
+            # Try to import async PostgreSQL checkpointer
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+            checkpointer = AsyncPostgresSaver.from_conn_string(settings.DATABASE_URL)
+            
+            # Setup tables on first use
+            try:
+                await checkpointer.setup()
+            except Exception as setup_error:
+                print(f"Warning: Could not setup PostgreSQL tables: {setup_error}")
+                print("Make sure the database exists and is accessible.")
+                return MemorySaver()
+            
+            return checkpointer
+        except ImportError:
+            print("Async PostgreSQL checkpointer not available. Install with: pip install langgraph-checkpoint-postgres")
+            return MemorySaver()
+    else:
+        print("Using in-memory checkpointer. Set DATABASE_URL for persistent conversations.")
+        return MemorySaver()
+
+
 def create_graph():
     """Create and compile the LangGraph chat agent."""
     # Get Nova tools for the tool node
     tools = get_all_tools()
     
-    # Use MessagesState which automatically handles message history
-    workflow = StateGraph(MessagesState, config_schema=Configuration)
+    # Create the graph with message state and configuration schema
+    graph_builder = StateGraph(State, config_schema=Configuration)
     
     # Add nodes
-    workflow.add_node("agent", call_model)
-    workflow.add_node("tools", ToolNode(tools))
+    graph_builder.add_node("chatbot", chatbot)
+    
+    # Create tool node
+    tool_node = ToolNode(tools=tools)
+    graph_builder.add_node("tools", tool_node)
     
     # Set entry point
-    workflow.add_edge(START, "agent")
+    graph_builder.add_edge(START, "chatbot")
     
-    # Add conditional edges
-    workflow.add_conditional_edges(
-        "agent",
-        should_continue,
-        {
-            "tools": "tools",
-            END: END,
-        }
+    # Add conditional edges using tools_condition
+    graph_builder.add_conditional_edges(
+        "chatbot",
+        tools_condition,
     )
     
-    # After tools, go back to agent
-    workflow.add_edge("tools", "agent")
+    # After tools, go back to chatbot
+    graph_builder.add_edge("tools", "chatbot")
     
-    # Compile the graph - LangGraph server handles persistence automatically
-    return workflow.compile()
+    # Create checkpointer
+    checkpointer = create_checkpointer()
+    
+    # Compile the graph with checkpointer
+    return graph_builder.compile(checkpointer=checkpointer)
+
+
+async def create_async_graph():
+    """Create and compile the LangGraph chat agent with async checkpointer."""
+    # Get Nova tools for the tool node
+    tools = get_all_tools()
+    
+    # Create the graph with message state and configuration schema
+    graph_builder = StateGraph(State, config_schema=Configuration)
+    
+    # Add nodes
+    graph_builder.add_node("chatbot", chatbot)
+    
+    # Create tool node
+    tool_node = ToolNode(tools=tools)
+    graph_builder.add_node("tools", tool_node)
+    
+    # Set entry point
+    graph_builder.add_edge(START, "chatbot")
+    
+    # Add conditional edges using tools_condition
+    graph_builder.add_conditional_edges(
+        "chatbot",
+        tools_condition,
+    )
+    
+    # After tools, go back to chatbot
+    graph_builder.add_edge("tools", "chatbot")
+    
+    # Create async checkpointer
+    checkpointer = await create_async_checkpointer()
+    
+    # Compile the graph with checkpointer
+    return graph_builder.compile(checkpointer=checkpointer)
 
 
 # The main graph instance
@@ -146,19 +209,38 @@ async def test_graph():
     
     print("\n🧪 Testing Nova LangGraph Agent...")
     
+    # Use async graph for testing
+    test_graph = await create_async_graph()
+    
+    # Configuration for testing
+    config = {
+        "configurable": {
+            "thread_id": "test-thread-1",
+            "model_name": "gemini-2.5-flash-preview-04-17",
+            "temperature": 0.7
+        }
+    }
+    
     # Test basic conversation
-    result = await graph.ainvoke({
+    result = await test_graph.ainvoke({
         "messages": [HumanMessage(content="Hello! What can you help me with?")]
-    })
+    }, config=config)
     
     print(f"Response: {result['messages'][-1].content}")
     
     # Test tool usage
-    result = await graph.ainvoke({
+    result = await test_graph.ainvoke({
         "messages": [HumanMessage(content="Create a new task called 'Test LangGraph integration'")]
-    })
+    }, config=config)
     
     print(f"Tool response: {result['messages'][-1].content}")
+    
+    # Test conversation continuity
+    result = await test_graph.ainvoke({
+        "messages": [HumanMessage(content="What was the task I just created?")]
+    }, config=config)
+    
+    print(f"Continuity test: {result['messages'][-1].content}")
 
 
 if __name__ == "__main__":
