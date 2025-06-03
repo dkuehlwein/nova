@@ -8,8 +8,8 @@ from typing import List
 from fastmcp.tools import Tool
 from sqlalchemy import select
 
-from database import db_manager
-from models import Project
+from database.database import db_manager
+from models.models import Project
 from .helpers import find_project_by_name
 from .schemas import CreateProjectParams
 

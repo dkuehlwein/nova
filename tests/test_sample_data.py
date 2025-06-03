@@ -1,14 +1,19 @@
 """
-Test sample data creation script for Nova Kanban
+Test sample data creation for Nova backend.
 
-Populates the database with sample tasks, persons, projects, and chats for testing.
+Run this script to populate the database with sample data for development and testing.
 """
 
 import asyncio
+import sys
+import os
 from datetime import datetime, timedelta
 
-from database import db_manager
-from models import (
+# Add the backend directory to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+
+from database.database import db_manager
+from models.models import (
     Task, TaskComment, Person, Project, Chat, ChatMessage,
     TaskStatus
 )

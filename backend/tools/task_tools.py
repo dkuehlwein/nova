@@ -11,8 +11,8 @@ from fastmcp.tools import Tool
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from database import db_manager
-from models import Task, TaskComment, TaskStatus
+from database.database import db_manager
+from models.models import Task, TaskComment, TaskStatus
 from .helpers import find_person_by_email, find_project_by_name, format_task_for_agent
 from .schemas import CreateTaskParams, UpdateTaskParams, AddCommentParams, SearchTasksParams
 

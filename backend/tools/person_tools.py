@@ -8,8 +8,8 @@ from typing import List
 from fastmcp.tools import Tool
 from sqlalchemy import select
 
-from database import db_manager
-from models import Person
+from database.database import db_manager
+from models.models import Person
 from .helpers import find_person_by_email
 from .schemas import CreatePersonParams
 

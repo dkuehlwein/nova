@@ -1,7 +1,7 @@
 """
-Nova Kanban MCP Tools Package
+Nova MCP Tools
 
-Organized MCP tools for the Nova agent integration.
+MCP tools for Nova agent to manage tasks, people, projects, and chats.
 """
 
 from .task_tools import get_task_tools
@@ -10,7 +10,7 @@ from .project_tools import get_project_tools
 
 
 def get_mcp_tools():
-    """Get all MCP tools for registration."""
+    """Get all MCP tools for Nova agent."""
     tools = []
     tools.extend(get_task_tools())
     tools.extend(get_person_tools())

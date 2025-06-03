@@ -69,15 +69,12 @@ export default function Nova() {
             <h2 className="text-3xl font-bold text-foreground mb-2">
               Welcome back
             </h2>
-            {pendingDecisions.length > 0 ? (
-              <p className="text-muted-foreground text-lg">
-                You have <span className="text-red-500 font-medium">{pendingDecisions.length} decisions</span> waiting for your input
-              </p>
-            ) : (
-              <p className="text-muted-foreground text-lg">
-                All caught up! No pending decisions right now.
-              </p>
-            )}
+            <p className="text-muted-foreground text-lg">
+              {pendingDecisions.length > 0 
+                ? "Your Nova assistant is ready to help with your tasks and decisions."
+                : "All caught up! Your Nova assistant is ready for new tasks."
+              }
+            </p>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -90,7 +87,7 @@ export default function Nova() {
                     <div className="flex items-center space-x-3">
                       <AlertTriangle className="h-6 w-6 text-red-500" />
                       <h3 className="text-xl font-semibold text-foreground">
-                        Decisions Required
+                        Your Input Needed
                       </h3>
                     </div>
                     <Badge variant="destructive" className="text-sm px-2 py-1">

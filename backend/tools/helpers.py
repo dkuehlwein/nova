@@ -6,8 +6,9 @@ import json
 from typing import Dict, Optional
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from models import Person, Project, Task, TaskStatus
+from models.models import Person, Project, Task, TaskStatus
 
 
 async def find_person_by_email(session, email: str) -> Optional[Person]:

@@ -1,10 +1,27 @@
 # Nova AI Assistant: Active Context
 
-## 🎯 **CURRENT FOCUS: FRONTEND API INTEGRATION** ⭐
+## 🎯 **CURRENT FOCUS: FRONTEND POLISH & TESTING** ⭐
+
+### **✅ JUST COMPLETED: UI IMPROVEMENTS & STRUCTURAL CLEANUP**
+
+**UI Fixes:**
+- **✅ Overview Page**: Removed redundant "Decision pending" displays - streamlined from 3 mentions to clean integrated messaging
+- **✅ Kanban Board**: Removed unnecessary "Decision required" indicators from "Waiting for user" lane (everything there already requires decisions)
+- **✅ UX Enhancement**: Cleaner, less cluttered interface with better information hierarchy
+
+**Structural Improvements:**
+- **✅ Clean Architecture**: Moved from messy `/data` directory to organized `/backend + /tests` structure
+- **✅ Functional Organization**: 
+  - `/backend/api` - REST endpoints for frontend
+  - `/backend/tools` - MCP tools for agent  
+  - `/backend/models` - Database schemas
+  - `/backend/database` - Database management
+  - `/tests` - Integration tests and sample data
+- **✅ Better Maintainability**: Clear separation of concerns, easier navigation
 
 ### **✅ MAJOR MILESTONE COMPLETED: KANBAN BACKEND v2 REWRITE**
 
-**Just Completed (December 2024):**
+**Recently Completed:**
 - **✅ PostgreSQL Backend**: Complete rewrite from file storage to robust database
 - **✅ Modern Architecture**: Python 3.13+, SQLAlchemy 2.0, FastMCP 2.3.4+, async/await
 - **✅ Dual Interface**: MCP tools for agent + comprehensive REST API for frontend
@@ -17,19 +34,14 @@
 - **✅ Project Setup**: Next.js 15.1 + React 19 + TypeScript + Tailwind + shadcn/ui  
 - **✅ Component Structure**: Navbar-based navigation with Chat, Kanban, Overview pages
 - **✅ Design System**: Dark theme, modern business aesthetic
+- **✅ UI Polish**: Clean decision workflows, removed redundant indicators
 - **⏳ API Integration**: Need to connect to new Kanban MCP v2 endpoints
 - **⏳ Priority Cleanup**: Remove priority fields from UI to match simplified backend
 
 ### **🚀 IMMEDIATE NEXT STEPS**
 
-#### **1. Frontend Priority Cleanup** 🎯
-**Priority**: Highest - Match backend simplification
-- **Remove**: All priority fields and selectors from TaskCard, CreateTask, etc.
-- **Update**: TaskResponse interfaces to match new backend schema
-- **Goal**: Frontend matches simplified backend model (no priority enum)
-
-#### **2. API Integration** 🔌
-**Priority**: High - Connect to real data
+#### **1. API Integration** 🔌
+**Priority**: Highest - Connect to real data
 - **Replace**: Mock data with real API calls to `localhost:8001/api/`
 - **Implement**: Full CRUD operations using new endpoints
 - **Test**: With sample data from `test_sample_data.py`
@@ -39,19 +51,32 @@
   - `GET /api/pending-decisions` - Tasks needing user decisions
   - Full CRUD for tasks, persons, projects, chats
 
-#### **3. Decision Workflow Implementation** 🤖
+#### **2. Frontend Priority Cleanup** 🎯
+**Priority**: High - Match backend simplification
+- **Remove**: All priority fields and selectors from TaskCard, CreateTask, etc.
+- **Update**: TaskResponse interfaces to match new backend schema
+- **Goal**: Frontend matches simplified backend model (no priority enum)
+
+#### **3. Testing & Validation** 🧪
+**Priority**: Medium - Ensure everything works
+- **Setup**: PostgreSQL via `docker-compose up postgres kanban-mcp`
+- **Populate**: Test data via `uv run python test_sample_data.py`
+- **Verify**: API endpoints work with real data
+- **Frontend**: Test with live backend integration
+
+#### **4. Decision Workflow Enhancement** 🤖
 **Priority**: Medium - Enhance UX
 - **Implement**: Pending decisions UI using `/api/pending-decisions`
 - **Add**: Decision approval/rejection workflows
 - **Goal**: Seamless user decision-making experience
 
-#### **4. Database & Testing** 🗄️
-**Priority**: Medium - Development workflow
-- **Setup**: PostgreSQL via `docker-compose up postgres kanban-mcp`
-- **Populate**: Test data via `uv run python test_sample_data.py`
-- **Verify**: API endpoints work with real data
 
-## 📋 **NEW BACKEND ARCHITECTURE OVERVIEW**
+
+**Benefits of New Structure:**
+- **Clear Separation**: No more mixed concerns in single directory
+- **Functional Organization**: Each directory has single, clear purpose
+- **Better Navigation**: Developers can find files more intuitively
+- **Maintainability**: Easier to understand and modify codebase
 
 ### **Kanban MCP v2 API Endpoints** 🔗
 ```typescript

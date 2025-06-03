@@ -1,5 +1,5 @@
 """
-Nova Kanban API Endpoints for Frontend Integration
+REST API endpoints for Nova frontend.
 
 Provides REST API endpoints that match the UI requirements:
 - Overview dashboard data
@@ -8,6 +8,7 @@ Provides REST API endpoints that match the UI requirements:
 - Entity management (persons, projects, artifacts)
 """
 
+import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
@@ -17,8 +18,8 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from database import db_manager
-from models import (
+from database.database import db_manager
+from models.models import (
     Task, TaskComment, Person, Project, Chat, ChatMessage, Artifact,
     TaskStatus
 )
@@ -155,12 +156,22 @@ class ChatResponse(BaseModel):
         from_attributes = True
 
 
+class ActivityItem(BaseModel):
+    type: str  # "task_created", "task_completed", "email_processed", etc.
+    title: str
+    description: str
+    time: str  # human readable time like "5 minutes ago"
+    timestamp: datetime
+    related_task_id: Optional[UUID] = None
+    related_chat_id: Optional[UUID] = None
+
+
 class OverviewStats(BaseModel):
+    task_counts: Dict[str, int]  # counts by status
     total_tasks: int
     pending_decisions: int
-    tasks_by_status: Dict[str, int]
-    recent_activity: List[Dict]
-    system_status: Dict[str, str]
+    recent_activity: List[ActivityItem]
+    system_status: str
 
 
 class ArtifactCreate(BaseModel):
@@ -188,54 +199,91 @@ router = APIRouter()
 # === Overview Dashboard Endpoints ===
 
 @router.get("/api/overview", response_model=OverviewStats)
-async def get_overview_stats():
-    """Get overview dashboard statistics."""
+async def get_overview():
+    """Get dashboard overview with task counts, pending decisions, and recent activity."""
     async with db_manager.get_session() as session:
-        # Total tasks
-        total_tasks_result = await session.execute(select(func.count(Task.id)))
-        total_tasks = total_tasks_result.scalar()
+        # Get task counts by status
+        task_count_query = select(Task.status, func.count(Task.id)).group_by(Task.status)
+        result = await session.execute(task_count_query)
+        status_counts = dict(result.all())
         
-        # Pending decisions (tasks in NEEDS_REVIEW status)
-        pending_decisions_result = await session.execute(
-            select(func.count(Task.id)).where(Task.status == TaskStatus.NEEDS_REVIEW)
-        )
-        pending_decisions = pending_decisions_result.scalar()
+        # Convert enum keys to strings for frontend
+        task_counts = {status.value: count for status, count in status_counts.items()}
+        total_tasks = sum(task_counts.values())
         
-        # Tasks by status
-        status_counts = {}
-        for status in TaskStatus:
-            count_result = await session.execute(
-                select(func.count(Task.id)).where(Task.status == status)
-            )
-            status_counts[status.value] = count_result.scalar()
+        # Get pending decisions count
+        pending_decisions = task_counts.get("USER_INPUT_RECEIVED", 0) + task_counts.get("NEEDS_REVIEW", 0)
         
-        # Recent activity (last 10 tasks updated)
-        recent_tasks_result = await session.execute(
-            select(Task).order_by(Task.updated_at.desc()).limit(10)
-        )
-        recent_tasks = recent_tasks_result.scalars().all()
-        
-        recent_activity = []
-        for task in recent_tasks:
-            activity_type = "task_created" if task.created_at == task.updated_at else "task_updated"
-            recent_activity.append({
-                "type": activity_type,
-                "title": f"Task: {task.title}",
-                "description": f"Status: {task.status.value}",
-                "time": task.updated_at.isoformat()
-            })
+        # Get recent activity
+        recent_activity = await get_recent_activity_items(session)
         
         return OverviewStats(
+            task_counts=task_counts,
             total_tasks=total_tasks,
             pending_decisions=pending_decisions,
-            tasks_by_status=status_counts,
             recent_activity=recent_activity,
-            system_status={
-                "nova_agent": "operational",
-                "gmail_mcp": "operational",
-                "kanban_mcp": "operational"
-            }
+            system_status="operational"
         )
+
+
+@router.get("/api/recent-activity", response_model=List[ActivityItem])
+async def get_recent_activity():
+    """Get recent system activity feed."""
+    async with db_manager.get_session() as session:
+        return await get_recent_activity_items(session)
+
+
+async def get_recent_activity_items(session, limit: int = 10) -> List[ActivityItem]:
+    """Helper function to get recent activity items."""
+    activities = []
+    
+    # Get recent task activities (created, completed, status changes)
+    recent_tasks_query = (
+        select(Task)
+        .options(selectinload(Task.comments))
+        .order_by(Task.updated_at.desc())
+        .limit(limit)
+    )
+    result = await session.execute(recent_tasks_query)
+    recent_tasks = result.scalars().all()
+    
+    for task in recent_tasks:
+        # Calculate time difference
+        time_diff = datetime.utcnow() - task.updated_at
+        if time_diff.seconds < 60:
+            time_str = "Just now"
+        elif time_diff.seconds < 3600:
+            minutes = time_diff.seconds // 60
+            time_str = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        elif time_diff.days == 0:
+            hours = time_diff.seconds // 3600
+            time_str = f"{hours} hour{'s' if hours != 1 else ''} ago"
+        else:
+            time_str = f"{time_diff.days} day{'s' if time_diff.days != 1 else ''} ago"
+        
+        # Determine activity type and description
+        if task.status == TaskStatus.DONE:
+            activity_type = "task_completed"
+            description = f"Moved to DONE lane"
+        elif task.status == TaskStatus.NEW:
+            activity_type = "task_created" 
+            description = f"Created in {task.status.value} lane"
+        else:
+            activity_type = "task_updated"
+            description = f"Updated status to {task.status.value}"
+        
+        activities.append(ActivityItem(
+            type=activity_type,
+            title=f"Task: {task.title}",
+            description=description,
+            time=time_str,
+            timestamp=task.updated_at,
+            related_task_id=task.id
+        ))
+    
+    # Sort by timestamp and return most recent
+    activities.sort(key=lambda x: x.timestamp, reverse=True)
+    return activities[:limit]
 
 
 @router.get("/api/pending-decisions", response_model=List[TaskResponse])

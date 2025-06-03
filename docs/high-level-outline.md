@@ -3,6 +3,30 @@
 Nova is an AI assistant for an director in an IT consultancy. 
 This is the high-level requirements document for Nova.
 
+# Project Structure
+
+Nova follows a clean, function-based architecture with clear separation of concerns:
+
+```
+nova/
+├── backend/                    # Core Nova agent and business logic
+│   ├── api/                   # REST endpoints for frontend
+│   ├── tools/                 # Tools for agent
+│   ├── agent/                # Agent logic
+│   ├── models/                # Database schemas and data models
+│   ├── database/              # Database management and connections
+│   └── main.py               # Backend (APIs + Agent) entry point
+├── tests/                     # Integration tests and sample data
+│   ├── test_mcp_connection.py # MCP protocol tests
+│   ├── test_sample_data.py   # Sample data generation
+│   └── README.md             # Testing documentation
+├── frontend/                  # Nova main UI (Next.js)
+├── mcp_servers/              # Independent MCP servers
+│   ├── gmail/                # Gmail MCP server
+│   └── ...                   # Future MCP servers
+└── memory-bank/              # Project documentation
+```
+
 # Techstack
 ## Agent Techstack:
 - python 3.13 with uv for venvs and pytest for tests
@@ -16,7 +40,6 @@ This is the high-level requirements document for Nova.
 
 # MCP Servers
 - GMail incl Calendar
-- Kanban board
 - Markitdown for conversions (https://github.com/microsoft/markitdown). This also needs normal API endpoints like the Kanban board
 
 ## UI Techstack:

@@ -1,10 +1,13 @@
 """
-Nova Kanban FastMCP Server
+Nova Backend Server
 
 Provides both:
 1. MCP tools for the Nova agent (/mcp/ endpoints)
 2. REST API for the frontend (/api/ endpoints)
 3. Health monitoring (/health endpoint)
+
+This is Nova's core backend, containing essential models and API for tasks, people, 
+projects, and chats that power the Nova AI Assistant interface.
 """
 
 import asyncio
@@ -18,9 +21,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastmcp import FastMCP
 
-from api_endpoints import router as api_router
-from database import db_manager
-from mcp_tools import get_mcp_tools
+from api.api_endpoints import router as api_router
+from database.database import db_manager
+from tools.mcp_tools import get_mcp_tools
 
 # Load environment variables
 load_dotenv()
@@ -34,7 +37,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
-    logger.info("Starting Nova Kanban MCP Server...")
+    logger.info("Starting Nova Backend Server...")
     
     # Note: Database tables are created automatically via SQLAlchemy
     # since we're using a persistent PostgreSQL instance.
@@ -50,14 +53,14 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
-    logger.info("Shutting down Nova Kanban MCP Server...")
+    logger.info("Shutting down Nova Backend Server...")
     await db_manager.close()
 
 
 # Create FastAPI app
 app = FastAPI(
-    title="Nova Kanban MCP Server",
-    description="Kanban management with MCP protocol and REST API",
+    title="Nova Backend Server",
+    description="Core Nova backend with MCP protocol and REST API",
     version="2.0.0",
     lifespan=lifespan
 )
@@ -73,7 +76,7 @@ app.add_middleware(
 )
 
 # Create FastMCP instance
-mcp = FastMCP("Nova Kanban MCP")
+mcp = FastMCP("Nova Backend MCP")
 
 # Register MCP tools
 tools = get_mcp_tools()
@@ -93,9 +96,9 @@ app.include_router(api_router)
 async def root():
     """Root endpoint with service information."""
     return {
-        "service": "nova-kanban-mcp",
+        "service": "nova-backend",
         "version": "2.0.0",
-        "description": "Nova Kanban MCP Server with PostgreSQL backend",
+        "description": "Nova Backend Server with PostgreSQL backend",
         "endpoints": {
             "mcp": "/mcp/ (for Nova agent)",
             "api": "/api/ (for frontend)",
@@ -120,7 +123,7 @@ async def health_check():
     
     return {
         "status": "healthy" if db_status == "healthy" else "degraded",
-        "service": "nova-kanban-mcp",
+        "service": "nova-backend",
         "version": "2.0.0",
         "database": db_status,
         "mcp_tools": len(tools),

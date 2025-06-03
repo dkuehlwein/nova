@@ -8,6 +8,33 @@
 - **Kanban MCP** (Port 8001): 10 task management tools  
 - **Future**: OpenMemory MCP, MarkItDown MCP
 
+### **Clean Project Structure** 🗂️
+**Organized by function with clear separation of concerns**
+```
+nova/
+├── backend/                    # Core Nova agent and business logic
+│   ├── api/                   # REST endpoints for frontend
+│   ├── tools/                 # Tools for agent
+│   ├── agent/                 # Agent endpoint
+│   ├── models/                # Database schemas and data models
+│   ├── database/              # Database management and connections
+│   └── main.py                # Backend (APIs + Agent) entry point
+├── tests/                     # Integration tests and sample data
+│   ├── test_mcp_connection.py # MCP protocol tests
+│   ├── test_sample_data.py   # Sample data generation
+│   └── README.md             # Testing documentation
+├── frontend/                  # Nova main UI
+├── mcp_servers/              # Independent MCP servers
+│   ├── gmail/                # Gmail MCP server
+│   └── ...                   # Future MCP servers
+└── memory-bank/              # Project documentation
+```
+
+**Key Improvements from Previous Structure:**
+- **❌ Previous**: Messy `/data` directory with mixed concerns (tests, MCP definitions, business logic)
+- **✅ Current**: Clean separation with `/backend` (organized by function) + `/tests` (dedicated testing)
+- **Benefits**: Clear responsibility boundaries, easier navigation, better maintainability
+
 ### **Unified Frontend Orchestration** 🎯
 **Nova as primary orchestrator with fully integrated components**
 ```
@@ -34,6 +61,32 @@ nova/frontend/
 │   └── api.ts            # API client functions
 └── styles/
     └── globals.css       # Tailwind + dark theme
+```
+
+### **Backend Organization by Function** ⚙️
+**Clean functional separation within backend directory**
+```
+backend/
+├── api/                    # REST endpoints for frontend
+│   ├── routes/            # API route handlers
+│   ├── middleware/        # Request/response middleware
+│   └── validation/        # Input validation schemas
+├── tools/                 # MCP tools for agent
+│   ├── email_tools.py    # Email-related agent tools
+│   ├── task_tools.py     # Task management tools
+│   └── util_tools.py     # Utility and helper tools
+├── models/                # Database schemas and data models
+│   ├── task.py           # Task entity models
+│   ├── person.py         # Person entity models
+│   ├── project.py        # Project entity models
+│   └── base.py           # Base model classes
+├── database/              # Database management
+│   ├── connection.py     # Database connection handling
+│   ├── migrations/       # Schema migrations
+│   └── config.py         # Database configuration
+└── config/               # Application configuration
+    ├── settings.py       # Environment and app settings
+    └── logging.py        # Logging configuration
 ```
 
 ### **Frontend Architecture Decisions** ⚙️

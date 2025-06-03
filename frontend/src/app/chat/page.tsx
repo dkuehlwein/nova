@@ -123,14 +123,6 @@ Would you like me to send this email, or would you prefer to make any changes fi
                 New Chat
               </Button>
             </div>
-            {pendingCount > 0 && (
-              <div className="flex items-center space-x-2 text-sm">
-                <AlertTriangle className="h-4 w-4 text-red-500" />
-                <span className="text-red-500 font-medium">
-                  {pendingCount} need{pendingCount > 1 ? '' : 's'} your input
-                </span>
-              </div>
-            )}
           </div>
 
           <div className="overflow-y-auto flex-1">
@@ -138,9 +130,14 @@ Would you like me to send this email, or would you prefer to make any changes fi
               {/* Priority Conversations - Ones needing decisions */}
               {conversations.filter(c => c.hasDecision).length > 0 && (
                 <div className="mb-4">
-                  <h3 className="text-xs font-medium text-muted-foreground mb-2 px-2 uppercase tracking-wide">
-                    Awaiting Input
-                  </h3>
+                  <div className="flex items-center justify-between mb-2 px-2">
+                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Awaiting Input
+                    </h3>
+                    <Badge variant="destructive" className="text-xs px-1 py-0">
+                      {conversations.filter(c => c.hasDecision).length}
+                    </Badge>
+                  </div>
                   {conversations
                     .filter(c => c.hasDecision)
                     .map((conversation) => (

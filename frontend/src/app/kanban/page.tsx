@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Plus, MoreHorizontal, AlertCircle, Clock, CheckCircle, User, Calendar } from "lucide-react";
+import { Plus, MoreHorizontal, AlertTriangle, Clock, CheckCircle, User, Calendar, PlayCircle, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -26,11 +26,21 @@ interface Lane {
 }
 
 export default function KanbanPage() {
-  // Mock kanban data
+  // Mock kanban data - updated to match real task statuses
+  const currentTask: Task | null = {
+    id: "task-current",
+    title: "Implement user dashboard",
+    description: "Build the main dashboard with charts and metrics. This includes setting up the React components, integrating with the backend API, and ensuring responsive design across all devices.",
+    priority: "high",
+    assignee: "Nova AI",
+    dueDate: "2024-01-20",
+    tags: ["frontend", "dashboard", "react"]
+  };
+
   const lanes: Lane[] = [
     {
-      id: "todo",
-      title: "TODO",
+      id: "new",
+      title: "NEW",
       color: "bg-blue-500",
       tasks: [
         {
@@ -50,11 +60,18 @@ export default function KanbanPage() {
           assignee: "Jane Smith",
           dueDate: "2024-01-18",
           tags: ["presentation", "client"]
-        },
+        }
+      ]
+    },
+    {
+      id: "user-input-received",
+      title: "USER INPUT RECEIVED", 
+      color: "bg-green-500",
+      tasks: [
         {
           id: "task-3",
           title: "Code review for authentication module",
-          description: "Review pull request #234",
+          description: "Review pull request #234 with user's requested changes",
           priority: "high",
           assignee: "Mike Johnson",
           dueDate: "2024-01-12",
@@ -63,33 +80,8 @@ export default function KanbanPage() {
       ]
     },
     {
-      id: "in-progress",
-      title: "IN PROGRESS", 
-      color: "bg-yellow-500",
-      tasks: [
-        {
-          id: "task-4",
-          title: "Implement user dashboard",
-          description: "Build the main dashboard with charts and metrics",
-          priority: "high",
-          assignee: "Alice Brown",
-          dueDate: "2024-01-20",
-          tags: ["frontend", "dashboard"]
-        },
-        {
-          id: "task-5",
-          title: "Database optimization",
-          description: "Optimize queries for better performance",
-          priority: "medium", 
-          assignee: "Bob Wilson",
-          dueDate: "2024-01-25",
-          tags: ["database", "performance"]
-        }
-      ]
-    },
-    {
-      id: "waiting-for-user",
-      title: "WAITING FOR USER",
+      id: "needs-review",
+      title: "NEEDS REVIEW",
       color: "bg-red-500",
       tasks: [
         {
@@ -117,12 +109,28 @@ export default function KanbanPage() {
       ]
     },
     {
-      id: "done",
-      title: "DONE",
-      color: "bg-green-500", 
+      id: "waiting",
+      title: "WAITING",
+      color: "bg-orange-500",
       tasks: [
         {
           id: "task-8",
+          title: "Client feedback on proposal",
+          description: "Waiting for client response on project proposal",
+          priority: "medium",
+          assignee: "Sales Team",
+          dueDate: "2024-01-22",
+          tags: ["client", "proposal"]
+        }
+      ]
+    },
+    {
+      id: "done",
+      title: "DONE",
+      color: "bg-gray-500", 
+      tasks: [
+        {
+          id: "task-9",
           title: "Setup CI/CD pipeline",
           description: "Configured GitHub Actions for automated deployment",
           priority: "high",
@@ -132,7 +140,7 @@ export default function KanbanPage() {
           completedAt: "2024-01-05"
         },
         {
-          id: "task-9",
+          id: "task-10",
           title: "User authentication implementation",
           description: "Implemented JWT-based authentication system",
           priority: "high",
@@ -155,15 +163,10 @@ export default function KanbanPage() {
   };
 
   const TaskCard = ({ task }: { task: Task }) => (
-    <div className={`bg-card border rounded-lg p-4 mb-3 cursor-pointer hover:shadow-md transition-shadow ${
-      task.needsDecision ? "border-red-500/30 bg-red-500/5" : "border-border"
-    }`}>
+    <div className="bg-card border border-border rounded-lg p-4 mb-3 cursor-pointer hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between mb-2">
         <h4 className="font-medium text-foreground text-sm">{task.title}</h4>
         <div className="flex items-center space-x-1">
-          {task.needsDecision && (
-            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-          )}
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
             <MoreHorizontal className="h-3 w-3" />
           </Button>
@@ -180,11 +183,6 @@ export default function KanbanPage() {
             {tag}
           </Badge>
         ))}
-        {task.needsDecision && (
-          <Badge variant="destructive" className="text-xs px-1 py-0">
-            Review
-          </Badge>
-        )}
       </div>
 
       <div className="flex items-center justify-between text-xs">
@@ -227,8 +225,62 @@ export default function KanbanPage() {
             </div>
           </div>
 
-          {/* Kanban Board */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Current In-Progress Task - Highlighted Section */}
+          {currentTask && (
+            <div className="mb-8 bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 rounded-lg p-6">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <PlayCircle className="h-6 w-6 text-yellow-500" />
+                    <h2 className="text-lg font-semibold text-foreground">Currently Working On</h2>
+                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-700">
+                      In Progress
+                    </Badge>
+                  </div>
+                  
+                  <h3 className="text-xl font-medium text-foreground mb-2">{currentTask.title}</h3>
+                  <p className="text-muted-foreground mb-4 max-w-3xl">{currentTask.description}</p>
+                  
+                  <div className="flex items-center space-x-4 text-sm">
+                    <div className="flex items-center space-x-1">
+                      <User className="h-4 w-4" />
+                      <span className="text-muted-foreground">{currentTask.assignee}</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Calendar className="h-4 w-4" />
+                      <span className="text-muted-foreground">Due {currentTask.dueDate}</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className={`w-3 h-3 rounded-full ${getPriorityColor(currentTask.priority)}`}></div>
+                      <span className="text-muted-foreground capitalize">{currentTask.priority} priority</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {currentTask.tags.map((tag: string) => (
+                      <Badge key={tag} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="flex flex-col space-y-2">
+                  <Button size="sm">
+                    <ArrowRight className="h-4 w-4 mr-1" />
+                    View Details
+                  </Button>
+                  <Button size="sm" variant="outline">
+                    <CheckCircle className="h-4 w-4 mr-1" />
+                    Mark Complete
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Kanban Board - Without In Progress Lane */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
             {lanes.map((lane) => (
               <div key={lane.id} className="bg-muted/50 rounded-lg p-4">
                 {/* Lane Header */}
@@ -262,49 +314,6 @@ export default function KanbanPage() {
                 </div>
               </div>
             ))}
-          </div>
-
-          {/* Quick Stats */}
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-foreground">Urgent Tasks</span>
-              </div>
-              <p className="text-2xl font-bold text-foreground mt-1">
-                {lanes.flatMap(l => l.tasks).filter(t => t.priority === "high").length}
-              </p>
-            </div>
-
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center space-x-2">
-                <AlertCircle className="h-4 w-4 text-red-500" />
-                <span className="text-sm font-medium text-foreground">Awaiting Decisions</span>
-              </div>
-              <p className="text-2xl font-bold text-foreground mt-1">
-                {lanes.flatMap(l => l.tasks).filter(t => t.needsDecision).length}
-              </p>
-            </div>
-
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center space-x-2">
-                <Clock className="h-4 w-4 text-yellow-500" />
-                <span className="text-sm font-medium text-foreground">In Progress</span>
-              </div>
-              <p className="text-2xl font-bold text-foreground mt-1">
-                {lanes.find(l => l.id === "in-progress")?.tasks.length || 0}
-              </p>
-            </div>
-
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span className="text-sm font-medium text-foreground">Completed</span>
-              </div>
-              <p className="text-2xl font-bold text-foreground mt-1">
-                {lanes.find(l => l.id === "done")?.tasks.length || 0}
-              </p>
-            </div>
           </div>
         </div>
       </div>

@@ -10,7 +10,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./data/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./backend/database/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nova} -d ${POSTGRES_DB:-nova_kanban}"]
       interval: 10s
@@ -18,15 +18,15 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Kanban MCP Server v2 (with PostgreSQL backend)
-  kanban-mcp:
+  # Nova Backend (Core data services: API + Agent)
+  nova-backend:
     build:
-      context: ./data
+      context: ./backend
       dockerfile: Dockerfile
     ports:
       - "${PORT:-8001}:${PORT:-8001}"
     environment:
-      DATABASE_URL: postgresql+asyncpg://nova:nova_dev_password@postgres:5432/nova_kanban
+      DATABASE_URL: postgresql+asyncpg://nova:nova_dev_password@postgres:5432/nova_kanban # TODO: get this from env vars
       HOST: ${HOST:-0.0.0.0}
       PORT: ${PORT:-8001}
       SQL_DEBUG: ${SQL_DEBUG:-false}
@@ -61,36 +61,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # Fast MCP Example Server
-  example-mcp:
-    build:
-      context: ./mcp_servers/fast_mcp_example
-      dockerfile: Dockerfile
-    ports:
-      - "8003:8000"
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8000
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Kanban Frontend (optional - for testing the kanban UI)
-  kanban-frontend:
-    build:
-      context: ./mcp_servers/kanban/frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    depends_on:
-      - kanban-mcp
-    environment:
-      - VITE_API_URL=http://localhost:8001
-    restart: unless-stopped
 
 volumes:
   postgres_data:
