@@ -16,10 +16,13 @@ dependencies = [
     "python-dateutil>=2.8.2",
     "uuid6>=2023.5.2",
     "python-dotenv>=1.0.0",
-    "langchain>=0.1.0",
-    "langchain-core>=0.1.0",
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-google-genai>=2.0.0",
+    "langgraph>=0.2.0",
     "pytest>=8.3.5",
     "pytest-asyncio>=1.0.0",
+    "pydantic-settings>=2.9.1",
 ]
 requires-python = ">=3.13"
 
@@ -36,4 +39,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["api", "database", "models", "tools"] 
+packages = ["api", "database", "models", "tools", "agent"] 

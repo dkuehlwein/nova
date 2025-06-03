@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from api.api_endpoints import router as api_router
+from api.chat_endpoints import router as chat_router
 from database.database import db_manager
 
 # Load environment variables
@@ -73,6 +74,7 @@ app.add_middleware(
 
 # Mount API routes
 app.include_router(api_router)
+app.include_router(chat_router)
 
 # Root endpoint
 @app.get("/")

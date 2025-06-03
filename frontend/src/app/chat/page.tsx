@@ -1,113 +1,108 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Send, AlertTriangle, CheckCircle, MessageSquare, Bot, User, Clock } from "lucide-react";
+import { Send, AlertTriangle, CheckCircle, MessageSquare, Bot, User, Clock, Loader2, StopCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useChat } from "@/hooks/useChat";
 
 export default function ChatPage() {
   const [message, setMessage] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const {
+    messages,
+    isLoading,
+    error,
+    isConnected,
+    sendMessage,
+    clearChat,
+    stopStreaming,
+    checkHealth,
+  } = useChat();
 
-  // Mock conversation history
-  const conversations = [
-    {
-      id: "chat-123",
-      title: "Email draft for John Smith",
-      lastMessage: "Please review the draft before sending",
-      lastActivity: "2 hours ago",
-      hasDecision: true,
-      isActive: true
-    },
-    {
-      id: "chat-124",
-      title: "Task assignment strategy",
-      lastMessage: "I've identified 3 team members who could...",
-      lastActivity: "4 hours ago", 
-      hasDecision: true,
-      isActive: false
-    },
-    {
-      id: "chat-125",
-      title: "Quarterly report review",
-      lastMessage: "Task created and moved to TODO",
-      lastActivity: "1 day ago",
-      hasDecision: false,
-      isActive: false
-    },
-    {
-      id: "chat-126",
-      title: "Client presentation updates",
-      lastMessage: "Presentation has been updated successfully",
-      lastActivity: "2 days ago",
-      hasDecision: false,
-      isActive: false
-    }
-  ];
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-  // Find active conversation
-  const activeConversation = conversations.find(c => c.isActive);
-  const pendingCount = conversations.filter(c => c.hasDecision).length;
+  // Check health on component mount
+  useEffect(() => {
+    checkHealth().catch(console.error);
+  }, [checkHealth]);
 
-  // Mock current conversation messages
-  const currentMessages = [
-    {
-      id: 1,
-      sender: "user",
-      content: "I need to respond to John Smith's email about the project timeline",
-      timestamp: "3 hours ago"
-    },
-    {
-      id: 2,
-      sender: "assistant",
-      content: "I've reviewed John's email and can help you draft a response. Based on the project timeline you shared with me last week, I can see there might be some delays due to the resource constraints. Would you like me to draft a response that acknowledges the delay and proposes a revised timeline?",
-      timestamp: "3 hours ago"
-    },
-    {
-      id: 3,
-      sender: "user", 
-      content: "Yes, please draft something professional but honest about the situation",
-      timestamp: "2 hours ago"
-    },
-    {
-      id: 4,
-      sender: "assistant",
-      content: `I've drafted the following response for your review:
-
----
-
-Hi John,
-
-Thank you for your email regarding the project timeline. I wanted to provide you with an honest update on our progress.
-
-Due to some resource allocation challenges we've encountered, we're looking at a revised timeline that extends our original delivery date by approximately 2 weeks. I understand this may impact your planning, and I want to be transparent about this as early as possible.
-
-Here's what we're doing to minimize the delay:
-- Reallocating senior developers to critical path items
-- Implementing daily stand-ups to track progress more closely
-- Identifying opportunities to parallelize certain tasks
-
-I'm confident we can deliver a high-quality solution with this adjusted timeline. Could we schedule a brief call this week to discuss this in more detail and address any concerns you might have?
-
-Best regards,
-[Your name]
-
----
-
-Would you like me to send this email, or would you prefer to make any changes first?`,
-      timestamp: "2 hours ago",
-      needsDecision: true,
-      decisionType: "email_approval"
-    }
-  ];
-
-  const handleSendMessage = () => {
-    if (message.trim()) {
-      // Handle sending message logic here
+  const handleSendMessage = async () => {
+    if (message.trim() && !isLoading) {
+      const messageToSend = message;
       setMessage("");
+      await sendMessage(messageToSend, true); // Use streaming by default
     }
   };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const formatTimestamp = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
+  const renderMessage = (msg: any, index: number) => (
+    <div
+      key={msg.id}
+      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} mb-4`}
+    >
+      <div
+        className={`max-w-[80%] ${
+          msg.role === "user"
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted border"
+        } rounded-lg p-4`}
+      >
+        <div className="flex items-start space-x-3">
+          <div className="flex-shrink-0">
+            {msg.role === "assistant" ? (
+              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                <Bot className="h-4 w-4 text-white" />
+              </div>
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+                <User className="h-4 w-4 text-white" />
+              </div>
+            )}
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center space-x-2 mb-1">
+              <span className="text-sm font-medium">
+                {msg.role === "assistant" ? "Nova" : "You"}
+              </span>
+              <span className="text-xs opacity-60">
+                {formatTimestamp(msg.timestamp)}
+              </span>
+              {msg.isStreaming && (
+                <Loader2 className="h-3 w-3 animate-spin opacity-60" />
+              )}
+            </div>
+            
+            <div className="text-sm whitespace-pre-wrap break-words">
+              {msg.content}
+              {msg.isStreaming && !msg.content && (
+                <span className="opacity-60">Thinking...</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -117,94 +112,92 @@ Would you like me to send this email, or would you prefer to make any changes fi
         {/* Sidebar */}
         <div className="w-80 border-r border-border bg-card">
           <div className="p-4 border-b border-border">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold text-foreground">Conversations</h2>
-              <Button size="sm" variant="outline">
-                New Chat
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-foreground">Nova Chat</h2>
+              <div className="flex items-center space-x-2">
+                {isConnected ? (
+                  <Badge variant="default" className="text-xs bg-green-500">
+                    Connected
+                  </Badge>
+                ) : (
+                  <Badge variant="destructive" className="text-xs">
+                    Disconnected
+                  </Badge>
+                )}
+              </div>
+            </div>
+            
+            <div className="text-sm text-muted-foreground mb-4">
+              Chat with Nova, your AI assistant for managing tasks, people, and projects.
+            </div>
+
+            <div className="space-y-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={clearChat}
+                className="w-full"
+                disabled={isLoading}
+              >
+                Clear Chat
               </Button>
+              
+              {isLoading && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={stopStreaming}
+                  className="w-full"
+                >
+                  <StopCircle className="h-4 w-4 mr-2" />
+                  Stop
+                </Button>
+              )}
             </div>
           </div>
 
-          <div className="overflow-y-auto flex-1">
-            <div className="p-2">
-              {/* Priority Conversations - Ones needing decisions */}
-              {conversations.filter(c => c.hasDecision).length > 0 && (
-                <div className="mb-4">
-                  <div className="flex items-center justify-between mb-2 px-2">
-                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Awaiting Input
-                    </h3>
-                    <Badge variant="destructive" className="text-xs px-1 py-0">
-                      {conversations.filter(c => c.hasDecision).length}
-                    </Badge>
-                  </div>
-                  {conversations
-                    .filter(c => c.hasDecision)
-                    .map((conversation) => (
-                      <div
-                        key={conversation.id}
-                        className={`p-3 rounded-lg mb-2 cursor-pointer transition-colors ${
-                          conversation.isActive 
-                            ? "bg-red-500/15 border border-red-500/30" 
-                            : "bg-red-500/5 border border-red-500/10 hover:bg-red-500/10"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h4 className="text-sm font-medium text-foreground truncate mb-1">
-                              {conversation.title}
-                            </h4>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {conversation.lastMessage}
-                            </p>
-                            <div className="flex items-center justify-between mt-2">
-                              <p className="text-xs text-muted-foreground">
-                                {conversation.lastActivity}
-                              </p>
-                              <AlertTriangle className="h-3 w-3 text-red-500 flex-shrink-0" />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-
-              {/* Regular Conversations */}
-              {conversations.filter(c => !c.hasDecision).length > 0 && (
-                <div>
-                  <h3 className="text-xs font-medium text-muted-foreground mb-2 px-2 uppercase tracking-wide">
-                    Recent
-                  </h3>
-                  {conversations
-                    .filter(c => !c.hasDecision)
-                    .map((conversation) => (
-                      <div
-                        key={conversation.id}
-                        className={`p-3 rounded-lg mb-2 cursor-pointer transition-colors ${
-                          conversation.isActive 
-                            ? "bg-muted" 
-                            : "hover:bg-muted/50"
-                        }`}
-                      >
-                        <div className="flex items-start space-x-2">
-                          <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
-                          <div className="flex-1">
-                            <h4 className="text-sm font-medium text-foreground truncate">
-                              {conversation.title}
-                            </h4>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {conversation.lastMessage}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {conversation.lastActivity}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
+          {/* Quick Actions */}
+          <div className="p-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wide">
+              Quick Actions
+            </h3>
+            <div className="space-y-2">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="w-full justify-start text-left"
+                onClick={() => setMessage("Create a new task for reviewing quarterly reports")}
+                disabled={isLoading}
+              >
+                📝 Create a task
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="w-full justify-start text-left"
+                onClick={() => setMessage("Show me all tasks that need my attention")}
+                disabled={isLoading}
+              >
+                👀 Check pending tasks
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="w-full justify-start text-left"
+                onClick={() => setMessage("Add a new team member to the system")}
+                disabled={isLoading}
+              >
+                👥 Add team member
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="w-full justify-start text-left"
+                onClick={() => setMessage("What can you help me with?")}
+                disabled={isLoading}
+              >
+                ❓ Get help
+              </Button>
             </div>
           </div>
         </div>
@@ -212,105 +205,107 @@ Would you like me to send this email, or would you prefer to make any changes fi
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col">
           {/* Chat Header */}
-          {activeConversation && (
-            <div className="p-4 border-b border-border bg-card">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="flex items-center space-x-2">
-                    {activeConversation.hasDecision ? (
-                      <AlertTriangle className="h-5 w-5 text-red-500" />
-                    ) : (
-                      <CheckCircle className="h-5 w-5 text-green-500" />
-                    )}
-                    <h2 className="text-lg font-semibold text-foreground">
-                      {activeConversation.title}
-                    </h2>
-                  </div>
-                  {activeConversation.hasDecision && (
-                    <Badge variant="destructive" className="text-xs">
-                      Input Required
-                    </Badge>
-                  )}
+          <div className="p-4 border-b border-border bg-card">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                  <Bot className="h-5 w-5 text-white" />
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  Last activity: {activeConversation.lastActivity}
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Nova Assistant</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {isConnected ? "Ready to help with your tasks" : "Connecting..."}
+                  </p>
                 </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                {error && (
+                  <Badge variant="destructive" className="text-xs">
+                    Error
+                  </Badge>
+                )}
               </div>
             </div>
-          )}
+          </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {currentMessages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[70%] ${
-                    msg.sender === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : msg.needsDecision
-                      ? "bg-red-500/10 border border-red-500/20"
-                      : "bg-muted"
-                  } rounded-lg p-4`}
-                >
-                  <div className="flex items-start space-x-2 mb-2">
-                    {msg.sender === "assistant" ? (
-                      <Bot className="h-4 w-4 mt-1 flex-shrink-0" />
-                    ) : (
-                      <User className="h-4 w-4 mt-1 flex-shrink-0" />
-                    )}
-                    <div className="flex-1">
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      {msg.needsDecision && (
-                        <div className="mt-4 p-3 bg-gradient-to-r from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-lg">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <AlertTriangle className="h-4 w-4 text-red-500" />
-                            <span className="text-sm font-medium text-red-500">
-                              Your Decision Needed
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mb-3">
-                            Please review the email draft above and choose an action:
-                          </p>
-                          <div className="flex space-x-2">
-                            <Button size="sm" variant="default">
-                              Send as-is
-                            </Button>
-                            <Button size="sm" variant="outline">
-                              Request changes
-                            </Button>
-                            <Button size="sm" variant="ghost">
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-xs opacity-70 text-right">
-                    {msg.timestamp}
-                  </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center mb-4">
+                  <Bot className="h-8 w-8 text-white" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Welcome to Nova Chat</h3>
+                <p className="text-muted-foreground max-w-md mb-6">
+                  I'm Nova, your AI assistant. I can help you manage tasks, organize your team, 
+                  track projects, and much more. Try asking me to create a task or show you what I can do!
+                </p>
+                <div className="grid grid-cols-2 gap-3 max-w-lg">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setMessage("What can you help me with?")}
+                    disabled={isLoading}
+                  >
+                    Get Started
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setMessage("Show me my current tasks")}
+                    disabled={isLoading}
+                  >
+                    Show Tasks
+                  </Button>
                 </div>
               </div>
-            ))}
+            ) : (
+              <div className="space-y-4">
+                {messages.map((msg, index) => renderMessage(msg, index))}
+                {error && (
+                  <div className="flex justify-center">
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">
+                      <AlertTriangle className="h-4 w-4 inline mr-2" />
+                      {error}
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
           </div>
 
           {/* Message Input */}
           <div className="p-4 border-t border-border bg-card">
-            <div className="flex space-x-2">
-              <Textarea
-                placeholder="Type your message..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                className="flex-1 min-h-[60px] resize-none"
-                rows={2}
-              />
-              <Button className="self-end">
-                <Send className="h-4 w-4" />
+            <div className="flex space-x-3">
+              <div className="flex-1">
+                <Textarea
+                  placeholder="Ask Nova anything... (Shift+Enter for new line, Enter to send)"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={handleKeyPress}
+                  className="min-h-[60px] resize-none"
+                  rows={2}
+                  disabled={isLoading}
+                />
+              </div>
+              <Button 
+                onClick={handleSendMessage}
+                disabled={!message.trim() || isLoading}
+                className="self-end h-[60px] px-6"
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
               </Button>
             </div>
+            
+            {!isConnected && (
+              <div className="mt-2 text-sm text-orange-600 flex items-center">
+                <AlertTriangle className="h-4 w-4 mr-1" />
+                Connection issues detected. Some features may not work properly.
+              </div>
+            )}
           </div>
         </div>
       </div>

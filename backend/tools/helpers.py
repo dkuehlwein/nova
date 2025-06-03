@@ -23,7 +23,7 @@ async def find_project_by_name(session, name: str) -> Optional[Project]:
     return result.scalar_one_or_none()
 
 
-async def format_task_for_agent(task: Task) -> Dict:
+async def format_task_for_agent(task: Task, comments_count: int = 0) -> Dict:
     """Format a task for agent consumption."""
     return {
         "id": str(task.id),
@@ -38,6 +38,6 @@ async def format_task_for_agent(task: Task) -> Dict:
         "tags": task.tags or [],
         "persons": [{"name": p.name, "email": p.email} for p in task.persons],
         "projects": [{"name": p.name, "client": p.client} for p in task.projects],
-        "comments_count": len(task.comments) if task.comments else 0,
+        "comments_count": comments_count,
         "needs_decision": task.status == TaskStatus.NEEDS_REVIEW
     } 
