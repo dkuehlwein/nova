@@ -49,6 +49,40 @@ class HealthResponse(BaseModel):
     timestamp: str = Field(..., description="Health check timestamp")
 
 
+def _convert_messages_to_langchain(messages: List[ChatMessage]) -> List:
+    """Convert Pydantic ChatMessage models to LangChain messages.
+    
+    Args:
+        messages: List of Pydantic ChatMessage models
+        
+    Returns:
+        List of LangChain message objects
+    """
+    langchain_messages = []
+    for msg in messages:
+        if msg.role == "user":
+            langchain_messages.append(HumanMessage(content=msg.content))
+        elif msg.role == "assistant":
+            langchain_messages.append(AIMessage(content=msg.content))
+    return langchain_messages
+
+
+def _create_config(thread_id: Optional[str] = None) -> Dict[str, Any]:
+    """Create configuration for LangGraph agent.
+    
+    Args:
+        thread_id: Optional thread identifier for conversation continuity
+        
+    Returns:
+        Configuration dictionary for the agent
+    """
+    return {
+        "configurable": {
+            "thread_id": thread_id or f"chat-{datetime.now().isoformat()}"
+        }
+    }
+
+
 @router.post("/stream")
 async def stream_chat(request: ChatRequest):
     """
@@ -58,19 +92,10 @@ async def stream_chat(request: ChatRequest):
     """
     try:
         # Convert Pydantic models to LangChain messages
-        messages = []
-        for msg in request.messages:
-            if msg.role == "user":
-                messages.append(HumanMessage(content=msg.content))
-            elif msg.role == "assistant":
-                messages.append(AIMessage(content=msg.content))
+        messages = _convert_messages_to_langchain(request.messages)
         
         # Create configuration
-        config = {
-            "configurable": {
-                "thread_id": request.thread_id or f"chat-{datetime.now().isoformat()}"
-            }
-        }
+        config = _create_config(request.thread_id)
         
         async def generate_response():
             """Generate SSE (Server-Sent Events) response stream."""
@@ -145,19 +170,10 @@ async def chat(request: ChatRequest):
     """
     try:
         # Convert Pydantic models to LangChain messages
-        messages = []
-        for msg in request.messages:
-            if msg.role == "user":
-                messages.append(HumanMessage(content=msg.content))
-            elif msg.role == "assistant":
-                messages.append(AIMessage(content=msg.content))
+        messages = _convert_messages_to_langchain(request.messages)
         
         # Create configuration
-        config = {
-            "configurable": {
-                "thread_id": request.thread_id or f"chat-{datetime.now().isoformat()}"
-            }
-        }
+        config = _create_config(request.thread_id)
         
         # Get response from LangGraph
         result = await graph.ainvoke({"messages": messages}, config=config)
@@ -233,32 +249,4 @@ async def get_available_tools():
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Tools error: {str(e)}")
-
-
-@router.post("/test")
-async def test_agent():
-    """
-    Test endpoint to verify agent functionality.
-    """
-    try:
-        # Simple test message
-        test_message = HumanMessage(content="Hello! Please introduce yourself and tell me what you can help with.")
-        
-        result = await graph.ainvoke({
-            "messages": [test_message]
-        })
-        
-        # Extract response
-        last_message = result["messages"][-1]
-        response_content = last_message.content if isinstance(last_message, AIMessage) else "No response"
-        
-        return {
-            "test_message": test_message.content,
-            "response": response_content,
-            "status": "success",
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Test error: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Tools error: {str(e)}") 

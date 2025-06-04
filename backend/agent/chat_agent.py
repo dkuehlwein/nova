@@ -72,66 +72,73 @@ Available tools:
     return {"messages": [response]}
 
 
-def create_checkpointer():
+def _create_checkpointer(async_mode: bool = False):
     """Create checkpointer based on configuration.
     
-    Returns PostgreSQL checkpointer if DATABASE_URL is set, 
-    otherwise returns in-memory checkpointer.
+    Args:
+        async_mode: If True, create async checkpointer, otherwise sync
+        
+    Returns:
+        PostgreSQL checkpointer if DATABASE_URL is set, 
+        otherwise returns in-memory checkpointer.
     """
     if settings.DATABASE_URL:
         try:
-            # Try to import PostgreSQL checkpointer
-            from langgraph.checkpoint.postgres import PostgresSaver
-            checkpointer = PostgresSaver.from_conn_string(settings.DATABASE_URL)
-            
-            # Setup tables on first use
-            try:
-                checkpointer.setup()
-            except Exception as setup_error:
-                print(f"Warning: Could not setup PostgreSQL tables: {setup_error}")
-                print("Make sure the database exists and is accessible.")
-                return MemorySaver()
-            
-            return checkpointer
+            if async_mode:
+                # Try to import async PostgreSQL checkpointer
+                from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+                return AsyncPostgresSaver.from_conn_string(settings.DATABASE_URL)
+            else:
+                # Try to import sync PostgreSQL checkpointer
+                from langgraph.checkpoint.postgres import PostgresSaver
+                return PostgresSaver.from_conn_string(settings.DATABASE_URL)
+                
         except ImportError:
-            print("PostgreSQL checkpointer not available. Install with: pip install langgraph-checkpoint-postgres")
+            checkpointer_type = "Async" if async_mode else "Sync"
+            print(f"{checkpointer_type} PostgreSQL checkpointer not available. Install with: pip install langgraph-checkpoint-postgres")
             return MemorySaver()
     else:
         print("Using in-memory checkpointer. Set DATABASE_URL for persistent conversations.")
         return MemorySaver()
+
+
+def create_checkpointer():
+    """Create sync checkpointer based on configuration."""
+    checkpointer = _create_checkpointer(async_mode=False)
+    
+    # Setup tables for PostgreSQL checkpointers
+    if hasattr(checkpointer, 'setup') and not isinstance(checkpointer, MemorySaver):
+        try:
+            checkpointer.setup()
+        except Exception as setup_error:
+            print(f"Warning: Could not setup PostgreSQL tables: {setup_error}")
+            print("Make sure the database exists and is accessible.")
+            return MemorySaver()
+    
+    return checkpointer
 
 
 async def create_async_checkpointer():
-    """Create async checkpointer based on configuration.
+    """Create async checkpointer based on configuration."""
+    checkpointer = _create_checkpointer(async_mode=True)
     
-    Returns async PostgreSQL checkpointer if DATABASE_URL is set, 
-    otherwise returns in-memory checkpointer.
-    """
-    if settings.DATABASE_URL:
+    # Setup tables for PostgreSQL checkpointers
+    if hasattr(checkpointer, 'setup') and not isinstance(checkpointer, MemorySaver):
         try:
-            # Try to import async PostgreSQL checkpointer
-            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-            checkpointer = AsyncPostgresSaver.from_conn_string(settings.DATABASE_URL)
-            
-            # Setup tables on first use
-            try:
-                await checkpointer.setup()
-            except Exception as setup_error:
-                print(f"Warning: Could not setup PostgreSQL tables: {setup_error}")
-                print("Make sure the database exists and is accessible.")
-                return MemorySaver()
-            
-            return checkpointer
-        except ImportError:
-            print("Async PostgreSQL checkpointer not available. Install with: pip install langgraph-checkpoint-postgres")
+            await checkpointer.setup()
+        except Exception as setup_error:
+            print(f"Warning: Could not setup PostgreSQL tables: {setup_error}")
+            print("Make sure the database exists and is accessible.")
             return MemorySaver()
-    else:
-        print("Using in-memory checkpointer. Set DATABASE_URL for persistent conversations.")
-        return MemorySaver()
+    
+    return checkpointer
 
 
-def create_graph():
-    """Create and compile the LangGraph chat agent."""
+def _create_graph_builder():
+    """Create the base graph builder with nodes and edges.
+    
+    This shared function eliminates duplication between sync and async graph creation.
+    """
     # Get Nova tools for the tool node
     tools = get_all_tools()
     
@@ -157,7 +164,12 @@ def create_graph():
     # After tools, go back to chatbot
     graph_builder.add_edge("tools", "chatbot")
     
-    # Create checkpointer
+    return graph_builder
+
+
+def create_graph():
+    """Create and compile the LangGraph chat agent with sync checkpointer."""
+    graph_builder = _create_graph_builder()
     checkpointer = create_checkpointer()
     
     # Compile the graph with checkpointer
@@ -166,83 +178,12 @@ def create_graph():
 
 async def create_async_graph():
     """Create and compile the LangGraph chat agent with async checkpointer."""
-    # Get Nova tools for the tool node
-    tools = get_all_tools()
-    
-    # Create the graph with message state and configuration schema
-    graph_builder = StateGraph(State, config_schema=Configuration)
-    
-    # Add nodes
-    graph_builder.add_node("chatbot", chatbot)
-    
-    # Create tool node
-    tool_node = ToolNode(tools=tools)
-    graph_builder.add_node("tools", tool_node)
-    
-    # Set entry point
-    graph_builder.add_edge(START, "chatbot")
-    
-    # Add conditional edges using tools_condition
-    graph_builder.add_conditional_edges(
-        "chatbot",
-        tools_condition,
-    )
-    
-    # After tools, go back to chatbot
-    graph_builder.add_edge("tools", "chatbot")
-    
-    # Create async checkpointer
+    graph_builder = _create_graph_builder()
     checkpointer = await create_async_checkpointer()
     
     # Compile the graph with checkpointer
     return graph_builder.compile(checkpointer=checkpointer)
 
 
-# The main graph instance
-graph = create_graph()
-
-
-# Test function for development
-async def test_graph():
-    """Test the LangGraph agent."""
-    from langchain_core.messages import HumanMessage
-    
-    print("\n🧪 Testing Nova LangGraph Agent...")
-    
-    # Use async graph for testing
-    test_graph = await create_async_graph()
-    
-    # Configuration for testing
-    config = {
-        "configurable": {
-            "thread_id": "test-thread-1",
-            "model_name": "gemini-2.5-flash-preview-04-17",
-            "temperature": 0.7
-        }
-    }
-    
-    # Test basic conversation
-    result = await test_graph.ainvoke({
-        "messages": [HumanMessage(content="Hello! What can you help me with?")]
-    }, config=config)
-    
-    print(f"Response: {result['messages'][-1].content}")
-    
-    # Test tool usage
-    result = await test_graph.ainvoke({
-        "messages": [HumanMessage(content="Create a new task called 'Test LangGraph integration'")]
-    }, config=config)
-    
-    print(f"Tool response: {result['messages'][-1].content}")
-    
-    # Test conversation continuity
-    result = await test_graph.ainvoke({
-        "messages": [HumanMessage(content="What was the task I just created?")]
-    }, config=config)
-    
-    print(f"Continuity test: {result['messages'][-1].content}")
-
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(test_graph()) 
+# The main graph instance (uses sync checkpointer)
+graph = create_graph() 

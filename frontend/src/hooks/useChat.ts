@@ -26,7 +26,7 @@ export function useChat() {
     messages: [],
     isLoading: false,
     error: null,
-    isConnected: false,
+    isConnected: true, // Start as connected to avoid initial health check
   });
 
   const [threadId] = useState(() => `chat-${Date.now()}`);
@@ -244,11 +244,11 @@ export function useChat() {
       messages: [],
       isLoading: false,
       error: null,
-      isConnected: false,
+      isConnected: true, // Keep connected status
     });
   }, [stopStreaming]);
 
-  // Check agent health
+  // Check agent health (manual trigger only)
   const checkHealth = useCallback(async () => {
     try {
       const health = await apiRequest<{
@@ -303,7 +303,7 @@ export function useChat() {
     addMessage,
     updateMessage,
 
-    // Utilities
+    // Utilities (manual trigger only)
     checkHealth,
     testAgent,
   };
