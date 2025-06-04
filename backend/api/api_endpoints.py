@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, func, or_, select, text, desc
 from sqlalchemy.orm import selectinload
@@ -24,10 +24,11 @@ from models.models import (
     TaskStatus
 )
 from api.chat_endpoints import (
-    _get_chat_history, 
-    _list_chat_threads, 
     ChatSummary, 
-    ChatMessageDetail
+    ChatMessageDetail,
+    get_checkpointer_from_app,
+    _get_chat_history_with_checkpointer,
+    _list_chat_threads
 )
 
 
@@ -616,15 +617,17 @@ async def add_task_comment(task_id: UUID, comment_data: TaskCommentCreate):
 # === Chat Endpoints ===
 
 @router.get("/api/chats", response_model=List[ChatSummary])
-async def list_chats():
+async def list_chats(request: Request):
     """List all chat conversations."""
     try:
-        thread_ids = await _list_chat_threads()
+        # Get checkpointer from app state
+        checkpointer = await get_checkpointer_from_app(request)
+        thread_ids = await _list_chat_threads(request)
         chat_summaries = []
         
         for thread_id in thread_ids:
             try:
-                messages = await _get_chat_history(thread_id)
+                messages = await _get_chat_history_with_checkpointer(thread_id, checkpointer)
                 
                 if not messages:
                     continue
@@ -664,10 +667,12 @@ async def list_chats():
 
 
 @router.get("/api/chats/{chat_id}", response_model=ChatSummary)
-async def get_chat(chat_id: str):
+async def get_chat(request: Request, chat_id: str):
     """Get a specific chat conversation summary."""
     try:
-        messages = await _get_chat_history(chat_id)
+        # Get checkpointer from app state
+        checkpointer = await get_checkpointer_from_app(request)
+        messages = await _get_chat_history_with_checkpointer(chat_id, checkpointer)
         
         if not messages:
             # Return empty chat for non-existent chats (404 would break frontend flow)
@@ -706,10 +711,12 @@ async def get_chat(chat_id: str):
 
 
 @router.get("/api/chats/{chat_id}/messages", response_model=List[ChatMessageDetail])
-async def get_chat_messages(chat_id: str):
+async def get_chat_messages(request: Request, chat_id: str):
     """Get messages for a specific chat conversation."""
     try:
-        messages = await _get_chat_history(chat_id)
+        # Get checkpointer from app state
+        checkpointer = await get_checkpointer_from_app(request)
+        messages = await _get_chat_history_with_checkpointer(chat_id, checkpointer)
         return messages
         
     except Exception as e:

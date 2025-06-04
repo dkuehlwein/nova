@@ -45,6 +45,7 @@ function ChatPage() {
     sendMessage,
     clearChat,
     stopStreaming,
+    loadChat,
   } = useChat();
 
   // Memoize the stable data to prevent unnecessary re-renders
@@ -177,33 +178,21 @@ function ChatPage() {
   }, [formatTimestamp]);
 
   const handleChatSelect = useCallback(async (chatItem: ChatHistoryItem) => {
-    // TODO: Load specific chat messages
-    if (chatItem.task_id) {
-      setMessage(`Show me details about task: ${chatItem.title}`);
-    } else {
-      // Try to load chat messages
-      try {
-        const messages = await apiRequest<{
-          id: string;
-          sender: string;
-          content: string;
-          created_at: string;
-          needs_decision: boolean;
-        }[]>(API_ENDPOINTS.chatMessages(chatItem.id));
-        
-        // For now, just suggest a follow-up message
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage && lastMessage.needs_decision) {
-          setMessage(`Continue our conversation about: ${chatItem.title}`);
-        } else {
-          setMessage(`Let's continue our chat about: ${chatItem.title}`);
-        }
-      } catch (error) {
-        console.warn('Failed to load chat messages:', error);
-        setMessage(`Continue our conversation: ${chatItem.title}`);
+    try {
+      if (chatItem.task_id) {
+        // For task-based chats, just set a message about the task
+        setMessage(`Show me details about task: ${chatItem.title}`);
+      } else {
+        // For regular chats, load the actual conversation
+        console.log(`Loading chat: ${chatItem.id}`);
+        await loadChat(chatItem.id);
       }
+    } catch (error) {
+      console.error('Failed to load chat:', error);
+      // Fallback: set a message to continue the conversation
+      setMessage(`Continue our conversation: ${chatItem.title}`);
     }
-  }, []);
+  }, [loadChat]);
 
   const renderMessage = useCallback((msg: any, index: number) => (
     <div

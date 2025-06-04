@@ -46,10 +46,67 @@ async def lifespan(app: FastAPI):
             logger.error(f"Failed to create database tables: {e}")
             raise
     
+    # Initialize PostgreSQL connection pool for chat checkpointer
+    pg_pool = None
+    try:
+        from config import settings
+        if settings.DATABASE_URL:
+            try:
+                from psycopg_pool import AsyncConnectionPool
+                from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+                
+                connection_kwargs = {
+                    "autocommit": True,
+                    "prepare_threshold": 0,
+                }
+                
+                logger.info("Setting up PostgreSQL connection pool for chat checkpointer...")
+                pg_pool = AsyncConnectionPool(
+                    conninfo=settings.DATABASE_URL,
+                    max_size=20,
+                    kwargs=connection_kwargs,
+                    open=False  # Will open explicitly
+                )
+                
+                await pg_pool.open()
+                
+                # Setup checkpointer tables
+                async with pg_pool.connection() as conn:
+                    checkpointer = AsyncPostgresSaver(conn)
+                    await checkpointer.setup()
+                    logger.info("PostgreSQL checkpointer tables set up successfully")
+                
+                # Store the pool in app state for use by endpoints
+                app.state.pg_pool = pg_pool
+                logger.info("PostgreSQL connection pool ready for chat checkpointer")
+                
+            except ImportError:
+                logger.warning("PostgreSQL checkpointer packages not available, chat will use MemorySaver")
+                app.state.pg_pool = None
+            except Exception as e:
+                logger.error(f"Failed to setup PostgreSQL connection pool: {e}")
+                app.state.pg_pool = None
+        else:
+            logger.info("No DATABASE_URL configured, chat will use MemorySaver")
+            app.state.pg_pool = None
+            
+    except Exception as e:
+        logger.error(f"Error during PostgreSQL setup: {e}")
+        app.state.pg_pool = None
+    
     yield
     
     # Shutdown
     logger.info("Shutting down Nova Backend Server...")
+    
+    # Close PostgreSQL connection pool
+    if hasattr(app.state, 'pg_pool') and app.state.pg_pool:
+        try:
+            await app.state.pg_pool.close()
+            logger.info("PostgreSQL connection pool closed")
+        except Exception as e:
+            logger.error(f"Error closing PostgreSQL pool: {e}")
+    
     await db_manager.close()
 
 

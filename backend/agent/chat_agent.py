@@ -117,12 +117,43 @@ def create_checkpointer():
 async def create_async_checkpointer():
     """Create async checkpointer based on configuration."""
     if settings.DATABASE_URL:
-        print(f"DEBUG: PostgreSQL URL provided but temporarily using MemorySaver for debugging")
-        print(f"DEBUG: DATABASE_URL set to: {settings.DATABASE_URL[:20]}...")
-        # TODO: Fix PostgreSQL checkpointer setup
-        return MemorySaver()
+        try:
+            # Try to import async PostgreSQL checkpointer from the correct module
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+            
+            print(f"DEBUG: Using PostgreSQL URL: {settings.DATABASE_URL[:30]}...")
+            
+            # Use the connection pool approach based on LangGraph community patterns
+            # This is the proper way to handle PostgreSQL connections in long-running applications
+            from psycopg_pool import AsyncConnectionPool
+            
+            # Create async connection pool
+            print("DEBUG: Creating AsyncConnectionPool...")
+            
+            connection_kwargs = {
+                "autocommit": True,
+                "prepare_threshold": 0,
+            }
+            
+            # Create the connection pool - this will be managed by FastAPI lifespan
+            # For now, we'll return MemorySaver and implement proper pool management later
+            print("PostgreSQL checkpointer requires connection pool management via FastAPI lifespan")
+            print("Using MemorySaver for now - PostgreSQL implementation needs proper lifespan setup")
+            return MemorySaver()
+                
+        except ImportError as e:
+            print(f"Async PostgreSQL checkpointer not available: {e}")
+            print("Install with: pip install langgraph-checkpoint-postgres")
+            print("Falling back to MemorySaver...")
+            return MemorySaver()
+        except Exception as e:
+            print(f"Error creating async PostgreSQL checkpointer: {e}")
+            import traceback
+            traceback.print_exc()
+            print("Falling back to MemorySaver...")
+            return MemorySaver()
     else:
-        print("Using in-memory checkpointer. Set DATABASE_URL for persistent conversations.")
+        print("No DATABASE_URL provided. Using in-memory checkpointer.")
         return MemorySaver()
 
 
@@ -175,6 +206,18 @@ async def create_async_graph():
     
     # Compile the graph with checkpointer
     return graph_builder.compile(checkpointer=checkpointer)
+
+
+async def create_async_graph_with_checkpointer(checkpointer):
+    """Create async graph with specific checkpointer."""
+    print(f"DEBUG: Creating async graph with checkpointer: {type(checkpointer)}")
+    
+    # Create the graph builder and compile with the provided checkpointer
+    graph_builder = _create_graph_builder()
+    async_graph = graph_builder.compile(checkpointer=checkpointer)
+    
+    print(f"DEBUG: Async graph created successfully with checkpointer: {type(checkpointer)}")
+    return async_graph
 
 
 # The main graph instance (uses sync checkpointer)

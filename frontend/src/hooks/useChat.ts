@@ -29,7 +29,7 @@ export function useChat() {
     isConnected: true, // Start as connected to avoid initial health check
   });
 
-  const [threadId] = useState(() => `chat-${Date.now()}`);
+  const [currentThreadId, setCurrentThreadId] = useState(() => `chat-${Date.now()}`);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Add a message to the chat
@@ -56,6 +56,51 @@ export function useChat() {
         msg.id === id ? { ...msg, ...updates } : msg
       ),
     }));
+  }, []);
+
+  // Load an existing chat conversation
+  const loadChat = useCallback(async (chatId: string) => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    
+    try {
+      // Fetch chat messages from the backend
+      const backendMessages = await apiRequest<{
+        id: string;
+        sender: string;
+        content: string;
+        created_at: string;
+        needs_decision: boolean;
+      }[]>(API_ENDPOINTS.chatMessages(chatId));
+
+      // Convert backend messages to frontend format
+      const chatMessages: ChatMessage[] = backendMessages.map((msg, index) => ({
+        id: msg.id || `loaded-msg-${index}`,
+        role: msg.sender === 'user' ? 'user' : 'assistant',
+        content: msg.content,
+        timestamp: msg.created_at,
+        isStreaming: false,
+      }));
+
+      // Set the messages and update thread ID
+      setState(prev => ({
+        ...prev,
+        messages: chatMessages,
+        isLoading: false,
+        error: null,
+      }));
+
+      setCurrentThreadId(chatId);
+
+      console.log(`Loaded chat ${chatId} with ${chatMessages.length} messages`);
+      
+    } catch (error: any) {
+      console.error('Failed to load chat:', error);
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: error.message || 'Failed to load chat',
+      }));
+    }
   }, []);
 
   // Send a message with streaming support
@@ -101,7 +146,7 @@ export function useChat() {
               role: msg.role,
               content: msg.content,
             })),
-            thread_id: threadId,
+            thread_id: currentThreadId,
             stream: true,
           }),
           signal: abortControllerRef.current.signal,
@@ -201,7 +246,7 @@ export function useChat() {
               role: msg.role,
               content: msg.content,
             })),
-            thread_id: threadId,
+            thread_id: currentThreadId,
             stream: false,
           }),
         });
@@ -234,7 +279,7 @@ export function useChat() {
     } finally {
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [state.messages, threadId, addMessage, updateMessage]);
+  }, [state.messages, currentThreadId, addMessage, updateMessage]);
 
   // Stop any ongoing streaming
   const stopStreaming = useCallback(() => {
@@ -254,6 +299,8 @@ export function useChat() {
       error: null,
       isConnected: true, // Keep connected status
     });
+    // Generate a new thread ID for the new chat
+    setCurrentThreadId(`chat-${Date.now()}`);
   }, [stopStreaming]);
 
   // Check agent health (manual trigger only)
@@ -302,7 +349,7 @@ export function useChat() {
     isLoading: state.isLoading,
     error: state.error,
     isConnected: state.isConnected,
-    threadId,
+    threadId: currentThreadId,
 
     // Actions
     sendMessage,
@@ -310,6 +357,7 @@ export function useChat() {
     stopStreaming,
     addMessage,
     updateMessage,
+    loadChat, // New function for loading existing chats
 
     // Utilities (manual trigger only)
     checkHealth,
