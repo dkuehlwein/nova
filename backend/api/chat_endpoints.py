@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, AIMessage
 
-from agent.chat_agent import graph, create_async_graph
+from agent.chat_agent import create_async_graph
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -526,8 +526,11 @@ async def chat(request: ChatRequest):
         # Create configuration
         config = _create_config(request.thread_id)
         
+        # Get async graph instance
+        async_graph = await get_async_graph()
+        
         # Get response from LangGraph
-        result = await graph.ainvoke({"messages": messages}, config=config)
+        result = await async_graph.ainvoke({"messages": messages}, config=config)
         
         # Extract the last AI message
         last_message = result["messages"][-1]
@@ -558,8 +561,9 @@ async def chat_health():
     Health check endpoint for chat functionality.
     """
     try:
-        # Test if the graph is available and working
-        agent_ready = graph is not None
+        # Test if the async graph can be created and is working
+        async_graph = await get_async_graph()
+        agent_ready = async_graph is not None
         
         return HealthResponse(
             status="healthy" if agent_ready else "degraded",
@@ -581,9 +585,9 @@ async def get_available_tools():
     Get list of available tools that the agent can use.
     """
     try:
-        from tools import get_all_tools
+        from agent.chat_agent import get_all_tools_with_mcp
         
-        tools = get_all_tools()
+        tools = await get_all_tools_with_mcp()
         tools_info = []
         
         for tool in tools:

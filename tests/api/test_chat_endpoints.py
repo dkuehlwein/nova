@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import HumanMessage, AIMessage
 
 from main import app
-from agent.chat_agent import graph
+from agent.chat_agent import create_async_graph
 
 
 client = TestClient(app)
@@ -136,7 +136,10 @@ class TestChatEndpointsIntegration:
             }
         }
         
-        result = await graph.ainvoke({
+        # Create the async graph instance
+        agent_graph = await create_async_graph()
+        
+        result = await agent_graph.ainvoke({
             "messages": [test_message]
         }, config=config)
         

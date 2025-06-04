@@ -19,6 +19,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from tools import get_all_tools
 from config import settings
 from .llm import create_llm
+from mcp_client import mcp_manager
 
 
 class Configuration(TypedDict):
@@ -35,14 +36,34 @@ class State(TypedDict):
     messages: Annotated[list, add_messages]
 
 
-def chatbot(state: State, config: RunnableConfig) -> Dict[str, Any]:
+async def get_all_tools_with_mcp():
+    """Get all tools including both local Nova tools and external MCP tools."""
+    # Get local Nova tools
+    local_tools = get_all_tools()
+    
+    # Get MCP tools from external servers
+    try:
+        _, mcp_tools = await mcp_manager.get_client_and_tools()
+    except Exception as e:
+        print(f"Warning: Could not fetch MCP tools: {e}")
+        mcp_tools = []
+    
+    # Combine all tools
+    all_tools = local_tools + mcp_tools
+    
+    print(f"📋 Available tools: {len(local_tools)} local + {len(mcp_tools)} MCP = {len(all_tools)} total")
+    
+    return all_tools
+
+
+async def chatbot(state: State, config: RunnableConfig) -> Dict[str, Any]:
     """Generate a response using Google Gemini with Nova tools.
     
     Takes the conversation history and generates an AI response, potentially using tools.
     """
     # Create model with tools
     llm = create_llm(config)
-    tools = get_all_tools()
+    tools = await get_all_tools_with_mcp()
     llm_with_tools = llm.bind_tools(tools)
     
     # Add system message with Nova's personality and capabilities
@@ -53,12 +74,15 @@ def chatbot(state: State, config: RunnableConfig) -> Dict[str, Any]:
 1. **Task Management**: Creating, updating, organizing tasks in the kanban board
 2. **People Management**: Managing team members and contact information  
 3. **Project Management**: Organizing and tracking projects
+4. **Email Management**: Reading, sending, and managing emails via Gmail
 
 You have access to tools that let you:
 - Create and manage tasks with proper relationships
 - Track people and their roles
 - Organize projects
 - Add comments and updates to tasks
+- Send and read emails through Gmail
+- Manage your inbox and email threads
 
 Be helpful, professional, and action-oriented. When users ask you to do something, use the appropriate tools to accomplish their requests. Always confirm actions you've taken and provide clear summaries of what you've accomplished.
 
@@ -70,48 +94,6 @@ Available tools:
     response = llm_with_tools.invoke(messages)
     
     return {"messages": [response]}
-
-
-def create_checkpointer():
-    """Create sync checkpointer based on configuration."""
-    if settings.DATABASE_URL:
-        try:
-            # Try to import sync PostgreSQL checkpointer
-            from langgraph.checkpoint.postgres import PostgresSaver
-            
-            # For long-running services, we need to manage the connection ourselves
-            # Following the pattern from LangGraph documentation
-            import psycopg  # Using psycopg3, not psycopg2
-            
-            # Create a connection pool or persistent connection
-            connection = psycopg.connect(settings.DATABASE_URL, autocommit=True)
-            
-            # Create checkpointer with the connection
-            checkpointer = PostgresSaver(connection)
-            
-            # Setup tables for PostgreSQL checkpointers
-            if hasattr(checkpointer, 'setup'):
-                try:
-                    checkpointer.setup()
-                    print(f"PostgreSQL checkpointer set up successfully")
-                except Exception as setup_error:
-                    print(f"Warning: Could not setup PostgreSQL tables: {setup_error}")
-                    print("Make sure the database exists and is accessible.")
-                    connection.close()
-                    return MemorySaver()
-            
-            return checkpointer
-                
-        except ImportError as e:
-            print(f"Sync PostgreSQL checkpointer not available: {e}")
-            print("Install with: pip install langgraph-checkpoint-postgres")
-            return MemorySaver()
-        except Exception as e:
-            print(f"Error creating PostgreSQL checkpointer: {e}")
-            return MemorySaver()
-    else:
-        print("Using in-memory checkpointer. Set DATABASE_URL for persistent conversations.")
-        return MemorySaver()
 
 
 async def create_async_checkpointer():
@@ -157,13 +139,13 @@ async def create_async_checkpointer():
         return MemorySaver()
 
 
-def _create_graph_builder():
+async def _create_graph_builder():
     """Create the base graph builder with nodes and edges.
     
     This shared function eliminates duplication between sync and async graph creation.
     """
-    # Get Nova tools for the tool node
-    tools = get_all_tools()
+    # Get Nova tools for the tool node (including MCP tools)
+    tools = await get_all_tools_with_mcp()
     
     # Create the graph with message state and configuration schema
     graph_builder = StateGraph(State, config_schema=Configuration)
@@ -190,18 +172,9 @@ def _create_graph_builder():
     return graph_builder
 
 
-def create_graph():
-    """Create and compile the LangGraph chat agent with sync checkpointer."""
-    graph_builder = _create_graph_builder()
-    checkpointer = create_checkpointer()
-    
-    # Compile the graph with checkpointer
-    return graph_builder.compile(checkpointer=checkpointer)
-
-
 async def create_async_graph():
     """Create and compile the LangGraph chat agent with async checkpointer."""
-    graph_builder = _create_graph_builder()
+    graph_builder = await _create_graph_builder()
     checkpointer = await create_async_checkpointer()
     
     # Compile the graph with checkpointer
@@ -213,12 +186,8 @@ async def create_async_graph_with_checkpointer(checkpointer):
     print(f"DEBUG: Creating async graph with checkpointer: {type(checkpointer)}")
     
     # Create the graph builder and compile with the provided checkpointer
-    graph_builder = _create_graph_builder()
+    graph_builder = await _create_graph_builder()
     async_graph = graph_builder.compile(checkpointer=checkpointer)
     
     print(f"DEBUG: Async graph created successfully with checkpointer: {type(checkpointer)}")
-    return async_graph
-
-
-# The main graph instance (uses sync checkpointer)
-graph = create_graph() 
+    return async_graph 

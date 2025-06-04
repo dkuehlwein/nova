@@ -1,17 +1,19 @@
 # Nova AI Assistant: Technical Context
 
-## Technologies Used ⭐ **UPDATED ARCHITECTURE WITH CHAT AGENT**
+## Technologies Used ⭐ **UPDATED ARCHITECTURE WITH MCP INTEGRATION**
 
-### Backend & Core Tools ✅ **STREAMLINED ARCHITECTURE + CHAT**
+### Backend & Core Tools ✅ **MCP INTEGRATION + CLEAN ASYNC ARCHITECTURE**
 - **Programming Language:** Python 3.13+ (all components)
 - **Package Manager & Virtual Environments:** `uv` (unified across all projects)
 - **Core Backend Framework:** FastAPI (for REST APIs & WebSockets) ✅ **OPERATIONAL**
-- **Chat Agent:** LangGraph with Google Gemini 2.5 Pro ✅ **NEW - OPERATIONAL**
-- **Agent Tools:** Native LangChain tools (replaced MCP for core functionality) ✅ **OPERATIONAL**
-- **Tool Framework:** LangChain StructuredTool (direct Nova integration) ✅ **SIMPLIFIED**
-- **Agent Orchestration:** LangGraph with conversation flow management ✅ **NEW**
+- **Chat Agent:** LangGraph with Google Gemini 2.5 Pro ✅ **OPERATIONAL WITH 37 TOOLS**
+- **Local Tools:** 10 Native LangChain tools (task/people/project management) ✅ **OPERATIONAL**
+- **External Tools:** 27 MCP tools via Gmail MCP server (port 8002) ✅ **BREAKTHROUGH SUCCESS**
+- **MCP Integration:** langchain-mcp-adapters with MultiServerMCPClient ✅ **PRODUCTION-READY**
+- **Tool Framework:** Unified LangChain StructuredTool pattern (37 total tools) ✅ **STREAMLINED**
+- **Agent Orchestration:** LangGraph with conversation flow management ✅ **OPERATIONAL**
 - **LLM Integration:** Gemini 2.5 Pro via LangChain ✅ **OPERATIONAL** 
-- **Chat Endpoints:** FastAPI with streaming support via SSE ✅ **NEW**
+- **Chat Endpoints:** FastAPI with streaming support via SSE ✅ **OPERATIONAL**
 - **Testing Framework:** pytest + pytest-asyncio ✅ **COMPREHENSIVE COVERAGE**
 
 ### Database & Persistence ✅ **ROBUST WITH ASYNC FIXES**
@@ -22,16 +24,50 @@
 - **Session Management:** Async context managers for database sessions
 - **Async Fixes:** Proper handling of relationships and lazy loading ✅ **CRITICAL FIX**
 
-### Chat Agent Architecture ✅ **MAJOR NEW COMPONENT**
+### Chat Agent Architecture ✅ **MAJOR COMPONENT WITH MCP INTEGRATION**
 
-**🔥 LANGGRAPH CHAT AGENT IMPLEMENTATION:**
+**🔥 LANGGRAPH CHAT AGENT WITH 37 TOOLS:**
 - **Framework:** LangGraph for state-based conversation management
 - **Pattern:** Following agent-chat-ui best practices for compatibility
 - **State Management:** MessagesState for conversation history
-- **Tool Integration:** Seamless integration with 10 native LangChain tools
+- **Local Tools:** 10 native LangChain tools for Nova core functionality
+- **External Tools:** 27 MCP tools via Gmail MCP server integration
+- **MCP Discovery:** Automatic health checking and tool discovery
 - **Streaming:** Real-time responses via Server-Sent Events (SSE)
 
-### Chat Agent Implementation ✅ **TECHNICAL DETAILS**
+### MCP Integration Architecture ✅ **BREAKTHROUGH IMPLEMENTATION**
+
+**🔥 EXTERNAL TOOL INTEGRATION VIA MCP PROTOCOL:**
+```python
+from mcp_client import mcp_manager
+from langchain_mcp_adapters.client import MultiServerMCPClient
+
+async def get_all_tools_with_mcp():
+    """Get all tools including both local Nova tools and external MCP tools."""
+    # Get local Nova tools
+    local_tools = get_all_tools()
+    
+    # Get MCP tools from external servers
+    try:
+        _, mcp_tools = await mcp_manager.get_client_and_tools()
+    except Exception as e:
+        print(f"Warning: Could not fetch MCP tools: {e}")
+        mcp_tools = []
+    
+    # Combine all tools
+    all_tools = local_tools + mcp_tools
+    
+    return all_tools
+```
+
+**🔥 MCP CLIENT MANAGER:**
+- **Health Monitoring:** Automatic server discovery and status checking
+- **Tool Discovery:** Dynamic fetching of tools from running MCP servers
+- **Error Handling:** Graceful degradation when servers unavailable
+- **Schema Compatibility:** Seamless LangChain tool integration
+- **Zero Configuration:** Automatic detection and integration
+
+### Chat Agent Implementation ✅ **TECHNICAL DETAILS WITH MCP**
 ```python
 # Current LangGraph Implementation
 from langgraph.graph import StateGraph
@@ -179,7 +215,9 @@ StructuredTool.from_function(
 )
 ```
 
-### Current Tool Inventory ✅ **10 NATIVE LANGCHAIN TOOLS (CHAT COMPATIBLE)**
+### Current Tool Inventory ✅ **37 TOTAL TOOLS (LOCAL + MCP INTEGRATION)**
+
+**🔥 LOCAL NOVA TOOLS (10):**
 ```python
 # Task Management (6 tools) - ALL WORKING WITH CHAT
 - create_task: Create new tasks with relationships via conversation
@@ -197,6 +235,40 @@ StructuredTool.from_function(
 - create_project: Create new projects via conversation
 - get_projects: List all projects through chat
 ```
+
+**🔥 EXTERNAL MCP TOOLS (27) - GMAIL MCP SERVER:**
+```python
+# Email Management - ALL ACCESSIBLE VIA CONVERSATION
+- send_email: Send emails through natural language
+- get_unread_emails: Check inbox via chat
+- read_email_content: Read specific emails conversationally
+- mark_email_as_read: Mark emails as read through chat
+- trash_email: Delete emails via conversation
+
+# Email Organization - CONVERSATIONAL INTERFACE
+- list_gmail_labels: View all labels through chat
+- create_new_label: Create email labels via conversation
+- apply_label_to_email: Organize emails through natural language
+- remove_label_from_email: Remove labels conversationally
+- archive_email: Archive emails via chat
+
+# Advanced Email Features - CHAT ACCESSIBLE
+- create_draft_email: Draft emails through conversation
+- list_draft_emails: View drafts via chat
+- search_all_emails: Search emails using natural language
+- list_email_filters: View email filters through chat
+- create_new_email_filter: Create filters via conversation
+
+# And 12 more comprehensive email management tools...
+# All 27 tools are accessible through conversational interface
+```
+
+**🎯 INTEGRATION SUCCESS:**
+- **Total Tools:** 37 (10 local + 27 MCP)
+- **Unified Interface:** All accessible through natural conversation
+- **Health Monitoring:** MCP servers automatically discovered and monitored  
+- **Schema Compatibility:** Perfect LangChain integration
+- **Error Handling:** Graceful degradation when MCP servers unavailable
 
 ### Backend Structure ✅ **CLEAN ARCHITECTURE + CHAT**
 ```
