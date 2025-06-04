@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, func, or_, select, text, desc
 from sqlalchemy.orm import selectinload
 
@@ -22,6 +22,12 @@ from database.database import db_manager
 from models.models import (
     Task, TaskComment, Person, Project, Chat, ChatMessage, Artifact,
     TaskStatus
+)
+from api.chat_endpoints import (
+    _get_chat_history, 
+    _list_chat_threads, 
+    ChatSummary, 
+    ChatMessageDetail
 )
 
 
@@ -71,8 +77,7 @@ class TaskResponse(BaseModel):
     projects: List[str] = []  # Names for UI
     comments_count: int = 0
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PersonCreate(BaseModel):
@@ -92,8 +97,7 @@ class PersonResponse(BaseModel):
     current_focus: Optional[str]
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProjectCreate(BaseModel):
@@ -111,8 +115,7 @@ class ProjectResponse(BaseModel):
     summary: Optional[str]
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChatCreate(BaseModel):
@@ -138,8 +141,7 @@ class ChatMessageResponse(BaseModel):
     decision_metadata: Dict
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChatResponse(BaseModel):
@@ -152,8 +154,7 @@ class ChatResponse(BaseModel):
     has_decision: bool = False
     message_count: int = 0
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ActivityItem(BaseModel):
@@ -187,8 +188,7 @@ class ArtifactResponse(BaseModel):
     summary: Optional[str]
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # === API Router ===
@@ -615,129 +615,180 @@ async def add_task_comment(task_id: UUID, comment_data: TaskCommentCreate):
 
 # === Chat Endpoints ===
 
-@router.get("/api/chats", response_model=List[ChatResponse])
-async def get_chats():
-    """Get all chat conversations."""
-    async with db_manager.get_session() as session:
-        result = await session.execute(
-            select(Chat)
-            .options(selectinload(Chat.messages))
-            .order_by(Chat.updated_at.desc())
-        )
-        chats = result.scalars().all()
+@router.get("/api/chats", response_model=List[ChatSummary])
+async def list_chats():
+    """List all chat conversations."""
+    try:
+        thread_ids = await _list_chat_threads()
+        chat_summaries = []
         
-        chat_responses = []
-        for chat in chats:
-            # Get last message
-            last_message = None
-            last_activity = chat.updated_at
-            has_decision = False
-            
-            if chat.messages:
-                sorted_messages = sorted(chat.messages, key=lambda m: m.created_at, reverse=True)
-                last_message = sorted_messages[0].content[:100] + "..." if len(sorted_messages[0].content) > 100 else sorted_messages[0].content
-                last_activity = sorted_messages[0].created_at
-                has_decision = any(msg.needs_decision for msg in chat.messages)
-            
-            chat_responses.append(ChatResponse(
-                id=chat.id,
-                title=chat.title,
-                created_at=chat.created_at,
-                updated_at=chat.updated_at,
-                last_message=last_message,
-                last_activity=last_activity,
-                has_decision=has_decision,
-                message_count=len(chat.messages)
-            ))
+        for thread_id in thread_ids:
+            try:
+                messages = await _get_chat_history(thread_id)
+                
+                if not messages:
+                    continue
+                
+                # Create title from first user message
+                first_user_msg = next((msg for msg in messages if msg.sender == "user"), None)
+                title = first_user_msg.content[:50] + "..." if first_user_msg and len(first_user_msg.content) > 50 else (first_user_msg.content if first_user_msg else "New Chat")
+                
+                # Get last message
+                last_message = messages[-1] if messages else None
+                
+                chat_summaries.append(ChatSummary(
+                    id=thread_id,
+                    title=title,
+                    created_at=messages[0].created_at if messages else datetime.now().isoformat(),
+                    updated_at=last_message.created_at if last_message else datetime.now().isoformat(),
+                    last_message=last_message.content[:100] + "..." if last_message and len(last_message.content) > 100 else (last_message.content if last_message else ""),
+                    last_activity=last_message.created_at if last_message else datetime.now().isoformat(),
+                    has_decision=any(msg.needs_decision for msg in messages),
+                    message_count=len(messages)
+                ))
+                
+            except Exception as msg_error:
+                # Log individual chat processing errors but continue
+                logging.warning(f"Error processing chat {thread_id}: {msg_error}")
+                continue
         
-        return chat_responses
+        # Sort by last activity (most recent first)
+        chat_summaries.sort(key=lambda x: x.updated_at, reverse=True)
+        
+        return chat_summaries
+        
+    except Exception as e:
+        logging.error(f"Error listing chats: {e}")
+        # Return empty list for frontend compatibility, but this is still a successful response
+        return []
 
 
-@router.get("/api/chats/{chat_id}/messages", response_model=List[ChatMessageResponse])
-async def get_chat_messages(chat_id: UUID):
-    """Get messages for a specific chat."""
-    async with db_manager.get_session() as session:
-        result = await session.execute(
-            select(ChatMessage)
-            .where(ChatMessage.chat_id == chat_id)
-            .order_by(ChatMessage.created_at.asc())
-        )
-        messages = result.scalars().all()
+@router.get("/api/chats/{chat_id}", response_model=ChatSummary)
+async def get_chat(chat_id: str):
+    """Get a specific chat conversation summary."""
+    try:
+        messages = await _get_chat_history(chat_id)
         
-        return [
-            ChatMessageResponse(
-                id=message.id,
-                sender=message.sender,
-                content=message.content,
-                needs_decision=message.needs_decision,
-                decision_type=message.decision_type,
-                decision_metadata=message.decision_metadata or {},
-                created_at=message.created_at
+        if not messages:
+            # Return empty chat for non-existent chats (404 would break frontend flow)
+            return ChatSummary(
+                id=chat_id,
+                title="New Chat",
+                created_at=datetime.now().isoformat(),
+                updated_at=datetime.now().isoformat(),
+                last_message="",
+                last_activity=datetime.now().isoformat(),
+                has_decision=False,
+                message_count=0
             )
-            for message in messages
-        ]
+        
+        # Create title from first user message
+        first_user_msg = next((msg for msg in messages if msg.sender == "user"), None)
+        title = first_user_msg.content[:50] + "..." if first_user_msg and len(first_user_msg.content) > 50 else (first_user_msg.content if first_user_msg else "New Chat")
+        
+        # Get last message
+        last_message = messages[-1] if messages else None
+        
+        return ChatSummary(
+            id=chat_id,
+            title=title,
+            created_at=messages[0].created_at if messages else datetime.now().isoformat(),
+            updated_at=last_message.created_at if last_message else datetime.now().isoformat(),
+            last_message=last_message.content[:100] + "..." if last_message and len(last_message.content) > 100 else (last_message.content if last_message else ""),
+            last_activity=last_message.created_at if last_message else datetime.now().isoformat(),
+            has_decision=any(msg.needs_decision for msg in messages),
+            message_count=len(messages)
+        )
+        
+    except Exception as e:
+        logging.error(f"Error getting chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve chat: {str(e)}")
+
+
+@router.get("/api/chats/{chat_id}/messages", response_model=List[ChatMessageDetail])
+async def get_chat_messages(chat_id: str):
+    """Get messages for a specific chat conversation."""
+    try:
+        messages = await _get_chat_history(chat_id)
+        return messages
+        
+    except Exception as e:
+        logging.error(f"Error getting chat messages for {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve chat messages: {str(e)}")
 
 
 @router.post("/api/chats", response_model=ChatResponse)
 async def create_chat(chat_data: ChatCreate):
     """Create a new chat conversation."""
     async with db_manager.get_session() as session:
-        chat = Chat(
-            title=chat_data.title,
-            project_id=chat_data.project_id
-        )
-        
-        session.add(chat)
-        await session.flush()
-        
-        # Add person relationships
-        if chat_data.person_ids:
-            persons_result = await session.execute(
-                select(Person).where(Person.id.in_(chat_data.person_ids))
+        try:
+            chat = Chat(
+                title=chat_data.title,
+                project_id=chat_data.project_id
             )
-            persons = persons_result.scalars().all()
-            chat.persons.extend(persons)
-        
-        await session.commit()
-        await session.refresh(chat)
-        
-        return ChatResponse(
-            id=chat.id,
-            title=chat.title,
-            created_at=chat.created_at,
-            updated_at=chat.updated_at,
-            message_count=0
-        )
+            
+            session.add(chat)
+            await session.flush()
+            
+            # Add person relationships
+            if chat_data.person_ids:
+                persons_result = await session.execute(
+                    select(Person).where(Person.id.in_(chat_data.person_ids))
+                )
+                persons = persons_result.scalars().all()
+                chat.persons.extend(persons)
+            
+            await session.commit()
+            await session.refresh(chat)
+            
+            return ChatResponse(
+                id=chat.id,
+                title=chat.title,
+                created_at=chat.created_at,
+                updated_at=chat.updated_at,
+                message_count=0
+            )
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Error creating chat: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to create chat: {str(e)}")
 
 
 @router.post("/api/chats/{chat_id}/messages")
 async def add_chat_message(chat_id: UUID, message_data: ChatMessageCreate):
     """Add a message to a chat."""
     async with db_manager.get_session() as session:
-        # Verify chat exists
-        result = await session.execute(select(Chat).where(Chat.id == chat_id))
-        chat = result.scalar_one_or_none()
-        
-        if not chat:
-            raise HTTPException(status_code=404, detail="Chat not found")
-        
-        # Create message
-        message = ChatMessage(
-            chat_id=chat_id,
-            sender=message_data.sender,
-            content=message_data.content,
-            needs_decision=message_data.needs_decision,
-            decision_type=message_data.decision_type,
-            decision_metadata=message_data.decision_metadata
-        )
-        session.add(message)
-        
-        # Update chat timestamp
-        chat.updated_at = datetime.utcnow()
-        
-        await session.commit()
-        
-        return {"message": "Message added successfully", "id": message.id}
+        try:
+            # Verify chat exists
+            result = await session.execute(select(Chat).where(Chat.id == chat_id))
+            chat = result.scalar_one_or_none()
+            
+            if not chat:
+                raise HTTPException(status_code=404, detail="Chat not found")
+            
+            # Create message
+            message = ChatMessage(
+                chat_id=chat_id,
+                sender=message_data.sender,
+                content=message_data.content,
+                needs_decision=message_data.needs_decision,
+                decision_type=message_data.decision_type,
+                decision_metadata=message_data.decision_metadata
+            )
+            session.add(message)
+            
+            # Update chat timestamp
+            chat.updated_at = datetime.now(timezone.utc)
+            
+            await session.commit()
+            
+            return {"message": "Message added successfully", "id": message.id}
+        except HTTPException:
+            raise
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Error adding message to chat {chat_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to add message: {str(e)}")
 
 
 # === Entity Management Endpoints ===
@@ -810,5 +861,5 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "nova-kanban-mcp",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     } 

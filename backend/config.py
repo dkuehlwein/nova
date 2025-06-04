@@ -21,7 +21,14 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[SecretStr] = None
     GOOGLE_MODEL_NAME: Optional[str] = None  # e.g., gemini-pro, gemini-1.5-flash
 
-    # Database Configuration
+    # PostgreSQL Database Configuration
+    POSTGRES_DB: str = "nova_kanban"
+    POSTGRES_USER: str = "nova"
+    POSTGRES_PASSWORD: str = "nova_dev_password"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_HOST: str = "localhost"
+    
+    # Database Configuration (constructed from PostgreSQL variables)
     DATABASE_URL: Optional[str] = None  # PostgreSQL connection string for checkpointer
     
     # LangSmith Configuration
@@ -37,9 +44,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def compute_urls(self):
-        """Compute MCP server URLs if not explicitly provided"""
+        """Compute MCP server URLs and DATABASE_URL if not explicitly provided"""
         if not self.GMAIL_MCP_SERVER_URL:
             self.GMAIL_MCP_SERVER_URL = f"http://{self.GMAIL_MCP_SERVER_HOST}:{self.GMAIL_MCP_SERVER_PORT}"
+        
+        # Construct DATABASE_URL from PostgreSQL components if not explicitly set
+        if not self.DATABASE_URL:
+            self.DATABASE_URL = f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         
         return self
 

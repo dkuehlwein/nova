@@ -72,66 +72,58 @@ Available tools:
     return {"messages": [response]}
 
 
-def _create_checkpointer(async_mode: bool = False):
-    """Create checkpointer based on configuration.
-    
-    Args:
-        async_mode: If True, create async checkpointer, otherwise sync
-        
-    Returns:
-        PostgreSQL checkpointer if DATABASE_URL is set, 
-        otherwise returns in-memory checkpointer.
-    """
+def create_checkpointer():
+    """Create sync checkpointer based on configuration."""
     if settings.DATABASE_URL:
         try:
-            if async_mode:
-                # Try to import async PostgreSQL checkpointer
-                from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-                return AsyncPostgresSaver.from_conn_string(settings.DATABASE_URL)
-            else:
-                # Try to import sync PostgreSQL checkpointer
-                from langgraph.checkpoint.postgres import PostgresSaver
-                return PostgresSaver.from_conn_string(settings.DATABASE_URL)
+            # Try to import sync PostgreSQL checkpointer
+            from langgraph.checkpoint.postgres import PostgresSaver
+            
+            # For long-running services, we need to manage the connection ourselves
+            # Following the pattern from LangGraph documentation
+            import psycopg  # Using psycopg3, not psycopg2
+            
+            # Create a connection pool or persistent connection
+            connection = psycopg.connect(settings.DATABASE_URL, autocommit=True)
+            
+            # Create checkpointer with the connection
+            checkpointer = PostgresSaver(connection)
+            
+            # Setup tables for PostgreSQL checkpointers
+            if hasattr(checkpointer, 'setup'):
+                try:
+                    checkpointer.setup()
+                    print(f"PostgreSQL checkpointer set up successfully")
+                except Exception as setup_error:
+                    print(f"Warning: Could not setup PostgreSQL tables: {setup_error}")
+                    print("Make sure the database exists and is accessible.")
+                    connection.close()
+                    return MemorySaver()
+            
+            return checkpointer
                 
-        except ImportError:
-            checkpointer_type = "Async" if async_mode else "Sync"
-            print(f"{checkpointer_type} PostgreSQL checkpointer not available. Install with: pip install langgraph-checkpoint-postgres")
+        except ImportError as e:
+            print(f"Sync PostgreSQL checkpointer not available: {e}")
+            print("Install with: pip install langgraph-checkpoint-postgres")
+            return MemorySaver()
+        except Exception as e:
+            print(f"Error creating PostgreSQL checkpointer: {e}")
             return MemorySaver()
     else:
         print("Using in-memory checkpointer. Set DATABASE_URL for persistent conversations.")
         return MemorySaver()
 
 
-def create_checkpointer():
-    """Create sync checkpointer based on configuration."""
-    checkpointer = _create_checkpointer(async_mode=False)
-    
-    # Setup tables for PostgreSQL checkpointers
-    if hasattr(checkpointer, 'setup') and not isinstance(checkpointer, MemorySaver):
-        try:
-            checkpointer.setup()
-        except Exception as setup_error:
-            print(f"Warning: Could not setup PostgreSQL tables: {setup_error}")
-            print("Make sure the database exists and is accessible.")
-            return MemorySaver()
-    
-    return checkpointer
-
-
 async def create_async_checkpointer():
     """Create async checkpointer based on configuration."""
-    checkpointer = _create_checkpointer(async_mode=True)
-    
-    # Setup tables for PostgreSQL checkpointers
-    if hasattr(checkpointer, 'setup') and not isinstance(checkpointer, MemorySaver):
-        try:
-            await checkpointer.setup()
-        except Exception as setup_error:
-            print(f"Warning: Could not setup PostgreSQL tables: {setup_error}")
-            print("Make sure the database exists and is accessible.")
-            return MemorySaver()
-    
-    return checkpointer
+    if settings.DATABASE_URL:
+        print(f"DEBUG: PostgreSQL URL provided but temporarily using MemorySaver for debugging")
+        print(f"DEBUG: DATABASE_URL set to: {settings.DATABASE_URL[:20]}...")
+        # TODO: Fix PostgreSQL checkpointer setup
+        return MemorySaver()
+    else:
+        print("Using in-memory checkpointer. Set DATABASE_URL for persistent conversations.")
+        return MemorySaver()
 
 
 def _create_graph_builder():

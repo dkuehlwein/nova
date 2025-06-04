@@ -135,7 +135,13 @@ export function useChat() {
                   switch (event.type) {
                     case 'message':
                       if (event.data.role === 'assistant') {
-                        assistantContent = event.data.content;
+                        // Accumulate content instead of overwriting
+                        if (assistantContent && event.data.content) {
+                          // Add separator between responses for readability
+                          assistantContent += '\n\n' + event.data.content;
+                        } else {
+                          assistantContent = event.data.content;
+                        }
                         updateMessage(assistantMessageId, {
                           content: assistantContent,
                           isStreaming: true,
@@ -145,8 +151,10 @@ export function useChat() {
 
                     case 'tool_call':
                       // Add a visual indicator for tool usage
+                      const toolMessage = `\n\n🔧 Using tool: ${event.data.tool}...`;
+                      assistantContent += toolMessage;
                       updateMessage(assistantMessageId, {
-                        content: assistantContent + `\n\n🔧 Using tool: ${event.data.tool}...`,
+                        content: assistantContent,
                         isStreaming: true,
                       });
                       break;

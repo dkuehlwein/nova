@@ -1,7 +1,7 @@
 [project]
-name = "nova-kanban-backend"
+name = "nova-backend"
 version = "0.1.0"
-description = "Nova Kanban Backend with PostgreSQL and LangChain tools"
+description = "Nova Backend with PostgreSQL and LangChain tools"
 authors = [
     {name = "Nova Team", email = "daniel.kuehlwein@gmail.com"},
 ]
