@@ -2,7 +2,7 @@ import asyncio
 import aiohttp
 from typing import List, Dict, Any, Optional, Tuple
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from src.nova.config import settings
+from config import settings
 
 
 class MCPClientManager:

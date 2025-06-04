@@ -14,7 +14,7 @@ from typing import Dict, Any, List
 
 # Add the backend directory to the Python path so we can import from src.nova
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
-from src.nova.config import settings
+from config import settings
 
 # Import the same MCP client used in agent.py
 try:
