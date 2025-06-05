@@ -92,16 +92,6 @@ function KanbanPage() {
   const [editedTitle, setEditedTitle] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
 
-  // Handle URL task parameter to auto-open task dialog
-  useEffect(() => {
-    const taskId = searchParams.get('task');
-    if (taskId && !loading && !urlTaskProcessed) {
-      // Properly load the full task data using handleTaskClick
-      handleTaskClick({ id: taskId } as Task);
-      setUrlTaskProcessed(true);
-    }
-  }, [searchParams, loading, urlTaskProcessed]);
-
   const handleTaskClick = async (task: Task) => {
     try {
       // Fetch latest task details
@@ -124,6 +114,16 @@ function KanbanPage() {
       setIsTaskDetailOpen(true);
     }
   };
+
+  // Handle URL task parameter to auto-open task dialog
+  useEffect(() => {
+    const taskId = searchParams.get('task');
+    if (taskId && !loading && !urlTaskProcessed) {
+      // Properly load the full task data using handleTaskClick
+      handleTaskClick({ id: taskId } as Task);
+      setUrlTaskProcessed(true);
+    }
+  }, [searchParams, loading, urlTaskProcessed, handleTaskClick]);
 
   // Convert API data to lanes format
   const lanes: Lane[] = Object.entries(tasksByStatus).map(([status, tasks]) => ({
@@ -368,7 +368,7 @@ function KanbanPage() {
               <Button 
                 variant="ghost" 
                 size="sm" 
-                className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
                 onClick={(e) => e.stopPropagation()}
               >
                 <Trash2 className="h-3 w-3" />
@@ -539,10 +539,10 @@ function KanbanPage() {
         <Dialog open={isTaskDetailOpen} onOpenChange={handleTaskDetailClose}>
           <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
             {selectedTask && (
-              <div className="space-y-6 py-4">
-                {/* Compact Header */}
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
+              <div className="space-y-4">
+                <DialogHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
                     {isEditingTitle ? (
                       <div className="flex items-center space-x-2 mb-2">
                         <Input
@@ -567,7 +567,7 @@ function KanbanPage() {
                       </div>
                     ) : (
                       <div className="flex items-center space-x-2 mb-2 group">
-                        <h1 className="text-xl font-bold text-foreground">{selectedTask.title}</h1>
+                        <DialogTitle className="text-xl font-bold text-foreground">{selectedTask.title}</DialogTitle>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -626,10 +626,11 @@ function KanbanPage() {
                     )}
                   </div>
                 </div>
+                </DialogHeader>
 
                 {/* Description */}
                 <div className="bg-muted/30 border border-border rounded-lg p-4 group">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-2">
                     <Label className="text-sm font-medium text-muted-foreground">Description</Label>
                     {!isEditingDescription && (
                       <Button
@@ -688,8 +689,8 @@ function KanbanPage() {
                 )}
 
                 {/* Activity & Comments Section */}
-                <div className="bg-card border border-border rounded-lg p-6">
-                  <Label className="text-base font-semibold text-foreground mb-4 block flex items-center">
+                <div className="bg-card border border-border rounded-lg p-4">
+                  <Label className="text-base font-semibold text-foreground mb-3 block flex items-center">
                     <Activity className="h-4 w-4 mr-2" />
                     Activity & Comments ({taskComments.length + taskActivity.filter(a => a.type !== 'comment_added').length})
                   </Label>
@@ -726,7 +727,7 @@ function KanbanPage() {
                     allActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
                     
                     return allActivity.length > 0 ? (
-                      <div className="space-y-4 mb-6">
+                      <div className="space-y-3 mb-4">
                         {allActivity.map((item, index) => (
                           <div key={`${item.itemType}-${item.id || index}`} className="border-l-2 border-muted pl-4 py-2">
                             {item.itemType === 'comment' ? (
@@ -767,12 +768,12 @@ function KanbanPage() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-sm text-muted-foreground mb-6">No activity yet</div>
+                      <div className="text-sm text-muted-foreground mb-4">No activity yet</div>
                     );
                   })()}
 
                   {/* Add Comment */}
-                  <div className="border-t pt-4">
+                  <div className="border-t pt-3">
                     <Label className="text-sm font-medium text-foreground mb-2 block">Add a comment</Label>
                     <div className="space-y-3">
                       <div className="relative">

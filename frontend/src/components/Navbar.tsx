@@ -118,7 +118,7 @@ export default function Navbar() {
                   {currentTask.title}
                 </span>
                 <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-700 text-xs flex-shrink-0">
-                  {currentTask.assignee}
+                  {currentTask.priority}
                 </Badge>
               </div>
             </div>
