@@ -50,7 +50,12 @@ async def lifespan(app: FastAPI):
     pg_pool = None
     try:
         from config import settings
-        if settings.DATABASE_URL:
+        
+        # Check if we should force memory checkpointer
+        if settings.FORCE_MEMORY_CHECKPOINTER:
+            logger.info("FORCE_MEMORY_CHECKPOINTER is enabled, using MemorySaver for chat checkpointer")
+            app.state.pg_pool = None
+        elif settings.DATABASE_URL:
             try:
                 from psycopg_pool import AsyncConnectionPool
                 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
