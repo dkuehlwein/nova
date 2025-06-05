@@ -5,7 +5,7 @@ Tests for Nova LangGraph Chat Agent
 import pytest
 from langchain_core.messages import HumanMessage
 
-from agent.chat_agent import create_async_graph
+from agent.chat_agent import create_chat_agent
 
 
 class TestChatAgent:
@@ -14,20 +14,18 @@ class TestChatAgent:
     @pytest.mark.asyncio
     async def test_basic_conversation(self):
         """Test basic conversation functionality."""
-        # Create test graph
-        test_graph = await create_async_graph()
+        # Create test agent
+        test_agent = await create_chat_agent()
         
         # Configuration for testing
         config = {
             "configurable": {
-                "thread_id": "test-thread-basic",
-                "model_name": "gemini-2.5-flash-preview-04-17",
-                "temperature": 0.7
+                "thread_id": "test-thread-basic"
             }
         }
         
         # Test basic conversation
-        result = await test_graph.ainvoke({
+        result = await test_agent.ainvoke({
             "messages": [HumanMessage(content="Hello! What can you help me with?")]
         }, config=config)
         
@@ -45,20 +43,18 @@ class TestChatAgent:
     @pytest.mark.asyncio
     async def test_tool_usage(self):
         """Test that the agent can use tools."""
-        # Create test graph
-        test_graph = await create_async_graph()
+        # Create test agent
+        test_agent = await create_chat_agent()
         
         # Configuration for testing
         config = {
             "configurable": {
-                "thread_id": "test-thread-tools",
-                "model_name": "gemini-2.5-flash-preview-04-17",
-                "temperature": 0.7
+                "thread_id": "test-thread-tools"
             }
         }
         
         # Test tool usage
-        result = await test_graph.ainvoke({
+        result = await test_agent.ainvoke({
             "messages": [HumanMessage(content="Create a new task called 'Test LangGraph integration'")]
         }, config=config)
         
@@ -70,25 +66,23 @@ class TestChatAgent:
     @pytest.mark.asyncio
     async def test_conversation_continuity(self):
         """Test conversation continuity across multiple messages."""
-        # Create test graph
-        test_graph = await create_async_graph()
+        # Create test agent
+        test_agent = await create_chat_agent()
         
         # Configuration for testing
         config = {
             "configurable": {
-                "thread_id": "test-thread-continuity",
-                "model_name": "gemini-2.5-flash-preview-04-17",
-                "temperature": 0.7
+                "thread_id": "test-thread-continuity"
             }
         }
         
         # First message
-        result1 = await test_graph.ainvoke({
+        result1 = await test_agent.ainvoke({
             "messages": [HumanMessage(content="Create a new task called 'Test continuity'")]
         }, config=config)
         
         # Second message referring to the first
-        result2 = await test_graph.ainvoke({
+        result2 = await test_agent.ainvoke({
             "messages": [HumanMessage(content="What was the task I just created?")]
         }, config=config)
         
@@ -100,38 +94,36 @@ class TestChatAgent:
 
 
 # Standalone test function for manual testing (can be run directly)
-async def manual_test_graph():
+async def manual_test_agent():
     """Manual test function for development testing."""
     print("\n🧪 Testing Nova LangGraph Agent...")
     
-    # Use async graph for testing
-    test_graph = await create_async_graph()
+    # Use new chat agent for testing
+    test_agent = await create_chat_agent()
     
     # Configuration for testing
     config = {
         "configurable": {
-            "thread_id": "test-thread-manual",
-            "model_name": "gemini-2.5-flash-preview-04-17",
-            "temperature": 0.7
+            "thread_id": "test-thread-manual"
         }
     }
     
     # Test basic conversation
-    result = await test_graph.ainvoke({
+    result = await test_agent.ainvoke({
         "messages": [HumanMessage(content="Hello! What can you help me with?")]
     }, config=config)
     
     print(f"Response: {result['messages'][-1].content}")
     
     # Test tool usage
-    result = await test_graph.ainvoke({
+    result = await test_agent.ainvoke({
         "messages": [HumanMessage(content="Create a new task called 'Test LangGraph integration'")]
     }, config=config)
     
     print(f"Tool response: {result['messages'][-1].content}")
     
     # Test conversation continuity
-    result = await test_graph.ainvoke({
+    result = await test_agent.ainvoke({
         "messages": [HumanMessage(content="What was the task I just created?")]
     }, config=config)
     
@@ -140,4 +132,4 @@ async def manual_test_graph():
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(manual_test_graph()) 
+    asyncio.run(manual_test_agent()) 

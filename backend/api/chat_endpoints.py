@@ -14,40 +14,30 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, AIMessage
 
-from agent.chat_agent import create_async_graph
+from agent.chat_agent import create_chat_agent
+import logging
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-# Global async graph instance for streaming endpoints
-_async_graph = None
+# Global chat agent instance for streaming endpoints
+_chat_agent = None
 
-async def get_async_graph():
-    """Get or create the async graph instance."""
-    global _async_graph
-    if _async_graph is None:
-        print("DEBUG: Creating new async graph instance")
-        
-        # Try to get PostgreSQL connection pool from FastAPI app state
-        from fastapi import Request
-        import contextvars
-        
-        # This is a bit tricky - we need access to the FastAPI app state
-        # For now, let's implement a simpler approach and enhance later
+async def get_chat_agent():
+    """Get or create the chat agent instance."""
+    global _chat_agent
+    if _chat_agent is None:
+        logger.info("Creating new chat agent instance")
         try:
-            # Import here to avoid circular imports
-            from agent.chat_agent import create_async_graph
-            _async_graph = await create_async_graph()
-            print(f"DEBUG: Created async graph with checkpointer: {type(_async_graph.checkpointer)}")
+            _chat_agent = await create_chat_agent()
+            logger.info(f"Created chat agent with checkpointer: {type(_chat_agent.checkpointer)}")
         except Exception as e:
-            print(f"DEBUG: Error creating async graph: {e}")
-            # Fallback to basic creation
-            from agent.chat_agent import create_async_graph
-            _async_graph = await create_async_graph()
-            print(f"DEBUG: Created fallback async graph with checkpointer: {type(_async_graph.checkpointer)}")
+            logger.error(f"Error creating chat agent: {e}")
+            raise
     else:
-        print("DEBUG: Reusing existing async graph instance")
-    return _async_graph
+        logger.debug("Reusing existing chat agent instance")
+    return _chat_agent
 
 
 # Pydantic models for request/response
@@ -151,31 +141,30 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
         # Get the current state from the checkpointer
         state = await checkpointer.aget(config)
         
-        print(f"DEBUG: Getting chat history for {thread_id}, state type: {type(state)}")
+        logger.debug(f"Getting chat history for {thread_id}, state type: {type(state)}")
         
         if not state:
-            print(f"DEBUG: No state found for thread {thread_id}")
+            logger.debug(f"No state found for thread {thread_id}")
             return []
             
-        # Fix: Access messages from channel_values, not from state.values()
+        # Access messages from channel_values
         channel_values = state.get('channel_values', {})
         if "messages" not in channel_values:
-            print(f"DEBUG: No messages in state for thread {thread_id}, keys: {list(state.keys())}")
-            print(f"DEBUG: Channel values keys: {list(channel_values.keys())}")
+            logger.debug(f"No messages in state for thread {thread_id}, available keys: {list(channel_values.keys())}")
             return []
         
         messages = channel_values["messages"]
         chat_messages = []
         
-        print(f"DEBUG: Found {len(messages)} raw messages in state")
+        logger.debug(f"Found {len(messages)} raw messages in state")
         
         # Process messages and reconstruct AI message content to match streaming experience
         i = 0
         while i < len(messages):
             msg = messages[i]
             
-            # Debug: Check message type and content
-            print(f"DEBUG: Message {i}: type={type(msg).__name__}, content='{str(msg.content)[:100]}...', has_tool_calls={hasattr(msg, 'tool_calls') and bool(getattr(msg, 'tool_calls', None))}")
+            # Process each message type
+            logger.debug(f"Processing message {i}: {type(msg).__name__}")
             
             if isinstance(msg, HumanMessage):
                 # Always include user messages
@@ -186,7 +175,7 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                     created_at=datetime.now().isoformat(),  # TODO: Use actual timestamp if available
                     needs_decision=False  # TODO: Implement decision detection logic
                 ))
-                print(f"DEBUG: Included user message: '{str(msg.content)[:50]}...'")
+                logger.debug(f"Included user message: '{str(msg.content)[:50]}...'")
                 
             elif isinstance(msg, AIMessage):
                 # For AI messages, reconstruct the complete content including tool calls
@@ -198,7 +187,7 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                 if has_tool_calls:
                     # Get the tool calls to include in the message
                     tool_calls = getattr(msg, 'tool_calls', [])
-                    print(f"DEBUG: AI message has {len(tool_calls)} tool calls")
+                    logger.debug(f"AI message has {len(tool_calls)} tool calls")
                     
                     # If the AI message has no content but has tool calls, start with empty content
                     if not ai_content or ai_content in ['', 'null', 'None']:
@@ -224,13 +213,13 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                                     ai_content += f"\n\n{final_content}"
                                 else:
                                     ai_content = final_content
-                                print(f"DEBUG: Added final AI response: '{final_content[:50]}...'")
+                                logger.debug(f"Added final AI response: '{final_content[:50]}...'")
                             # Skip this message in the outer loop since we've processed it
                             i = j
                             break
                         elif isinstance(next_msg, type(msg)) and not isinstance(next_msg, (HumanMessage, AIMessage)):
                             # Skip ToolMessage and other internal messages
-                            print(f"DEBUG: Skipping {type(next_msg).__name__} at position {j}")
+                            logger.debug(f"Skipping {type(next_msg).__name__} at position {j}")
                         j += 1
                 
                 # Only include AI messages that have actual content
@@ -242,22 +231,20 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                         created_at=datetime.now().isoformat(),
                         needs_decision=False
                     ))
-                    print(f"DEBUG: Included AI message with reconstructed content: '{ai_content[:100]}...'")
+                    logger.debug(f"Included AI message with reconstructed content: '{ai_content[:100]}...'")
                 else:
-                    print(f"DEBUG: Skipped AI message with no content after reconstruction")
+                    logger.debug(f"Skipped AI message with no content after reconstruction")
             else:
                 # Skip other message types (ToolMessage, SystemMessage, etc.)
-                print(f"DEBUG: Skipped message type: {type(msg).__name__}")
+                logger.debug(f"Skipped message type: {type(msg).__name__}")
             
             i += 1
         
-        print(f"DEBUG: Returning {len(chat_messages)} reconstructed chat messages (from {len(messages)} total)")
+        logger.debug(f"Returning {len(chat_messages)} chat messages (from {len(messages)} total)")
         return chat_messages
         
     except Exception as e:
-        print(f"Error getting chat history for {thread_id}: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error getting chat history for {thread_id}: {e}")
         return []
 
 
@@ -274,8 +261,7 @@ async def _list_chat_threads(request: Request) -> List[str]:
         # Get the appropriate checkpointer from app state
         checkpointer = await get_checkpointer_from_app(request)
         
-        print(f"DEBUG: Checkpointer type: {type(checkpointer)}")
-        print(f"DEBUG: Checkpointer instance id: {id(checkpointer)}")
+        logger.debug(f"Checkpointer type: {type(checkpointer)}")
         
         # For MemorySaver, we need to provide a config parameter
         from langgraph.checkpoint.memory import MemorySaver
@@ -284,8 +270,6 @@ async def _list_chat_threads(request: Request) -> List[str]:
             # For MemorySaver, use alist(None) to get ALL checkpoints then extract unique thread_ids
             thread_ids = []
             try:
-                print(f"DEBUG: MemorySaver internal storage keys: {list(checkpointer.storage.keys()) if hasattr(checkpointer, 'storage') else 'No storage attr'}")
-                
                 checkpoint_count = 0
                 # Use None to get ALL checkpoints, not filtered by thread_id
                 async for checkpoint_tuple in checkpointer.alist(None):
@@ -295,13 +279,12 @@ async def _list_chat_threads(request: Request) -> List[str]:
                         # Only add non-empty thread_ids and avoid duplicates
                         if thread_id and thread_id not in thread_ids:
                             thread_ids.append(thread_id)
-                            print(f"DEBUG: Added unique thread_id: {thread_id}")
+                            logger.debug(f"Added unique thread_id: {thread_id}")
                 
-                print(f"DEBUG: Total checkpoints found: {checkpoint_count}, unique threads: {len(thread_ids)}")
-                print(f"DEBUG: Unique thread IDs: {thread_ids}")
+                logger.debug(f"Total checkpoints found: {checkpoint_count}, unique threads: {len(thread_ids)}")
                 
             except Exception as e:
-                print(f"Error listing threads from MemorySaver: {e}")
+                logger.error(f"Error listing threads from MemorySaver: {e}")
             return thread_ids
         
         # For PostgreSQL checkpointers, we need to properly handle the async generator
@@ -317,21 +300,20 @@ async def _list_chat_threads(request: Request) -> List[str]:
                         # Only add non-empty thread_ids and avoid duplicates
                         if thread_id and thread_id not in thread_ids:
                             thread_ids.append(thread_id)
-                            print(f"DEBUG: Added PostgreSQL thread_id: {thread_id}")
+                            logger.debug(f"Added PostgreSQL thread_id: {thread_id}")
                 
-                print(f"DEBUG: PostgreSQL total checkpoints found: {checkpoint_count}, unique threads: {len(thread_ids)}")
-                print(f"DEBUG: PostgreSQL unique thread IDs: {thread_ids}")
+                logger.debug(f"PostgreSQL total checkpoints found: {checkpoint_count}, unique threads: {len(thread_ids)}")
                 
             except Exception as e:
-                print(f"Error listing threads from PostgreSQL: {e}")
+                logger.error(f"Error listing threads from PostgreSQL: {e}")
             return thread_ids
         else:
             # For other checkpointers that can't list threads, return empty
-            print(f"DEBUG: Checkpointer doesn't support listing threads")
+            logger.debug(f"Checkpointer doesn't support listing threads")
             return []
             
     except Exception as e:
-        print(f"Error listing chat threads: {e}")
+        logger.error(f"Error listing chat threads: {e}")
         return []
 
 
@@ -341,14 +323,14 @@ async def get_checkpointer_from_app(request: Request):
         # Check if we have a PostgreSQL connection pool available
         if hasattr(request.app.state, 'pg_pool') and request.app.state.pg_pool:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-            print("DEBUG: Using PostgreSQL checkpointer from app state")
+            logger.debug("Using PostgreSQL checkpointer from app state")
             return AsyncPostgresSaver(request.app.state.pg_pool)
         else:
-            print("DEBUG: No PostgreSQL pool available, using MemorySaver")
+            logger.debug("No PostgreSQL pool available, using MemorySaver")
             from langgraph.checkpoint.memory import MemorySaver
             return MemorySaver()
     except Exception as e:
-        print(f"DEBUG: Error creating checkpointer: {e}")
+        logger.error(f"Error creating checkpointer: {e}")
         from langgraph.checkpoint.memory import MemorySaver
         return MemorySaver()
 
@@ -357,62 +339,59 @@ async def get_checkpointer_from_app(request: Request):
 async def stream_chat(request: Request, chat_request: ChatRequest):
     """Stream chat messages with the assistant."""
     try:
-        print(f"DEBUG: Streaming chat for thread_id: {chat_request.thread_id}")
-        print(f"DEBUG: Input messages count: {len(chat_request.messages)}")
+        logger.info(f"Streaming chat for thread_id: {chat_request.thread_id}")
+        logger.debug(f"Input messages count: {len(chat_request.messages)}")
         
         # Get the appropriate checkpointer
-        print("DEBUG: Getting checkpointer from app state...")
+        logger.debug("Getting checkpointer from app state...")
         checkpointer = await get_checkpointer_from_app(request)
-        print(f"DEBUG: Checkpointer obtained: {type(checkpointer)}")
+        logger.debug(f"Checkpointer obtained: {type(checkpointer)}")
         
-        # Create a new graph instance with the checkpointer for this request
-        print("DEBUG: Creating async graph with checkpointer...")
+        # Create a new chat agent instance with the checkpointer for this request
+        logger.info("Creating chat agent with checkpointer...")
         try:
-            from agent.chat_agent import create_async_graph_with_checkpointer
-            async_graph = await create_async_graph_with_checkpointer(checkpointer)
-            print(f"DEBUG: Using checkpointer: {type(checkpointer)} (id: {id(checkpointer)})")
-            print("DEBUG: Async graph created successfully")
-        except Exception as graph_error:
-            print(f"ERROR: Failed to create async graph: {graph_error}")
-            import traceback
-            traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Failed to create chat agent: {str(graph_error)}")
+            from agent.chat_agent import create_chat_agent
+            chat_agent = await create_chat_agent(checkpointer=checkpointer)
+            logger.info(f"Using checkpointer: {type(checkpointer)} (id: {id(checkpointer)})")
+            logger.info("Chat agent created successfully")
+        except Exception as agent_error:
+            logger.error(f"Failed to create chat agent: {agent_error}")
+            raise HTTPException(status_code=500, detail=f"Failed to create chat agent: {str(agent_error)}")
         
         # Create config
-        print("DEBUG: Creating config...")
+        logger.debug("Creating config...")
         config = _create_config(chat_request.thread_id)
-        print(f"DEBUG: Config created: {config}")
+        logger.debug(f"Config created: {config}")
         
         # Convert Pydantic models to LangChain messages
-        print("DEBUG: Converting messages...")
+        logger.debug("Converting messages...")
         try:
             messages = _convert_messages_to_langchain(chat_request.messages)
-            print(f"DEBUG: Converted {len(messages)} messages to LangChain format")
+            logger.debug(f"Converted {len(messages)} messages to LangChain format")
         except Exception as convert_error:
-            print(f"ERROR: Failed to convert messages: {convert_error}")
+            logger.error(f"Failed to convert messages: {convert_error}")
             raise HTTPException(status_code=500, detail=f"Failed to convert messages: {str(convert_error)}")
         
-        print(f"DEBUG: Streaming chat for thread_id: {chat_request.thread_id}")
-        print(f"DEBUG: Input messages count: {len(messages)}")
+        logger.debug(f"Starting stream for thread_id: {chat_request.thread_id} with {len(messages)} messages")
         
         async def generate_response():
             """Generate SSE (Server-Sent Events) response stream."""
             try:
-                print("DEBUG: Starting to stream from LangGraph...")
-                # Stream from the LangGraph agent using async graph
+                logger.debug("Starting to stream from LangGraph...")
+                # Stream from the LangGraph agent
                 stream_count = 0
-                async for chunk in async_graph.astream(
+                async for chunk in chat_agent.astream(
                     {"messages": messages}, 
                     config=config
                 ):
                     stream_count += 1
-                    print(f"DEBUG: Received chunk #{stream_count} from node: {list(chunk.keys())}")
+                    logger.debug(f"Received chunk #{stream_count} from node: {list(chunk.keys())}")
                     # Handle different types of chunks from LangGraph
                     for node_name, node_output in chunk.items():
                         if "messages" in node_output:
                             for message in node_output["messages"]:
                                 if isinstance(message, AIMessage):
-                                    print(f"DEBUG: Streaming AI message: {message.content[:50]}...")
+                                    logger.debug(f"Streaming AI message: {message.content[:50]}...")
                                     # Send message content as it streams
                                     event = {
                                         "type": "message",
@@ -438,58 +417,26 @@ async def stream_chat(request: Request, chat_request: ChatRequest):
                                         }
                                         yield f"data: {json.dumps(tool_event)}\n\n"
                 
-                print(f"DEBUG: Finished streaming for thread_id: {chat_request.thread_id} after {stream_count} chunks")
+                logger.info(f"Finished streaming for thread_id: {chat_request.thread_id} after {stream_count} chunks")
                 
-                # DEBUG: Check if checkpoints were actually saved
+                # Verify checkpoints were saved
                 try:
-                    from langgraph.checkpoint.memory import MemorySaver
-                    checkpointer = async_graph.checkpointer
-                    print(f"DEBUG: Checking saved checkpoints for thread {chat_request.thread_id}")
-                    
-                    # Try to get the current state to see if anything was saved
+                    checkpointer = chat_agent.checkpointer
                     current_state = await checkpointer.aget(config)
-                    if current_state:
-                        print(f"DEBUG: Found current state: {current_state.get('channel_values', {}).keys()}")
-                        if 'messages' in current_state.get('channel_values', {}):
-                            messages_count = len(current_state['channel_values']['messages'])
-                            print(f"DEBUG: State contains {messages_count} messages")
+                    if current_state and 'messages' in current_state.get('channel_values', {}):
+                        messages_count = len(current_state['channel_values']['messages'])
+                        logger.debug(f"Conversation saved: {messages_count} messages in thread {chat_request.thread_id}")
                     else:
-                        print(f"DEBUG: No current state found for thread {chat_request.thread_id}")
+                        logger.warning(f"No state found for thread {chat_request.thread_id} after streaming")
                     
-                    # Check internal storage directly
-                    if hasattr(checkpointer, 'storage'):
-                        print(f"DEBUG: Internal storage keys after conversation: {list(checkpointer.storage.keys())}")
-                        for key, value in checkpointer.storage.items():
-                            print(f"DEBUG: Storage key: {key}")
-                    
-                    # Try to list checkpoints for this specific thread
-                    if isinstance(checkpointer, MemorySaver):
-                        checkpoint_count = 0
-                        print(f"DEBUG: Calling alist with config: {config}")
-                        async for checkpoint_tuple in checkpointer.alist(config):
-                            checkpoint_count += 1
-                            print(f"DEBUG: Post-stream checkpoint {checkpoint_count}: {checkpoint_tuple.config}")
-                        print(f"DEBUG: Total checkpoints after streaming: {checkpoint_count}")
-                        
-                        # Try with just the thread_id config to see if that works
-                        simple_config = {"configurable": {"thread_id": chat_request.thread_id}}
-                        print(f"DEBUG: Trying with simple config: {simple_config}")
-                        simple_count = 0
-                        async for checkpoint_tuple in checkpointer.alist(simple_config):
-                            simple_count += 1
-                            print(f"DEBUG: Simple config checkpoint {simple_count}: {checkpoint_tuple.config}")
-                        print(f"DEBUG: Simple config checkpoints: {simple_count}")
-                    
-                except Exception as debug_error:
-                    print(f"DEBUG: Error checking checkpoints: {debug_error}")
-                    import traceback
-                    traceback.print_exc()
+                except Exception as checkpoint_error:
+                    logger.error(f"Error verifying checkpoints: {checkpoint_error}")
                 
                 # Send completion signal
                 yield f"data: {json.dumps({'type': 'complete', 'data': {'timestamp': datetime.now().isoformat()}})}\n\n"
                 
             except Exception as e:
-                print(f"DEBUG: Error during streaming: {e}")
+                logger.error(f"Error during streaming: {e}")
                 error_event = {
                     "type": "error",
                     "data": {
@@ -526,11 +473,11 @@ async def chat(request: ChatRequest):
         # Create configuration
         config = _create_config(request.thread_id)
         
-        # Get async graph instance
-        async_graph = await get_async_graph()
+        # Get chat agent instance
+        chat_agent = await get_chat_agent()
         
         # Get response from LangGraph
-        result = await async_graph.ainvoke({"messages": messages}, config=config)
+        result = await chat_agent.ainvoke({"messages": messages}, config=config)
         
         # Extract the last AI message
         last_message = result["messages"][-1]
@@ -561,9 +508,9 @@ async def chat_health():
     Health check endpoint for chat functionality.
     """
     try:
-        # Test if the async graph can be created and is working
-        async_graph = await get_async_graph()
-        agent_ready = async_graph is not None
+        # Test if the chat agent can be created and is working
+        chat_agent = await get_chat_agent()
+        agent_ready = chat_agent is not None
         
         return HealthResponse(
             status="healthy" if agent_ready else "degraded",
@@ -572,6 +519,7 @@ async def chat_health():
         )
         
     except Exception as e:
+        logger.error(f"Health check failed: {e}")
         return HealthResponse(
             status="unhealthy",
             agent_ready=False,
