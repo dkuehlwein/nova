@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Plus, MoreHorizontal, AlertTriangle, User, Calendar, Trash2, Eye, Clock, FileText, MessageCircle } from "lucide-react";
+import { Plus, AlertTriangle, User, Calendar, Trash2, Clock, FileText, MessageCircle, Activity, CornerDownLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
 import { useKanban, Task } from "@/hooks/useKanban";
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -25,6 +25,19 @@ interface CreateTaskData {
   title: string;
   description: string;
   tags: string[];
+}
+
+interface ActivityItem {
+  id?: string;
+  type?: string;
+  title?: string;
+  description: string;
+  time: string;
+  timestamp: string;
+  related_task_id?: string;
+  itemType: 'activity' | 'comment';
+  author?: string;
+  content?: string;
 }
 
 export default function KanbanPage() {
@@ -54,6 +67,8 @@ export default function KanbanPage() {
   });
   const [commentText, setCommentText] = useState('');
   const [isAddingComment, setIsAddingComment] = useState(false);
+  const [taskComments, setTaskComments] = useState<any[]>([]);
+  const [taskActivity, setTaskActivity] = useState<any[]>([]);
 
   // Handle URL task parameter to auto-open task dialog
   useEffect(() => {
@@ -120,16 +135,77 @@ export default function KanbanPage() {
     }
   };
 
+  const fetchTaskComments = async (taskId: string) => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/tasks/${taskId}/comments`);
+      if (response.ok) {
+        const comments = await response.json();
+        setTaskComments(comments);
+      }
+    } catch (err) {
+      console.error('Failed to fetch comments:', err);
+      setTaskComments([]);
+    }
+  };
+
+  const fetchTaskActivity = async (taskId: string) => {
+    try {
+      // Get general activity for this task
+      const response = await fetch(`http://localhost:8000/api/recent-activity`);
+      
+      if (response.ok) {
+        const allActivity = await response.json();
+        // Filter activity for this specific task
+        const filteredActivity = allActivity.filter((activity: any) => 
+          activity.related_task_id === taskId
+        );
+        setTaskActivity(filteredActivity);
+      } else {
+        setTaskActivity([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch activity:', err);
+      setTaskActivity([]);
+    }
+  };
+
+  const getTimeAgo = (timestamp: string) => {
+    const now = new Date();
+    const time = new Date(timestamp);
+    const diffInSeconds = Math.floor((now.getTime() - time.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    return `${Math.floor(diffInSeconds / 86400)} days ago`;
+  };
+
+  const handleCommentKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleAddComment();
+    }
+  };
+
   const handleTaskClick = async (task: Task) => {
     try {
       // Fetch latest task details
       const taskDetails = await getTaskById(task.id);
       setSelectedTask(taskDetails);
+      
+      // Fetch comments and activity
+      await Promise.all([
+        fetchTaskComments(task.id),
+        fetchTaskActivity(task.id)
+      ]);
+      
       setIsTaskDetailOpen(true);
     } catch (err) {
       console.error('Failed to fetch task details:', err);
       // Fallback to using the task data we already have
       setSelectedTask(task);
+      setTaskComments([]);
+      setTaskActivity([]);
       setIsTaskDetailOpen(true);
     }
   };
@@ -159,9 +235,13 @@ export default function KanbanPage() {
         throw new Error('Failed to add comment');
       }
       
-      // Refresh task details to get updated comment count
+      // Refresh task details, comments, and activity
       const updatedTask = await getTaskById(selectedTask.id);
       setSelectedTask(updatedTask);
+      await Promise.all([
+        fetchTaskComments(selectedTask.id),
+        fetchTaskActivity(selectedTask.id)
+      ]);
       setCommentText('');
     } catch (err) {
       console.error('Failed to add comment:', err);
@@ -181,64 +261,39 @@ export default function KanbanPage() {
           {task.needs_decision && (
             <AlertTriangle className="h-3 w-3 text-red-500" />
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
               <Button 
                 variant="ghost" 
                 size="sm" 
-                className="h-6 w-6 p-0"
+                className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
                 onClick={(e) => e.stopPropagation()}
               >
-                <MoreHorizontal className="h-3 w-3" />
+                <Trash2 className="h-3 w-3" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
-              <DropdownMenuItem onClick={(e: React.MouseEvent) => {
-                e.stopPropagation();
-                handleTaskClick(task);
-              }}>
-                <Eye className="h-3 w-3 mr-2" />
-                View Details
-              </DropdownMenuItem>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <DropdownMenuItem 
-                    className="text-red-600"
-                    onSelect={(e: Event) => {
-                      e.preventDefault();
-                    }}
-                    onClick={(e: React.MouseEvent) => {
-                      e.stopPropagation();
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3 mr-2" />
-                    Delete Task
-                  </DropdownMenuItem>
-                </AlertDialogTrigger>
-                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Task</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Are you sure you want to delete &quot;{task.title}&quot;? This action cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction 
-                      onClick={(e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        handleDeleteTask(task.id);
-                      }}
-                      disabled={isDeleting === task.id}
-                      className="bg-red-600 hover:bg-red-700"
-                    >
-                      {isDeleting === task.id ? 'Deleting...' : 'Delete'}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </AlertDialogTrigger>
+            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Task</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete &quot;{task.title}&quot;? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={(e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    handleDeleteTask(task.id);
+                  }}
+                  disabled={isDeleting === task.id}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  {isDeleting === task.id ? 'Deleting...' : 'Delete'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
       
@@ -402,85 +457,21 @@ export default function KanbanPage() {
         {/* Task Detail Dialog */}
         <Dialog open={isTaskDetailOpen} onOpenChange={handleTaskDetailClose}>
           <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
-            <DialogHeader className="border-b pb-4">
-              <DialogTitle className="text-xl font-semibold">Task Details</DialogTitle>
-            </DialogHeader>
             {selectedTask && (
-              <div className="space-y-8 py-6">
-                {/* Header Section with Status and Key Info */}
+              <div className="space-y-6 py-4">
+                {/* Compact Header */}
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h1 className="text-2xl font-bold text-foreground mb-2">{selectedTask.title}</h1>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="h-4 w-4" />
-                        <span>Created {new Date(selectedTask.created_at).toLocaleDateString()}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Clock className="h-4 w-4" />
-                        <span>Updated {new Date(selectedTask.updated_at).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className={`w-3 h-3 rounded-full ${getStatusColor(selectedTask.status)}`}></div>
-                    <Badge variant="secondary" className="text-sm font-medium">
-                      {formatStatusName(selectedTask.status)}
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Description Card */}
-                <div className="bg-muted/30 border border-border rounded-lg p-6">
-                  <Label className="text-base font-semibold text-foreground mb-3 block">Description</Label>
-                  <p className="text-foreground leading-relaxed">
-                    {selectedTask.description || 'No description provided.'}
-                  </p>
-                </div>
-
-                {/* Summary Card (if exists) */}
-                {selectedTask.summary && (
-                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
-                    <Label className="text-base font-semibold text-foreground mb-3 block flex items-center">
-                      <FileText className="h-4 w-4 mr-2" />
-                      Summary
-                    </Label>
-                    <p className="text-foreground leading-relaxed">
-                      {selectedTask.summary}
-                    </p>
-                  </div>
-                )}
-
-                {/* Decision Required Alert */}
-                {selectedTask.needs_decision && (
-                  <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-6">
-                    <div className="flex items-center space-x-3 text-red-700 dark:text-red-300 mb-3">
-                      <AlertTriangle className="h-5 w-5" />
-                      <span className="font-semibold text-base">Decision Required</span>
-                    </div>
-                    {selectedTask.decision_type && (
-                      <p className="text-sm text-red-600 dark:text-red-400 mb-2">
-                        Type: {selectedTask.decision_type.replace('_', ' ')}
-                      </p>
-                    )}
-                    <p className="text-sm text-red-600 dark:text-red-400">
-                      This task requires your attention before Nova can continue.
-                    </p>
-                  </div>
-                )}
-
-                {/* Metadata Grid */}
-                <div className="grid grid-cols-2 gap-6">
-                  {/* Dates */}
-                  <div className="space-y-4">
-                    {(selectedTask.due_date || selectedTask.completed_at) && (
-                      <div className="bg-card border border-border rounded-lg p-4">
-                        <Label className="text-sm font-medium text-muted-foreground mb-2 block">
-                          {selectedTask.completed_at ? 'Completed' : 'Due Date'}
-                        </Label>
-                        <div className="flex items-center space-x-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm text-foreground">
+                    <h1 className="text-xl font-bold text-foreground mb-2">{selectedTask.title}</h1>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
+                      <span>Created {new Date(selectedTask.created_at).toLocaleDateString()}</span>
+                      <span>•</span>
+                      <span>Updated {new Date(selectedTask.updated_at).toLocaleDateString()}</span>
+                      {(selectedTask.due_date || selectedTask.completed_at) && (
+                        <>
+                          <span>•</span>
+                          <span>
+                            {selectedTask.completed_at ? 'Completed' : 'Due'}: {' '}
                             {selectedTask.completed_at 
                               ? new Date(selectedTask.completed_at).toLocaleDateString()
                               : selectedTask.due_date 
@@ -488,91 +479,196 @@ export default function KanbanPage() {
                                 : 'Not set'
                             }
                           </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Tags */}
-                  {selectedTask.tags.length > 0 && (
-                    <div className="bg-card border border-border rounded-lg p-4">
-                      <Label className="text-sm font-medium text-muted-foreground mb-3 block">Tags</Label>
-                      <div className="flex flex-wrap gap-2">
+                        </>
+                      )}
+                    </div>
+                    {/* Tags in header */}
+                    {selectedTask.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
                         {selectedTask.tags.map((tag) => (
-                          <Badge key={tag} variant="secondary" className="text-xs">
+                          <Badge key={tag} variant="secondary" className="text-xs h-5">
                             {tag}
                           </Badge>
                         ))}
                       </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Related Entities */}
-                {(selectedTask.persons.length > 0 || selectedTask.projects.length > 0) && (
-                  <div className="bg-card border border-border rounded-lg p-6">
-                    <Label className="text-base font-semibold text-foreground mb-4 block">Related Entities</Label>
-                    <div className="grid grid-cols-1 gap-4">
-                      {selectedTask.persons.length > 0 && (
-                        <div>
-                          <Label className="text-sm font-medium text-muted-foreground mb-2 block">People</Label>
-                          <div className="flex flex-wrap gap-2">
-                            {selectedTask.persons.map((person) => (
-                              <Badge key={person} variant="outline" className="flex items-center space-x-2 px-3 py-1">
-                                <User className="h-3 w-3" />
-                                <span>{person}</span>
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {selectedTask.projects.length > 0 && (
-                        <div>
-                          <Label className="text-sm font-medium text-muted-foreground mb-2 block">Projects</Label>
-                          <div className="flex flex-wrap gap-2">
-                            {selectedTask.projects.map((project) => (
-                              <Badge key={project} variant="outline" className="px-3 py-1">
-                                {project}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </div>
-                )}
-
-                {/* Comments Section */}
-                <div className="bg-card border border-border rounded-lg p-6">
-                  <Label className="text-base font-semibold text-foreground mb-4 block">Comments</Label>
-                  
-                  {/* Comment Count Status */}
-                  <div className="mb-4">
-                    {selectedTask.comments_count > 0 ? (
-                      <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                        <MessageCircle className="h-4 w-4" />
-                        <span>{selectedTask.comments_count} comment{selectedTask.comments_count !== 1 ? 's' : ''}</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                        <MessageCircle className="h-4 w-4" />
-                        <span>No comments yet</span>
+                  <div className="flex flex-col items-end space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(selectedTask.status)}`}></div>
+                      <Badge variant="secondary" className="text-sm font-medium">
+                        {formatStatusName(selectedTask.status)}
+                      </Badge>
+                    </div>
+                    {/* Related entities in header */}
+                    {(selectedTask.persons.length > 0 || selectedTask.projects.length > 0) && (
+                      <div className="flex flex-col items-end space-y-1">
+                        {selectedTask.persons.length > 0 && (
+                          <div className="flex items-center space-x-1">
+                            <User className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">
+                              {selectedTask.persons.slice(0, 2).join(', ')}
+                              {selectedTask.persons.length > 2 && ` +${selectedTask.persons.length - 2}`}
+                            </span>
+                          </div>
+                        )}
+                        {selectedTask.projects.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            {selectedTask.projects.slice(0, 1).join(', ')}
+                            {selectedTask.projects.length > 1 && ` +${selectedTask.projects.length - 1}`}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Description */}
+                <div className="bg-muted/30 border border-border rounded-lg p-4">
+                  <Label className="text-sm font-medium text-muted-foreground mb-2 block">Description</Label>
+                  <p className="text-sm text-foreground leading-relaxed">
+                    {selectedTask.description || 'No description provided.'}
+                  </p>
+                </div>
+
+                {/* Summary (if exists) */}
+                {selectedTask.summary && (
+                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <Label className="text-sm font-medium text-foreground mb-2 block flex items-center">
+                      <FileText className="h-3 w-3 mr-2" />
+                      Summary
+                    </Label>
+                    <p className="text-sm text-foreground leading-relaxed">
+                      {selectedTask.summary}
+                    </p>
+                  </div>
+                )}
+
+                {/* Decision Required Alert */}
+                {selectedTask.needs_decision && (
+                  <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                    <div className="flex items-center space-x-2 text-red-700 dark:text-red-300 mb-1">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span className="font-medium text-sm">Decision Required</span>
+                      {selectedTask.decision_type && (
+                        <span className="text-xs text-red-600 dark:text-red-400">
+                          ({selectedTask.decision_type.replace('_', ' ')})
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-red-600 dark:text-red-400 ml-6">
+                      This task requires your attention before Nova can continue.
+                    </p>
+                  </div>
+                )}
+
+
+
+                {/* Activity & Comments Section */}
+                <div className="bg-card border border-border rounded-lg p-6">
+                  <Label className="text-base font-semibold text-foreground mb-4 block flex items-center">
+                    <Activity className="h-4 w-4 mr-2" />
+                    Activity & Comments ({taskComments.length + taskActivity.filter(a => a.type !== 'comment_added').length})
+                  </Label>
+                  
+                  {/* Combined Activity and Comments Timeline */}
+                  {(() => {
+                    // Combine and sort all activity items
+                    const allActivity: ActivityItem[] = [];
+                    
+                    // Add non-comment activities
+                    taskActivity.filter(a => a.type !== 'comment_added').forEach(activity => {
+                      allActivity.push({
+                        ...activity,
+                        itemType: 'activity' as const,
+                        description: activity.description || activity.title || 'Activity'
+                      });
+                    });
+                    
+                    // Add comments as activity items
+                    taskComments.forEach(comment => {
+                      allActivity.push({
+                        id: comment.id,
+                        timestamp: comment.created_at,
+                        itemType: 'comment' as const,
+                        author: comment.author,
+                        content: comment.content,
+                        description: `Comment by ${comment.author === 'user' ? 'You' : 'Nova'}`,
+                        time: getTimeAgo(comment.created_at)
+                      });
+                    });
+                    
+                    // Sort by timestamp (most recent first)
+                    allActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                    
+                    return allActivity.length > 0 ? (
+                      <div className="space-y-4 mb-6">
+                        {allActivity.map((item, index) => (
+                          <div key={`${item.itemType}-${item.id || index}`} className="border-l-2 border-muted pl-4 py-2">
+                            {item.itemType === 'comment' ? (
+                              // Comment display
+                              <>
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center space-x-2">
+                                    <MessageCircle className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-sm font-medium text-foreground">
+                                      {item.author === 'user' ? 'You' : 'Nova'} commented
+                                    </span>
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">
+                                    {item.time}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-foreground leading-relaxed">
+                                  {item.content}
+                                </p>
+                              </>
+                            ) : (
+                              // Activity display
+                              <>
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center space-x-2">
+                                    <Activity className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-sm font-medium text-foreground">
+                                      {item.description}
+                                    </span>
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">
+                                    {item.time}
+                                  </span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground mb-6">No activity yet</div>
+                    );
+                  })()}
 
                   {/* Add Comment */}
                   <div className="border-t pt-4">
                     <Label className="text-sm font-medium text-foreground mb-2 block">Add a comment</Label>
                     <div className="space-y-3">
-                      <Textarea
-                        placeholder="Share your thoughts, updates, or questions about this task..."
-                        className="min-h-[80px] resize-none"
-                        rows={3}
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                      />
-                      <div className="flex justify-end">
+                      <div className="relative">
+                        <Textarea
+                          placeholder="Share your thoughts, updates, or questions about this task..."
+                          className="min-h-[80px] resize-none pr-20"
+                          rows={3}
+                          value={commentText}
+                          onChange={(e) => setCommentText(e.target.value)}
+                          onKeyDown={handleCommentKeyDown}
+                        />
+                        <div className="absolute bottom-2 right-2 flex items-center space-x-1 text-xs text-muted-foreground">
+                          <CornerDownLeft className="h-3 w-3" />
+                          <span>Enter to send</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <div className="text-xs text-muted-foreground">
+                          Tip: Use Shift+Enter for new lines
+                        </div>
                         <Button 
                           size="sm" 
                           className="px-6"
