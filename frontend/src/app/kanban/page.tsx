@@ -294,6 +294,9 @@ function KanbanPage() {
       // Update the selected task
       setSelectedTask({ ...selectedTask, title: editedTitle.trim() });
       setIsEditingTitle(false);
+      
+      // Refresh the activity to show the edit
+      fetchTaskActivity(selectedTask.id);
     } catch (err) {
       console.error('Failed to update title:', err);
     }
@@ -320,6 +323,9 @@ function KanbanPage() {
       // Update the selected task
       setSelectedTask({ ...selectedTask, description: editedDescription.trim() });
       setIsEditingDescription(false);
+      
+      // Refresh the activity to show the edit
+      fetchTaskActivity(selectedTask.id);
     } catch (err) {
       console.error('Failed to update description:', err);
     }
@@ -622,8 +628,8 @@ function KanbanPage() {
                 </div>
 
                 {/* Description */}
-                <div className="bg-muted/30 border border-border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
+                <div className="bg-muted/30 border border-border rounded-lg p-4 group">
+                  <div className="flex items-center justify-between mb-3">
                     <Label className="text-sm font-medium text-muted-foreground">Description</Label>
                     {!isEditingDescription && (
                       <Button
@@ -662,11 +668,9 @@ function KanbanPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="group">
-                      <p className="text-sm text-foreground leading-relaxed">
-                        {selectedTask.description || 'No description provided.'}
-                      </p>
-                    </div>
+                    <p className="text-sm text-foreground leading-relaxed">
+                      {selectedTask.description || 'No description provided.'}
+                    </p>
                   )}
                 </div>
 
@@ -682,8 +686,6 @@ function KanbanPage() {
                     </p>
                   </div>
                 )}
-
-
 
                 {/* Activity & Comments Section */}
                 <div className="bg-card border border-border rounded-lg p-6">

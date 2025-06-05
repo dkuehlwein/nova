@@ -262,16 +262,35 @@ async def get_recent_activity_items(session, limit: int = 10) -> List[ActivityIt
         else:
             time_str = f"{time_diff.days} day{'s' if time_diff.days != 1 else ''} ago"
         
-        # Determine activity type and description
-        if task.status == TaskStatus.DONE:
+        # Determine activity type and description based on stored changes
+        changes = task.task_metadata.get('last_changes', []) if task.task_metadata else []
+        
+        if task.status == TaskStatus.DONE and 'status' in str(changes):
             activity_type = "task_completed"
             description = f"Moved to DONE lane"
-        elif task.status == TaskStatus.NEW:
+        elif task.status == TaskStatus.NEW and not changes:
             activity_type = "task_created" 
             description = f"Created in {task.status.value} lane"
+        elif changes:
+            activity_type = "task_updated"
+            # Create a more descriptive message based on what changed
+            if len(changes) == 1:
+                change = changes[0]
+                if 'title' in change:
+                    description = f"Updated {change}"
+                elif change == 'description':
+                    description = "Updated description"
+                elif 'status' in change:
+                    description = f"Updated {change}"
+                elif change == 'tags':
+                    description = "Updated tags"
+                else:
+                    description = f"Updated {change}"
+            else:
+                description = f"Updated {', '.join(changes)}"
         else:
             activity_type = "task_updated"
-            description = f"Updated status to {task.status.value}"
+            description = f"Updated task"
         
         activities.append(ActivityItem(
             type=activity_type,
@@ -515,8 +534,21 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
         
+        # Track what changed for activity logging
+        changes = []
+        update_data = task_data.model_dump(exclude_unset=True)
+        
+        if 'title' in update_data and update_data['title'] != task.title:
+            changes.append(f"title from '{task.title}' to '{update_data['title']}'")
+        if 'description' in update_data and update_data['description'] != task.description:
+            changes.append("description")
+        if 'status' in update_data and update_data['status'] != task.status:
+            changes.append(f"status from '{task.status.value}' to '{update_data['status'].value}'")
+        if 'tags' in update_data and update_data['tags'] != task.tags:
+            changes.append("tags")
+        
         # Update fields
-        for field, value in task_data.model_dump(exclude_unset=True).items():
+        for field, value in update_data.items():
             setattr(task, field, value)
         
         # Set completed_at if status is DONE
@@ -524,6 +556,13 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
             task.completed_at = datetime.utcnow()
         elif task_data.status != TaskStatus.DONE:
             task.completed_at = None
+        
+        # Store the changes in task_metadata for activity tracking
+        if changes:
+            if not task.task_metadata:
+                task.task_metadata = {}
+            task.task_metadata['last_changes'] = changes
+            task.task_metadata['last_change_time'] = datetime.utcnow().isoformat()
         
         await session.commit()
         await session.refresh(task)
