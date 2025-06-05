@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # Agent Loop Settings
     AGENT_POLLING_INTERVAL_SECONDS: int = 30
     AGENT_ERROR_RETRY_INTERVAL_SECONDS: int = 60
+    
+    # Checkpointer Configuration
+    FORCE_MEMORY_CHECKPOINTER: bool = False  # Set to True to force InMemorySaver for development/debugging
 
     @model_validator(mode="after")
     def compute_urls(self):

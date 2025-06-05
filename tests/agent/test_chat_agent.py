@@ -3,9 +3,11 @@ Tests for Nova LangGraph Chat Agent
 """
 
 import pytest
+from unittest.mock import patch
 from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.memory import MemorySaver
 
-from agent.chat_agent import create_chat_agent
+from agent.chat_agent import create_chat_agent, create_checkpointer
 
 
 class TestChatAgent:
@@ -91,6 +93,20 @@ class TestChatAgent:
         assert result2 is not None
         assert "messages" in result1
         assert "messages" in result2
+
+    @pytest.mark.asyncio 
+    async def test_force_memory_checkpointer(self):
+        """Test that FORCE_MEMORY_CHECKPOINTER setting works."""
+        # Test with FORCE_MEMORY_CHECKPOINTER=True
+        with patch('backend.config.settings.FORCE_MEMORY_CHECKPOINTER', True):
+            checkpointer = await create_checkpointer()
+            assert isinstance(checkpointer, MemorySaver)
+        
+        # Test with FORCE_MEMORY_CHECKPOINTER=False (default behavior)
+        with patch('backend.config.settings.FORCE_MEMORY_CHECKPOINTER', False):
+            checkpointer = await create_checkpointer()
+            # Should still be MemorySaver since we don't have PostgreSQL in tests
+            assert isinstance(checkpointer, MemorySaver)
 
 
 # Standalone test function for manual testing (can be run directly)

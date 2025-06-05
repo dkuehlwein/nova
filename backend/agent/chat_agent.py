@@ -56,8 +56,17 @@ async def get_all_tools_with_mcp() -> List[Any]:
 async def create_checkpointer():
     """Create checkpointer based on configuration.
     
-    Returns PostgreSQL checkpointer if configured, otherwise MemorySaver.
+    Returns checkpointer based on configuration:
+    - If FORCE_MEMORY_CHECKPOINTER is True, always returns MemorySaver
+    - Otherwise, returns PostgreSQL checkpointer if configured
+    - Falls back to MemorySaver if PostgreSQL is not available
     """
+    # Check if we should force memory checkpointer for development/debugging
+    if settings.FORCE_MEMORY_CHECKPOINTER:
+        logger.info("Forcing MemorySaver checkpointer (FORCE_MEMORY_CHECKPOINTER=True)")
+        return MemorySaver()
+    
+    # Try PostgreSQL if DATABASE_URL is configured
     if settings.DATABASE_URL:
         try:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -77,7 +86,7 @@ async def create_checkpointer():
             logger.error(f"Error creating PostgreSQL checkpointer: {e}")
             return MemorySaver()
     else:
-        logger.info("Using in-memory checkpointer")
+        logger.info("No DATABASE_URL configured, using in-memory checkpointer")
         return MemorySaver()
 
 
