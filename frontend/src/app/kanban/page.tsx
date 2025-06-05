@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Plus, AlertTriangle, User, Calendar, Trash2, Clock, FileText, MessageCircle, Activity, CornerDownLeft } from "lucide-react";
+import { Plus, Calendar, Trash2, FileText, MessageCircle, Activity, CornerDownLeft, Edit2, Check, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 import { useKanban, Task } from "@/hooks/useKanban";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 interface Lane {
@@ -40,7 +40,25 @@ interface ActivityItem {
   content?: string;
 }
 
-export default function KanbanPage() {
+interface Comment {
+  id: string;
+  content: string;
+  author: string;
+  created_at: string;
+  task_id: string;
+}
+
+interface Activity {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  timestamp: string;
+  related_task_id?: string;
+  author?: string;
+}
+
+function KanbanPage() {
   const { 
     tasksByStatus, 
     loading, 
@@ -67,17 +85,45 @@ export default function KanbanPage() {
   });
   const [commentText, setCommentText] = useState('');
   const [isAddingComment, setIsAddingComment] = useState(false);
-  const [taskComments, setTaskComments] = useState<any[]>([]);
-  const [taskActivity, setTaskActivity] = useState<any[]>([]);
+  const [taskComments, setTaskComments] = useState<Comment[]>([]);
+  const [taskActivity, setTaskActivity] = useState<Activity[]>([]);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editedTitle, setEditedTitle] = useState('');
+  const [editedDescription, setEditedDescription] = useState('');
 
   // Handle URL task parameter to auto-open task dialog
   useEffect(() => {
     const taskId = searchParams.get('task');
     if (taskId && !loading && !urlTaskProcessed) {
+      // Properly load the full task data using handleTaskClick
       handleTaskClick({ id: taskId } as Task);
       setUrlTaskProcessed(true);
     }
   }, [searchParams, loading, urlTaskProcessed]);
+
+  const handleTaskClick = async (task: Task) => {
+    try {
+      // Fetch latest task details
+      const taskDetails = await getTaskById(task.id);
+      setSelectedTask(taskDetails);
+      
+      // Fetch comments and activity
+      await Promise.all([
+        fetchTaskComments(task.id),
+        fetchTaskActivity(task.id)
+      ]);
+      
+      setIsTaskDetailOpen(true);
+    } catch (err) {
+      console.error('Failed to fetch task details:', err);
+      // Fallback to using the task data we already have
+      setSelectedTask(task);
+      setTaskComments([]);
+      setTaskActivity([]);
+      setIsTaskDetailOpen(true);
+    }
+  };
 
   // Convert API data to lanes format
   const lanes: Lane[] = Object.entries(tasksByStatus).map(([status, tasks]) => ({
@@ -156,7 +202,7 @@ export default function KanbanPage() {
       if (response.ok) {
         const allActivity = await response.json();
         // Filter activity for this specific task
-        const filteredActivity = allActivity.filter((activity: any) => 
+        const filteredActivity = allActivity.filter((activity: ActivityItem) => 
           activity.related_task_id === taskId
         );
         setTaskActivity(filteredActivity);
@@ -184,29 +230,6 @@ export default function KanbanPage() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleAddComment();
-    }
-  };
-
-  const handleTaskClick = async (task: Task) => {
-    try {
-      // Fetch latest task details
-      const taskDetails = await getTaskById(task.id);
-      setSelectedTask(taskDetails);
-      
-      // Fetch comments and activity
-      await Promise.all([
-        fetchTaskComments(task.id),
-        fetchTaskActivity(task.id)
-      ]);
-      
-      setIsTaskDetailOpen(true);
-    } catch (err) {
-      console.error('Failed to fetch task details:', err);
-      // Fallback to using the task data we already have
-      setSelectedTask(task);
-      setTaskComments([]);
-      setTaskActivity([]);
-      setIsTaskDetailOpen(true);
     }
   };
 
@@ -250,6 +273,82 @@ export default function KanbanPage() {
     }
   };
 
+  const handleSaveTitle = async () => {
+    if (!selectedTask || !editedTitle.trim()) return;
+    
+    try {
+      const response = await fetch(`http://localhost:8000/api/tasks/${selectedTask.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: editedTitle.trim()
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update title');
+      }
+      
+      // Update the selected task
+      setSelectedTask({ ...selectedTask, title: editedTitle.trim() });
+      setIsEditingTitle(false);
+    } catch (err) {
+      console.error('Failed to update title:', err);
+    }
+  };
+
+  const handleSaveDescription = async () => {
+    if (!selectedTask) return;
+    
+    try {
+      const response = await fetch(`http://localhost:8000/api/tasks/${selectedTask.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          description: editedDescription.trim()
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update description');
+      }
+      
+      // Update the selected task
+      setSelectedTask({ ...selectedTask, description: editedDescription.trim() });
+      setIsEditingDescription(false);
+    } catch (err) {
+      console.error('Failed to update description:', err);
+    }
+  };
+
+  const startEditingTitle = () => {
+    if (selectedTask) {
+      setEditedTitle(selectedTask.title);
+      setIsEditingTitle(true);
+    }
+  };
+
+  const startEditingDescription = () => {
+    if (selectedTask) {
+      setEditedDescription(selectedTask.description || '');
+      setIsEditingDescription(true);
+    }
+  };
+
+  const cancelEditingTitle = () => {
+    setIsEditingTitle(false);
+    setEditedTitle('');
+  };
+
+  const cancelEditingDescription = () => {
+    setIsEditingDescription(false);
+    setEditedDescription('');
+  };
+
   const TaskCard = ({ task }: { task: Task }) => (
     <div 
       className="bg-card border border-border rounded-lg p-4 mb-3 cursor-pointer hover:shadow-md transition-shadow"
@@ -258,9 +357,6 @@ export default function KanbanPage() {
       <div className="flex items-start justify-between mb-2">
         <h4 className="font-medium text-foreground text-sm">{task.title}</h4>
         <div className="flex items-center space-x-1">
-          {task.needs_decision && (
-            <AlertTriangle className="h-3 w-3 text-red-500" />
-          )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button 
@@ -302,7 +398,7 @@ export default function KanbanPage() {
       </p>
 
       <div className="flex flex-wrap gap-1 mb-3">
-        {task.tags.map((tag: string) => (
+        {(task.tags || []).map((tag: string) => (
           <Badge key={tag} variant="secondary" className="text-xs px-1 py-0">
             {tag}
           </Badge>
@@ -310,16 +406,7 @@ export default function KanbanPage() {
       </div>
 
       <div className="flex items-center justify-between text-xs">
-        <div className="flex items-center space-x-1">
-          <User className="h-3 w-3" />
-          <span className="text-muted-foreground">
-            {task.persons.length > 0 ? task.persons[0] : 'Unassigned'}
-          </span>
-        </div>
         <div className="flex items-center space-x-2">
-          {task.needs_decision && (
-            <div className="w-2 h-2 rounded-full bg-red-500"></div>
-          )}
           <div className="flex items-center space-x-1">
             <Calendar className="h-3 w-3" />
             <span className="text-muted-foreground">
@@ -334,19 +421,7 @@ export default function KanbanPage() {
         </div>
       </div>
 
-      {task.needs_decision && (
-        <div className="mt-2 pt-2 border-t border-border">
-          <div className="flex items-center space-x-1">
-            <AlertTriangle className="h-3 w-3 text-red-500" />
-            <span className="text-xs text-red-500 font-medium">Decision Required</span>
-          </div>
-          {task.decision_type && (
-            <span className="text-xs text-muted-foreground">
-              Type: {task.decision_type.replace('_', ' ')}
-            </span>
-          )}
-        </div>
-      )}
+
     </div>
   );
 
@@ -462,7 +537,41 @@ export default function KanbanPage() {
                 {/* Compact Header */}
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h1 className="text-xl font-bold text-foreground mb-2">{selectedTask.title}</h1>
+                    {isEditingTitle ? (
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Input
+                          value={editedTitle}
+                          onChange={(e) => setEditedTitle(e.target.value)}
+                          className="text-xl font-bold"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSaveTitle();
+                            } else if (e.key === 'Escape') {
+                              cancelEditingTitle();
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <Button size="sm" onClick={handleSaveTitle} disabled={!editedTitle.trim()}>
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={cancelEditingTitle}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2 mb-2 group">
+                        <h1 className="text-xl font-bold text-foreground">{selectedTask.title}</h1>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={startEditingTitle}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
                     <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
                       <span>Created {new Date(selectedTask.created_at).toLocaleDateString()}</span>
                       <span>•</span>
@@ -483,7 +592,7 @@ export default function KanbanPage() {
                       )}
                     </div>
                     {/* Tags in header */}
-                    {selectedTask.tags.length > 0 && (
+                    {selectedTask.tags && selectedTask.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {selectedTask.tags.map((tag) => (
                           <Badge key={tag} variant="secondary" className="text-xs h-5">
@@ -501,23 +610,12 @@ export default function KanbanPage() {
                       </Badge>
                     </div>
                     {/* Related entities in header */}
-                    {(selectedTask.persons.length > 0 || selectedTask.projects.length > 0) && (
+                    {selectedTask.projects && selectedTask.projects.length > 0 && (
                       <div className="flex flex-col items-end space-y-1">
-                        {selectedTask.persons.length > 0 && (
-                          <div className="flex items-center space-x-1">
-                            <User className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground">
-                              {selectedTask.persons.slice(0, 2).join(', ')}
-                              {selectedTask.persons.length > 2 && ` +${selectedTask.persons.length - 2}`}
-                            </span>
-                          </div>
-                        )}
-                        {selectedTask.projects.length > 0 && (
-                          <div className="text-xs text-muted-foreground">
-                            {selectedTask.projects.slice(0, 1).join(', ')}
-                            {selectedTask.projects.length > 1 && ` +${selectedTask.projects.length - 1}`}
-                          </div>
-                        )}
+                        <div className="text-xs text-muted-foreground">
+                          {selectedTask.projects.slice(0, 1).join(', ')}
+                          {selectedTask.projects.length > 1 && ` +${selectedTask.projects.length - 1}`}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -525,10 +623,51 @@ export default function KanbanPage() {
 
                 {/* Description */}
                 <div className="bg-muted/30 border border-border rounded-lg p-4">
-                  <Label className="text-sm font-medium text-muted-foreground mb-2 block">Description</Label>
-                  <p className="text-sm text-foreground leading-relaxed">
-                    {selectedTask.description || 'No description provided.'}
-                  </p>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-sm font-medium text-muted-foreground">Description</Label>
+                    {!isEditingDescription && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={startEditingDescription}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Edit2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  {isEditingDescription ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={editedDescription}
+                        onChange={(e) => setEditedDescription(e.target.value)}
+                        className="min-h-[100px] resize-none"
+                        placeholder="Enter task description..."
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            cancelEditingDescription();
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <div className="flex items-center space-x-2">
+                        <Button size="sm" onClick={handleSaveDescription}>
+                          <Check className="h-4 w-4 mr-1" />
+                          Save
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={cancelEditingDescription}>
+                          <X className="h-4 w-4 mr-1" />
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="group">
+                      <p className="text-sm text-foreground leading-relaxed">
+                        {selectedTask.description || 'No description provided.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Summary (if exists) */}
@@ -540,24 +679,6 @@ export default function KanbanPage() {
                     </Label>
                     <p className="text-sm text-foreground leading-relaxed">
                       {selectedTask.summary}
-                    </p>
-                  </div>
-                )}
-
-                {/* Decision Required Alert */}
-                {selectedTask.needs_decision && (
-                  <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                    <div className="flex items-center space-x-2 text-red-700 dark:text-red-300 mb-1">
-                      <AlertTriangle className="h-4 w-4" />
-                      <span className="font-medium text-sm">Decision Required</span>
-                      {selectedTask.decision_type && (
-                        <span className="text-xs text-red-600 dark:text-red-400">
-                          ({selectedTask.decision_type.replace('_', ' ')})
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-red-600 dark:text-red-400 ml-6">
-                      This task requires your attention before Nova can continue.
                     </p>
                   </div>
                 )}
@@ -581,7 +702,8 @@ export default function KanbanPage() {
                       allActivity.push({
                         ...activity,
                         itemType: 'activity' as const,
-                        description: activity.description || activity.title || 'Activity'
+                        description: activity.description || activity.title || 'Activity',
+                        time: getTimeAgo(activity.timestamp)
                       });
                     });
                     
@@ -712,5 +834,20 @@ export default function KanbanPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function KanbanPageWithSuspense() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="flex items-center justify-center h-96">
+          <div className="text-muted-foreground">Loading kanban board...</div>
+        </div>
+      </div>
+    }>
+      <KanbanPage />
+    </Suspense>
   );
 } 

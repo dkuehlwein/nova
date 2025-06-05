@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiRequest, API_ENDPOINTS } from '@/lib/api';
 
 interface TaskCounts {
@@ -35,7 +35,6 @@ interface ActivityItem {
 interface CurrentTask {
   id: string;
   title: string;
-  assignee: string;
   priority: string;
 }
 
@@ -59,9 +58,13 @@ interface TasksByStatusResponse {
   in_progress: Array<{
     id: string;
     title: string;
-    persons: string[];
+    persons?: string[];
   }>;
-  [key: string]: Array<any>;
+  [key: string]: Array<{
+    id: string;
+    title: string;
+    persons?: string[];
+  }>;
 }
 
 // Function to transform API response to frontend format
@@ -91,7 +94,6 @@ export function useOverview() {
         setCurrentTask({
           id: task.id,
           title: task.title,
-          assignee: task.persons.length > 0 ? task.persons[0] : 'Nova AI',
           priority: 'high' // Could be derived from task data if needed
         });
       } else {
@@ -103,7 +105,7 @@ export function useOverview() {
     }
   };
 
-  const fetchOverview = async () => {
+  const fetchOverview = useCallback(async () => {
     try {
       setLoading(true);
       const apiResult: ApiOverviewResponse = await apiRequest<ApiOverviewResponse>(API_ENDPOINTS.overview);
@@ -143,7 +145,7 @@ export function useOverview() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchOverview();
@@ -152,7 +154,7 @@ export function useOverview() {
     const interval = setInterval(fetchOverview, 30000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchOverview]);
 
   // Calculate derived values
   const activeTasks = data ? 

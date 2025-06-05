@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Terminal Rules
+We use uv for python code execution. Its corresponding venv is based in /backend
+Unless stated otherwise assume that backend and frontend servers are up and running.

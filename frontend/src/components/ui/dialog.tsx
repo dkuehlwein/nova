@@ -46,10 +46,10 @@ const DialogTrigger = React.forwardRef<
   }
 
   if (asChild && React.isValidElement(children)) {
-    return React.cloneElement(children, {
+    return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
       onClick: handleClick,
       ref
-    } as any)
+    })
   }
 
   return (

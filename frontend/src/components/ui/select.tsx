@@ -41,7 +41,11 @@ const SelectTrigger = ({ children, ...props }: { children: React.ReactNode }) =>
   <div {...props}>{children}</div>
 )
 
-const SelectValue = ({ placeholder }: { placeholder?: string }) => null
+const SelectValue = () => {
+  // This component is used for compatibility but doesn't render anything
+  // The placeholder is handled by the actual select element
+  return null;
+}
 
 const SelectContent = ({ children }: { children: React.ReactNode }) => (
   <>{children}</>

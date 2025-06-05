@@ -16,9 +16,25 @@ export interface ChatState {
   isConnected: boolean;
 }
 
+interface StreamMessageData {
+  role: string;
+  content: string;
+}
+
+interface StreamToolData {
+  tool: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+}
+
+interface StreamErrorData {
+  error: string;
+  details?: string;
+}
+
 export interface StreamEvent {
   type: 'message' | 'tool_call' | 'tool_result' | 'complete' | 'error';
-  data: any;
+  data: StreamMessageData | StreamToolData | StreamErrorData | Record<string, unknown>;
 }
 
 export function useChat() {
@@ -93,12 +109,13 @@ export function useChat() {
 
       console.log(`Loaded chat ${chatId} with ${chatMessages.length} messages`);
       
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load chat';
       console.error('Failed to load chat:', error);
       setState(prev => ({
         ...prev,
         isLoading: false,
-        error: error.message || 'Failed to load chat',
+        error: errorMessage,
       }));
     }
   }, []);
@@ -179,13 +196,14 @@ export function useChat() {
 
                   switch (event.type) {
                     case 'message':
-                      if (event.data.role === 'assistant') {
+                      const messageData = event.data as StreamMessageData;
+                      if (messageData.role === 'assistant') {
                         // Accumulate content instead of overwriting
-                        if (assistantContent && event.data.content) {
+                        if (assistantContent && messageData.content) {
                           // Add separator between responses for readability
-                          assistantContent += '\n\n' + event.data.content;
+                          assistantContent += '\n\n' + messageData.content;
                         } else {
-                          assistantContent = event.data.content;
+                          assistantContent = messageData.content;
                         }
                         updateMessage(assistantMessageId, {
                           content: assistantContent,
@@ -196,7 +214,8 @@ export function useChat() {
 
                     case 'tool_call':
                       // Add a visual indicator for tool usage
-                      const toolMessage = `\n\n🔧 Using tool: ${event.data.tool}...`;
+                      const toolData = event.data as StreamToolData;
+                      const toolMessage = `\n\n🔧 Using tool: ${toolData.tool}...`;
                       assistantContent += toolMessage;
                       updateMessage(assistantMessageId, {
                         content: assistantContent,
@@ -212,7 +231,8 @@ export function useChat() {
                       break;
 
                     case 'error':
-                      setState(prev => ({ ...prev, error: event.data.error }));
+                      const errorData = event.data as StreamErrorData;
+                      setState(prev => ({ ...prev, error: errorData.error }));
                       updateMessage(assistantMessageId, {
                         content: assistantContent || 'Error occurred while processing your message.',
                         isStreaming: false,
@@ -259,16 +279,17 @@ export function useChat() {
 
       setState(prev => ({ ...prev, isConnected: true }));
 
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
         // Request was cancelled, this is expected
         return;
       }
 
       console.error('Chat error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
       setState(prev => ({
         ...prev,
-        error: error.message || 'Failed to send message',
+        error: errorMessage,
         isConnected: false,
       }));
 
@@ -318,11 +339,12 @@ export function useChat() {
       }));
 
       return health;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to check agent health';
       setState(prev => ({
         ...prev,
         isConnected: false,
-        error: error.message || 'Failed to check agent health',
+        error: errorMessage,
       }));
       throw error;
     }
@@ -337,7 +359,7 @@ export function useChat() {
       }>(API_ENDPOINTS.chatTest, { method: 'POST' });
 
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Agent test failed:', error);
       throw error;
     }

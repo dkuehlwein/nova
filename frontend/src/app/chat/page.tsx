@@ -1,12 +1,12 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Send, AlertTriangle, CheckCircle, MessageSquare, Bot, User, Clock, Loader2, StopCircle } from "lucide-react";
+import { Send, AlertTriangle, MessageSquare, Bot, User, Loader2, StopCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { useChat } from "@/hooks/useChat";
+import { useChat, ChatMessage } from "@/hooks/useChat";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
 
 interface PendingDecision {
@@ -49,8 +49,8 @@ function ChatPage() {
   } = useChat();
 
   // Memoize the stable data to prevent unnecessary re-renders
-  const memoizedPendingDecisions = useMemo(() => pendingDecisions, [pendingDecisions.length]);
-  const memoizedChatHistory = useMemo(() => chatHistory, [chatHistory.length]);
+  const memoizedPendingDecisions = useMemo(() => pendingDecisions, [pendingDecisions]);
+  const memoizedChatHistory = useMemo(() => chatHistory, [chatHistory]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -194,7 +194,7 @@ function ChatPage() {
     }
   }, [loadChat]);
 
-  const renderMessage = useCallback((msg: any, index: number) => (
+  const renderMessage = useCallback((msg: ChatMessage) => (
     <div
       key={msg.id}
       className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} mb-4`}
@@ -419,7 +419,7 @@ function ChatPage() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Welcome to Nova Chat</h3>
                 <p className="text-muted-foreground max-w-md mb-6">
-                  I'm Nova, your AI assistant. I can help you manage tasks, organize your team, 
+                  I&apos;m Nova, your AI assistant. I can help you manage tasks, organize your team, 
                   track projects, and much more. 
                   {memoizedPendingDecisions.length > 0 && (
                     <span className="block mt-2 text-orange-600 font-medium">
@@ -446,7 +446,7 @@ function ChatPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {messages.map((msg, index) => renderMessage(msg, index))}
+                {messages.map((msg) => renderMessage(msg))}
                 {error && (
                   <div className="flex justify-center">
                     <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">
