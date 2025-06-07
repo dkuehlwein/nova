@@ -19,7 +19,7 @@ import { useOverview } from "@/hooks/useOverview";
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { data, loading, currentTask } = useOverview();
+  const { data, loading, refreshing, currentTask } = useOverview();
 
   const isActive = (path: string) => pathname === path;
 
@@ -46,8 +46,11 @@ export default function Navbar() {
         <div className="flex items-center space-x-8">
           {/* Logo and Brand */}
           <Link href="/" className="flex items-center space-x-2">
-            <Brain className="h-8 w-8 text-primary" />
+            <Brain className={`h-8 w-8 text-primary ${refreshing ? 'animate-pulse' : ''}`} />
             <h1 className="text-2xl font-bold text-foreground">Nova</h1>
+            {refreshing && (
+              <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse"></div>
+            )}
           </Link>
 
           {/* Main Navigation */}

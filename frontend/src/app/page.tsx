@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { AlertTriangle, CheckCircle, ArrowRight, MessageSquare, Clock } from "lucide-react";
+import { AlertTriangle, CheckCircle, ArrowRight, MessageSquare, Clock, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -30,7 +30,7 @@ interface RecentActivityItem {
 }
 
 export default function Nova() {
-  const { data: overviewData, loading: overviewLoading } = useOverview();
+  const { data: overviewData, loading: overviewLoading, refreshing: overviewRefreshing, refresh } = useOverview();
   const [pendingDecisions, setPendingDecisions] = useState<PendingDecision[]>([]);
   const [recentTasks, setRecentTasks] = useState<RecentActivityItem[]>([]);
   const [decisionsLoading, setDecisionsLoading] = useState(true);
@@ -81,7 +81,43 @@ export default function Nova() {
 
     fetchRecentTasks();
   }, []);
-  
+
+  // Manual refresh function
+  const handleRefresh = async () => {
+    refresh(); // Refresh overview data
+    
+    // Also refresh the other data
+    try {
+      setDecisionsLoading(true);
+      const decisions = await apiRequest<PendingDecision[]>(API_ENDPOINTS.pendingDecisions);
+      setPendingDecisions(decisions.slice(0, 4));
+    } catch (error) {
+      console.error('Failed to refresh pending decisions:', error);
+    } finally {
+      setDecisionsLoading(false);
+    }
+
+    try {
+      setRecentTasksLoading(true);
+      const tasksByStatus = await apiRequest<Record<string, RecentActivityItem[]>>(API_ENDPOINTS.tasksByStatus);
+      const allTasks: RecentActivityItem[] = [];
+      Object.values(tasksByStatus).forEach((tasks) => {
+        if (Array.isArray(tasks)) {
+          allTasks.push(...tasks);
+        }
+      });
+      
+      const sortedTasks = allTasks
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, 4);
+      
+      setRecentTasks(sortedTasks);
+    } catch (error) {
+      console.error('Failed to refresh recent tasks:', error);
+    } finally {
+      setRecentTasksLoading(false);
+    }
+  };
 
   // Format time difference for display
   const formatTimeAgo = (timestamp: string) => {
@@ -145,12 +181,24 @@ export default function Nova() {
                 }
               </p>
             </div>
-            <Link href="/chat">
-              <Button className="flex items-center space-x-2" size="lg">
-                <MessageSquare className="h-5 w-5" />
-                <span>Start Chat</span>
+            <div className="flex items-center space-x-3">
+              <Button 
+                onClick={handleRefresh}
+                variant="outline"
+                size="lg"
+                disabled={overviewRefreshing || decisionsLoading || recentTasksLoading}
+                className="flex items-center space-x-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${overviewRefreshing ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
               </Button>
-            </Link>
+              <Link href="/chat">
+                <Button className="flex items-center space-x-2" size="lg">
+                  <MessageSquare className="h-5 w-5" />
+                  <span>Start Chat</span>
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {/* Two Column Layout */}
