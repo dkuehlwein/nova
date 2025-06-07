@@ -8,6 +8,7 @@ database growth during test runs.
 import sys
 import os
 import pytest
+import pytest_asyncio
 import asyncio
 
 # Add the backend directory to the Python path
@@ -18,7 +19,7 @@ from test_cleanup import TestDataCleaner
 
 
 # Auto-use fixture for all async tests to clean up checkpointer data
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def auto_cleanup_checkpointer():
     """
     Auto-cleanup fixture that runs after every test.
@@ -39,7 +40,7 @@ async def auto_cleanup_checkpointer():
 
 
 # Optional: Fixture for tests that need to start with a completely clean state
-@pytest.fixture
+@pytest_asyncio.fixture
 async def clean_slate_checkpointer():
     """
     Fixture that ensures checkpointer is completely clean before test.
