@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     AGENT_POLLING_INTERVAL_SECONDS: int = 30
     AGENT_ERROR_RETRY_INTERVAL_SECONDS: int = 60
     
+    # Service Ports
+    CHAT_AGENT_PORT: int = 8000
+    CORE_AGENT_PORT: int = 8001
+    
     # Checkpointer Configuration
     FORCE_MEMORY_CHECKPOINTER: bool = False  # Set to True to force InMemorySaver for development/debugging
 

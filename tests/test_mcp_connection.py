@@ -5,15 +5,10 @@ Tests connectivity to all configured MCP servers using pytest framework.
 """
 
 import asyncio
-import sys
-import os
 import aiohttp
 import json
 import pytest
 from typing import Dict, Any, List
-
-# Add the backend directory to the Python path so we can import from src.nova
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 from config import settings
 
 # Import the same MCP client used in agent.py

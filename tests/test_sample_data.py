@@ -5,12 +5,7 @@ Run this script to populate the database with sample data for development and te
 """
 
 import asyncio
-import sys
-import os
 from datetime import datetime, timedelta
-
-# Add the backend directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from database.database import db_manager
 from models.models import (

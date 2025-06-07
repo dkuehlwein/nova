@@ -6,14 +6,6 @@ and don't have the issues reported (405 errors, empty responses, etc.).
 """
 
 import pytest
-import sys
-import os
-from pathlib import Path
-
-# Add the backend directory to the Python path
-backend_dir = Path(__file__).parent.parent / "backend"
-sys.path.insert(0, str(backend_dir))
-
 from httpx import AsyncClient
 from fastapi.testclient import TestClient
 

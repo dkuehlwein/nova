@@ -37,14 +37,7 @@ async def lifespan(app: FastAPI):
     
     # Note: Database tables are created automatically via SQLAlchemy
     # since we're using a persistent PostgreSQL instance.
-    # Only create tables if explicitly needed for development.
-    if os.getenv("CREATE_TABLES", "false").lower() == "true":
-        try:
-            await db_manager.create_tables()
-            logger.info("Database tables created/verified")
-        except Exception as e:
-            logger.error(f"Failed to create database tables: {e}")
-            raise
+    # Use init_db script for explicit table creation if needed.
     
     # Initialize PostgreSQL connection pool for chat checkpointer
     pg_pool = None
@@ -180,8 +173,10 @@ async def health_check():
 
 async def main():
     """Main entry point."""
-    # Use standard Nova environment variables
-    port = int(os.getenv("PORT", 8000))
+    from config import settings
+    
+    # Use config values with environment variable fallback
+    port = int(os.getenv("PORT", settings.CHAT_AGENT_PORT))
     host = os.getenv("HOST", "0.0.0.0")
     
     logger.info(f"Starting server on {host}:{port}")

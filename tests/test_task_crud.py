@@ -5,16 +5,11 @@ Tests task creation, modification, and deletion operations using pytest framewor
 """
 
 import asyncio
-import sys
-import os
 import pytest
 import pytest_asyncio
 import time
 from datetime import datetime, timezone
 from typing import Dict, Any, List
-
-# Add the backend directory to the Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from models.models import Task, TaskComment, Person, Project, TaskStatus
 from models.models import task_person_association, task_project_association
