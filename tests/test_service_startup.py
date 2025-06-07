@@ -97,14 +97,14 @@ class TestServiceStartup:
     def test_chat_agent_uses_new_prompt(self):
         """Test that chat agent imports and uses the new prompt correctly."""
         # Mock external dependencies
-        with patch('backend.agent.chat_agent.get_all_tools', return_value=[]):
-            with patch('backend.agent.chat_agent.mcp_manager.get_client_and_tools', new_callable=AsyncMock) as mock_mcp:
+        with patch('agent.chat_agent.get_all_tools', return_value=[]):
+            with patch('agent.chat_agent.mcp_manager.get_client_and_tools', new_callable=AsyncMock) as mock_mcp:
                 mock_mcp.return_value = (None, [])
-                with patch('backend.agent.chat_agent.create_llm', return_value=MagicMock()):
-                    with patch('backend.agent.chat_agent.create_react_agent', return_value=MagicMock()) as mock_create_agent:
+                with patch('agent.chat_agent.create_llm', return_value=MagicMock()):
+                    with patch('agent.chat_agent.create_react_agent', return_value=MagicMock()) as mock_create_agent:
                         
                         # Import and test
-                        from backend.agent.chat_agent import create_chat_agent
+                        from agent.chat_agent import create_chat_agent
                         
                         async def test_prompt():
                             await create_chat_agent()
@@ -122,8 +122,8 @@ class TestServiceStartup:
     
     def test_core_agent_uses_new_prompt(self):
         """Test that core agent imports and uses the new prompt template correctly."""
-        from backend.agent.core_agent import CoreAgent
-        from backend.models.models import Task, TaskStatus
+        from agent.core_agent import CoreAgent
+        from models.models import Task, TaskStatus
         from datetime import datetime
         from uuid import uuid4
         
