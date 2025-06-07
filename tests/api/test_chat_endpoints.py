@@ -54,7 +54,7 @@ class TestChatEndpoints:
             assert response.status_code == 200
             data = response.json()
             assert "status" in data
-                        assert "service" in data
+            assert "service" in data
     
     def test_tools_endpoint(self):
         """Test the tools listing endpoint."""
