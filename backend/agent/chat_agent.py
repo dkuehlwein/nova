@@ -72,18 +72,21 @@ async def create_checkpointer():
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
             from psycopg_pool import AsyncConnectionPool
             
-            logger.info("Attempting to create PostgreSQL checkpointer")
+            logger.info("Creating PostgreSQL checkpointer")
             
-            # For now, return MemorySaver as PostgreSQL requires proper connection pool setup
-            # TODO: Implement proper PostgreSQL checkpointer with FastAPI lifespan management
-            logger.warning("PostgreSQL checkpointer requires connection pool management - using MemorySaver")
-            return MemorySaver()
+            # Create connection pool and checkpointer
+            pool = AsyncConnectionPool(settings.DATABASE_URL)
+            checkpointer = AsyncPostgresSaver(pool)
+            
+            # Setup tables if needed
+            await checkpointer.setup()
+            
+            logger.info("PostgreSQL checkpointer created successfully")
+            return checkpointer
                 
-        except ImportError:
-            logger.warning("PostgreSQL checkpointer not available - install langgraph-checkpoint-postgres")
-            return MemorySaver()
         except Exception as e:
             logger.error(f"Error creating PostgreSQL checkpointer: {e}")
+            logger.info("Falling back to MemorySaver")
             return MemorySaver()
     else:
         logger.info("No DATABASE_URL configured, using in-memory checkpointer")
@@ -133,25 +136,6 @@ Be helpful, professional, and action-oriented. When users ask you to do somethin
     
     logger.info(f"Created chat agent with {len(tools)} tools")
     return agent
-
-
-# Legacy functions for backward compatibility
-async def create_async_graph():
-    """Create and compile the LangGraph chat agent.
-    
-    Legacy function - use create_chat_agent instead.
-    """
-    logger.warning("create_async_graph is deprecated - use create_chat_agent instead")
-    return await create_chat_agent()
-
-
-async def create_async_graph_with_checkpointer(checkpointer):
-    """Create async graph with specific checkpointer.
-    
-    Legacy function - use create_chat_agent instead.
-    """
-    logger.warning("create_async_graph_with_checkpointer is deprecated - use create_chat_agent instead")
-    return await create_chat_agent(checkpointer=checkpointer)
 
 
 def clear_tools_cache():
