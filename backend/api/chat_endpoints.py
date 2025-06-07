@@ -39,6 +39,12 @@ async def get_chat_agent():
         logger.debug("Reusing existing chat agent instance")
     return _chat_agent
 
+def clear_chat_agent_cache():
+    """Clear the global chat agent cache. Useful for testing."""
+    global _chat_agent
+    _chat_agent = None
+    logger.info("Cleared chat agent cache")
+
 
 # Pydantic models for request/response
 class ChatMessage(BaseModel):

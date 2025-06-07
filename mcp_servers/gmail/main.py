@@ -573,7 +573,7 @@ if __name__ == "__main__":
     parser.add_argument('--creds-file-path', required=True, help='OAuth 2.0 credentials file path (e.g., credentials.json)')
     parser.add_argument('--token-path', required=True, help='File location to store/retrieve access and refresh tokens (e.g., token.json)')
     parser.add_argument('--host', default="127.0.0.1", help='Host to run the server on')
-    parser.add_argument('--port', type=int, default=8001, help='Port to run the server on')
+    parser.add_argument('--port', type=int, default=8002, help='Port to run the server on')
     parser.add_argument('--oauth-port', type=int, default=9000, help='Port for OAuth callback server (default: 9000)')
     
     args = parser.parse_args()
