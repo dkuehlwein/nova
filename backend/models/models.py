@@ -14,11 +14,12 @@ from sqlalchemy import (
     Boolean, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text, Table,
     Column, func
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class TaskStatus(str, Enum):

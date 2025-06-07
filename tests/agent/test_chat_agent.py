@@ -13,6 +13,12 @@ from agent.chat_agent import create_chat_agent, create_checkpointer
 class TestChatAgent:
     """Test cases for the Nova chat agent."""
     
+    def teardown_method(self):
+        """Clean up after each test."""
+        # Clear tools cache to ensure clean state
+        from agent.chat_agent import clear_tools_cache
+        clear_tools_cache()
+    
     @pytest.mark.asyncio
     async def test_basic_conversation(self):
         """Test basic conversation functionality."""
@@ -98,14 +104,14 @@ class TestChatAgent:
     async def test_force_memory_checkpointer(self):
         """Test that FORCE_MEMORY_CHECKPOINTER setting works."""
         # Test with FORCE_MEMORY_CHECKPOINTER=True
-        with patch('backend.config.settings.FORCE_MEMORY_CHECKPOINTER', True):
+        with patch('config.settings.FORCE_MEMORY_CHECKPOINTER', True):
             checkpointer = await create_checkpointer()
             assert isinstance(checkpointer, MemorySaver)
         
-        # Test with FORCE_MEMORY_CHECKPOINTER=False (default behavior)
-        with patch('backend.config.settings.FORCE_MEMORY_CHECKPOINTER', False):
+        # Test with FORCE_MEMORY_CHECKPOINTER=False and no DATABASE_URL
+        with patch('config.settings.FORCE_MEMORY_CHECKPOINTER', False), \
+             patch('config.settings.DATABASE_URL', None):
             checkpointer = await create_checkpointer()
-            # Should still be MemorySaver since we don't have PostgreSQL in tests
             assert isinstance(checkpointer, MemorySaver)
 
 

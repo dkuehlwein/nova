@@ -74,8 +74,9 @@ async def create_checkpointer():
             
             logger.info("Creating PostgreSQL checkpointer")
             
-            # Create connection pool and checkpointer
-            pool = AsyncConnectionPool(settings.DATABASE_URL)
+            # Create connection pool with open=False to avoid deprecated constructor warning
+            pool = AsyncConnectionPool(settings.DATABASE_URL, open=False)
+            await pool.open()
             checkpointer = AsyncPostgresSaver(pool)
             
             # Setup tables if needed
