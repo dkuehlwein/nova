@@ -32,7 +32,6 @@ class Settings(BaseSettings):
     DATABASE_URL: Optional[str] = None  # PostgreSQL connection string for checkpointer
     
     # LangSmith Configuration
-    USE_LANGSMITH: bool = False
     LANGCHAIN_TRACING_V2: Optional[str] = "true"
     LANGCHAIN_ENDPOINT: Optional[str] = "https://api.smith.langchain.com"
     LANGCHAIN_API_KEY: Optional[SecretStr] = None

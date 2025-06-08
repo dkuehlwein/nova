@@ -90,14 +90,16 @@ class CoreAgent:
                 # Check if busy
                 if await self._is_busy():
                     logger.debug("Agent is busy, skipping this cycle")
-                    await asyncio.sleep(self.check_interval)
+                    # Use shorter sleeps to be more responsive to shutdown
+                    await self._interruptible_sleep(self.check_interval)
                     continue
                 
                 # Get next task
                 task = await self._get_next_task()
                 if not task:
                     logger.debug("No tasks to process")
-                    await asyncio.sleep(self.check_interval)
+                    # Use shorter sleeps to be more responsive to shutdown
+                    await self._interruptible_sleep(self.check_interval)
                     continue
                 
                 # Set busy and process task
@@ -114,10 +116,19 @@ class CoreAgent:
             except Exception as e:
                 logger.error(f"Error in agent loop: {e}")
                 await self._set_error(str(e))
-                await asyncio.sleep(self.check_interval)
+                await self._interruptible_sleep(self.check_interval)
         
         self.is_running = False
         logger.info("Core Agent processing loop stopped")
+    
+    async def _interruptible_sleep(self, duration: float):
+        """Sleep that can be interrupted by should_stop flag."""
+        # Break sleep into 1-second chunks to be responsive to shutdown
+        slept = 0
+        while slept < duration and not self.should_stop:
+            sleep_time = min(1.0, duration - slept)
+            await asyncio.sleep(sleep_time)
+            slept += sleep_time
     
     async def _is_busy(self) -> bool:
         """Check if agent is currently busy."""
@@ -464,12 +475,20 @@ class CoreAgent:
         logger.info("Shutting down Core Agent...")
         self.should_stop = True
         
-        # Wait for loop to stop
+        # Wait for loop to stop with timeout
+        timeout = 5.0  # 5 second timeout
+        start_time = asyncio.get_event_loop().time()
         while self.is_running:
+            if asyncio.get_event_loop().time() - start_time > timeout:
+                logger.warning("Core Agent shutdown timed out, forcing stop")
+                break
             await asyncio.sleep(0.1)
         
         # Set agent to idle
         if self.status_id:
-            await self._set_idle()
+            try:
+                await asyncio.wait_for(self._set_idle(), timeout=2.0)
+            except asyncio.TimeoutError:
+                logger.warning("Setting agent to idle timed out during shutdown")
         
         logger.info("Core Agent shutdown complete") 

@@ -3,6 +3,8 @@ Pytest configuration and fixtures for Nova backend tests.
 
 Provides automatic cleanup of checkpointer data to prevent
 database growth during test runs.
+
+Disables LangSmith tracing during tests to prevent gRPC connection issues.
 """
 
 import sys
@@ -77,4 +79,29 @@ def event_loop():
     """Create an instance of the default event loop for the test session."""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
-    loop.close() 
+    loop.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def disable_langsmith_tracing():
+    """Disable LangSmith tracing for all tests to avoid gRPC issues."""
+    # Save original values
+    original_tracing = os.environ.get("LANGCHAIN_TRACING_V2")
+    original_langsmith = os.environ.get("USE_LANGSMITH")
+    
+    # Disable tracing during tests
+    os.environ["LANGCHAIN_TRACING_V2"] = "false"
+    os.environ["USE_LANGSMITH"] = "false"
+    
+    yield
+    
+    # Restore original values after tests
+    if original_tracing is not None:
+        os.environ["LANGCHAIN_TRACING_V2"] = original_tracing
+    else:
+        os.environ.pop("LANGCHAIN_TRACING_V2", None)
+        
+    if original_langsmith is not None:
+        os.environ["USE_LANGSMITH"] = original_langsmith
+    else:
+        os.environ.pop("USE_LANGSMITH", None) 

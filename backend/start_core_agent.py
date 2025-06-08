@@ -32,6 +32,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Reduce verbosity of third-party libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("mcp").setLevel(logging.WARNING)
+logging.getLogger("mcp.client").setLevel(logging.WARNING)
+logging.getLogger("mcp.client.streamable_http").setLevel(logging.WARNING)
+
 # Configure LangSmith tracing
 os.environ["LANGSMITH_TRACING"] = "true"
 # API key should be set in environment: LANGSMITH_API_KEY=ls_...
@@ -69,17 +75,38 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Nova Core Agent Service...")
     
+    # Shutdown core agent with timeout
     if core_agent:
-        await core_agent.shutdown()
+        try:
+            await asyncio.wait_for(core_agent.shutdown(), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning("Core agent shutdown timed out")
     
+    # Cancel agent task with timeout
     if agent_task and not agent_task.done():
         agent_task.cancel()
         try:
-            await agent_task
+            await asyncio.wait_for(agent_task, timeout=5.0)
         except asyncio.CancelledError:
-            pass
+            logger.info("Agent task cancelled successfully")
+        except asyncio.TimeoutError:
+            logger.warning("Agent task cancellation timed out")
     
-    await db_manager.close()
+    # Clean up MCP connections
+    try:
+        from mcp_client import mcp_manager
+        await asyncio.wait_for(mcp_manager.cleanup(), timeout=3.0)
+    except asyncio.TimeoutError:
+        logger.warning("MCP client cleanup timed out")
+    except Exception as e:
+        logger.debug(f"MCP cleanup error: {e}")
+    
+    # Close database connections with timeout
+    try:
+        await asyncio.wait_for(db_manager.close(), timeout=5.0)
+    except asyncio.TimeoutError:
+        logger.warning("Database shutdown timed out")
+    
     logger.info("Nova Core Agent Service shutdown complete")
 
 
