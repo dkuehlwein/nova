@@ -101,4 +101,31 @@ A successful test run should show:
 2. **No servers configured**: Check your `.env` file has MCP_SERVERS configured
 3. **Connection refused**: Ensure MCP servers are running via Docker Compose
 4. **Import errors**: Run `uv install` in the backend directory to install dependencies
-5. **Script permission denied**: Run `chmod +x tests/test-mcp.sh` to make script executable 
+5. **Script permission denied**: Run `chmod +x tests/test-mcp.sh` to make script executable
+
+# Nova Core Agent Tests
+
+## Integration Testing Approach
+
+The core agent tests use integration testing with the main database for POC simplicity.
+
+### Running Tests
+
+```bash
+# Run all core agent tests
+python -m pytest tests/agent/test_core_agent.py -v
+
+# Run specific test
+python -m pytest tests/agent/test_core_agent.py::TestCoreAgentTaskProcessing::test_get_next_task_prioritizes_user_input_received -v
+```
+
+### How It Works
+
+The tests:
+- Use the main database (same as dev environment)
+- Create test tasks/persons/projects with "Test" in names/emails
+- Clean up only test data before/after each test
+- Mock only the AI agent to avoid external API calls
+- Test real database queries and task processing flow
+
+This provides reliable integration testing while keeping it simple for POC phase. 
