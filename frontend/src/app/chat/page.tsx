@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useChat, ChatMessage } from "@/hooks/useChat";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
+import { useSearchParams } from "next/navigation";
 
 interface PendingDecision {
   id: string;
@@ -36,7 +37,9 @@ function ChatPage() {
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [loadingDecisions, setLoadingDecisions] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [taskInfo, setTaskInfo] = useState<{ id: string; title: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const searchParams = useSearchParams();
   const {
     messages,
     isLoading,
@@ -46,6 +49,7 @@ function ChatPage() {
     clearChat,
     stopStreaming,
     loadChat,
+    threadId,
   } = useChat();
 
   // Memoize the stable data to prevent unnecessary re-renders
@@ -77,6 +81,30 @@ function ChatPage() {
     const timeoutId = setTimeout(scrollToBottom, 50);
     return () => clearTimeout(timeoutId);
   }, [messages.length]); // Only trigger on message count change, not content changes
+
+  // Handle URL parameters for task-specific chats
+  useEffect(() => {
+    const threadParam = searchParams.get('thread');
+    const taskParam = searchParams.get('task');
+    
+    if (threadParam && taskParam) {
+      // Load the task information
+      const fetchTaskInfo = async () => {
+        try {
+          const task = await apiRequest<{ id: string; title: string }>(`/api/tasks/${taskParam}`);
+          setTaskInfo({ id: task.id, title: task.title });
+        } catch (error) {
+          console.error('Failed to fetch task info:', error);
+          setTaskInfo({ id: taskParam, title: 'Unknown Task' });
+        }
+      };
+      
+      fetchTaskInfo();
+      
+      // Load the chat thread if it exists
+      loadChat(threadParam);
+    }
+  }, [searchParams, loadChat]);
 
   // Load pending decisions and chat history - only once
   useEffect(() => {
@@ -394,13 +422,23 @@ function ChatPage() {
                   <Bot className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-foreground">Nova Assistant</h2>
+                  <h2 className="text-lg font-semibold text-foreground">
+                    {taskInfo ? `Nova - Task: ${taskInfo.title}` : "Nova Assistant"}
+                  </h2>
                   <p className="text-sm text-muted-foreground">
-                    {isConnected ? "Ready to help with your tasks" : "Connecting..."}
+                    {taskInfo 
+                      ? "Chatting about this specific task" 
+                      : isConnected ? "Ready to help with your tasks" : "Connecting..."
+                    }
                   </p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
+                {taskInfo && (
+                  <Badge variant="secondary" className="text-xs">
+                    Task Chat
+                  </Badge>
+                )}
                 {error && (
                   <Badge variant="destructive" className="text-xs">
                     Error

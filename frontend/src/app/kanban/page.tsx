@@ -181,6 +181,13 @@ function KanbanPage() {
     }
   };
 
+  const handleTaskChat = (task: Task, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Navigate to chat page with the task's core agent thread
+    const threadId = `core_agent_task_${task.id}`;
+    router.push(`/chat?thread=${threadId}&task=${task.id}`);
+  };
+
   const fetchTaskComments = async (taskId: string) => {
     try {
       const response = await fetch(`http://localhost:8000/api/tasks/${taskId}/comments`);
@@ -363,6 +370,15 @@ function KanbanPage() {
       <div className="flex items-start justify-between mb-2">
         <h4 className="font-medium text-foreground text-sm">{task.title}</h4>
         <div className="flex items-center space-x-1">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
+            onClick={(e) => handleTaskChat(task, e)}
+            title="Open chat with Nova about this task"
+          >
+            <MessageCircle className="h-3 w-3" />
+          </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button 

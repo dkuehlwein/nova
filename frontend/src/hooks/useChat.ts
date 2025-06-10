@@ -79,35 +79,49 @@ export function useChat() {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     
     try {
-      // Fetch chat messages from the backend
-      const backendMessages = await apiRequest<{
-        id: string;
-        sender: string;
-        content: string;
-        created_at: string;
-        needs_decision: boolean;
-      }[]>(API_ENDPOINTS.chatMessages(chatId));
-
-      // Convert backend messages to frontend format
-      const chatMessages: ChatMessage[] = backendMessages.map((msg, index) => ({
-        id: msg.id || `loaded-msg-${index}`,
-        role: msg.sender === 'user' ? 'user' : 'assistant',
-        content: msg.content,
-        timestamp: msg.created_at,
-        isStreaming: false,
-      }));
-
-      // Set the messages and update thread ID
-      setState(prev => ({
-        ...prev,
-        messages: chatMessages,
-        isLoading: false,
-        error: null,
-      }));
-
+      // Set the thread ID first (especially important for task threads)
       setCurrentThreadId(chatId);
+      
+      // Try to fetch chat messages from the backend
+      try {
+        const backendMessages = await apiRequest<{
+          id: string;
+          sender: string;
+          content: string;
+          created_at: string;
+          needs_decision: boolean;
+        }[]>(API_ENDPOINTS.chatMessages(chatId));
 
-      console.log(`Loaded chat ${chatId} with ${chatMessages.length} messages`);
+        // Convert backend messages to frontend format
+        const chatMessages: ChatMessage[] = backendMessages.map((msg, index) => ({
+          id: msg.id || `loaded-msg-${index}`,
+          role: msg.sender === 'user' ? 'user' : 'assistant',
+          content: msg.content,
+          timestamp: msg.created_at,
+          isStreaming: false,
+        }));
+
+        // Set the messages
+        setState(prev => ({
+          ...prev,
+          messages: chatMessages,
+          isLoading: false,
+          error: null,
+        }));
+
+        console.log(`Loaded chat ${chatId} with ${chatMessages.length} messages`);
+        
+      } catch (fetchError) {
+        // For task threads that don't exist yet, this is normal
+        // Clear messages and prepare for a new conversation
+        console.log(`Chat thread ${chatId} not found or empty, starting new conversation`);
+        setState(prev => ({
+          ...prev,
+          messages: [],
+          isLoading: false,
+          error: null,
+        }));
+      }
       
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load chat';

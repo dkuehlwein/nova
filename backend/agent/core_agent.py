@@ -242,35 +242,46 @@ class CoreAgent:
         # Get context (placeholder for now)
         context = await self._get_context(task)
         
-        # Create prompt
-        prompt = await self._create_prompt(task, context)
-        
         # Process with AI using LangGraph with unique thread_id for rollback capability
         thread_id = f"core_agent_task_{task.id}"
         config = RunnableConfig(configurable={"thread_id": thread_id})
         
         try:
-            # Stream the agent response
-            messages = []
-            async for chunk in self.agent.astream(
-                {"messages": [{"role": "user", "content": prompt}]},
-                config=config,
-                stream_mode="values"
-            ):
-                if "messages" in chunk and chunk["messages"]:
-                    messages = chunk["messages"]
+            # Check if thread already has messages to avoid duplicate prompts
+            state = await self.agent.aget_state(config)
+            has_existing_messages = bool(state.values.get("messages", []))
+            
+            if has_existing_messages:
+                logger.info(f"Thread for task {task.id} already has messages, continuing conversation")
+                # Get the current messages to extract the AI response
+                messages = state.values.get("messages", [])
+            else:
+                logger.info(f"Starting new conversation for task {task.id}")
+                # Create initial prompt only if no existing messages
+                prompt = await self._create_prompt(task, context)
+                
+                # Stream the agent response
+                messages = []
+                async for chunk in self.agent.astream(
+                    {"messages": [{"role": "user", "content": prompt}]},
+                    config=config,
+                    stream_mode="values"
+                ):
+                    if "messages" in chunk and chunk["messages"]:
+                        messages = chunk["messages"]
             
             # Extract AI response
             if messages:
                 ai_response = messages[-1].content if hasattr(messages[-1], 'content') else str(messages[-1])
                 logger.info(f"AI response for task {task.id} ({task.title}): {ai_response[:200]}...")
                 
-                # Add AI response as comment
-                await add_task_comment_tool(
-                    task_id=str(task.id),
-                    content=f"Core Agent processed this task:\n\n{ai_response}",
-                    author="core_agent"
-                )
+                # Add AI response as comment only if it's a new conversation
+                if not has_existing_messages:
+                    await add_task_comment_tool(
+                        task_id=str(task.id),
+                        content=f"Core Agent processed this task:\n\n{ai_response}",
+                        author="core_agent"
+                    )
                 
                 # Update context (placeholder for now)
                 await self._update_context(ai_response, task, context)

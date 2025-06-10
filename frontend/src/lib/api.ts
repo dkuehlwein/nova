@@ -204,6 +204,9 @@ export const API_ENDPOINTS = {
   taskById: (id: string) => `/api/tasks/${id}`,
   taskComments: (id: string) => `/api/tasks/${id}/comments`,
   health: '/health',
+  // Task chat endpoints
+  taskChat: (id: string) => `/api/tasks/${id}/chat`,
+  taskChatMessage: (id: string) => `/api/tasks/${id}/chat/message`,
   // Chat endpoints
   chat: '/chat',
   chatStream: '/chat/stream',
