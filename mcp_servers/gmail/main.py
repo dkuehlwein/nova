@@ -586,7 +586,10 @@ if __name__ == "__main__":
     @mcp.tool()
     async def send_email(recipient_id: str, subject: str, message: str) -> Dict[str, str]:
         """Sends an email. Subject and message are distinct."""
-        return await gmail_service.send_email(recipient_id, subject, message)
+        logger.info(f"🔧 send_email tool called: {recipient_id}, subject='{subject}', message='{message[:50]}...'")
+        result = await gmail_service.send_email(recipient_id, subject, message)
+        logger.info(f"🔧 send_email tool result: {result}")
+        return result
 
     @mcp.tool()
     async def get_unread_emails() -> Union[List[Dict[str, str]], str]:
