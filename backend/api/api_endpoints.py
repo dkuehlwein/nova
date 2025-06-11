@@ -611,7 +611,6 @@ async def add_task_comment(task_id: UUID, comment_data: TaskCommentCreate):
 
 class TaskChatMessageCreate(BaseModel):
     content: str
-    author: str = "human"
 
 
 @router.get("/api/tasks/{task_id}/chat")
@@ -690,7 +689,7 @@ async def get_task_chat(task_id: UUID):
 
 @router.post("/api/tasks/{task_id}/chat/message")
 async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCreate):
-    """Post a human message to task's chat thread and handle tool response if needed."""
+    """Post a human response to task escalation or regular task chat."""
     from agent.chat_agent import create_chat_agent
     from langchain_core.messages import HumanMessage
     from langchain_core.runnables import RunnableConfig
@@ -714,34 +713,19 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
         agent = await create_chat_agent()
         state = await agent.aget_state(config)
         
-        # Check if there are pending interrupts (escalations)
+        # Determine if this is an escalation response or regular message
         if state.interrupts:
-            logger.info(f"Handling human response to escalation for task {task_id}")
+            logger.info(f"Handling escalation response for task {task_id}")
             
             # Resume the graph with the human's response using Command(resume=...)
-            # This is the proper LangGraph pattern for responding to interrupts
             async for chunk in agent.astream(
                 Command(resume=message_data.content),
                 config=config,
                 stream_mode="updates"
             ):
-                # Process the response but don't need to return it
                 logger.debug(f"Resume chunk: {chunk}")
-            
-            # Update task status to USER_INPUT_RECEIVED so core agent can pick it up
-            await update_task_tool(
-                task_id=str(task_id),
-                status="user_input_received"
-            )
-            
-            return {
-                "success": True,
-                "task_status": "user_input_received",
-                "message": "Response posted, task queued for processing"
-            }
         else:
-            # No pending interrupts - just add a regular human message
-            logger.info(f"Adding regular human message to task {task_id} chat")
+            logger.info(f"Adding regular message to task {task_id} chat")
             
             # Add human message to the conversation
             human_message = HumanMessage(content=message_data.content)
@@ -753,18 +737,18 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
                 stream_mode="updates"
             ):
                 logger.debug(f"Chat chunk: {chunk}")
-            
-            # Update task status to USER_INPUT_RECEIVED for core agent to process
-            await update_task_tool(
-                task_id=str(task_id),
-                status="user_input_received"
-            )
-            
-            return {
-                "success": True, 
-                "task_status": "user_input_received",
-                "message": "Message posted, task queued for processing"
-            }
+        
+        # Update task status so core agent can process the response
+        await update_task_tool(
+            task_id=str(task_id),
+            status="user_input_received"
+        )
+        
+        return {
+            "success": True,
+            "task_status": "user_input_received",
+            "message": "Message posted successfully"
+        }
         
     except Exception as e:
         logger.error(f"Failed to post message to task {task_id} chat: {e}")
