@@ -199,13 +199,24 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                     if not ai_content or ai_content in ['', 'null', 'None']:
                         ai_content = ""
                     
-                    # Add tool call indicators (matching streaming format)
+                    # Add detailed tool call indicators
                     for tool_call in tool_calls:
                         tool_name = tool_call.get('name', 'unknown') if isinstance(tool_call, dict) else getattr(tool_call, 'name', 'unknown')
+                        tool_args = tool_call.get('args', {}) if isinstance(tool_call, dict) else getattr(tool_call, 'args', {})
+                        
+                        # Format tool call with arguments
+                        tool_display = f"🔧 **Using tool: {tool_name}**"
+                        if tool_args:
+                            # Truncate long arguments for display
+                            args_str = str(tool_args)
+                            if len(args_str) > 200:
+                                args_str = args_str[:200] + "..."
+                            tool_display += f"\n```json\n{args_str}\n```"
+                        
                         if ai_content:
-                            ai_content += f"\n\n🔧 Using tool: {tool_name}..."
+                            ai_content += f"\n\n{tool_display}"
                         else:
-                            ai_content = f"🔧 Using tool: {tool_name}..."
+                            ai_content = tool_display
                     
                     # Look ahead for ToolMessage results and the final AI response
                     j = i + 1
