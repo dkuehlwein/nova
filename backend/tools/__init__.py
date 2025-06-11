@@ -7,6 +7,7 @@ Native LangChain tools for Nova agent to manage tasks, people, projects, and cha
 from .task_tools import get_task_tools
 from .person_tools import get_person_tools  
 from .project_tools import get_project_tools
+from .human_escalation_tool import escalate_to_human
 
 
 def get_all_tools():
@@ -15,4 +16,8 @@ def get_all_tools():
     tools.extend(get_task_tools())
     tools.extend(get_person_tools())
     tools.extend(get_project_tools())
+    
+    # Add human escalation tool
+    tools.append(escalate_to_human)
+    
     return tools 

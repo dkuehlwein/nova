@@ -247,9 +247,15 @@ class CoreAgent:
         config = RunnableConfig(configurable={"thread_id": thread_id})
         
         try:
-            # Check if thread already has messages to avoid duplicate prompts
+            # Check if thread already has messages and interrupts
             state = await self.agent.aget_state(config)
             has_existing_messages = bool(state.values.get("messages", []))
+            
+            # Check for pending interrupts (human escalations)
+            if state.interrupts:
+                logger.info(f"Task {task.id} has pending interrupts - moving to NEEDS_REVIEW")
+                await self._handle_human_escalation(task, state.interrupts)
+                return
             
             if has_existing_messages:
                 logger.info(f"Thread for task {task.id} already has messages, continuing conversation")
@@ -260,7 +266,7 @@ class CoreAgent:
                 # Create initial prompt only if no existing messages
                 prompt = await self._create_prompt(task, context)
                 
-                # Stream the agent response
+                # Stream the agent response and watch for interrupts
                 messages = []
                 async for chunk in self.agent.astream(
                     {"messages": [{"role": "user", "content": prompt}]},
@@ -269,6 +275,19 @@ class CoreAgent:
                 ):
                     if "messages" in chunk and chunk["messages"]:
                         messages = chunk["messages"]
+                    
+                    # Check for interrupts during streaming
+                    if "__interrupt__" in chunk:
+                        logger.info(f"Interrupt detected for task {task.id} - moving to NEEDS_REVIEW")
+                        await self._handle_human_escalation(task, chunk["__interrupt__"])
+                        return
+                
+                # Final check for interrupts after streaming
+                final_state = await self.agent.aget_state(config)
+                if final_state.interrupts:
+                    logger.info(f"Final interrupt check for task {task.id} - moving to NEEDS_REVIEW")
+                    await self._handle_human_escalation(task, final_state.interrupts)
+                    return
             
             # Extract AI response
             if messages:
@@ -396,6 +415,43 @@ class CoreAgent:
         # TODO: Implement OpenMemory updates later
         logger.debug(f"Context update placeholder for task {task.id} ({task.title})")
     
+    async def _handle_human_escalation(self, task: Task, interrupts):
+        """Handle human escalation interrupts."""
+        try:
+            # Move task to NEEDS_REVIEW status
+            await update_task_tool(
+                task_id=str(task.id),
+                status="needs_review"
+            )
+            
+            # Extract escalation details from interrupts
+            escalation_questions = []
+            for interrupt in interrupts:
+                if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
+                    if interrupt.value.get("type") == "human_escalation":
+                        question = interrupt.value.get("question", "Human input requested")
+                        escalation_questions.append(question)
+            
+            # Add escalation comment
+            if escalation_questions:
+                escalation_text = "\n\n".join(escalation_questions)
+                await add_task_comment_tool(
+                    task_id=str(task.id),
+                    content=f"Core Agent is requesting human input:\n\n{escalation_text}\n\n⏸️ Task paused - please respond to continue processing.",
+                    author="core_agent"
+                )
+            else:
+                await add_task_comment_tool(
+                    task_id=str(task.id),
+                    content="Core Agent is requesting human input. Please respond to continue processing.",
+                    author="core_agent"
+                )
+            
+            logger.info(f"Moved task {task.id} ({task.title}) to NEEDS_REVIEW due to human escalation")
+            
+        except Exception as e:
+            logger.error(f"Failed to handle human escalation for {task.id} ({task.title}): {e}")
+
     async def _handle_task_error(self, task: Task, error_message: str):
         """Handle task processing errors."""
         try:
