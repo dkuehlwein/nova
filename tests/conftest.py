@@ -121,7 +121,7 @@ async def auto_cleanup_core_agent_data():
             "DELETE FROM tasks WHERE title LIKE '%Test%'",
             "DELETE FROM persons WHERE email LIKE '%test%'",
             "DELETE FROM projects WHERE name LIKE '%Test%'",
-            "DELETE FROM agent_status WHERE 1=1"  # Safe to clean all agent status for tests
+            # Note: agent_status is preserved - needed for core agent to function
         ]
         
         # Process each query in separate transaction to avoid abort issues

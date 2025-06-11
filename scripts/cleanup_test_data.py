@@ -85,8 +85,7 @@ class TestDataCleaner:
             ("persons", "DELETE FROM persons WHERE email LIKE '%test%'"),
             ("projects", "DELETE FROM projects WHERE name LIKE '%Test%'"),
             
-            # Agent status (test-specific)
-            ("agent_status", "DELETE FROM agent_status WHERE 1=1"),  # Safe to clean all for tests
+            # Note: agent_status is preserved - it's needed for core agent to function
         ]
         
         # Process each query in a separate transaction to avoid transaction abort issues

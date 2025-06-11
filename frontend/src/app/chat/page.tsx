@@ -36,6 +36,9 @@ function ChatPage() {
   const [pendingDecisions, setPendingDecisions] = useState<PendingDecision[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [loadingDecisions, setLoadingDecisions] = useState(true);
+  const [loadingMoreChats, setLoadingMoreChats] = useState(false);
+  const [hasMoreChats, setHasMoreChats] = useState(true);
+  const [chatOffset, setChatOffset] = useState(0);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [taskInfo, setTaskInfo] = useState<{ id: string; title: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -82,8 +85,77 @@ function ChatPage() {
     return () => clearTimeout(timeoutId);
   }, [messages.length]); // Only trigger on message count change, not content changes
 
-  // Handle URL parameters for task-specific chats
+  // Load more chats
+  const loadMoreChats = useCallback(async () => {
+    if (!loadingMoreChats && hasMoreChats) {
+      await loadChats(chatOffset);
+    }
+  }, [chatOffset, loadingMoreChats, hasMoreChats]);
+
+  const loadChats = async (offset: number, isInitial: boolean = false, fallbackDecisions?: PendingDecision[]) => {
+    try {
+      if (!isInitial) {
+        setLoadingMoreChats(true);
+      }
+
+      const chats = await apiRequest<{
+        id: string;
+        title: string;
+        created_at: string;
+        updated_at: string;
+        last_message?: string;
+        last_activity?: string;
+        has_decision: boolean;
+        message_count: number;
+      }[]>(`${API_ENDPOINTS.chats}?limit=5&offset=${offset}`);
+
+      const chatHistoryItems: ChatHistoryItem[] = chats.map(chat => ({
+        id: chat.id,
+        title: chat.title,
+        last_message: chat.last_message || 'No messages yet',
+        updated_at: chat.last_activity || chat.updated_at,
+        needs_decision: chat.has_decision,
+        message_count: chat.message_count,
+        has_decision: chat.has_decision,
+      }));
+
+      if (isInitial) {
+        setChatHistory(chatHistoryItems);
+        setChatOffset(chats.length);
+      } else {
+        setChatHistory(prev => [...prev, ...chatHistoryItems]);
+        setChatOffset(prev => prev + chats.length);
+      }
+
+      // If we got fewer than 5 chats, there are no more
+      setHasMoreChats(chats.length === 5);
+
+    } catch (error) {
+      console.error('Failed to load chats:', error);
+      if (isInitial && fallbackDecisions) {
+        // Fallback for initial load: Create chat history from pending decisions
+        const fallbackChatHistory: ChatHistoryItem[] = fallbackDecisions.map(decision => ({
+          id: `chat-${decision.id}`,
+          title: decision.title,
+          last_message: `Decision needed: ${decision.description.substring(0, 50)}...`,
+          updated_at: decision.updated_at,
+          needs_decision: true,
+          task_id: decision.id,
+        }));
+        setChatHistory(fallbackChatHistory);
+      }
+    } finally {
+      if (!isInitial) {
+        setLoadingMoreChats(false);
+      }
+    }
+  };
+
+  // Load initial data
   useEffect(() => {
+    if (dataLoaded) return; // Prevent double loading
+
+    // Handle URL parameters for task-specific chats
     const threadParam = searchParams.get('thread');
     const taskParam = searchParams.get('task');
     
@@ -104,12 +176,7 @@ function ChatPage() {
       // Load the chat thread if it exists
       loadChat(threadParam);
     }
-  }, [searchParams, loadChat]);
 
-  // Load pending decisions and chat history - only once
-  useEffect(() => {
-    if (dataLoaded) return; // Prevent multiple loads
-    
     const loadData = async () => {
       try {
         setLoadingDecisions(true);
@@ -118,45 +185,8 @@ function ChatPage() {
         const decisions = await apiRequest<PendingDecision[]>(API_ENDPOINTS.pendingDecisions);
         setPendingDecisions(decisions);
 
-        // Fetch real chat history from backend
-        try {
-          const chats = await apiRequest<{
-            id: string;
-            title: string;
-            created_at: string;
-            updated_at: string;
-            last_message?: string;
-            last_activity?: string;
-            has_decision: boolean;
-            message_count: number;
-          }[]>(API_ENDPOINTS.chats);
-
-          const chatHistoryItems: ChatHistoryItem[] = chats.map(chat => ({
-            id: chat.id,
-            title: chat.title,
-            last_message: chat.last_message || 'No messages yet',
-            updated_at: chat.last_activity || chat.updated_at,
-            needs_decision: chat.has_decision,
-            message_count: chat.message_count,
-            has_decision: chat.has_decision,
-          }));
-
-          setChatHistory(chatHistoryItems);
-        } catch (chatError) {
-          console.warn('Failed to load chat history, using fallback:', chatError);
-          
-          // Fallback: Create chat history from pending decisions
-          const fallbackChatHistory: ChatHistoryItem[] = decisions.map(decision => ({
-            id: `chat-${decision.id}`,
-            title: decision.title,
-            last_message: `Decision needed: ${decision.description.substring(0, 50)}...`,
-            updated_at: decision.updated_at,
-            needs_decision: true,
-            task_id: decision.id,
-          }));
-
-          setChatHistory(fallbackChatHistory);
-        }
+        // Fetch initial chat history from backend (first 5 chats)
+        await loadChats(0, true, decisions);
         
         setDataLoaded(true); // Mark as loaded
       } catch (error) {
@@ -167,7 +197,7 @@ function ChatPage() {
     };
 
     loadData();
-  }, [dataLoaded]); // Depend on dataLoaded flag
+  }, [dataLoaded, searchParams, loadChat]); // Depend on dataLoaded flag
 
   const handleSendMessage = useCallback(async () => {
     if (message.trim() && !isLoading) {
@@ -404,6 +434,28 @@ function ChatPage() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  )}
+                  
+                  {/* Load More Button */}
+                  {hasMoreChats && memoizedChatHistory.filter(chat => !chat.needs_decision).length > 0 && (
+                    <div className="mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={loadMoreChats}
+                        disabled={loadingMoreChats}
+                        className="w-full"
+                      >
+                        {loadingMoreChats ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            Loading...
+                          </>
+                        ) : (
+                          'Load More Chats'
+                        )}
+                      </Button>
                     </div>
                   )}
                 </div>

@@ -564,9 +564,13 @@ async def get_available_tools():
 # Chat Management Endpoints
 
 @router.get("/conversations", response_model=List[ChatSummary])
-async def list_chats(request: Request):
+async def list_chats(request: Request, limit: int = 5, offset: int = 0):
     """
-    List all chat conversations.
+    List chat conversations with pagination support.
+    
+    Args:
+        limit: Number of chats to return (default: 5)
+        offset: Number of chats to skip (default: 0)
     """
     try:
         # Get checkpointer from app state
@@ -582,9 +586,8 @@ async def list_chats(request: Request):
                 if not messages:
                     continue
                 
-                # Create title from first user message
-                first_user_msg = next((msg for msg in messages if msg.sender == "user"), None)
-                title = first_user_msg.content[:50] + "..." if first_user_msg and len(first_user_msg.content) > 50 else (first_user_msg.content if first_user_msg else "New Chat")
+                # Determine title based on thread type
+                title = await _get_chat_title(thread_id, messages)
                 
                 # Get last message
                 last_message = messages[-1] if messages else None
@@ -607,10 +610,58 @@ async def list_chats(request: Request):
         # Sort by last activity (most recent first)
         chat_summaries.sort(key=lambda x: x.updated_at, reverse=True)
         
-        return chat_summaries
+        # Apply pagination
+        paginated_chats = chat_summaries[offset:offset + limit]
+        
+        return paginated_chats
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error listing chats: {str(e)}")
+
+
+async def _get_chat_title(thread_id: str, messages: List[ChatMessageDetail]) -> str:
+    """
+    Generate appropriate title for a chat based on its thread ID and messages.
+    
+    For task chats (core_agent_task_*), use the actual task title.
+    For regular chats, use the first user message.
+    """
+    # Check if this is a task-related chat
+    if thread_id.startswith("core_agent_task_"):
+        try:
+            # Extract task ID from thread ID
+            task_id = thread_id.replace("core_agent_task_", "")
+            
+            # Fetch task details to get the title
+            from database.database import db_manager
+            from sqlalchemy import select
+            from models.models import Task
+            
+            async with db_manager.get_session() as session:
+                result = await session.execute(
+                    select(Task.title).where(Task.id == task_id)
+                )
+                task_title = result.scalar_one_or_none()
+                
+                if task_title:
+                    return f"Task: {task_title}"
+                else:
+                    # Fallback if task not found
+                    return f"Task Chat (ID: {task_id[:8]}...)"
+                    
+        except Exception as e:
+            print(f"Error fetching task title for {thread_id}: {e}")
+            # Fallback to task ID
+            task_id = thread_id.replace("core_agent_task_", "")
+            return f"Task Chat (ID: {task_id[:8]}...)"
+    
+    # For regular chats, use first user message
+    first_user_msg = next((msg for msg in messages if msg.sender == "user"), None)
+    if first_user_msg:
+        title = first_user_msg.content[:50]
+        return title + "..." if len(first_user_msg.content) > 50 else title
+    
+    return "New Chat"
 
 
 @router.get("/conversations/{chat_id}", response_model=ChatSummary)
