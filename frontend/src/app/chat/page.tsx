@@ -237,18 +237,17 @@ function ChatPage() {
 
   const handleChatSelect = useCallback(async (chatItem: ChatHistoryItem) => {
     try {
-      if (chatItem.task_id) {
-        // For task-based chats, just set a message about the task
-        setMessage(`Show me details about task: ${chatItem.title}`);
-      } else {
-        // For regular chats, load the actual conversation
-        console.log(`Loading chat: ${chatItem.id}`);
-        await loadChat(chatItem.id);
-      }
+      // Load the actual conversation for both task chats and regular chats
+      console.log(`Loading chat: ${chatItem.id}`);
+      await loadChat(chatItem.id);
     } catch (error) {
       console.error('Failed to load chat:', error);
       // Fallback: set a message to continue the conversation
-      setMessage(`Continue our conversation: ${chatItem.title}`);
+      if (chatItem.task_id) {
+        setMessage(`Show me details about task: ${chatItem.title}`);
+      } else {
+        setMessage(`Continue our conversation: ${chatItem.title}`);
+      }
     }
   }, [loadChat]);
 
@@ -370,7 +369,7 @@ function ChatPage() {
                         <div
                           key={decision.id}
                           onClick={() => handleChatSelect({
-                            id: `chat-${decision.id}`,
+                            id: `core_agent_task_${decision.id}`,
                             title: decision.title,
                             last_message: decision.description,
                             updated_at: decision.updated_at,

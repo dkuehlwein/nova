@@ -568,6 +568,8 @@ async def list_chats(request: Request, limit: int = 5, offset: int = 0):
     """
     List chat conversations with pagination support.
     
+    Excludes task chats that have NEEDS_REVIEW status (those appear in "Needs decision" section only).
+    
     Args:
         limit: Number of chats to return (default: 5)
         offset: Number of chats to skip (default: 0)
@@ -585,6 +587,31 @@ async def list_chats(request: Request, limit: int = 5, offset: int = 0):
                 
                 if not messages:
                     continue
+                
+                # Check if this is a task chat with NEEDS_REVIEW status
+                if thread_id.startswith("core_agent_task_"):
+                    task_id = thread_id.replace("core_agent_task_", "")
+                    
+                    # Check task status
+                    from database.database import db_manager
+                    from sqlalchemy import select
+                    from models.models import Task, TaskStatus
+                    
+                    try:
+                        async with db_manager.get_session() as session:
+                            result = await session.execute(
+                                select(Task.status).where(Task.id == task_id)
+                            )
+                            task_status = result.scalar_one_or_none()
+                            
+                            # Skip task chats with NEEDS_REVIEW status (they belong in "Needs decision" only)
+                            if task_status == TaskStatus.NEEDS_REVIEW:
+                                continue
+                                
+                    except Exception as task_error:
+                        print(f"Error checking task status for {task_id}: {task_error}")
+                        # If we can't check task status, include the chat to be safe
+                        pass
                 
                 # Determine title based on thread type
                 title = await _get_chat_title(thread_id, messages)
@@ -607,7 +634,7 @@ async def list_chats(request: Request, limit: int = 5, offset: int = 0):
                 print(f"Error processing chat {thread_id}: {msg_error}")
                 continue
         
-        # Sort by last activity (most recent first)
+        # Sort by last activity (most recent first) - already correct ordering
         chat_summaries.sort(key=lambda x: x.updated_at, reverse=True)
         
         # Apply pagination

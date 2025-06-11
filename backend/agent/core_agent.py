@@ -268,6 +268,9 @@ class CoreAgent:
                 
                 # Stream the agent response and watch for interrupts
                 messages = []
+                interrupt_detected = False
+                interrupt_data = None
+                
                 async for chunk in self.agent.astream(
                     {"messages": [{"role": "user", "content": prompt}]},
                     config=config,
@@ -276,20 +279,20 @@ class CoreAgent:
                     if "messages" in chunk and chunk["messages"]:
                         messages = chunk["messages"]
                     
-                    # Check for interrupts during streaming
+                    # Check for interrupts during streaming but don't return immediately
                     if "__interrupt__" in chunk:
-                        logger.info(f"Interrupt detected for task {task.id} - moving to NEEDS_REVIEW")
-                        await self._handle_human_escalation(task, chunk["__interrupt__"])
-                        return
+                        logger.info(f"Interrupt detected for task {task.id} during streaming")
+                        interrupt_detected = True
+                        interrupt_data = chunk["__interrupt__"]
                 
                 # Final check for interrupts after streaming
                 final_state = await self.agent.aget_state(config)
                 if final_state.interrupts:
-                    logger.info(f"Final interrupt check for task {task.id} - moving to NEEDS_REVIEW")
-                    await self._handle_human_escalation(task, final_state.interrupts)
-                    return
+                    logger.info(f"Interrupt detected for task {task.id} in final state")
+                    interrupt_detected = True
+                    interrupt_data = final_state.interrupts
             
-            # Extract AI response
+            # Extract and save AI response BEFORE handling interrupts
             if messages:
                 ai_response = messages[-1].content if hasattr(messages[-1], 'content') else str(messages[-1])
                 logger.info(f"AI response for task {task.id} ({task.title}): {ai_response[:200]}...")
@@ -305,8 +308,18 @@ class CoreAgent:
                 # Update context (placeholder for now)
                 await self._update_context(ai_response, task, context)
                 
+                # NOW handle interrupts after saving the response
+                if interrupt_detected and interrupt_data:
+                    logger.info(f"Handling interrupt for task {task.id} after saving AI response")
+                    await self._handle_human_escalation(task, interrupt_data)
+                    return
+                
                 logger.info(f"Successfully processed task {task.id} ({task.title})")
             else:
+                # Handle interrupts even if no messages (edge case)
+                if interrupt_detected and interrupt_data:
+                    await self._handle_human_escalation(task, interrupt_data)
+                    return
                 raise Exception("No response from AI agent")
                 
         except Exception as e:

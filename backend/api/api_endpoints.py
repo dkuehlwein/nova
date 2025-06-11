@@ -607,6 +607,166 @@ async def add_task_comment(task_id: UUID, comment_data: TaskCommentCreate):
         return {"message": "Comment added successfully", "id": comment.id}
 
 
+# === Task Chat Endpoints ===
+
+class TaskChatMessageCreate(BaseModel):
+    content: str
+    author: str = "human"
+
+
+@router.get("/api/tasks/{task_id}/chat")
+async def get_task_chat(task_id: UUID):
+    """Get LangGraph chat messages for a task's core agent conversation."""
+    from agent.chat_agent import create_chat_agent
+    from api.chat_endpoints import _get_chat_history_with_checkpointer
+    
+    async with db_manager.get_session() as session:
+        # Verify task exists
+        task_result = await session.execute(select(Task).where(Task.id == task_id))
+        task = task_result.scalar_one_or_none()
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Get chat thread for this task
+    thread_id = f"core_agent_task_{task_id}"
+    
+    try:
+        # Get checkpointer from chat agent
+        agent = await create_chat_agent()
+        checkpointer = agent.checkpointer
+        
+        # Get chat history
+        messages = await _get_chat_history_with_checkpointer(thread_id, checkpointer)
+        
+        return {
+            "task_id": str(task_id),
+            "thread_id": thread_id,
+            "messages": [
+                {
+                    "id": msg.id,
+                    "role": "human" if msg.sender == "user" else "assistant", 
+                    "content": msg.content,
+                    "timestamp": msg.created_at
+                }
+                for msg in messages
+            ],
+            "task_status": task.status.value
+        }
+        
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Failed to get task chat for {task_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get chat history: {str(e)}")
+
+
+@router.post("/api/tasks/{task_id}/chat/message")
+async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCreate):
+    """Post a human message to task's chat thread and handle tool response if needed."""
+    from agent.chat_agent import create_chat_agent
+    from langchain_core.messages import HumanMessage, ToolMessage
+    from langchain_core.runnables import RunnableConfig
+    from tools.task_tools import update_task_tool
+    
+    logger = logging.getLogger(__name__)
+    
+    async with db_manager.get_session() as session:
+        # Verify task exists
+        task_result = await session.execute(select(Task).where(Task.id == task_id))
+        task = task_result.scalar_one_or_none()
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+    
+    thread_id = f"core_agent_task_{task_id}"
+    config = RunnableConfig(configurable={"thread_id": thread_id})
+    
+    try:
+        # Get agent and check current state
+        agent = await create_chat_agent()
+        state = await agent.aget_state(config)
+        
+        # Check if there are pending interrupts (escalations)
+        if state.interrupts:
+            logger.info(f"Handling human response to escalation for task {task_id}")
+            
+            # Find the escalate_to_human tool call that needs a response
+            tool_call_id = None
+            for interrupt in state.interrupts:
+                if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
+                    if interrupt.value.get("type") == "human_escalation":
+                        # Look for the tool call ID in the recent messages
+                        messages = state.values.get("messages", [])
+                        for msg in reversed(messages):
+                            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                                for tool_call in msg.tool_calls:
+                                    if tool_call.get("name") == "escalate_to_human":
+                                        tool_call_id = tool_call.get("id")
+                                        break
+                            if tool_call_id:
+                                break
+                        break
+            
+            if not tool_call_id:
+                logger.warning(f"Could not find tool_call_id for escalation response in task {task_id}")
+                tool_call_id = "unknown"
+            
+            # Create a ToolMessage to complete the tool call chain
+            tool_message = ToolMessage(
+                content=message_data.content,
+                tool_call_id=tool_call_id,
+                name="escalate_to_human"
+            )
+            
+            # Resume the conversation with the tool message
+            async for chunk in agent.astream(
+                {"messages": [tool_message]},
+                config=config,
+                stream_mode="updates"
+            ):
+                # Process the response but don't need to return it
+                logger.debug(f"Resume chunk: {chunk}")
+            
+            # Update task status to USER_INPUT_RECEIVED so core agent can pick it up
+            await update_task_tool(
+                task_id=str(task_id),
+                status="user_input_received"
+            )
+            
+            return {
+                "success": True,
+                "task_status": "user_input_received",
+                "message": "Response posted, task queued for processing"
+            }
+        else:
+            # No pending interrupts - just add a regular human message
+            logger.info(f"Adding regular human message to task {task_id} chat")
+            
+            # Add human message to the conversation
+            human_message = HumanMessage(content=message_data.content)
+            
+            # Stream the agent response
+            async for chunk in agent.astream(
+                {"messages": [human_message]},
+                config=config,
+                stream_mode="updates"
+            ):
+                logger.debug(f"Chat chunk: {chunk}")
+            
+            # Update task status to USER_INPUT_RECEIVED for core agent to process
+            await update_task_tool(
+                task_id=str(task_id),
+                status="user_input_received"
+            )
+            
+            return {
+                "success": True, 
+                "task_status": "user_input_received",
+                "message": "Message posted, task queued for processing"
+            }
+        
+    except Exception as e:
+        logger.error(f"Failed to post message to task {task_id} chat: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to post message: {str(e)}")
+
+
 # === Entity Management Endpoints ===
 
 @router.get("/api/persons", response_model=List[PersonResponse])
