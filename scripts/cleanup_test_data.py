@@ -47,6 +47,9 @@ class TestDataCleaner:
             langgraph_queries = [
                 ("LangGraph checkpoints", "SELECT COUNT(*) FROM checkpoints"),
                 ("LangGraph checkpoint writes", "SELECT COUNT(*) FROM checkpoint_writes"),
+                ("LangGraph checkpoint blobs", "SELECT COUNT(*) FROM checkpoint_blobs"),
+                ("Core agent checkpoints", "SELECT COUNT(*) FROM checkpoints WHERE thread_id LIKE 'core_agent_%'"),
+                ("Chat checkpoints", "SELECT COUNT(*) FROM checkpoints WHERE thread_id LIKE 'chat_%'"),
             ]
             
             print("\n📊 Nova Business Data:")
@@ -111,6 +114,7 @@ class TestDataCleaner:
         langgraph_queries = [
             ("checkpoint_writes", "DELETE FROM checkpoint_writes"),
             ("checkpoints", "DELETE FROM checkpoints"),
+            ("checkpoint_blobs", "DELETE FROM checkpoint_blobs"),
         ]
         
         # Process each query in a separate transaction to avoid transaction abort issues
@@ -133,12 +137,13 @@ class TestDataCleaner:
         print(f"\n🧹 Cleaning thread-specific data (pattern: {thread_pattern})...")
         
         async with db_manager.get_session() as session:
-            # Clean checkpoints for specific thread patterns
+            # Clean checkpoints for specific thread patterns (proper order for foreign keys)
             queries = [
                 ("checkpoint_writes for thread pattern", 
                  f"DELETE FROM checkpoint_writes WHERE task_id IN (SELECT task_id FROM checkpoints WHERE thread_id LIKE '{thread_pattern}')"),
                 ("checkpoints for thread pattern", 
                  f"DELETE FROM checkpoints WHERE thread_id LIKE '{thread_pattern}'"),
+                # Note: checkpoint_blobs are cleaned separately to avoid foreign key issues
             ]
             
             for description, query in queries:
@@ -146,6 +151,44 @@ class TestDataCleaner:
                     result = await session.execute(text(query))
                     rows_affected = result.rowcount
                     print(f"  ✅ {description}: {rows_affected} rows deleted")
+                except Exception as e:
+                    error_msg = f"❌ {description}: {e}"
+                    print(f"  {error_msg}")
+                    self.errors.append(error_msg)
+            
+            await session.commit()
+    
+    async def cleanup_core_agent_data(self) -> None:
+        """Comprehensive cleanup of core agent related data"""
+        print("\n🤖 Cleaning core agent specific data...")
+        
+        async with db_manager.get_session() as session:
+            # Core agent creates tasks and processes them, so clean up:
+            # 1. Test tasks created by core agent
+            # 2. All core agent threads from checkpointer
+            # 3. Core agent comments and status
+            
+            queries = [
+                # Comments by core agent (usually on tasks it processes)
+                ("core agent comments", "DELETE FROM task_comments WHERE author = 'core_agent'"),
+                
+                # Test tasks that might be created during core agent testing
+                ("test tasks processed by core agent", 
+                 "DELETE FROM tasks WHERE title LIKE '%Test%' OR title LIKE '%core_agent%'"),
+                
+                # Core agent checkpointer data
+                ("core agent checkpoint writes", 
+                 "DELETE FROM checkpoint_writes WHERE task_id IN (SELECT task_id FROM checkpoints WHERE thread_id LIKE 'core_agent_%')"),
+                ("core agent checkpoints", 
+                 "DELETE FROM checkpoints WHERE thread_id LIKE 'core_agent_%'"),
+            ]
+            
+            for description, query in queries:
+                try:
+                    result = await session.execute(text(query))
+                    rows_affected = result.rowcount
+                    print(f"  ✅ {description}: {rows_affected} rows deleted")
+                    self.cleaned_tables.append(description)
                 except Exception as e:
                     error_msg = f"❌ {description}: {e}"
                     print(f"  {error_msg}")
@@ -194,13 +237,16 @@ async def main():
         # Step 2: Clean Nova business data
         await cleaner.cleanup_nova_business_data()
         
-        # Step 3: Clean LangGraph checkpointer data
+        # Step 3: Clean core agent specific data
+        await cleaner.cleanup_core_agent_data()
+        
+        # Step 4: Clean LangGraph checkpointer data
         await cleaner.cleanup_langgraph_data()
         
-        # Step 4: Clean specific core agent thread data
+        # Step 5: Clean specific core agent thread data (for any remaining patterns)
         await cleaner.cleanup_thread_specific_data()
         
-        # Step 5: Show remaining data
+        # Step 6: Show remaining data
         await cleaner.show_remaining_data()
         
         # Step 6: Print summary

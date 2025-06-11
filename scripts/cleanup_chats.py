@@ -61,28 +61,48 @@ class ChatCleaner:
             async with pool.connection() as conn:
                 checkpointer = AsyncPostgresSaver(conn)
                 
-                # Count total checkpoints
+                # Count total checkpoints and categorize by type
                 checkpoint_count = 0
-                thread_ids = set()
+                chat_threads = set()
+                core_agent_threads = set()
+                other_threads = set()
                 
                 async for checkpoint_tuple in checkpointer.alist(None):
                     checkpoint_count += 1
                     if checkpoint_tuple.config and checkpoint_tuple.config.get("configurable", {}).get("thread_id"):
                         thread_id = checkpoint_tuple.config["configurable"]["thread_id"]
                         if thread_id:
-                            thread_ids.add(thread_id)
+                            if thread_id.startswith('core_agent_'):
+                                core_agent_threads.add(thread_id)
+                            elif thread_id.startswith('chat_'):
+                                chat_threads.add(thread_id)
+                            else:
+                                other_threads.add(thread_id)
                 
             await pool.close()
             
+            all_threads = chat_threads | core_agent_threads | other_threads
+            
             return {
                 'total_checkpoints': checkpoint_count,
-                'unique_threads': len(thread_ids),
-                'thread_ids': sorted(list(thread_ids))
+                'unique_threads': len(all_threads),
+                'chat_threads': len(chat_threads),
+                'core_agent_threads': len(core_agent_threads),
+                'other_threads': len(other_threads),
+                'thread_ids': sorted(list(all_threads)),
+                'chat_thread_ids': sorted(list(chat_threads)),
+                'core_agent_thread_ids': sorted(list(core_agent_threads)),
+                'other_thread_ids': sorted(list(other_threads))
             }
             
         except Exception as e:
             logger.error(f"Error getting checkpointer stats: {e}")
-            return {'total_checkpoints': 0, 'unique_threads': 0, 'thread_ids': []}
+            return {
+                'total_checkpoints': 0, 'unique_threads': 0, 
+                'chat_threads': 0, 'core_agent_threads': 0, 'other_threads': 0,
+                'thread_ids': [], 'chat_thread_ids': [], 
+                'core_agent_thread_ids': [], 'other_thread_ids': []
+            }
     
     async def get_database_stats(self) -> dict:
         """Get statistics about Nova database chat data."""
@@ -155,6 +175,90 @@ class ChatCleaner:
             logger.error(f"Error cleaning checkpointer data: {e}")
             return False
     
+    async def clean_core_agent_threads(self) -> bool:
+        """Clean only core agent threads from checkpointer."""
+        try:
+            # Create connection pool for checkpointer
+            pool = AsyncConnectionPool(
+                self.database_url.replace('+asyncpg', ''),
+                open=False
+            )
+            await pool.open()
+            
+            async with pool.connection() as conn:
+                checkpointer = AsyncPostgresSaver(conn)
+                
+                # Get core agent thread IDs
+                core_agent_threads = set()
+                async for checkpoint_tuple in checkpointer.alist(None):
+                    if checkpoint_tuple.config and checkpoint_tuple.config.get("configurable", {}).get("thread_id"):
+                        thread_id = checkpoint_tuple.config["configurable"]["thread_id"]
+                        if thread_id and thread_id.startswith('core_agent_'):
+                            core_agent_threads.add(thread_id)
+                
+                # Delete core agent threads
+                logger.info(f"Found {len(core_agent_threads)} core agent threads to delete")
+                for thread_id in core_agent_threads:
+                    try:
+                        await checkpointer.adelete_thread(thread_id)
+                        logger.debug(f"Deleted core agent thread {thread_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete core agent thread {thread_id}: {e}")
+                
+                logger.info(f"✅ Deleted {len(core_agent_threads)} core agent threads from checkpointer")
+            
+            await pool.close()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error cleaning core agent threads: {e}")
+            return False
+
+    async def clean_checkpointer_data_selective(self, exclude_patterns: List[str] = None) -> bool:
+        """Clean checkpointer data excluding threads matching certain patterns."""
+        if exclude_patterns is None:
+            exclude_patterns = []
+            
+        try:
+            # Create connection pool for checkpointer
+            pool = AsyncConnectionPool(
+                self.database_url.replace('+asyncpg', ''),
+                open=False
+            )
+            await pool.open()
+            
+            async with pool.connection() as conn:
+                checkpointer = AsyncPostgresSaver(conn)
+                
+                # Get thread IDs that don't match exclude patterns
+                threads_to_delete = set()
+                async for checkpoint_tuple in checkpointer.alist(None):
+                    if checkpoint_tuple.config and checkpoint_tuple.config.get("configurable", {}).get("thread_id"):
+                        thread_id = checkpoint_tuple.config["configurable"]["thread_id"]
+                        if thread_id:
+                            # Check if thread matches any exclude pattern
+                            should_exclude = any(thread_id.startswith(pattern) for pattern in exclude_patterns)
+                            if not should_exclude:
+                                threads_to_delete.add(thread_id)
+                
+                # Delete selected threads
+                logger.info(f"Found {len(threads_to_delete)} threads to delete (excluding patterns: {exclude_patterns})")
+                for thread_id in threads_to_delete:
+                    try:
+                        await checkpointer.adelete_thread(thread_id)
+                        logger.debug(f"Deleted thread {thread_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete thread {thread_id}: {e}")
+                
+                logger.info(f"✅ Deleted {len(threads_to_delete)} threads from checkpointer")
+            
+            await pool.close()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error cleaning checkpointer data selectively: {e}")
+            return False
+
     async def clean_database_data(self, chat_id: Optional[str] = None) -> bool:
         """Clean Nova database chat data for specific chat or all chats."""
         try:
@@ -210,8 +314,14 @@ class ChatCleaner:
         logger.info(f"📋 Checkpointer (LangGraph State):")
         logger.info(f"   - Total checkpoints: {checkpointer_stats['total_checkpoints']}")
         logger.info(f"   - Unique threads: {checkpointer_stats['unique_threads']}")
-        if checkpointer_stats['thread_ids']:
-            logger.info(f"   - Thread IDs: {', '.join(checkpointer_stats['thread_ids'][:5])}{'...' if len(checkpointer_stats['thread_ids']) > 5 else ''}")
+        logger.info(f"   - Chat threads: {checkpointer_stats['chat_threads']}")
+        logger.info(f"   - Core agent threads: {checkpointer_stats['core_agent_threads']}")
+        logger.info(f"   - Other threads: {checkpointer_stats['other_threads']}")
+        
+        if checkpointer_stats['core_agent_thread_ids']:
+            logger.info(f"   - Core agent thread samples: {', '.join(checkpointer_stats['core_agent_thread_ids'][:3])}{'...' if len(checkpointer_stats['core_agent_thread_ids']) > 3 else ''}")
+        if checkpointer_stats['chat_thread_ids']:
+            logger.info(f"   - Chat thread samples: {', '.join(checkpointer_stats['chat_thread_ids'][:3])}{'...' if len(checkpointer_stats['chat_thread_ids']) > 3 else ''}")
         
         # Database stats  
         database_stats = await self.get_database_stats()
@@ -277,6 +387,8 @@ async def main():
     parser.add_argument('--all', action='store_true', help='Clean all chat data (checkpointer + database)')
     parser.add_argument('--checkpointer', action='store_true', help='Clean only checkpointer data')
     parser.add_argument('--database', action='store_true', help='Clean only Nova database data')
+    parser.add_argument('--core-agent', action='store_true', help='Clean only core agent threads')
+    parser.add_argument('--chats-only', action='store_true', help='Clean only regular chat threads (not core agent)')
     parser.add_argument('--list', action='store_true', help='List current data statistics')
     parser.add_argument('--thread', type=str, help='Clean specific thread ID')
     parser.add_argument('--chat', type=str, help='Clean specific chat ID from database')
@@ -287,7 +399,7 @@ async def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     
-    if not any([args.all, args.checkpointer, args.database, args.list, args.thread, args.chat]):
+    if not any([args.all, args.checkpointer, args.database, args.core_agent, args.chats_only, args.list, args.thread, args.chat]):
         parser.print_help()
         return
     
@@ -330,6 +442,32 @@ async def main():
         elif args.chat:
             logger.info(f"Cleaning chat: {args.chat}")
             await cleaner.clean_database_data(args.chat)
+        
+        elif args.core_agent:
+            stats = await cleaner.get_checkpointer_stats()
+            logger.info(f"Found {stats['core_agent_threads']} core agent threads")
+            if stats['core_agent_threads'] > 0:
+                if input(f"\n⚠️  Delete all {stats['core_agent_threads']} core agent threads? (y/N): ").lower() == 'y':
+                    await cleaner.clean_core_agent_threads()
+                    await cleaner.print_stats()
+                else:
+                    logger.info("Cleanup cancelled")
+            else:
+                logger.info("No core agent threads found")
+        
+        elif args.chats_only:
+            stats = await cleaner.get_checkpointer_stats()
+            chat_count = stats['chat_threads'] + stats['other_threads']  # Exclude core agent
+            logger.info(f"Found {chat_count} non-core-agent threads")
+            if chat_count > 0:
+                if input(f"\n⚠️  Delete all {chat_count} chat threads (excluding core agent)? (y/N): ").lower() == 'y':
+                    # Clean non-core-agent threads
+                    await cleaner.clean_checkpointer_data_selective(['core_agent_'])
+                    await cleaner.print_stats()
+                else:
+                    logger.info("Cleanup cancelled")
+            else:
+                logger.info("No chat threads found")
             
     finally:
         await cleaner.close()
