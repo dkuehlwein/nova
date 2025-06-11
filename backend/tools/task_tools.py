@@ -81,6 +81,11 @@ async def update_task_tool(
     tags: List[str] = None
 ) -> str:
     """Update an existing task."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔧 update_task_tool CALLED: task_id={task_id}, status={status}")
+    print(f"[STDOUT] 🔧 update_task_tool CALLED: task_id={task_id}, status={status}", flush=True)
+    
     async with db_manager.get_session() as session:
         try:
             task_id_uuid = UUID(task_id)
@@ -128,13 +133,19 @@ async def update_task_tool(
         await session.commit()
         await session.refresh(task)
         
+        logger.info(f"🔧 update_task_tool COMMITTED: task_id={task_id}, new_status={task.status.value}")
+        print(f"[STDOUT] 🔧 update_task_tool COMMITTED: task_id={task_id}, new_status={task.status.value}", flush=True)
+        
         # Get comments count
         comments_count = await session.scalar(
             select(func.count(TaskComment.id)).where(TaskComment.task_id == task.id)
         )
         
         formatted_task = await format_task_for_agent(task, comments_count or 0)
-        return f"Task updated successfully: {json.dumps(formatted_task, indent=2)}"
+        result_msg = f"Task updated successfully: {json.dumps(formatted_task, indent=2)}"
+        logger.info(f"🔧 update_task_tool RETURNING: {result_msg[:100]}...")
+        print(f"[STDOUT] 🔧 update_task_tool RETURNING: SUCCESS", flush=True)
+        return result_msg
 
 
 async def get_tasks_tool(
@@ -251,12 +262,6 @@ async def add_task_comment_tool(
             author=author
         )
         session.add(comment)
-        
-        # Update task status based on comment author
-        if author == "user" and task.status in [TaskStatus.NEEDS_REVIEW, TaskStatus.WAITING]:
-            task.status = TaskStatus.USER_INPUT_RECEIVED
-        elif author == "nova" and task.status in [TaskStatus.NEW, TaskStatus.USER_INPUT_RECEIVED]:
-            task.status = TaskStatus.IN_PROGRESS
         
         await session.commit()
         

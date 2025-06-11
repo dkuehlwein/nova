@@ -218,19 +218,46 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                         else:
                             ai_content = tool_display
                     
-                    # Look ahead for ToolMessage results and the final AI response
+                    # Look ahead for ToolMessage results and subsequent AI responses
                     j = i + 1
                     while j < len(messages):
                         next_msg = messages[j]
                         if isinstance(next_msg, AIMessage):
-                            # This is the final AI response after tool execution
+                            # This is a subsequent AI response after tool execution
                             final_content = str(next_msg.content).strip()
+                            
+                            # Check if this subsequent AI message also has tool calls
+                            subsequent_tool_calls = getattr(next_msg, 'tool_calls', [])
+                            if subsequent_tool_calls:
+                                logger.debug(f"Subsequent AI message has {len(subsequent_tool_calls)} tool calls")
+                                
+                                # Add tool call indicators for subsequent message
+                                for tool_call in subsequent_tool_calls:
+                                    tool_name = tool_call.get('name', 'unknown') if isinstance(tool_call, dict) else getattr(tool_call, 'name', 'unknown')
+                                    tool_args = tool_call.get('args', {}) if isinstance(tool_call, dict) else getattr(tool_call, 'args', {})
+                                    
+                                    # Format tool call with arguments
+                                    tool_display = f"🔧 **Using tool: {tool_name}**"
+                                    if tool_args:
+                                        # Truncate long arguments for display
+                                        args_str = str(tool_args)
+                                        if len(args_str) > 200:
+                                            args_str = args_str[:200] + "..."
+                                        tool_display += f"\n```json\n{args_str}\n```"
+                                    
+                                    if ai_content:
+                                        ai_content += f"\n\n{tool_display}"
+                                    else:
+                                        ai_content = tool_display
+                            
+                            # Add the final content if it exists
                             if final_content and final_content not in ['', 'null', 'None']:
                                 if ai_content:
                                     ai_content += f"\n\n{final_content}"
                                 else:
                                     ai_content = final_content
                                 logger.debug(f"Added final AI response: '{final_content[:50]}...'")
+                            
                             # Skip this message in the outer loop since we've processed it
                             i = j
                             break

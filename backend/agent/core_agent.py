@@ -180,6 +180,7 @@ class CoreAgent:
                 logger.info(f"Selected NEW task: {task.id} - {task.title}")
                 return task
             
+            logger.info("No tasks available for processing")
             return None
     
     async def _set_busy(self, task_id: UUID):
@@ -234,12 +235,24 @@ class CoreAgent:
     
     async def _process_task(self, task: Task):
         """Process a task with AI."""
-        logger.info(f"Processing task {task.id}: {task.title}")
+        # Check current status from database at start (atomic check)
+        async with db_manager.get_session() as session:
+            result = await session.execute(select(Task.status).where(Task.id == task.id))
+            db_status = result.scalar_one()
+            logger.info(f"ATOMIC CHECK START: Task {task.id} DB status: {db_status.value}, object status: {task.status.value}")
+        
+        logger.info(f"Processing task {task.id}: {task.title} (current status: {task.status.value})")
+        
+        # If task is already completed, don't process it again
+        if task.status in [TaskStatus.DONE, TaskStatus.FAILED]:
+            logger.warning(f"UNEXPECTED: Attempting to process already completed task {task.id} ({task.title}) "
+                          f"with status {task.status.value}.")
+            return
         
         # Move task to IN_PROGRESS
         await self._move_task_to_in_progress(task)
         
-        # Get context (placeholder for now)
+        # Get context
         context = await self._get_context(task)
         
         # Process with AI using LangGraph with unique thread_id for rollback capability
@@ -247,32 +260,27 @@ class CoreAgent:
         config = RunnableConfig(configurable={"thread_id": thread_id})
         
         try:
-            # Check if thread already has messages and interrupts
+            # Check if thread already has messages (i.e., this is a resumed conversation)
             state = await self.agent.aget_state(config)
             has_existing_messages = bool(state.values.get("messages", []))
+            existing_message_count = len(state.values.get("messages", []))
             
-            # Check for pending interrupts (human escalations)
-            if state.interrupts:
-                logger.info(f"Task {task.id} has pending interrupts - moving to NEEDS_REVIEW")
-                await self._handle_human_escalation(task, state.interrupts)
-                return
-            
-            # Initialize interrupt tracking variables
+            # Initialize interrupt tracking variables and messages
             interrupt_detected = False
             interrupt_data = None
+            messages = []
             
             if has_existing_messages:
-                logger.info(f"Thread for task {task.id} already has messages, continuing conversation")
+                logger.info(f"RESUMING: Thread for task {task.id} has {existing_message_count} existing messages")
+                logger.debug(f"  -> Task status: {task.status.value}")
+                logger.debug(f"  -> Thread ID: {thread_id}")
+
                 # Get the current messages to extract the AI response
                 messages = state.values.get("messages", [])
-                
-                # Check for any existing interrupts in the current state
-                if state.interrupts:
-                    logger.info(f"Existing interrupts found for task {task.id}")
-                    interrupt_detected = True
-                    interrupt_data = state.interrupts
             else:
-                logger.info(f"Starting new conversation for task {task.id}")
+                logger.info(f"NEW CONVERSATION: Starting fresh thread for task {task.id}")
+                logger.debug(f"  -> Task status: {task.status.value}")
+                logger.debug(f"  -> Thread ID: {thread_id}")
                 # Create initial prompt only if no existing messages
                 prompt = await self._create_prompt(task, context)
                 
@@ -292,42 +300,37 @@ class CoreAgent:
                         logger.info(f"Interrupt detected for task {task.id} during streaming")
                         interrupt_detected = True
                         interrupt_data = chunk["__interrupt__"]
-                
-                # Final check for interrupts after streaming
-                final_state = await self.agent.aget_state(config)
-                if final_state.interrupts:
-                    logger.info(f"Interrupt detected for task {task.id} in final state")
-                    interrupt_detected = True
-                    interrupt_data = final_state.interrupts
             
-            # Extract and save AI response BEFORE handling interrupts
+            # Handle interrupts first (regardless of messages)
+            if interrupt_detected and interrupt_data:
+                logger.info(f"INTERRUPT DETECTED: Handling human escalation for task {task.id}")
+                logger.debug(f"  -> Interrupt data: {interrupt_data}")
+                logger.debug(f"  -> Current task status: {task.status.value}")
+                await self._handle_human_escalation(task, interrupt_data)
+                return
+            
+            # Extract and save AI response if we have messages
             if messages:
                 ai_response = messages[-1].content if hasattr(messages[-1], 'content') else str(messages[-1])
                 logger.info(f"AI response for task {task.id} ({task.title}): {ai_response[:200]}...")
                 
-                # Add AI response as comment only if it's a new conversation
-                if not has_existing_messages:
-                    await add_task_comment_tool(
-                        task_id=str(task.id),
-                        content=f"Core Agent processed this task:\n\n{ai_response}",
-                        author="core_agent"
-                    )
-                
+                # Check if the AI changed the task status during execution (atomic check)
+                async with db_manager.get_session() as session:
+                    result = await session.execute(select(Task.status).where(Task.id == task.id))
+                    current_status = result.scalar_one()
+                    
+                    logger.info(f"ATOMIC CHECK END: Task {task.id} final DB status: {current_status.value}")
+                    
+                    if current_status in [TaskStatus.DONE, TaskStatus.FAILED]:
+                        logger.info(f"✅ Task {task.id} was completed by AI with status: {current_status.value}")
+                    else:
+                        logger.warning(f"⚠️ Task {task.id} NOT completed - status after AI processing: {current_status.value}")
+                 
                 # Update context (placeholder for now)
                 await self._update_context(ai_response, task, context)
                 
-                # NOW handle interrupts after saving the response
-                if interrupt_detected and interrupt_data:
-                    logger.info(f"Handling interrupt for task {task.id} after saving AI response")
-                    await self._handle_human_escalation(task, interrupt_data)
-                    return
-                
                 logger.info(f"Successfully processed task {task.id} ({task.title})")
             else:
-                # Handle interrupts even if no messages (edge case)
-                if interrupt_detected and interrupt_data:
-                    await self._handle_human_escalation(task, interrupt_data)
-                    return
                 raise Exception("No response from AI agent")
                 
         except Exception as e:
