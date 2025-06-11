@@ -9,11 +9,18 @@ export interface ChatMessage {
   isStreaming?: boolean;
 }
 
+export interface PendingEscalation {
+  question: string;
+  instructions: string;
+  tool_call_id?: string;
+}
+
 export interface ChatState {
   messages: ChatMessage[];
   isLoading: boolean;
   error: string | null;
   isConnected: boolean;
+  pendingEscalation: PendingEscalation | null;
 }
 
 interface StreamMessageData {
@@ -43,6 +50,7 @@ export function useChat() {
     isLoading: false,
     error: null,
     isConnected: true, // Start as connected to avoid initial health check
+    pendingEscalation: null,
   });
 
   const [currentThreadId, setCurrentThreadId] = useState(() => `chat-${Date.now()}`);
@@ -111,7 +119,7 @@ export function useChat() {
 
         console.log(`Loaded chat ${chatId} with ${chatMessages.length} messages`);
         
-      } catch (fetchError) {
+      } catch {
         // For task threads that don't exist yet, this is normal
         // Clear messages and prepare for a new conversation
         console.log(`Chat thread ${chatId} not found or empty, starting new conversation`);
@@ -333,6 +341,7 @@ export function useChat() {
       isLoading: false,
       error: null,
       isConnected: true, // Keep connected status
+      pendingEscalation: null,
     });
     // Generate a new thread ID for the new chat
     setCurrentThreadId(`chat-${Date.now()}`);
@@ -379,12 +388,103 @@ export function useChat() {
     }
   }, []);
 
+  // Load task chat with escalation support
+  const loadTaskChat = useCallback(async (taskId: string) => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    
+    try {
+      // Set the thread ID for task chat
+      const threadId = `core_agent_task_${taskId}`;
+      setCurrentThreadId(threadId);
+      
+      // Fetch task chat data including escalation state
+      const taskChatData = await apiRequest<{
+        task_id: string;
+        thread_id: string;
+        messages: Array<{
+          id: string;
+          role: 'user' | 'assistant';
+          content: string;
+          timestamp: string;
+        }>;
+        task_status: string;
+        pending_escalation?: {
+          question: string;
+          instructions: string;
+          tool_call_id?: string;
+        };
+      }>(API_ENDPOINTS.taskChat(taskId));
+
+      // Convert messages to ChatMessage format
+      const chatMessages: ChatMessage[] = taskChatData.messages.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp,
+        isStreaming: false,
+      }));
+
+      // Set the messages and escalation state
+      setState(prev => ({
+        ...prev,
+        messages: chatMessages,
+        isLoading: false,
+        error: null,
+        pendingEscalation: taskChatData.pending_escalation || null,
+      }));
+
+      console.log(`Loaded task chat ${taskId} with ${chatMessages.length} messages`);
+      if (taskChatData.pending_escalation) {
+        console.log('Pending escalation detected:', taskChatData.pending_escalation);
+      }
+      
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load task chat';
+      console.error('Failed to load task chat:', error);
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage,
+        pendingEscalation: null,
+      }));
+    }
+  }, []);
+
+  // Send escalation response
+  const sendEscalationResponse = useCallback(async (taskId: string, response: string) => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    
+    try {
+      await apiRequest(API_ENDPOINTS.taskChatMessage(taskId), {
+        method: 'POST',
+        body: JSON.stringify({
+          content: response,
+          author: 'human'
+        }),
+      });
+
+      // Clear the escalation and reload the task chat
+      setState(prev => ({ ...prev, pendingEscalation: null }));
+      await loadTaskChat(taskId);
+      
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send escalation response';
+      console.error('Failed to send escalation response:', error);
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage,
+      }));
+    }
+  }, [loadTaskChat]);
+
   return {
     // State
     messages: state.messages,
     isLoading: state.isLoading,
     error: state.error,
     isConnected: state.isConnected,
+    pendingEscalation: state.pendingEscalation,
     threadId: currentThreadId,
 
     // Actions
@@ -394,6 +494,8 @@ export function useChat() {
     addMessage,
     updateMessage,
     loadChat, // New function for loading existing chats
+    loadTaskChat, // Load task chat with escalation support
+    sendEscalationResponse, // Send response to escalation
 
     // Utilities (manual trigger only)
     checkHealth,

@@ -9,6 +9,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useChat, ChatMessage } from "@/hooks/useChat";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
+import { EscalationBox } from "@/components/EscalationBox";
 
 interface PendingDecision {
   id: string;
@@ -48,11 +49,13 @@ function ChatPage() {
     isLoading,
     error,
     isConnected,
+    pendingEscalation,
     sendMessage,
     clearChat,
     stopStreaming,
     loadChat,
-    threadId,
+    loadTaskChat,
+    sendEscalationResponse,
   } = useChat();
 
   // Memoize the stable data to prevent unnecessary re-renders
@@ -173,8 +176,8 @@ function ChatPage() {
       
       fetchTaskInfo();
       
-      // Load the chat thread if it exists
-      loadChat(threadParam);
+      // Load the task chat with escalation support
+      loadTaskChat(taskParam);
     }
 
     const loadData = async () => {
@@ -197,7 +200,7 @@ function ChatPage() {
     };
 
     loadData();
-  }, [dataLoaded, searchParams, loadChat]); // Depend on dataLoaded flag
+  }, [dataLoaded, searchParams, loadChat, loadTaskChat]); // Depend on dataLoaded flag
 
   const handleSendMessage = useCallback(async () => {
     if (message.trim() && !isLoading) {
@@ -237,9 +240,16 @@ function ChatPage() {
 
   const handleChatSelect = useCallback(async (chatItem: ChatHistoryItem) => {
     try {
-      // Load the actual conversation for both task chats and regular chats
-      console.log(`Loading chat: ${chatItem.id}`);
-      await loadChat(chatItem.id);
+      // Check if this is a task chat
+      if (chatItem.task_id) {
+        console.log(`Loading task chat: ${chatItem.task_id}`);
+        setTaskInfo({ id: chatItem.task_id, title: chatItem.title });
+        await loadTaskChat(chatItem.task_id);
+      } else {
+        console.log(`Loading regular chat: ${chatItem.id}`);
+        setTaskInfo(null); // Clear task info for regular chats
+        await loadChat(chatItem.id);
+      }
     } catch (error) {
       console.error('Failed to load chat:', error);
       // Fallback: set a message to continue the conversation
@@ -249,7 +259,7 @@ function ChatPage() {
         setMessage(`Continue our conversation: ${chatItem.title}`);
       }
     }
-  }, [loadChat]);
+  }, [loadChat, loadTaskChat]);
 
   const renderMessage = useCallback((msg: ChatMessage) => (
     <div
@@ -536,6 +546,19 @@ function ChatPage() {
             ) : (
               <div className="space-y-4">
                 {messages.map((msg) => renderMessage(msg))}
+                
+                {/* Escalation Box for pending decisions */}
+                {pendingEscalation && taskInfo && (
+                  <EscalationBox
+                    question={pendingEscalation.question}
+                    instructions={pendingEscalation.instructions}
+                    onSubmit={async (response) => {
+                      await sendEscalationResponse(taskInfo.id, response);
+                    }}
+                    isSubmitting={isLoading}
+                  />
+                )}
+                
                 {error && (
                   <div className="flex justify-center">
                     <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">

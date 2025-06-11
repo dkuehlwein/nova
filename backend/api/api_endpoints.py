@@ -619,6 +619,7 @@ async def get_task_chat(task_id: UUID):
     """Get LangGraph chat messages for a task's core agent conversation."""
     from agent.chat_agent import create_chat_agent
     from api.chat_endpoints import _get_chat_history_with_checkpointer
+    from langchain_core.runnables import RunnableConfig
     
     async with db_manager.get_session() as session:
         # Verify task exists
@@ -629,14 +630,42 @@ async def get_task_chat(task_id: UUID):
     
     # Get chat thread for this task
     thread_id = f"core_agent_task_{task_id}"
+    config = RunnableConfig(configurable={"thread_id": thread_id})
     
     try:
         # Get checkpointer from chat agent
         agent = await create_chat_agent()
-        checkpointer = agent.checkpointer
+        
+        # Get current state to check for interrupts
+        state = await agent.aget_state(config)
         
         # Get chat history
-        messages = await _get_chat_history_with_checkpointer(thread_id, checkpointer)
+        messages = await _get_chat_history_with_checkpointer(thread_id, agent.checkpointer)
+        
+        # Process interrupts - look for human escalation interrupts
+        pending_escalation = None
+        if state.interrupts:
+            for interrupt in state.interrupts:
+                if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
+                    if interrupt.value.get("type") == "human_escalation":
+                        # Find the associated tool call for context
+                        last_ai_message = None
+                        if state.values and state.values.get("messages"):
+                            for msg in reversed(state.values["messages"]):
+                                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                                    for tool_call in msg.tool_calls:
+                                        if tool_call.get("name") == "escalate_to_human":
+                                            last_ai_message = msg
+                                            break
+                                    if last_ai_message:
+                                        break
+                        
+                        pending_escalation = {
+                            "question": interrupt.value.get("question", "No question provided"),
+                            "instructions": interrupt.value.get("instructions", "Please respond to continue"),
+                            "tool_call_id": last_ai_message.tool_calls[0].get("id") if last_ai_message and last_ai_message.tool_calls else None
+                        }
+                        break
         
         return {
             "task_id": str(task_id),
@@ -644,13 +673,14 @@ async def get_task_chat(task_id: UUID):
             "messages": [
                 {
                     "id": msg.id,
-                    "role": "human" if msg.sender == "user" else "assistant", 
+                    "role": "user" if msg.sender == "user" else "assistant", 
                     "content": msg.content,
                     "timestamp": msg.created_at
                 }
                 for msg in messages
             ],
-            "task_status": task.status.value
+            "task_status": task.status.value,
+            "pending_escalation": pending_escalation  # New field for interrupt state
         }
         
     except Exception as e:
@@ -662,8 +692,9 @@ async def get_task_chat(task_id: UUID):
 async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCreate):
     """Post a human message to task's chat thread and handle tool response if needed."""
     from agent.chat_agent import create_chat_agent
-    from langchain_core.messages import HumanMessage, ToolMessage
+    from langchain_core.messages import HumanMessage
     from langchain_core.runnables import RunnableConfig
+    from langgraph.types import Command
     from tools.task_tools import update_task_tool
     
     logger = logging.getLogger(__name__)
@@ -687,37 +718,10 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
         if state.interrupts:
             logger.info(f"Handling human response to escalation for task {task_id}")
             
-            # Find the escalate_to_human tool call that needs a response
-            tool_call_id = None
-            for interrupt in state.interrupts:
-                if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
-                    if interrupt.value.get("type") == "human_escalation":
-                        # Look for the tool call ID in the recent messages
-                        messages = state.values.get("messages", [])
-                        for msg in reversed(messages):
-                            if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                                for tool_call in msg.tool_calls:
-                                    if tool_call.get("name") == "escalate_to_human":
-                                        tool_call_id = tool_call.get("id")
-                                        break
-                            if tool_call_id:
-                                break
-                        break
-            
-            if not tool_call_id:
-                logger.warning(f"Could not find tool_call_id for escalation response in task {task_id}")
-                tool_call_id = "unknown"
-            
-            # Create a ToolMessage to complete the tool call chain
-            tool_message = ToolMessage(
-                content=message_data.content,
-                tool_call_id=tool_call_id,
-                name="escalate_to_human"
-            )
-            
-            # Resume the conversation with the tool message
+            # Resume the graph with the human's response using Command(resume=...)
+            # This is the proper LangGraph pattern for responding to interrupts
             async for chunk in agent.astream(
-                {"messages": [tool_message]},
+                Command(resume=message_data.content),
                 config=config,
                 stream_mode="updates"
             ):

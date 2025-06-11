@@ -257,10 +257,20 @@ class CoreAgent:
                 await self._handle_human_escalation(task, state.interrupts)
                 return
             
+            # Initialize interrupt tracking variables
+            interrupt_detected = False
+            interrupt_data = None
+            
             if has_existing_messages:
                 logger.info(f"Thread for task {task.id} already has messages, continuing conversation")
                 # Get the current messages to extract the AI response
                 messages = state.values.get("messages", [])
+                
+                # Check for any existing interrupts in the current state
+                if state.interrupts:
+                    logger.info(f"Existing interrupts found for task {task.id}")
+                    interrupt_detected = True
+                    interrupt_data = state.interrupts
             else:
                 logger.info(f"Starting new conversation for task {task.id}")
                 # Create initial prompt only if no existing messages
@@ -268,8 +278,6 @@ class CoreAgent:
                 
                 # Stream the agent response and watch for interrupts
                 messages = []
-                interrupt_detected = False
-                interrupt_data = None
                 
                 async for chunk in self.agent.astream(
                     {"messages": [{"role": "user", "content": prompt}]},

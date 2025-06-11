@@ -45,8 +45,15 @@ def escalate_to_human(question: str) -> str:
         "instructions": "Please respond to this question to continue task processing."
     })
     
-    # Extract response (should be a string from chat)
-    response = human_response.get("response", "No response received")
+    # When resuming with Command(resume=value), the interrupt receives the value directly
+    # If it's a string, use it directly; if it's a dict, extract the response
+    if isinstance(human_response, str):
+        response = human_response
+    elif isinstance(human_response, dict):
+        response = human_response.get("response", "No response received")
+    else:
+        response = str(human_response)
+    
     logger.info(f"Received human response: {response}")
     
     return response 
