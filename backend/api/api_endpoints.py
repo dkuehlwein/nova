@@ -739,14 +739,24 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
                 logger.debug(f"Chat chunk: {chunk}")
         
         # Update task status so core agent can process the response
-        await update_task_tool(
-            task_id=str(task_id),
-            status="user_input_received"
-        )
+        # But only if still in needs_review - don't override completed tasks
+        async with db_manager.get_session() as session:
+            task_result = await session.execute(select(Task).where(Task.id == task_id))
+            current_task = task_result.scalar_one()
+            
+            if current_task.status == TaskStatus.NEEDS_REVIEW:
+                await update_task_tool(
+                    task_id=str(task_id),
+                    status="user_input_received"
+                )
+                final_status = "user_input_received"
+            else:
+                # Task was completed by chat agent, preserve its status
+                final_status = current_task.status.value
         
         return {
             "success": True,
-            "task_status": "user_input_received",
+            "task_status": final_status,
             "message": "Message posted successfully"
         }
         

@@ -235,12 +235,6 @@ class CoreAgent:
     
     async def _process_task(self, task: Task):
         """Process a task with AI."""
-        # Check current status from database at start (atomic check)
-        async with db_manager.get_session() as session:
-            result = await session.execute(select(Task.status).where(Task.id == task.id))
-            db_status = result.scalar_one()
-            logger.info(f"ATOMIC CHECK START: Task {task.id} DB status: {db_status.value}, object status: {task.status.value}")
-        
         logger.info(f"Processing task {task.id}: {task.title} (current status: {task.status.value})")
         
         # If task is already completed, don't process it again
@@ -271,16 +265,11 @@ class CoreAgent:
             messages = []
             
             if has_existing_messages:
-                logger.info(f"RESUMING: Thread for task {task.id} has {existing_message_count} existing messages")
-                logger.debug(f"  -> Task status: {task.status.value}")
-                logger.debug(f"  -> Thread ID: {thread_id}")
-
+                logger.info(f"Resuming conversation for task {task.id} with {existing_message_count} messages")
                 # Get the current messages to extract the AI response
                 messages = state.values.get("messages", [])
             else:
-                logger.info(f"NEW CONVERSATION: Starting fresh thread for task {task.id}")
-                logger.debug(f"  -> Task status: {task.status.value}")
-                logger.debug(f"  -> Thread ID: {thread_id}")
+                logger.info(f"Starting new conversation for task {task.id}")
                 # Create initial prompt only if no existing messages
                 prompt = await self._create_prompt(task, context)
                 
@@ -303,9 +292,7 @@ class CoreAgent:
             
             # Handle interrupts first (regardless of messages)
             if interrupt_detected and interrupt_data:
-                logger.info(f"INTERRUPT DETECTED: Handling human escalation for task {task.id}")
-                logger.debug(f"  -> Interrupt data: {interrupt_data}")
-                logger.debug(f"  -> Current task status: {task.status.value}")
+                logger.info(f"Handling human escalation for task {task.id}")
                 await self._handle_human_escalation(task, interrupt_data)
                 return
             
@@ -313,19 +300,6 @@ class CoreAgent:
             if messages:
                 ai_response = messages[-1].content if hasattr(messages[-1], 'content') else str(messages[-1])
                 logger.info(f"AI response for task {task.id} ({task.title}): {ai_response[:200]}...")
-                
-                # Check if the AI changed the task status during execution (atomic check)
-                async with db_manager.get_session() as session:
-                    result = await session.execute(select(Task.status).where(Task.id == task.id))
-                    current_status = result.scalar_one()
-                    
-                    logger.info(f"ATOMIC CHECK END: Task {task.id} final DB status: {current_status.value}")
-                    
-                    if current_status in [TaskStatus.DONE, TaskStatus.FAILED]:
-                        logger.info(f"✅ Task {task.id} was completed by AI with status: {current_status.value}")
-                    else:
-                        logger.warning(f"⚠️ Task {task.id} NOT completed - status after AI processing: {current_status.value}")
-                 
                 # Update context (placeholder for now)
                 await self._update_context(ai_response, task, context)
                 
@@ -343,7 +317,7 @@ class CoreAgent:
             task_id=str(task.id),
             status="in_progress"
         )
-        logger.info(f"Moved task {task.id} ({task.title}) to IN_PROGRESS")
+        logger.debug(f"Moved task {task.id} ({task.title}) to IN_PROGRESS")
     
     async def _get_context(self, task: Task) -> Dict[str, Any]:
         """Get context for the task (placeholder implementation)."""
