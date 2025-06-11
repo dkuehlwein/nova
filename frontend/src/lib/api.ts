@@ -213,10 +213,11 @@ export const API_ENDPOINTS = {
   chatHealth: '/chat/health',
   chatTools: '/chat/tools',
   chatTest: '/chat/test',
-  // Chat management endpoints
-  chats: '/api/chats',
-  chatById: (id: string) => `/api/chats/${id}`,
-  chatMessages: (id: string) => `/api/chats/${id}/messages`,
-  createChat: '/api/chats',
-  addChatMessage: (id: string) => `/api/chats/${id}/messages`,
+  // Modern chat management endpoints (LangGraph-based)
+  chats: '/chat/conversations',
+  chatById: (id: string) => `/chat/conversations/${id}`,
+  chatMessages: (id: string) => `/chat/conversations/${id}/messages`,
+  // Legacy endpoints - DEPRECATED, use /chat/conversations instead
+  // createChat: '/api/chats',
+  // addChatMessage: (id: string) => `/api/chats/${id}/messages`,
 } as const; 
