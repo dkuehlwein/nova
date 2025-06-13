@@ -9,6 +9,7 @@ Provides REST API endpoints that match the UI requirements:
 """
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import UUID
@@ -17,6 +18,9 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, func, or_, select, text, desc
 from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import create_async_engine
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg_pool import AsyncConnectionPool
 
 from database.database import db_manager
 from models.models import (
@@ -539,9 +543,84 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
         )
 
 
+async def cleanup_task_chat_data(task_id: str):
+    """Clean up chat data associated with a task."""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get database URL
+        database_url = os.getenv(
+            'DATABASE_URL', 
+            'postgresql+asyncpg://nova:nova_dev_password@localhost:5432/nova_kanban'
+        )
+        
+        # Clean up LangGraph checkpointer data
+        thread_id = f"core_agent_task_{task_id}"
+        
+        try:
+            # Create connection pool for checkpointer
+            pool = AsyncConnectionPool(
+                database_url.replace('+asyncpg', ''),
+                open=False
+            )
+            await pool.open()
+            
+            async with pool.connection() as conn:
+                checkpointer = AsyncPostgresSaver(conn)
+                await checkpointer.adelete_thread(thread_id)
+                logger.info(f"✅ Deleted LangGraph thread: {thread_id}")
+            
+            await pool.close()
+            
+        except Exception as e:
+            logger.warning(f"Failed to delete LangGraph thread {thread_id}: {e}")
+        
+        # Clean up Nova database chat data
+        # Look for chats with IDs that might be related to this task
+        potential_chat_ids = [
+            f"core_agent_task_{task_id}",
+            f"chat-{task_id}",
+            f"task-{task_id}",
+            task_id  # Direct task ID as chat ID
+        ]
+        
+        engine = create_async_engine(database_url)
+        try:
+            async with engine.begin() as conn:
+                for chat_id in potential_chat_ids:
+                    try:
+                        # Delete chat messages first (foreign key constraint)
+                        result = await conn.execute(
+                            text("DELETE FROM chat_messages WHERE chat_id = :chat_id"),
+                            {"chat_id": chat_id}
+                        )
+                        message_count = result.rowcount
+                        
+                        # Delete chat
+                        result = await conn.execute(
+                            text("DELETE FROM chats WHERE id = :chat_id"),
+                            {"chat_id": chat_id}
+                        )
+                        chat_count = result.rowcount
+                        
+                        if message_count > 0 or chat_count > 0:
+                            logger.info(f"✅ Deleted chat {chat_id}: {message_count} messages, {chat_count} chat record")
+                            
+                    except Exception as e:
+                        logger.debug(f"No chat found with ID {chat_id}: {e}")
+                        
+        except Exception as e:
+            logger.warning(f"Failed to clean database chat data for task {task_id}: {e}")
+        finally:
+            await engine.dispose()
+            
+    except Exception as e:
+        logger.error(f"Error during chat cleanup for task {task_id}: {e}")
+
+
 @router.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: UUID):
-    """Delete a task."""
+    """Delete a task and its associated chat data."""
     async with db_manager.get_session() as session:
         result = await session.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
@@ -549,10 +628,14 @@ async def delete_task(task_id: UUID):
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
         
+        # Delete the task from database first
         await session.delete(task)
         await session.commit()
         
-        return {"message": "Task deleted successfully"}
+        # Clean up associated chat data
+        await cleanup_task_chat_data(str(task_id))
+        
+        return {"message": "Task and associated chat data deleted successfully"}
 
 
 # === Task Comments ===

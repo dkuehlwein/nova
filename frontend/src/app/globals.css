@@ -127,6 +127,7 @@
   .chat-container {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+    scroll-behavior: smooth;
   }
 
   .chat-container::-webkit-scrollbar {

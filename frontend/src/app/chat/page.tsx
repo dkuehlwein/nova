@@ -27,6 +27,7 @@ interface ChatHistoryItem {
   title: string;
   last_message: string;
   updated_at: string;
+  last_activity?: string;
   needs_decision: boolean;
   task_id?: string;
   message_count?: number;
@@ -58,37 +59,74 @@ function ChatPage() {
     loadTaskChat,
     sendEscalationResponse,
   } = useChat();
-  const [forceScrollToBottom, setForceScrollToBottom] = useState(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const chatHistoryContainerRef = useRef<HTMLDivElement>(null);
+  const [prevChatId, setPrevChatId] = useState<string | null>(null);
+  const currentChatId = useMemo(() => {
+    if (taskInfo) return `task-${taskInfo.id}`;
+    if (messages.length > 0) return messages[0].id.split('-')[0];
+    return null;
+  }, [taskInfo, messages]);
 
   // Memoize the stable data to prevent unnecessary re-renders
   const memoizedPendingDecisions = useMemo(() => pendingDecisions, [pendingDecisions]);
   const memoizedChatHistory = useMemo(() => chatHistory, [chatHistory]);
 
-  // Auto-scroll to bottom when new messages arrive or when forced
+  // WhatsApp-like scroll behavior: Always scroll to bottom when loading a chat
   useEffect(() => {
-    const scrollToBottom = () => {
-      if (messagesEndRef.current) {
-        const chatContainer = messagesEndRef.current.closest('.chat-container');
-        if (chatContainer) {
-          const { scrollTop, scrollHeight, clientHeight } = chatContainer;
-          // Only auto-scroll if user is already near the bottom (within 100px),
-          // or if forceScrollToBottom is set (e.g. after chat selection)
-          const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-          if (isNearBottom || forceScrollToBottom) {
-            messagesEndRef.current.scrollIntoView({ 
-              behavior: "smooth",
-              block: "end",
-              inline: "nearest"
-            });
-            if (forceScrollToBottom) setForceScrollToBottom(false);
-          }
-        }
+    if (currentChatId && prevChatId !== currentChatId) {
+      setPrevChatId(currentChatId);
+    }
+  }, [currentChatId, prevChatId]);
+
+  // Auto-scroll to bottom when messages change (handles both new messages and initial load)
+  useEffect(() => {
+    if (!messagesContainerRef.current || messages.length === 0) return;
+
+    const scrollToBottom = (behavior: 'auto' | 'smooth' = 'auto') => {
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTo({ 
+          top: messagesContainerRef.current.scrollHeight, 
+          behavior
+        });
       }
     };
-    // Small delay to ensure DOM has updated
-    const timeoutId = setTimeout(scrollToBottom, 50);
-    return () => clearTimeout(timeoutId);
-  }, [messages.length, forceScrollToBottom]);
+
+    const scrollToBottomWhenReady = (behavior: 'auto' | 'smooth' = 'auto', attempts = 0) => {
+      if (!messagesContainerRef.current || attempts > 10) return;
+      
+      const { scrollHeight, clientHeight } = messagesContainerRef.current;
+      
+      // If scrollHeight is still 0 or very small, the DOM isn't ready yet
+      if (scrollHeight <= clientHeight + 10) {
+        // Wait for next frame and try again
+        requestAnimationFrame(() => scrollToBottomWhenReady(behavior, attempts + 1));
+        return;
+      }
+      
+      scrollToBottom(behavior);
+    };
+
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    const isAtTop = scrollTop < 50;
+
+    // Always scroll to bottom for the first load or when switching chats
+    const isFirstLoad = prevChatId === null || prevChatId !== currentChatId;
+    
+    if (isFirstLoad || isNearBottom || isAtTop) {
+      // Use instant scrolling for first loads and chat switches
+      // Use smooth scrolling for new messages when user is near bottom
+      const shouldUseSmooth = !isFirstLoad && isNearBottom && !isAtTop;
+      
+      if (isFirstLoad) {
+        // For first loads, use the more robust method that waits for DOM
+        scrollToBottomWhenReady('auto');
+      } else {
+        scrollToBottom(shouldUseSmooth ? 'smooth' : 'auto');
+      }
+    }
+  }, [messages, currentChatId, prevChatId]);
 
   // Load more chats
   const loadMoreChats = useCallback(async () => {
@@ -118,7 +156,8 @@ function ChatPage() {
         id: chat.id,
         title: chat.title,
         last_message: chat.last_message || 'No messages yet',
-        updated_at: chat.last_activity || chat.updated_at,
+        updated_at: chat.updated_at,
+        last_activity: chat.last_activity,
         needs_decision: chat.has_decision,
         message_count: chat.message_count,
         has_decision: chat.has_decision,
@@ -144,6 +183,7 @@ function ChatPage() {
           title: decision.title,
           last_message: `Decision needed: ${decision.description.substring(0, 50)}...`,
           updated_at: decision.updated_at,
+          last_activity: undefined,
           needs_decision: true,
           task_id: decision.id,
         }));
@@ -219,38 +259,61 @@ function ChatPage() {
     }
   }, [handleSendMessage]);
 
+  // Format timestamp in German local time
   const formatTimestamp = useCallback((timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
+    if (!timestamp) return '';
+    try {
+      return new Date(timestamp).toLocaleString('de-DE', { 
+        timeZone: 'Europe/Berlin', 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: '2-digit' 
+      });
+    } catch {
+      return timestamp;
+    }
   }, []);
 
   const formatDate = useCallback((timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-    
-    if (diffInHours < 24) {
-      return formatTimestamp(timestamp);
-    } else if (diffInHours < 48) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString();
+    if (!timestamp) return '';
+    try {
+      return new Date(timestamp).toLocaleDateString('de-DE', { 
+        timeZone: 'Europe/Berlin',
+        weekday: 'short',
+        day: '2-digit', 
+        month: '2-digit', 
+        year: '2-digit' 
+      });
+    } catch {
+      return timestamp;
     }
-  }, [formatTimestamp]);
+  }, []);
+
+  // Sort chat history by last message timestamp (newest first)
+  const sortedChatHistory = useMemo(() => {
+    return memoizedChatHistory
+      .slice()
+      .sort((a, b) => {
+        // Use last_activity if available, otherwise fall back to updated_at
+        const timeA = new Date(a.last_activity || a.updated_at).getTime();
+        const timeB = new Date(b.last_activity || b.updated_at).getTime();
+        return timeB - timeA; // Newest first
+      });
+  }, [memoizedChatHistory]);
 
   const handleChatSelect = useCallback(async (chatItem: ChatHistoryItem) => {
     try {
-      // Check if this is a task chat
       if (chatItem.task_id) {
+        // Task-specific chat
         setTaskInfo({ id: chatItem.task_id, title: chatItem.title });
         await loadTaskChat(chatItem.task_id);
       } else {
-        setTaskInfo(null); // Clear task info for regular chats
+        // Regular chat
+        setTaskInfo(null);
         await loadChat(chatItem.id);
       }
-      setForceScrollToBottom(true); // Always scroll to bottom after loading chat
     } catch (error) {
       console.error('Failed to load chat:', error);
       // Fallback: set a message to continue the conversation
@@ -347,7 +410,7 @@ function ChatPage() {
                 New Chat
               </Button>
               
-              {isLoading && (
+              {isLoading && messages.length > 0 && messages[messages.length - 1]?.isStreaming && (
                 <Button 
                   variant="outline" 
                   size="sm" 
@@ -362,7 +425,7 @@ function ChatPage() {
           </div>
 
           {/* Chat History List */}
-          <div className="flex-1 overflow-y-auto chat-container">
+          <div className="flex-1 overflow-y-auto chat-container" ref={chatHistoryContainerRef}>
             {loadingDecisions ? (
               <div className="p-4 text-center">
                 <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
@@ -416,41 +479,45 @@ function ChatPage() {
                   <h3 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wide">
                     Recent Chats
                   </h3>
-                  {memoizedChatHistory.filter(chat => !chat.needs_decision).length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      No chat history yet
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {memoizedChatHistory
-                        .filter(chat => !chat.needs_decision)
-                        .map((chatItem) => (
-                        <div
-                          key={chatItem.id}
-                          onClick={() => handleChatSelect(chatItem)}
-                          className="p-3 rounded-lg border hover:bg-muted cursor-pointer transition-colors"
-                        >
-                          <div className="flex items-start space-x-2">
-                            <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <h4 className="text-sm font-medium truncate">
-                                {chatItem.title}
-                              </h4>
-                              <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                                {chatItem.last_message}
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-2">
-                                {formatDate(chatItem.updated_at)}
-                              </p>
+                  {(() => {
+                    const visibleChats = sortedChatHistory.filter(chat => !chat.needs_decision);
+                    if (visibleChats.length === 0) {
+                      return (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                          No chat history yet
+                        </p>
+                      );
+                    }
+                    return (
+                      <div className="space-y-2">
+                        {visibleChats.map((chatItem) => (
+                          <div
+                            key={chatItem.id}
+                            onClick={() => handleChatSelect(chatItem)}
+                            className="p-3 rounded-lg border hover:bg-muted cursor-pointer transition-colors"
+                          >
+                            <div className="flex items-start space-x-2">
+                              <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <h4 className="text-sm font-medium truncate">
+                                  {chatItem.title}
+                                </h4>
+                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                                  {chatItem.last_message}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  {formatDate(chatItem.last_activity || chatItem.updated_at)}
+                                </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    );
+                  })()}
                   
                   {/* Load More Button */}
-                  {hasMoreChats && memoizedChatHistory.filter(chat => !chat.needs_decision).length > 0 && (
+                  {hasMoreChats && sortedChatHistory.filter(chat => !chat.needs_decision).length > 0 && (
                     <div className="mt-4">
                       <Button
                         variant="outline"
@@ -513,7 +580,7 @@ function ChatPage() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto chat-container p-4">
+          <div className="flex-1 overflow-y-auto chat-container p-4" ref={messagesContainerRef}>
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <div className="w-16 h-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center mb-4">

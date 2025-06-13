@@ -162,7 +162,10 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
         messages = channel_values["messages"]
         chat_messages = []
         
-        logger.debug(f"Found {len(messages)} raw messages in state")
+        # Get the checkpoint timestamp - this is when the conversation state was last saved
+        checkpoint_timestamp = state.get('ts', datetime.now().isoformat())
+        
+        logger.debug(f"Found {len(messages)} raw messages in state, checkpoint timestamp: {checkpoint_timestamp}")
         
         # Process messages and reconstruct AI message content to match streaming experience
         i = 0
@@ -173,16 +176,14 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
             logger.debug(f"Processing message {i}: {type(msg).__name__}")
             
             if isinstance(msg, HumanMessage):
-                # Always include user messages
                 chat_messages.append(ChatMessageDetail(
                     id=f"{thread_id}-msg-{i}",
                     sender="user",
                     content=str(msg.content),
-                    created_at=datetime.now().isoformat(),  # TODO: Use actual timestamp if available
-                    needs_decision=False  # TODO: Implement decision detection logic
+                    created_at=checkpoint_timestamp,
+                    needs_decision=False
                 ))
                 logger.debug(f"Included user message: '{str(msg.content)[:50]}...'")
-                
             elif isinstance(msg, AIMessage):
                 # For AI messages, reconstruct the complete content including tool calls
                 ai_content = str(msg.content).strip()
@@ -272,7 +273,7 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                         id=f"{thread_id}-msg-{i}",
                         sender="assistant",
                         content=ai_content,
-                        created_at=datetime.now().isoformat(),
+                        created_at=checkpoint_timestamp,
                         needs_decision=False
                     ))
                     logger.debug(f"Included AI message with reconstructed content: '{ai_content[:100]}...'")
@@ -436,13 +437,21 @@ async def stream_chat(request: Request, chat_request: ChatRequest):
                             for message in node_output["messages"]:
                                 if isinstance(message, AIMessage):
                                     logger.debug(f"Streaming AI message: {message.content[:50]}...")
+                                    
+                                    # Get timestamp from the current state if available
+                                    try:
+                                        current_state = await chat_agent.checkpointer.aget(config)
+                                        timestamp = current_state.get('ts', datetime.now().isoformat()) if current_state else datetime.now().isoformat()
+                                    except:
+                                        timestamp = datetime.now().isoformat()
+                                    
                                     # Send message content as it streams
                                     event = {
                                         "type": "message",
                                         "data": {
                                             "role": "assistant",
                                             "content": message.content,
-                                            "timestamp": datetime.now().isoformat(),
+                                            "timestamp": timestamp,
                                             "node": node_name
                                         }
                                     }
@@ -451,12 +460,18 @@ async def stream_chat(request: Request, chat_request: ChatRequest):
                                 # Handle tool calls
                                 if hasattr(message, 'tool_calls') and message.tool_calls:
                                     for tool_call in message.tool_calls:
+                                        try:
+                                            current_state = await chat_agent.checkpointer.aget(config)
+                                            timestamp = current_state.get('ts', datetime.now().isoformat()) if current_state else datetime.now().isoformat()
+                                        except:
+                                            timestamp = datetime.now().isoformat()
+                                        
                                         tool_event = {
                                             "type": "tool_call",
                                             "data": {
                                                 "tool": tool_call["name"],
                                                 "args": tool_call.get("args", {}),
-                                                "timestamp": datetime.now().isoformat()
+                                                "timestamp": timestamp
                                             }
                                         }
                                         yield f"data: {json.dumps(tool_event)}\n\n"
@@ -527,11 +542,18 @@ async def chat(request: ChatRequest):
         last_message = result["messages"][-1]
         response_content = last_message.content if isinstance(last_message, AIMessage) else "No response generated"
         
+        # Get the actual timestamp from the checkpoint state
+        try:
+            current_state = await chat_agent.checkpointer.aget(config)
+            timestamp = current_state.get('ts', datetime.now().isoformat()) if current_state else datetime.now().isoformat()
+        except:
+            timestamp = datetime.now().isoformat()
+        
         # Create response
         response_message = ChatMessage(
             role="assistant",
             content=response_content,
-            timestamp=datetime.now().isoformat(),
+            timestamp=timestamp,
             id=str(uuid.uuid4())
         )
         
