@@ -10,6 +10,7 @@ import { useChat, ChatMessage } from "@/hooks/useChat";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
 import { EscalationBox } from "@/components/EscalationBox";
+import { MarkdownMessage } from "@/components/MarkdownMessage";
 
 interface PendingDecision {
   id: string;
@@ -299,8 +300,10 @@ function ChatPage() {
               )}
             </div>
             
-            <div className="text-sm whitespace-pre-wrap break-words min-h-[1.25rem]">
-              {msg.content || (msg.isStreaming ? (
+            <div className="text-sm break-words min-h-[1.25rem]">
+              {msg.content ? (
+                <MarkdownMessage content={msg.content} />
+              ) : (msg.isStreaming ? (
                 <span className="opacity-60">Thinking...</span>
               ) : '')}
             </div>
