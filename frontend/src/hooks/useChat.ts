@@ -26,12 +26,14 @@ export interface ChatState {
 interface StreamMessageData {
   role: string;
   content: string;
+  timestamp?: string;
 }
 
 interface StreamToolData {
   tool: string;
   args?: Record<string, unknown>;
   result?: unknown;
+  timestamp?: string;
 }
 
 interface StreamErrorData {
@@ -163,6 +165,9 @@ export function useChat() {
           isStreaming: true,
         });
 
+        let assistantContent = '';
+        let assistantTimestamp: string | null = null;
+
         // Cancel any ongoing request
         if (abortControllerRef.current) {
           abortControllerRef.current.abort();
@@ -200,8 +205,6 @@ export function useChat() {
           throw new Error('No response reader available');
         }
 
-        let assistantContent = '';
-
         try {
           while (true) {
             const { done, value } = await reader.read();
@@ -220,6 +223,11 @@ export function useChat() {
                     case 'message':
                       const messageData = event.data as StreamMessageData;
                       if (messageData.role === 'assistant') {
+                        // Store timestamp from the first message
+                        if (messageData.timestamp && !assistantTimestamp) {
+                          assistantTimestamp = messageData.timestamp;
+                        }
+                        
                         // Accumulate content instead of overwriting
                         if (assistantContent && messageData.content) {
                           // Add separator between responses for readability
@@ -230,25 +238,22 @@ export function useChat() {
                         updateMessage(assistantMessageId, {
                           content: assistantContent,
                           isStreaming: true,
+                          timestamp: assistantTimestamp || new Date().toISOString(),
                         });
                       }
                       break;
 
                     case 'tool_call':
-                      // Add a visual indicator for tool usage
+                      // Handle tool calls for display purposes
                       const toolData = event.data as StreamToolData;
-                      const toolMessage = `\n\n🔧 Using tool: ${toolData.tool}...`;
-                      assistantContent += toolMessage;
-                      updateMessage(assistantMessageId, {
-                        content: assistantContent,
-                        isStreaming: true,
-                      });
+                      // You can display tool calls if needed
                       break;
 
                     case 'complete':
                       updateMessage(assistantMessageId, {
                         content: assistantContent,
                         isStreaming: false,
+                        timestamp: assistantTimestamp || new Date().toISOString(),
                       });
                       break;
 
@@ -258,6 +263,7 @@ export function useChat() {
                       updateMessage(assistantMessageId, {
                         content: assistantContent || 'Error occurred while processing your message.',
                         isStreaming: false,
+                        timestamp: assistantTimestamp || new Date().toISOString(),
                       });
                       break;
                   }

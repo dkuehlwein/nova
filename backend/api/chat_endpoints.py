@@ -162,10 +162,55 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
         messages = channel_values["messages"]
         chat_messages = []
         
-        # Get the checkpoint timestamp - this is when the conversation state was last saved
+        # Get the checkpoint timestamp as fallback only
         checkpoint_timestamp = state.get('ts', datetime.now().isoformat())
         
         logger.debug(f"Found {len(messages)} raw messages in state, checkpoint timestamp: {checkpoint_timestamp}")
+        
+        # Build a mapping of message ID to creation timestamp by analyzing checkpoint history
+        logger.debug("Building message ID to timestamp mapping from checkpoint history...")
+        message_to_timestamp = {}
+        
+        try:
+            # Get full checkpoint history
+            history = []
+            async for checkpoint_tuple in checkpointer.alist(config):
+                history.append(checkpoint_tuple)
+            
+            # Sort by timestamp (oldest first) to get chronological order
+            history.sort(key=lambda x: x.checkpoint.get('ts', ''))
+            
+            # Go through each checkpoint and map messages to when they were first added
+            for checkpoint_tuple in history:
+                checkpoint = checkpoint_tuple.checkpoint
+                metadata = checkpoint_tuple.metadata
+                checkpoint_ts = checkpoint.get('ts')
+                
+                # Check writes to see what messages were added in this checkpoint
+                writes = metadata.get('writes', {})
+                if writes:
+                    for key, value in writes.items():
+                        if isinstance(value, dict) and 'messages' in value:
+                            for msg in value['messages']:
+                                if hasattr(msg, 'id') and msg.id:
+                                    # Only map if we haven't seen this message ID before
+                                    if msg.id not in message_to_timestamp:
+                                        message_to_timestamp[msg.id] = checkpoint_ts
+                                        logger.debug(f"Mapped message {msg.id} -> {checkpoint_ts}")
+            
+            logger.debug(f"Successfully mapped {len(message_to_timestamp)} messages to timestamps")
+            
+        except Exception as e:
+            logger.warning(f"Error building message timestamp mapping: {e}")
+            # Fallback to checkpoint timestamp for all messages
+            message_to_timestamp = {}
+        
+        # Helper function to get message timestamp
+        def get_message_timestamp(msg, fallback_timestamp: str) -> str:
+            """Get timestamp for a message from our ID mapping."""
+            if hasattr(msg, 'id') and msg.id and msg.id in message_to_timestamp:
+                return message_to_timestamp[msg.id]
+            return fallback_timestamp
         
         # Process messages and reconstruct AI message content to match streaming experience
         i = 0
@@ -176,17 +221,19 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
             logger.debug(f"Processing message {i}: {type(msg).__name__}")
             
             if isinstance(msg, HumanMessage):
+                message_timestamp = get_message_timestamp(msg, checkpoint_timestamp)
                 chat_messages.append(ChatMessageDetail(
                     id=f"{thread_id}-msg-{i}",
                     sender="user",
                     content=str(msg.content),
-                    created_at=checkpoint_timestamp,
+                    created_at=message_timestamp,
                     needs_decision=False
                 ))
-                logger.debug(f"Included user message: '{str(msg.content)[:50]}...'")
+                logger.debug(f"Included user message: '{str(msg.content)[:50]}...' with timestamp: {message_timestamp}")
             elif isinstance(msg, AIMessage):
                 # For AI messages, reconstruct the complete content including tool calls
                 ai_content = str(msg.content).strip()
+                message_timestamp = get_message_timestamp(msg, checkpoint_timestamp)
                 
                 # Check if this AI message has tool calls
                 has_tool_calls = hasattr(msg, 'tool_calls') and bool(getattr(msg, 'tool_calls', None))
@@ -273,10 +320,10 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                         id=f"{thread_id}-msg-{i}",
                         sender="assistant",
                         content=ai_content,
-                        created_at=checkpoint_timestamp,
+                        created_at=message_timestamp,
                         needs_decision=False
                     ))
-                    logger.debug(f"Included AI message with reconstructed content: '{ai_content[:100]}...'")
+                    logger.debug(f"Included AI message with reconstructed content: '{ai_content[:100]}...' with timestamp: {message_timestamp}")
                 else:
                     logger.debug(f"Skipped AI message with no content after reconstruction")
             else:
@@ -421,29 +468,26 @@ async def stream_chat(request: Request, chat_request: ChatRequest):
         
         async def generate_response():
             """Generate SSE (Server-Sent Events) response stream."""
+            stream_count = 0
+            
             try:
-                logger.debug("Starting to stream from LangGraph...")
-                # Stream from the LangGraph agent
-                stream_count = 0
                 async for chunk in chat_agent.astream(
-                    {"messages": messages}, 
-                    config=config
+                    {"messages": messages},
+                    config=config,
+                    stream_mode="updates"
                 ):
                     stream_count += 1
-                    logger.debug(f"Received chunk #{stream_count} from node: {list(chunk.keys())}")
-                    # Handle different types of chunks from LangGraph
+                    logger.debug(f"Stream chunk {stream_count}: {chunk}")
+                    
+                    # Process chunk data
                     for node_name, node_output in chunk.items():
                         if "messages" in node_output:
                             for message in node_output["messages"]:
                                 if isinstance(message, AIMessage):
                                     logger.debug(f"Streaming AI message: {message.content[:50]}...")
                                     
-                                    # Get timestamp from the current state if available
-                                    try:
-                                        current_state = await chat_agent.checkpointer.aget(config)
-                                        timestamp = current_state.get('ts', datetime.now().isoformat()) if current_state else datetime.now().isoformat()
-                                    except:
-                                        timestamp = datetime.now().isoformat()
+                                    # Generate timestamp for this specific message
+                                    timestamp = datetime.now().isoformat()
                                     
                                     # Send message content as it streams
                                     event = {
@@ -460,11 +504,8 @@ async def stream_chat(request: Request, chat_request: ChatRequest):
                                 # Handle tool calls
                                 if hasattr(message, 'tool_calls') and message.tool_calls:
                                     for tool_call in message.tool_calls:
-                                        try:
-                                            current_state = await chat_agent.checkpointer.aget(config)
-                                            timestamp = current_state.get('ts', datetime.now().isoformat()) if current_state else datetime.now().isoformat()
-                                        except:
-                                            timestamp = datetime.now().isoformat()
+                                        # Generate timestamp for this specific tool call
+                                        timestamp = datetime.now().isoformat()
                                         
                                         tool_event = {
                                             "type": "tool_call",
@@ -542,12 +583,8 @@ async def chat(request: ChatRequest):
         last_message = result["messages"][-1]
         response_content = last_message.content if isinstance(last_message, AIMessage) else "No response generated"
         
-        # Get the actual timestamp from the checkpoint state
-        try:
-            current_state = await chat_agent.checkpointer.aget(config)
-            timestamp = current_state.get('ts', datetime.now().isoformat()) if current_state else datetime.now().isoformat()
-        except:
-            timestamp = datetime.now().isoformat()
+        # Generate timestamp for this specific response message
+        timestamp = datetime.now().isoformat()
         
         # Create response
         response_message = ChatMessage(
