@@ -61,72 +61,44 @@ function ChatPage() {
   } = useChat();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const chatHistoryContainerRef = useRef<HTMLDivElement>(null);
-  const [prevChatId, setPrevChatId] = useState<string | null>(null);
-  const currentChatId = useMemo(() => {
-    if (taskInfo) return `task-${taskInfo.id}`;
-    if (messages.length > 0) return messages[0].id.split('-')[0];
-    return null;
-  }, [taskInfo, messages]);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
   // Memoize the stable data to prevent unnecessary re-renders
   const memoizedPendingDecisions = useMemo(() => pendingDecisions, [pendingDecisions]);
   const memoizedChatHistory = useMemo(() => chatHistory, [chatHistory]);
 
-  // WhatsApp-like scroll behavior: Always scroll to bottom when loading a chat
+  // Simple scroll logic for chat switching
   useEffect(() => {
-    if (currentChatId && prevChatId !== currentChatId) {
-      setPrevChatId(currentChatId);
+    if (!messagesContainerRef.current || !messagesEndRef.current) {
+      return;
     }
-  }, [currentChatId, prevChatId]);
 
-  // Auto-scroll to bottom when messages change (handles both new messages and initial load)
-  useEffect(() => {
-    if (!messagesContainerRef.current || messages.length === 0) return;
-
-    const scrollToBottom = (behavior: 'auto' | 'smooth' = 'auto') => {
-      if (messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTo({ 
-          top: messagesContainerRef.current.scrollHeight, 
-          behavior
-        });
-      }
-    };
-
-    const scrollToBottomWhenReady = (behavior: 'auto' | 'smooth' = 'auto', attempts = 0) => {
-      if (!messagesContainerRef.current || attempts > 10) return;
-      
-      const { scrollHeight, clientHeight } = messagesContainerRef.current;
-      
-      // If scrollHeight is still 0 or very small, the DOM isn't ready yet
-      if (scrollHeight <= clientHeight + 10) {
-        // Wait for next frame and try again
-        requestAnimationFrame(() => scrollToBottomWhenReady(behavior, attempts + 1));
-        return;
-      }
-      
-      scrollToBottom(behavior);
-    };
-
-    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    const isAtTop = scrollTop < 50;
-
-    // Always scroll to bottom for the first load or when switching chats
-    const isFirstLoad = prevChatId === null || prevChatId !== currentChatId;
-    
-    if (isFirstLoad || isNearBottom || isAtTop) {
-      // Use instant scrolling for first loads and chat switches
-      // Use smooth scrolling for new messages when user is near bottom
-      const shouldUseSmooth = !isFirstLoad && isNearBottom && !isAtTop;
-      
-      if (isFirstLoad) {
-        // For first loads, use the more robust method that waits for DOM
-        scrollToBottomWhenReady('auto');
-      } else {
-        scrollToBottom(shouldUseSmooth ? 'smooth' : 'auto');
-      }
+    if (!currentChatId) {
+      return;
     }
-  }, [messages, currentChatId, prevChatId]);
+
+    // Check if this is a new chat with messages
+    if (messages.length > 0) {
+      // Force scroll to bottom - ensure it's instant and not animated
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          // Temporarily disable smooth scrolling
+          const container = messagesContainerRef.current;
+          const originalScrollBehavior = container.style.scrollBehavior;
+          container.style.scrollBehavior = 'auto';
+          
+          // Force immediate scroll to bottom
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: 'auto'
+          });
+          
+          // Restore original scroll behavior
+          container.style.scrollBehavior = originalScrollBehavior;
+        }
+      }, 0);
+    }
+  }, [messages, currentChatId, taskInfo]);
 
   // Load more chats
   const loadMoreChats = useCallback(async () => {
@@ -304,6 +276,9 @@ function ChatPage() {
   }, [memoizedChatHistory]);
 
   const handleChatSelect = useCallback(async (chatItem: ChatHistoryItem) => {
+    // Clear current chat ID while loading to prevent premature scrolling
+    setCurrentChatId(null);
+    
     try {
       if (chatItem.task_id) {
         // Task-specific chat
@@ -314,6 +289,9 @@ function ChatPage() {
         setTaskInfo(null);
         await loadChat(chatItem.id);
       }
+      
+      // Set the current chat ID only AFTER messages are loaded
+      setCurrentChatId(chatItem.id);
     } catch (error) {
       console.error('Failed to load chat:', error);
       // Fallback: set a message to continue the conversation
@@ -403,7 +381,10 @@ function ChatPage() {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={clearChat}
+                onClick={() => {
+                  setCurrentChatId(null);
+                  clearChat();
+                }}
                 className="w-full"
                 disabled={isLoading}
               >
