@@ -58,36 +58,37 @@ function ChatPage() {
     loadTaskChat,
     sendEscalationResponse,
   } = useChat();
+  const [forceScrollToBottom, setForceScrollToBottom] = useState(false);
 
   // Memoize the stable data to prevent unnecessary re-renders
   const memoizedPendingDecisions = useMemo(() => pendingDecisions, [pendingDecisions]);
   const memoizedChatHistory = useMemo(() => chatHistory, [chatHistory]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive or when forced
   useEffect(() => {
     const scrollToBottom = () => {
       if (messagesEndRef.current) {
         const chatContainer = messagesEndRef.current.closest('.chat-container');
         if (chatContainer) {
           const { scrollTop, scrollHeight, clientHeight } = chatContainer;
-          // Only auto-scroll if user is already near the bottom (within 100px)
+          // Only auto-scroll if user is already near the bottom (within 100px),
+          // or if forceScrollToBottom is set (e.g. after chat selection)
           const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-          
-          if (isNearBottom) {
+          if (isNearBottom || forceScrollToBottom) {
             messagesEndRef.current.scrollIntoView({ 
               behavior: "smooth",
               block: "end",
               inline: "nearest"
             });
+            if (forceScrollToBottom) setForceScrollToBottom(false);
           }
         }
       }
     };
-
     // Small delay to ensure DOM has updated
     const timeoutId = setTimeout(scrollToBottom, 50);
     return () => clearTimeout(timeoutId);
-  }, [messages.length]); // Only trigger on message count change, not content changes
+  }, [messages.length, forceScrollToBottom]);
 
   // Load more chats
   const loadMoreChats = useCallback(async () => {
@@ -243,14 +244,13 @@ function ChatPage() {
     try {
       // Check if this is a task chat
       if (chatItem.task_id) {
-        console.log(`Loading task chat: ${chatItem.task_id}`);
         setTaskInfo({ id: chatItem.task_id, title: chatItem.title });
         await loadTaskChat(chatItem.task_id);
       } else {
-        console.log(`Loading regular chat: ${chatItem.id}`);
         setTaskInfo(null); // Clear task info for regular chats
         await loadChat(chatItem.id);
       }
+      setForceScrollToBottom(true); // Always scroll to bottom after loading chat
     } catch (error) {
       console.error('Failed to load chat:', error);
       // Fallback: set a message to continue the conversation

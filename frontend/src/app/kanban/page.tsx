@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Plus, Calendar, Trash2, FileText, MessageCircle, Activity, CornerDownLeft, Edit2, Check, X } from "lucide-react";
+import { Plus, Calendar, Trash2, FileText, MessageCircle, Activity, CornerDownLeft, Edit2, Check, X, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -706,10 +706,21 @@ function KanbanPage() {
 
                 {/* Activity & Comments Section */}
                 <div className="bg-card border border-border rounded-lg p-4">
-                  <Label className="text-base font-semibold text-foreground mb-3 block flex items-center">
-                    <Activity className="h-4 w-4 mr-2" />
-                    Activity & Comments ({taskComments.length + taskActivity.filter(a => a.type !== 'comment_added').length})
-                  </Label>
+                  <div className="flex items-center justify-between mb-3">
+                    <Label className="text-base font-semibold text-foreground flex items-center">
+                      <Activity className="h-4 w-4 mr-2" />
+                      Activity & Comments ({taskComments.length + taskActivity.filter(a => a.type !== 'comment_added').length})
+                    </Label>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={e => handleTaskChat(selectedTask, e)}
+                      className="hover:bg-muted rounded-full"
+                      aria-label="Open chat for this task"
+                    >
+                      <MessageSquare className="h-5 w-5 text-primary" />
+                    </Button>
+                  </div>
                   
                   {/* Combined Activity and Comments Timeline */}
                   {(() => {
@@ -787,41 +798,6 @@ function KanbanPage() {
                       <div className="text-sm text-muted-foreground mb-4">No activity yet</div>
                     );
                   })()}
-
-                  {/* Add Comment */}
-                  <div className="border-t pt-3">
-                    <Label className="text-sm font-medium text-foreground mb-2 block">Add a comment</Label>
-                    <div className="space-y-3">
-                      <div className="relative">
-                        <Textarea
-                          placeholder="Share your thoughts, updates, or questions about this task..."
-                          className="min-h-[80px] resize-none pr-20"
-                          rows={3}
-                          value={commentText}
-                          onChange={(e) => setCommentText(e.target.value)}
-                          onKeyDown={handleCommentKeyDown}
-                        />
-                        <div className="absolute bottom-2 right-2 flex items-center space-x-1 text-xs text-muted-foreground">
-                          <CornerDownLeft className="h-3 w-3" />
-                          <span>Enter to send</span>
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <div className="text-xs text-muted-foreground">
-                          Tip: Use Shift+Enter for new lines
-                        </div>
-                        <Button 
-                          size="sm" 
-                          className="px-6"
-                          onClick={handleAddComment}
-                          disabled={!commentText.trim() || isAddingComment}
-                        >
-                          <MessageCircle className="h-4 w-4 mr-2" />
-                          {isAddingComment ? 'Adding...' : 'Add Comment'}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             )}
