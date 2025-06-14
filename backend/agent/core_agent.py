@@ -394,6 +394,7 @@ class CoreAgent:
         
         # Create the task context section
         task_context = TASK_CONTEXT_TEMPLATE.format(
+            task_id=str(task.id),
             status=task.status.value,
             priority="Not set",  # Priority field doesn't exist in Task model
             created_at=task.created_at.strftime('%Y-%m-%d %H:%M'),

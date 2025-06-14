@@ -44,6 +44,7 @@ NOVA_SYSTEM_PROMPT = """You are Nova, an AI assistant for managers.
 # Task Context Template - Metadata about the task (only for core agent)
 TASK_CONTEXT_TEMPLATE = """**Task Context:**
 
+**Task ID:** {task_id}
 **Status:** {status}
 **Priority:** {priority}
 **Created:** {created_at}
