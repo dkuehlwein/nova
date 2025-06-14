@@ -696,78 +696,7 @@ class TaskChatMessageCreate(BaseModel):
     content: str
 
 
-@router.get("/api/tasks/{task_id}/chat")
-async def get_task_chat(task_id: UUID):
-    """Get LangGraph chat messages for a task's core agent conversation."""
-    from agent.chat_agent import create_chat_agent
-    from api.chat_endpoints import _get_chat_history_with_checkpointer
-    from langchain_core.runnables import RunnableConfig
-    
-    async with db_manager.get_session() as session:
-        # Verify task exists
-        task_result = await session.execute(select(Task).where(Task.id == task_id))
-        task = task_result.scalar_one_or_none()
-        if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
-    
-    # Get chat thread for this task
-    thread_id = f"core_agent_task_{task_id}"
-    config = RunnableConfig(configurable={"thread_id": thread_id})
-    
-    try:
-        # Get checkpointer from chat agent
-        agent = await create_chat_agent()
-        
-        # Get current state to check for interrupts
-        state = await agent.aget_state(config)
-        
-        # Get chat history
-        messages = await _get_chat_history_with_checkpointer(thread_id, agent.checkpointer)
-        
-        # Process interrupts - look for human escalation interrupts
-        pending_escalation = None
-        if state.interrupts:
-            for interrupt in state.interrupts:
-                if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
-                    if interrupt.value.get("type") == "human_escalation":
-                        # Find the associated tool call for context
-                        last_ai_message = None
-                        if state.values and state.values.get("messages"):
-                            for msg in reversed(state.values["messages"]):
-                                if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                                    for tool_call in msg.tool_calls:
-                                        if tool_call.get("name") == "escalate_to_human":
-                                            last_ai_message = msg
-                                            break
-                                    if last_ai_message:
-                                        break
-                        
-                        pending_escalation = {
-                            "question": interrupt.value.get("question", "No question provided"),
-                            "instructions": interrupt.value.get("instructions", "Please respond to continue"),
-                            "tool_call_id": last_ai_message.tool_calls[0].get("id") if last_ai_message and last_ai_message.tool_calls else None
-                        }
-                        break
-        
-        return {
-            "task_id": str(task_id),
-            "thread_id": thread_id,
-            "messages": [
-                {
-                    "id": msg.id,
-                    "role": "user" if msg.sender == "user" else "assistant", 
-                    "content": msg.content,
-                    "timestamp": msg.created_at
-                }
-                for msg in messages
-            ],
-            "task_status": task.status.value,
-            "pending_escalation": pending_escalation  # New field for interrupt state
-        }
-        
-    except Exception as e:
-        logging.getLogger(__name__).error(f"Failed to get task chat for {task_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get chat history: {str(e)}")
+# Removed - this endpoint is no longer used. Task chats now use /chat/conversations/{threadId}/messages
 
 
 @router.post("/api/tasks/{task_id}/chat/message")

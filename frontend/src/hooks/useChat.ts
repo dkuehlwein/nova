@@ -409,32 +409,39 @@ export function useChat() {
       const threadId = `core_agent_task_${taskId}`;
       setCurrentThreadId(threadId);
       
-      // Fetch task chat data including escalation state
+      // Use the new task chat data endpoint that includes escalation info
       const taskChatData = await apiRequest<{
-        task_id: string;
-        thread_id: string;
         messages: Array<{
           id: string;
-          role: 'user' | 'assistant';
+          sender: string;
           content: string;
-          timestamp: string;
+          created_at: string;
+          needs_decision: boolean;
+          metadata?: {
+            type?: string;
+            is_collapsible?: boolean;
+            title?: string;
+          };
         }>;
-        task_status: string;
         pending_escalation?: {
           question: string;
           instructions: string;
           tool_call_id?: string;
         };
-      }>(API_ENDPOINTS.taskChat(taskId));
+      }>(API_ENDPOINTS.taskChatData(threadId));
 
-      // Convert messages to ChatMessage format
-      const chatMessages: ChatMessage[] = taskChatData.messages.map(msg => ({
-        id: msg.id,
-        role: msg.role,
+      // Convert messages to ChatMessage format (with metadata!)
+      const chatMessages: ChatMessage[] = taskChatData.messages.map((msg, index) => ({
+        id: msg.id || `loaded-msg-${index}`,
+        role: msg.sender === 'user' ? 'user' : (msg.sender === 'system' ? 'system' : 'assistant'),
         content: msg.content,
-        timestamp: msg.timestamp,
+        timestamp: msg.created_at,
         isStreaming: false,
+        metadata: (msg as {metadata?: {type?: string; is_collapsible?: boolean; title?: string}}).metadata || undefined,
       }));
+
+      // Use escalation data from the endpoint
+      const pendingEscalation = taskChatData.pending_escalation || null;
 
       // Set the messages and escalation state
       setState(prev => ({
@@ -442,12 +449,12 @@ export function useChat() {
         messages: chatMessages,
         isLoading: false,
         error: null,
-        pendingEscalation: taskChatData.pending_escalation || null,
+        pendingEscalation,
       }));
 
       console.log(`Loaded task chat ${taskId} with ${chatMessages.length} messages`);
-      if (taskChatData.pending_escalation) {
-        console.log('Pending escalation detected:', taskChatData.pending_escalation);
+      if (pendingEscalation) {
+        console.log('Pending escalation detected:', pendingEscalation);
       }
       
     } catch (error: unknown) {

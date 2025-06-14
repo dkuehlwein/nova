@@ -322,11 +322,24 @@ function ChatPage() {
 
     // Handle assistant messages with special metadata (like task context) using SystemMessage component
     if (msg.role === "assistant" && msg.metadata?.is_collapsible) {
+      // For task context, split content into summary and details
+      let mainContent = "";
+      let collapsibleContent = msg.content;
+      
+      if (msg.metadata?.type === "task_context") {
+        // For task context, title is enough for main content
+        // Everything goes in collapsible content
+        mainContent = ""; // Empty - title will show the "Task Context" label
+        
+        // Remove the redundant "**Task Context:**" line from collapsible content
+        collapsibleContent = msg.content.replace(/^\*\*Task Context:\*\*\s*\n\n?/, '').trim();
+      }
+      
       return (
         <SystemMessage
           key={msg.id}
-          content={msg.content}
-          collapsibleContent={msg.metadata?.collapsible_content}
+          content={mainContent}
+          collapsibleContent={collapsibleContent}
           isCollapsible={msg.metadata?.is_collapsible || false}
           timestamp={msg.timestamp}
           messageType={msg.metadata?.type || "task_context"}

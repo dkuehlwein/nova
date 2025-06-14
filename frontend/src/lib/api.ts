@@ -205,7 +205,6 @@ export const API_ENDPOINTS = {
   taskComments: (id: string) => `/api/tasks/${id}/comments`,
   health: '/health',
   // Task chat endpoints
-  taskChat: (id: string) => `/api/tasks/${id}/chat`,
   taskChatMessage: (id: string) => `/api/tasks/${id}/chat/message`,
   // Chat endpoints
   chat: '/chat',
@@ -217,6 +216,7 @@ export const API_ENDPOINTS = {
   chats: '/chat/conversations',
   chatById: (id: string) => `/chat/conversations/${id}`,
   chatMessages: (id: string) => `/chat/conversations/${id}/messages`,
+  taskChatData: (id: string) => `/chat/conversations/${id}/task-data`,
   // Legacy endpoints - DEPRECATED, use /chat/conversations instead
   // createChat: '/api/chats',
   // addChatMessage: (id: string) => `/api/chats/${id}/messages`,

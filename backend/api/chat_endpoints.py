@@ -5,14 +5,18 @@ FastAPI endpoints for LangGraph agent compatible with agent-chat-ui patterns.
 """
 
 import json
+import logging
 import uuid
 from typing import Any, Dict, List, Optional
 from datetime import datetime
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+from langgraph.types import Command
 
 from agent.chat_agent import create_chat_agent
 import logging
@@ -832,6 +836,12 @@ async def get_chat(request: Request, chat_id: str):
         raise HTTPException(status_code=500, detail=f"Error getting chat: {str(e)}")
 
 
+class TaskChatResponse(BaseModel):
+    """Response model for task chat data including escalation info."""
+    messages: List[ChatMessageDetail] = Field(..., description="Chat messages")
+    pending_escalation: Optional[Dict[str, Any]] = Field(None, description="Pending escalation info")
+
+
 @router.get("/conversations/{chat_id}/messages", response_model=List[ChatMessageDetail])
 async def get_chat_messages(request: Request, chat_id: str):
     """
@@ -843,4 +853,66 @@ async def get_chat_messages(request: Request, chat_id: str):
         return messages
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting chat messages: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error getting chat messages: {str(e)}")
+
+
+@router.get("/conversations/{chat_id}/task-data", response_model=TaskChatResponse)
+async def get_task_chat_data(request: Request, chat_id: str):
+    """
+    Get task chat messages with escalation information.
+    Specifically for task threads (core_agent_task_*).
+    """
+    try:
+        checkpointer = await get_checkpointer_from_app(request)
+        messages = await _get_chat_history_with_checkpointer(chat_id, checkpointer)
+        
+        # Check for escalation info if this is a task thread
+        pending_escalation = None
+        if chat_id.startswith("core_agent_task_"):
+            try:
+                from agent.chat_agent import create_chat_agent
+                from langchain_core.runnables import RunnableConfig
+                
+                # Get agent and check current state for interrupts
+                agent = await create_chat_agent()
+                config = RunnableConfig(configurable={"thread_id": chat_id})
+                state = await agent.aget_state(config)
+                
+                # Process interrupts - look for human escalation interrupts
+                if state.interrupts:
+                    for interrupt in state.interrupts:
+                        if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
+                            if interrupt.value.get("type") == "human_escalation":
+                                # Find the associated tool call for context
+                                last_ai_message = None
+                                if state.values and state.values.get("messages"):
+                                    for msg in reversed(state.values["messages"]):
+                                        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                                            for tool_call in msg.tool_calls:
+                                                if tool_call.get("name") == "escalate_to_human":
+                                                    last_ai_message = msg
+                                                    break
+                                            if last_ai_message:
+                                                break
+                                
+                                pending_escalation = {
+                                    "question": interrupt.value.get("question", "No question provided"),
+                                    "instructions": interrupt.value.get("instructions", "Please respond to continue"),
+                                    "tool_call_id": last_ai_message.tool_calls[0].get("id") if last_ai_message and last_ai_message.tool_calls else None
+                                }
+                                break
+            except Exception as e:
+                logger.warning(f"Could not get escalation info for {chat_id}: {e}")
+        
+        return TaskChatResponse(
+            messages=messages,
+            pending_escalation=pending_escalation
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting task chat data: {str(e)}")
+
+
+# Note: Task chat message posting moved back to api_endpoints.py 
+# due to router prefix conflicts. The logic belongs here semantically,
+# but the URL structure requires it to be in the /api router. 
