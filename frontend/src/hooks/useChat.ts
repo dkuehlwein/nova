@@ -3,10 +3,16 @@ import { apiRequest, API_ENDPOINTS, getApiBaseUrlSync } from '@/lib/api';
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
   isStreaming?: boolean;
+  metadata?: {
+    type?: string;
+    collapsible_content?: string;
+    is_collapsible?: boolean;
+    title?: string;
+  };
 }
 
 export interface PendingEscalation {
@@ -105,10 +111,11 @@ export function useChat() {
         // Convert backend messages to frontend format
         const chatMessages: ChatMessage[] = backendMessages.map((msg, index) => ({
           id: msg.id || `loaded-msg-${index}`,
-          role: msg.sender === 'user' ? 'user' : 'assistant',
+          role: msg.sender === 'user' ? 'user' : (msg.sender === 'system' ? 'system' : 'assistant'),
           content: msg.content,
           timestamp: msg.created_at,
           isStreaming: false,
+          metadata: (msg as {metadata?: {type?: string; is_collapsible?: boolean; title?: string}}).metadata || undefined,
         }));
 
         // Set the messages
@@ -245,7 +252,6 @@ export function useChat() {
 
                     case 'tool_call':
                       // Handle tool calls for display purposes
-                      const toolData = event.data as StreamToolData;
                       // You can display tool calls if needed
                       break;
 

@@ -34,7 +34,7 @@ class TestServiceStartup:
             with patch('start_chat_agent.db_manager.close', new_callable=AsyncMock):
                 
                 # Import and test the main function
-                from start_chat_agent import main
+                from start_website import main
                 
                 # Test with default config
                 async def test_default():
@@ -81,18 +81,20 @@ class TestServiceStartup:
     
     def test_prompts_import(self):
         """Test that prompts can be imported correctly."""
-        from agent.prompts import CHAT_AGENT_SYSTEM_PROMPT, CORE_AGENT_TASK_PROMPT_TEMPLATE
+        from agent.prompts import NOVA_SYSTEM_PROMPT, TASK_CONTEXT_TEMPLATE, CURRENT_TASK_TEMPLATE
         
         # Verify prompts exist and are strings
-        assert isinstance(CHAT_AGENT_SYSTEM_PROMPT, str)
-        assert isinstance(CORE_AGENT_TASK_PROMPT_TEMPLATE, str)
-        assert len(CHAT_AGENT_SYSTEM_PROMPT) > 0
-        assert len(CORE_AGENT_TASK_PROMPT_TEMPLATE) > 0
+        assert isinstance(NOVA_SYSTEM_PROMPT, str)
+        assert isinstance(TASK_CONTEXT_TEMPLATE, str)
+        assert isinstance(CURRENT_TASK_TEMPLATE, str)
+        assert len(NOVA_SYSTEM_PROMPT) > 0
+        assert len(TASK_CONTEXT_TEMPLATE) > 0
+        assert len(CURRENT_TASK_TEMPLATE) > 0
         
-        # Verify template has expected placeholders
-        assert "{task_id}" in CORE_AGENT_TASK_PROMPT_TEMPLATE
-        assert "{title}" in CORE_AGENT_TASK_PROMPT_TEMPLATE
-        assert "{status}" in CORE_AGENT_TASK_PROMPT_TEMPLATE
+        # Verify templates have expected placeholders
+        assert "{status}" in TASK_CONTEXT_TEMPLATE
+        assert "{title}" in CURRENT_TASK_TEMPLATE
+        assert "{description}" in CURRENT_TASK_TEMPLATE
     
     def test_chat_agent_uses_new_prompt(self):
         """Test that chat agent imports and uses the new prompt correctly."""
@@ -150,10 +152,10 @@ class TestServiceStartup:
             prompt = await agent._create_prompt(task, context)
             
             # Verify prompt contains expected elements from template
-            assert str(task.id) in prompt
             assert task.title in prompt
+            assert task.description in prompt
             assert "Nova" in prompt
-            assert "Instructions:" in prompt
+            assert "Instructions for Task Processing:" in prompt
         
         asyncio.run(test_prompt())
 

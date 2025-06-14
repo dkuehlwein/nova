@@ -270,14 +270,15 @@ class CoreAgent:
                 messages = state.values.get("messages", [])
             else:
                 logger.info(f"Starting new conversation for task {task.id}")
-                # Create initial prompt only if no existing messages
-                prompt = await self._create_prompt(task, context)
                 
-                # Stream the agent response and watch for interrupts
+                # Create separate messages for proper conversation structure
+                task_messages = await self._create_task_messages(task, context)
+                
+                # Stream the agent response
                 messages = []
                 
                 async for chunk in self.agent.astream(
-                    {"messages": [{"role": "user", "content": prompt}]},
+                    {"messages": task_messages},
                     config=config,
                     stream_mode="values"
                 ):
@@ -361,9 +362,10 @@ class CoreAgent:
         
         return context
     
-    async def _create_prompt(self, task: Task, context: Dict[str, Any]) -> str:
-        """Create the AI prompt for task processing."""
-        from agent.prompts import CORE_AGENT_TASK_PROMPT_TEMPLATE
+    async def _create_task_messages(self, task: Task, context: Dict[str, Any]) -> List:
+        """Create separate messages for task processing conversation structure."""
+        from agent.prompts import TASK_CONTEXT_TEMPLATE, CURRENT_TASK_TEMPLATE
+        from langchain_core.messages import AIMessage
         
         # Build context string
         context_str = ""
@@ -385,16 +387,13 @@ class CoreAgent:
             for comment in context["comments"]:
                 context_str += f"- {comment['author']} ({comment['created_at']}): {comment['content']}\n"
         
-        # Format data for the template
+        # Format data for the templates
         assigned_people = ", ".join([p['name'] for p in context["persons"]]) if context["persons"] else "None"
         projects = ", ".join([p['name'] for p in context["projects"]]) if context["projects"] else "None"
         recent_comments = context_str if context_str else "No recent activity"
         
-        # Use template to create prompt
-        prompt = CORE_AGENT_TASK_PROMPT_TEMPLATE.format(
-            task_id=task.id,
-            title=task.title,
-            description=task.description or "No description",
+        # Create the task context section
+        task_context = TASK_CONTEXT_TEMPLATE.format(
             status=task.status.value,
             priority="Not set",  # Priority field doesn't exist in Task model
             created_at=task.created_at.strftime('%Y-%m-%d %H:%M'),
@@ -405,7 +404,17 @@ class CoreAgent:
             recent_comments=recent_comments
         )
         
-        return prompt
+        # Create the current task section
+        current_task = CURRENT_TASK_TEMPLATE.format(
+            title=task.title,
+            description=task.description or "No description"
+        )
+        
+        # Return separate messages for proper conversation structure
+        return [
+            AIMessage(content=task_context),
+            AIMessage(content=current_task)
+        ]
     
     async def _update_context(self, ai_output: str, task: Task, context: Dict[str, Any]):
         """Update context based on AI output (placeholder implementation)."""

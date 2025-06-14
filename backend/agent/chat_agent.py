@@ -110,8 +110,8 @@ async def create_chat_agent(checkpointer=None):
         checkpointer = await create_checkpointer()
     
     # Import system prompt
-    from agent.prompts import CHAT_AGENT_SYSTEM_PROMPT
-    system_prompt = CHAT_AGENT_SYSTEM_PROMPT
+    from agent.prompts import NOVA_SYSTEM_PROMPT
+    system_prompt = NOVA_SYSTEM_PROMPT
 
     # Create agent using modern create_react_agent pattern
     agent = create_react_agent(

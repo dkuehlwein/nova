@@ -12,7 +12,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 from agent.chat_agent import create_chat_agent
 import logging
@@ -95,6 +95,7 @@ class ChatMessageDetail(BaseModel):
     content: str = Field(..., description="Message content")
     created_at: str = Field(..., description="Message creation timestamp")
     needs_decision: bool = Field(False, description="Whether message needs user decision")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
 
 
 def _convert_messages_to_langchain(messages: List[ChatMessage]) -> List:
@@ -116,17 +117,13 @@ def _convert_messages_to_langchain(messages: List[ChatMessage]) -> List:
 
 
 def _create_config(thread_id: Optional[str] = None) -> Dict[str, Any]:
-    """Create configuration for LangGraph agent.
+    """Create configuration for LangGraph with thread ID."""
+    if thread_id is None:
+        thread_id = f"chat-{datetime.now().isoformat()}"
     
-    Args:
-        thread_id: Optional thread identifier for conversation continuity
-        
-    Returns:
-        Configuration dictionary for the agent
-    """
     return {
         "configurable": {
-            "thread_id": thread_id or f"chat-{datetime.now().isoformat()}"
+            "thread_id": thread_id
         }
     }
 
@@ -166,6 +163,10 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
         checkpoint_timestamp = state.get('ts', datetime.now().isoformat())
         
         logger.debug(f"Found {len(messages)} raw messages in state, checkpoint timestamp: {checkpoint_timestamp}")
+        
+        # If there are no messages, return empty (no system message needed for empty conversations)
+        if not messages:
+            return []
         
         # Build a mapping of message ID to creation timestamp by analyzing checkpoint history
         logger.debug("Building message ID to timestamp mapping from checkpoint history...")
@@ -210,18 +211,14 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
             """Get timestamp for a message from our ID mapping."""
             if hasattr(msg, 'id') and msg.id and msg.id in message_to_timestamp:
                 return message_to_timestamp[msg.id]
-            return fallback_timestamp
-        
-        # Process messages and reconstruct AI message content to match streaming experience
-        i = 0
-        while i < len(messages):
-            msg = messages[i]
-            
+            return fallback_timestamp        
+
+        # Process the actual conversation messages from LangGraph
+        for i, msg in enumerate(messages):
             # Process each message type
             logger.debug(f"Processing message {i}: {type(msg).__name__}")
-            
+            message_timestamp = get_message_timestamp(msg, checkpoint_timestamp)            
             if isinstance(msg, HumanMessage):
-                message_timestamp = get_message_timestamp(msg, checkpoint_timestamp)
                 chat_messages.append(ChatMessageDetail(
                     id=f"{thread_id}-msg-{i}",
                     sender="user",
@@ -233,7 +230,6 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
             elif isinstance(msg, AIMessage):
                 # For AI messages, reconstruct the complete content including tool calls
                 ai_content = str(msg.content).strip()
-                message_timestamp = get_message_timestamp(msg, checkpoint_timestamp)
                 
                 # Check if this AI message has tool calls
                 has_tool_calls = hasattr(msg, 'tool_calls') and bool(getattr(msg, 'tool_calls', None))
@@ -307,7 +303,6 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                                 logger.debug(f"Added final AI response: '{final_content[:50]}...'")
                             
                             # Skip this message in the outer loop since we've processed it
-                            i = j
                             break
                         elif isinstance(next_msg, type(msg)) and not isinstance(next_msg, (HumanMessage, AIMessage)):
                             # Skip ToolMessage and other internal messages
@@ -316,12 +311,27 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                 
                 # Only include AI messages that have actual content
                 if ai_content and ai_content not in ['', 'null', 'None']:
+                    # Detect task context and current task messages for metadata
+                    metadata = None
+                    if thread_id.startswith("core_agent_task_"):
+                        if "**Task Context:**" in ai_content:
+                            metadata = {
+                                "type": "task_context",
+                                "is_collapsible": True,
+                                "title": "Task Context"
+                            }
+                        elif "**Current Task:**" in ai_content:
+                            metadata = {
+                                "type": "task_introduction"
+                            }
+                    
                     chat_messages.append(ChatMessageDetail(
                         id=f"{thread_id}-msg-{i}",
                         sender="assistant",
                         content=ai_content,
                         created_at=message_timestamp,
-                        needs_decision=False
+                        needs_decision=False,
+                        metadata=metadata
                     ))
                     logger.debug(f"Included AI message with reconstructed content: '{ai_content[:100]}...' with timestamp: {message_timestamp}")
                 else:
@@ -329,8 +339,6 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
             else:
                 # Skip other message types (ToolMessage, SystemMessage, etc.)
                 logger.debug(f"Skipped message type: {type(msg).__name__}")
-            
-            i += 1
         
         logger.debug(f"Returning {len(chat_messages)} chat messages (from {len(messages)} total)")
         return chat_messages

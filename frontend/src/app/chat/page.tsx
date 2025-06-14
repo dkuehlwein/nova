@@ -11,6 +11,7 @@ import { apiRequest, API_ENDPOINTS } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
 import { EscalationBox } from "@/components/EscalationBox";
 import { MarkdownMessage } from "@/components/MarkdownMessage";
+import { SystemMessage } from "@/components/SystemMessage";
 
 interface PendingDecision {
   id: string;
@@ -303,56 +304,89 @@ function ChatPage() {
     }
   }, [loadChat, loadTaskChat]);
 
-  const renderMessage = useCallback((msg: ChatMessage) => (
-    <div
-      key={msg.id}
-      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} mb-4`}
-    >
+  const renderMessage = useCallback((msg: ChatMessage) => {
+    // Handle system messages separately
+    if (msg.role === "system") {
+      return (
+        <SystemMessage
+          key={msg.id}
+          content={msg.content}
+          collapsibleContent={msg.metadata?.collapsible_content}
+          isCollapsible={msg.metadata?.is_collapsible || false}
+          timestamp={msg.timestamp}
+          messageType={msg.metadata?.type || "system_prompt"}
+          title={msg.metadata?.title}
+        />
+      );
+    }
+
+    // Handle assistant messages with special metadata (like task context) using SystemMessage component
+    if (msg.role === "assistant" && msg.metadata?.is_collapsible) {
+      return (
+        <SystemMessage
+          key={msg.id}
+          content={msg.content}
+          collapsibleContent={msg.metadata?.collapsible_content}
+          isCollapsible={msg.metadata?.is_collapsible || false}
+          timestamp={msg.timestamp}
+          messageType={msg.metadata?.type || "task_context"}
+          title={msg.metadata?.title}
+        />
+      );
+    }
+
+    // Handle regular user/assistant messages
+    return (
       <div
-        className={`max-w-[80%] min-w-[200px] ${
-          msg.role === "user"
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted border"
-        } rounded-lg p-4`}
+        key={msg.id}
+        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} mb-4`}
       >
-        <div className="flex items-start space-x-3">
-          <div className="flex-shrink-0">
-            {msg.role === "assistant" ? (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-                <Bot className="h-4 w-4 text-white" />
-              </div>
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
-                <User className="h-4 w-4 text-white" />
-              </div>
-            )}
-          </div>
-          
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center space-x-2 mb-1">
-              <span className="text-sm font-medium">
-                {msg.role === "assistant" ? "Nova" : "You"}
-              </span>
-              <span className="text-xs opacity-60">
-                {formatTimestamp(msg.timestamp)}
-              </span>
-              {msg.isStreaming && (
-                <Loader2 className="h-3 w-3 animate-spin opacity-60" />
+        <div
+          className={`max-w-[80%] min-w-[200px] ${
+            msg.role === "user"
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted border"
+          } rounded-lg p-4`}
+        >
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0">
+              {msg.role === "assistant" ? (
+                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                  <Bot className="h-4 w-4 text-white" />
+                </div>
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+                  <User className="h-4 w-4 text-white" />
+                </div>
               )}
             </div>
             
-            <div className="text-sm break-words min-h-[1.25rem]">
-              {msg.content ? (
-                <MarkdownMessage content={msg.content} />
-              ) : (msg.isStreaming ? (
-                <span className="opacity-60">Thinking...</span>
-              ) : '')}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center space-x-2 mb-1">
+                <span className="text-sm font-medium">
+                  {msg.role === "assistant" ? "Nova" : "You"}
+                </span>
+                <span className="text-xs opacity-60">
+                  {formatTimestamp(msg.timestamp)}
+                </span>
+                {msg.isStreaming && (
+                  <Loader2 className="h-3 w-3 animate-spin opacity-60" />
+                )}
+              </div>
+              
+              <div className="text-sm break-words min-h-[1.25rem]">
+                {msg.content ? (
+                  <MarkdownMessage content={msg.content} />
+                ) : (msg.isStreaming ? (
+                  <span className="opacity-60">Thinking...</span>
+                ) : '')}
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  ), [formatTimestamp]);
+    );
+  }, [formatTimestamp]);
 
   return (
     <div className="chat-page bg-background">
