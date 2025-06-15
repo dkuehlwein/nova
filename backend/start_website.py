@@ -19,6 +19,7 @@ from sqlalchemy import text
 
 from api.api_endpoints import router as api_router
 from api.chat_endpoints import router as chat_router
+from api.websocket_endpoints import router as websocket_router
 from database.database import db_manager
 
 # Load environment variables
@@ -46,6 +47,28 @@ async def lifespan(app: FastAPI):
         logger.info("Started watching Nova system prompt file for changes")
     except Exception as e:
         logger.error(f"Failed to start prompt watching: {e}")
+    
+    # Start Redis event subscription for WebSocket broadcasting
+    try:
+        from utils.redis_manager import subscribe
+        from utils.websocket_manager import websocket_manager
+        
+        async def redis_to_websocket_bridge():
+            """Background task to relay Redis events to WebSocket clients."""
+            try:
+                async for event in subscribe():
+                    await websocket_manager.broadcast_event(event)
+            except Exception as e:
+                logger.error(f"Redis to WebSocket bridge error: {e}")
+        
+        # Start the background task
+        bridge_task = asyncio.create_task(redis_to_websocket_bridge())
+        app.state.redis_bridge_task = bridge_task
+        logger.info("Started Redis to WebSocket event bridge")
+        
+    except Exception as e:
+        logger.error(f"Failed to start Redis event bridge: {e}")
+        app.state.redis_bridge_task = None
     
     # Initialize PostgreSQL connection pool for chat checkpointer
     pg_pool = None
@@ -113,6 +136,27 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Error stopping prompt watching: {e}")
     
+    # Stop Redis bridge task
+    if hasattr(app.state, 'redis_bridge_task') and app.state.redis_bridge_task:
+        try:
+            app.state.redis_bridge_task.cancel()
+            await asyncio.wait_for(app.state.redis_bridge_task, timeout=5.0)
+            logger.info("Stopped Redis to WebSocket bridge")
+        except asyncio.CancelledError:
+            logger.info("Redis bridge task cancelled successfully")
+        except asyncio.TimeoutError:
+            logger.warning("Redis bridge task shutdown timed out")
+        except Exception as e:
+            logger.error(f"Error stopping Redis bridge task: {e}")
+    
+    # Close Redis connection
+    try:
+        from utils.redis_manager import close_redis
+        await close_redis()
+        logger.info("Closed Redis connection")
+    except Exception as e:
+        logger.error(f"Error closing Redis connection: {e}")
+    
     # Close PostgreSQL connection pool
     if hasattr(app.state, 'pg_pool') and app.state.pg_pool:
         try:
@@ -146,6 +190,7 @@ app.add_middleware(
 # Mount API routes
 app.include_router(api_router)
 app.include_router(chat_router)
+app.include_router(websocket_router)
 
 # Root endpoint
 @app.get("/")

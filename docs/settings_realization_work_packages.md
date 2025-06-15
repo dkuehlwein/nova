@@ -25,6 +25,38 @@ Test go under
 
 ---
 
+## ✅ **REAL-TIME SYSTEM STATUS**
+
+**🚀 LIVE SYSTEM IMPLEMENTED:**
+The Nova real-time system is now fully operational! Changes to the system prompt automatically propagate to all connected frontend clients within 500ms.
+
+**Architecture:**
+```
+File Change → PromptLoader → Redis Pub/Sub → WebSocket Broadcast → Frontend Update
+```
+
+**Completed Components:**
+- ✅ **Hot-reload system**: File watching with debounced updates  
+- ✅ **Event bus**: Redis pub/sub for reliable event distribution
+- ✅ **Real-time API**: WebSocket endpoints with connection management
+- ✅ **Graceful degradation**: System works even without Redis
+- ✅ **Monitoring**: Full metrics, health checks, and structured logging
+
+**Available Endpoints:**
+- `WS /ws/` - Real-time WebSocket connection
+- `GET /ws/connections` - Connection status  
+- `GET /ws/metrics` - Real-time metrics
+- `POST /ws/broadcast` - Test broadcasting
+
+**Event Types:**
+- `prompt_updated` - System prompt changes (✅ implemented)
+- `mcp_toggled` - MCP server status changes (pending B5)
+- `task_updated` - Task status changes (ready for integration)
+- `system_health` - Health status updates (ready for integration)
+- `config_validated` - Config validation results (pending B9)
+
+---
+
 ## Event Schema Standards
 
 Define consistent event types in `backend/models/events.py`:
@@ -86,31 +118,67 @@ class WebSocketMessage(BaseModel):
 - ✅ Thread-safe configuration loading with proper error handling
 - ✅ Atomic file operations for configuration saves
 
-### **B2  Move system prompt to markdown file + live reload**
+### **B2  Move system prompt to markdown file + live reload** ✅ **COMPLETED**
 
-1. Add `backend/agent/prompts/NOVA_SYSTEM_PROMPT.md` and copy the existing prompt text into it.
-2. In `backend/agent/prompts.py` read the file on import:  
-   `NOVA_SYSTEM_PROMPT = Path(__file__).with_name("NOVA_SYSTEM_PROMPT.md").read_text()`
-3. **In dev, reuse the watchdog pattern from B1** with 500ms debouncing to listen for file saves and publish an event `{"type":"prompt_updated"}` via Redis (see B3).
+**Goal**  Enable live reloading of the Nova system prompt with real-time event publishing.
 
-### **B3  Redis integration & global event bus**
+1. ✅ Add `backend/agent/prompts/NOVA_SYSTEM_PROMPT.md` and copy the existing prompt text into it.
+2. ✅ In `backend/agent/prompts.py` read the file on import using new prompt loader
+3. ✅ **Built comprehensive prompt loader** with 500ms debouncing, Redis event publishing, and hot-reload support
+4. ✅ Added startup/shutdown hooks in both chat and core agent services
+5. ✅ Created unit tests with proper mocking for all functionality
+
+**Completed:**
+- ✅ Created `backend/utils/prompt_loader.py` with `PromptLoader` class
+- ✅ Thread-safe prompt loading with graceful error handling  
+- ✅ Debounced file watching using watchdog pattern from B1
+- ✅ Redis event publishing for `prompt_updated` events
+- ✅ Dynamic prompt reloading via `get_nova_system_prompt()` function
+- ✅ Comprehensive unit tests in `tests/backend/utils/test_prompt_loader.py`
+
+### **B3  Redis integration & global event bus** ✅ **COMPLETED**
 
 **Goal**  Allow any process to broadcast setting / task updates that UI clients receive via WebSocket.
 
-1. Install Redis locally: `sudo apt install redis-server` (temporary workaround for Docker issues).
-2. Add `redis-asyncio` to backend deps and bump backend image.
-3. Implement `backend/utils/redis_manager.py`:
-   * `get_redis()` (singleton `redis.asyncio.Redis` client)  
-   * `async publish(event: NovaEvent)` - uses the event schema from above
-   * `async subscribe(channel="nova_events") -> AsyncIterator[NovaEvent]`
-4. Wherever YAML or prompt is edited (B1, B2 watchdog), call `publish()`.
-5. Background task in `start_website.py` startup: `async for msg in subscribe(...)` → `websocket_manager.broadcast(msg)`.
+1. ✅ Redis dependencies already added to `pyproject.toml` (`redis>=5.2.0`)
+2. ✅ Built comprehensive Redis manager with pub/sub capabilities
+3. ✅ Integrated with prompt loader for automatic event publishing  
+4. ✅ Background task bridges Redis events to WebSocket broadcasts
+5. ✅ Graceful fallback when Redis is unavailable
 
-### **B4  WebSocket endpoint**
+**Completed:**
+- ✅ Created `backend/utils/redis_manager.py` with full async Redis client
+- ✅ `get_redis()` singleton with connection pooling and health checks
+- ✅ `async publish(event: NovaEvent)` with retry logic and error handling
+- ✅ `async subscribe(channel="nova_events")` with automatic reconnection
+- ✅ `test_redis_connection()` for health monitoring
+- ✅ Background task in `start_website.py`: Redis → WebSocket bridge
+- ✅ Connection management with proper cleanup on shutdown
+- ✅ Structured logging for all Redis operations
 
-* Add `websocket_manager.py` (track connections, `broadcast()`)
-* `@router.websocket("/ws")` attaches clients, sends ping every 30 s, relays messages from Redis (handled in B3).
-* Use the `WebSocketMessage` format defined in the schema section.
+### **B4  WebSocket endpoint** ✅ **COMPLETED**
+
+**Goal**  Provide real-time WebSocket connections for live frontend updates.
+
+1. ✅ Built comprehensive WebSocket connection manager
+2. ✅ Created WebSocket endpoints with full lifecycle management
+3. ✅ Integrated with Redis event bridge for real-time broadcasting
+4. ✅ Added connection metrics and health monitoring
+
+**Completed:**
+- ✅ Created `backend/utils/websocket_manager.py` with `WebSocketManager` class
+- ✅ Connection tracking with client IDs and metadata  
+- ✅ `broadcast()` and `send_personal_message()` functionality
+- ✅ Automatic cleanup of dead connections
+- ✅ Created `backend/api/websocket_endpoints.py` with full WebSocket API:
+  - `WS /ws/` - Main WebSocket connection endpoint
+  - `GET /ws/connections` - Active connection monitoring
+  - `POST /ws/broadcast` - Test message broadcasting
+  - `GET /ws/metrics` - Connection metrics and statistics
+  - `POST /ws/ping` - Ping all connected clients
+- ✅ Background Redis-to-WebSocket bridge in `start_website.py`
+- ✅ Proper connection lifecycle with graceful disconnect handling
+- ✅ Uses `WebSocketMessage` format from event schema
 
 ### **B5  MCP server endpoints**
 
