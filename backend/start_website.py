@@ -20,6 +20,8 @@ from sqlalchemy import text
 from api.api_endpoints import router as api_router
 from api.chat_endpoints import router as chat_router
 from api.websocket_endpoints import router as websocket_router
+from api.mcp_endpoints import router as mcp_router
+from api.admin_endpoints import router as admin_router
 from database.database import db_manager
 
 # Load environment variables
@@ -191,6 +193,8 @@ app.add_middleware(
 app.include_router(api_router)
 app.include_router(chat_router)
 app.include_router(websocket_router)
+app.include_router(mcp_router)
+app.include_router(admin_router)
 
 # Root endpoint
 @app.get("/")

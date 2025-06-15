@@ -180,17 +180,41 @@ class WebSocketMessage(BaseModel):
 - ✅ Proper connection lifecycle with graceful disconnect handling
 - ✅ Uses `WebSocketMessage` format from event schema
 
-### **B5  MCP server endpoints**
+### **B5  MCP server endpoints** ✅ **COMPLETED**
 
-1. `GET /api/mcp`  – return full list from YAML + live health status (reuse `MCPClientManager.check_server_health`).
-2. `PUT /api/mcp/{name}/toggle` – flip `enabled` flag in YAML, save, `publish(NovaEvent(type="mcp_toggled", name=name, enabled=enabled))`.
-3. Add pydantic `MCPServer` schema for response validation.
+**Goal**  Provide REST API for managing MCP servers with live health monitoring.
 
-### **B6  Service restart endpoint (dev-only)**
+1. ✅ `GET /api/mcp`  – return full list from YAML + live health status (reuse `MCPClientManager.check_server_health`).
+2. ✅ `PUT /api/mcp/{name}/toggle` – flip `enabled` flag in YAML, save, `publish(NovaEvent(type="mcp_toggled", name=name, enabled=enabled))`.
+3. ✅ Add pydantic `MCPServer` schema for response validation.
 
-`POST /api/admin/restart/{service_name}`
-* Sanitize `service_name` against an `ALLOWED_SERVICES` list defined in settings.
-* Use `subprocess.run(["docker-compose","restart",service_name])` and return stdout/stderr.
+**Completed:**
+- ✅ Created `backend/api/mcp_endpoints.py` with full MCP management API
+- ✅ Real-time health checks with 3.5s timeout for responsive UI
+- ✅ YAML configuration persistence with atomic saves
+- ✅ Redis pub/sub events for real-time frontend updates
+- ✅ Comprehensive Pydantic schemas: `MCPServerStatus`, `MCPServersResponse`, `MCPToggleRequest`
+- ✅ Error handling for missing servers and health check failures
+- ✅ Unit tests covering all endpoints and edge cases
+- ✅ Registered in FastAPI application for immediate use
+
+### **B6  Service restart endpoint (dev-only)** ✅ **COMPLETED**
+
+**Goal**  Provide development convenience for restarting Docker services via API.
+
+1. ✅ `POST /api/admin/restart/{service_name}` – Sanitize `service_name` against an `ALLOWED_SERVICES` list.
+2. ✅ Use `subprocess.run(["docker-compose","restart",service_name])` and return stdout/stderr.
+3. ✅ Add security measures and comprehensive error handling.
+
+**Completed:**
+- ✅ Created `backend/api/admin_endpoints.py` with secure service restart functionality
+- ✅ Service whitelist security: `mcp_gmail`, `redis`, `postgres`, `chat-agent`, `core-agent`
+- ✅ 60-second timeout protection for restart operations
+- ✅ Detailed response with stdout/stderr capture and exit codes
+- ✅ Error handling for missing docker-compose, timeouts, and unauthorized services
+- ✅ Additional endpoints: `GET /api/admin/allowed-services`, `GET /api/admin/health`
+- ✅ Comprehensive unit tests with subprocess mocking
+- ✅ Structured logging for all admin operations
 
 ### **B7  Unit tests**
 
