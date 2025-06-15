@@ -12,10 +12,19 @@ import os
 import pytest
 import pytest_asyncio
 import asyncio
+from pathlib import Path
 
-# Add the backend directory to the Python path
-backend_path = os.path.join(os.path.dirname(__file__), '../backend')
-sys.path.insert(0, backend_path)
+# Ensure project root is in sys.path so that 'backend' package can be imported
+PROJECT_ROOT = Path(__file__).resolve().parent
+# The tests directory is at PROJECT_ROOT/tests
+# We want the parent (actual project root)
+PROJECT_ROOT = PROJECT_ROOT.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+BACKEND_PATH = PROJECT_ROOT / "backend"
+if str(BACKEND_PATH) not in sys.path:
+    sys.path.insert(0, str(BACKEND_PATH))
 
 from test_cleanup import TestDataCleaner
 

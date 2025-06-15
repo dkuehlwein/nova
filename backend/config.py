@@ -3,6 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Any, Dict, List
 from pydantic import SecretStr
 
+from utils.config_loader import load_mcp_yaml
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -11,11 +13,6 @@ class Settings(BaseSettings):
 
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
-
-    # Gmail MCP Server individual components
-    GMAIL_MCP_SERVER_HOST: str = "localhost"
-    GMAIL_MCP_SERVER_PORT: int = 8002
-    GMAIL_MCP_SERVER_URL: Optional[str] = None
     
     # Google Generative AI Settings (using API Key)
     GOOGLE_API_KEY: Optional[SecretStr] = None
@@ -50,10 +47,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def compute_urls(self):
-        """Compute MCP server URLs and DATABASE_URL if not explicitly provided"""
-        if not self.GMAIL_MCP_SERVER_URL:
-            self.GMAIL_MCP_SERVER_URL = f"http://{self.GMAIL_MCP_SERVER_HOST}:{self.GMAIL_MCP_SERVER_PORT}"
-        
+        """Compute DATABASE_URL if not explicitly provided"""
         # Construct DATABASE_URL from PostgreSQL components if not explicitly set
         if not self.DATABASE_URL:
             self.DATABASE_URL = f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -62,17 +56,25 @@ class Settings(BaseSettings):
 
     @property
     def MCP_SERVERS(self) -> List[Dict[str, Any]]:
-        """List of MCP servers to connect to"""
+        """List of enabled MCP servers from YAML configuration"""
         servers = []
         
-        # Gmail MCP Server
-        if self.GMAIL_MCP_SERVER_URL:
-            servers.append({
-                "name": "gmail",
-                "url": f"{self.GMAIL_MCP_SERVER_URL}/mcp",
-                "health_url": f"{self.GMAIL_MCP_SERVER_URL}/health",
-                "description": "Gmail MCP Server for email operations"
-            })
+        try:
+            mcp_config = load_mcp_yaml()
+            
+            for server_name, server_config in mcp_config.items():
+                # Only include enabled servers
+                if server_config.get("enabled", True):
+                    servers.append({
+                        "name": server_name,
+                        "url": server_config["url"],
+                        "health_url": server_config["health_url"],
+                        "description": server_config.get("description", f"{server_name} MCP Server")
+                    })
+        
+        except Exception as e:
+            # Log error but don't crash the application
+            print(f"Warning: Failed to load MCP configuration: {e}")
         
         return servers
 
