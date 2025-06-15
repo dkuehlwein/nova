@@ -58,8 +58,12 @@ async def auto_cleanup_connections():
         
     except Exception as e:
         # Don't fail tests if cleanup fails, but log for debugging
-        import logging
-        logging.getLogger(__name__).debug(f"Connection cleanup warning: {e}")
+        from backend.utils.logging import get_logger
+        logger = get_logger("test_cleanup")
+        logger.debug(
+            "Connection cleanup warning",
+            extra={"data": {"error": str(e)}}
+        )
 
 
 # Auto-use fixture for all async tests to clean up checkpointer data
@@ -149,7 +153,12 @@ async def auto_cleanup_core_agent_data():
         await cleanup_test_data()
         print("✅ PRE-test cleanup completed")
     except Exception as e:
-        print(f"Warning: Pre-test cleanup failed: {e}")
+        from backend.utils.logging import get_logger
+        logger = get_logger("test_cleanup")
+        logger.warning(
+            "Pre-test cleanup failed",
+            extra={"data": {"error": str(e)}}
+        )
 
     yield  # Let the test run
     
@@ -157,7 +166,12 @@ async def auto_cleanup_core_agent_data():
     try:
         await cleanup_test_data()
     except Exception as e:
-        print(f"Warning: Post-test cleanup failed: {e}")
+        from backend.utils.logging import get_logger
+        logger = get_logger("test_cleanup")
+        logger.warning(
+            "Post-test cleanup failed",
+            extra={"data": {"error": str(e)}}
+        )
 
 
 # Mark all tests as asyncio by default if they're async

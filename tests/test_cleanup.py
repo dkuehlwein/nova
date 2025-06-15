@@ -12,7 +12,6 @@ Can be used as:
 """
 
 import asyncio
-import logging
 import os
 import sys
 import pytest
@@ -25,10 +24,9 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
+from backend.utils.logging import get_logger
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger("test_cleanup")
 
 
 class TestDataCleaner:
@@ -66,13 +64,19 @@ class TestDataCleaner:
             return thread_ids
             
         except Exception as e:
-            logger.warning(f"Error getting thread IDs: {e}")
+            logger.warning(
+                "Error getting thread IDs",
+                extra={"data": {"error": str(e)}}
+            )
             return set()
     
     async def record_initial_state(self):
         """Record the thread IDs that exist before test execution."""
         self._thread_ids_before = await self.get_thread_ids()
-        logger.debug(f"Recorded {len(self._thread_ids_before)} threads before test")
+        logger.debug(
+            "Recorded threads before test",
+            extra={"data": {"thread_count": len(self._thread_ids_before)}}
+        )
     
     async def cleanup_test_threads(self):
         """Clean up only the threads created during test execution."""
@@ -83,7 +87,10 @@ class TestDataCleaner:
             logger.debug("No new threads to clean up")
             return
         
-        logger.info(f"Cleaning up {len(new_thread_ids)} test threads")
+        logger.info(
+            "Cleaning up test threads",
+            extra={"data": {"thread_count": len(new_thread_ids)}}
+        )
         
         try:
             pool = AsyncConnectionPool(
@@ -98,15 +105,28 @@ class TestDataCleaner:
                 for thread_id in new_thread_ids:
                     try:
                         await checkpointer.adelete_thread(thread_id)
-                        logger.debug(f"Cleaned up test thread: {thread_id}")
+                        logger.debug(
+                            "Cleaned up test thread",
+                            extra={"data": {"thread_id": thread_id}}
+                        )
                     except Exception as e:
-                        logger.warning(f"Failed to clean thread {thread_id}: {e}")
+                        logger.warning(
+                            "Failed to clean thread",
+                            extra={"data": {"thread_id": thread_id, "error": str(e)}}
+                        )
             
             await pool.close()
-            logger.info(f"✅ Cleaned up {len(new_thread_ids)} test threads")
+            logger.info(
+                "✅ Cleaned up test threads",
+                extra={"data": {"thread_count": len(new_thread_ids)}}
+            )
             
         except Exception as e:
-            logger.error(f"Error during test cleanup: {e}")
+            logger.error(
+                "Error during test cleanup",
+                exc_info=True,
+                extra={"data": {"error": str(e)}}
+            )
     
     async def cleanup_all_threads(self):
         """Clean up all threads (for full cleanup)."""
@@ -116,7 +136,10 @@ class TestDataCleaner:
             logger.info("No threads to clean up")
             return
         
-        logger.info(f"Cleaning up all {len(thread_ids)} threads")
+        logger.info(
+            "Cleaning up all threads",
+            extra={"data": {"thread_count": len(thread_ids)}}
+        )
         
         try:
             pool = AsyncConnectionPool(
@@ -131,15 +154,28 @@ class TestDataCleaner:
                 for thread_id in thread_ids:
                     try:
                         await checkpointer.adelete_thread(thread_id)
-                        logger.debug(f"Cleaned up thread: {thread_id}")
+                        logger.debug(
+                            "Cleaned up thread",
+                            extra={"data": {"thread_id": thread_id}}
+                        )
                     except Exception as e:
-                        logger.warning(f"Failed to clean thread {thread_id}: {e}")
+                        logger.warning(
+                            "Failed to clean thread",
+                            extra={"data": {"thread_id": thread_id, "error": str(e)}}
+                        )
             
             await pool.close()
-            logger.info(f"✅ Cleaned up all {len(thread_ids)} threads")
+            logger.info(
+                "✅ Cleaned up all threads",
+                extra={"data": {"thread_count": len(thread_ids)}}
+            )
             
         except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+            logger.error(
+                "Error during cleanup",
+                exc_info=True,
+                extra={"data": {"error": str(e)}}
+            )
     
     async def close(self):
         """Close database connections."""
@@ -211,9 +247,22 @@ async def main():
     try:
         if args.stats:
             thread_ids = await cleaner.get_thread_ids()
-            logger.info(f"Current threads in checkpointer: {len(thread_ids)}")
+            logger.info(
+                "Current threads in checkpointer",
+                extra={"data": {"thread_count": len(thread_ids)}}
+            )
             if thread_ids:
-                logger.info(f"Thread IDs: {', '.join(sorted(list(thread_ids))[:10])}{'...' if len(thread_ids) > 10 else ''}")
+                sample_ids = sorted(list(thread_ids))[:10]
+                logger.info(
+                    "Thread IDs sample",
+                    extra={
+                        "data": {
+                            "sample_ids": sample_ids,
+                            "truncated": len(thread_ids) > 10,
+                            "total_count": len(thread_ids)
+                        }
+                    }
+                )
         
         elif args.all:
             await cleaner.cleanup_all_threads()
