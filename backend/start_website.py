@@ -39,6 +39,14 @@ async def lifespan(app: FastAPI):
     # since we're using a persistent PostgreSQL instance.
     # Use init_db script for explicit table creation if needed.
     
+    # Start prompt file watching for hot-reload
+    try:
+        from utils.prompt_loader import start_nova_prompt_watching
+        start_nova_prompt_watching()
+        logger.info("Started watching Nova system prompt file for changes")
+    except Exception as e:
+        logger.error(f"Failed to start prompt watching: {e}")
+    
     # Initialize PostgreSQL connection pool for chat checkpointer
     pg_pool = None
     try:
@@ -96,6 +104,14 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down Nova Backend Server...")
+    
+    # Stop prompt file watching
+    try:
+        from utils.prompt_loader import stop_nova_prompt_watching
+        stop_nova_prompt_watching()
+        logger.info("Stopped watching Nova system prompt file")
+    except Exception as e:
+        logger.error(f"Error stopping prompt watching: {e}")
     
     # Close PostgreSQL connection pool
     if hasattr(app.state, 'pg_pool') and app.state.pg_pool:

@@ -56,6 +56,14 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Nova Core Agent Service...")
     
+    # Start prompt file watching for hot-reload
+    try:
+        from utils.prompt_loader import start_nova_prompt_watching
+        start_nova_prompt_watching()
+        logger.info("Started watching Nova system prompt file for changes")
+    except Exception as e:
+        logger.error(f"Failed to start prompt watching: {e}")
+    
     try:
         # Initialize the core agent
         core_agent = CoreAgent()
@@ -74,6 +82,14 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down Nova Core Agent Service...")
+    
+    # Stop prompt file watching
+    try:
+        from utils.prompt_loader import stop_nova_prompt_watching
+        stop_nova_prompt_watching()
+        logger.info("Stopped watching Nova system prompt file")
+    except Exception as e:
+        logger.error(f"Error stopping prompt watching: {e}")
     
     # Shutdown core agent with timeout
     if core_agent:
