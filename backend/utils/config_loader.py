@@ -5,14 +5,17 @@ Handles YAML configuration files with debounced file watching.
 
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import yaml
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
+from pydantic import ValidationError
 
 from utils.logging import get_logger
+from models.config import MCPServersConfig, ConfigValidationResult, ConfigBackupInfo
 
 logger = get_logger("config_loader")
 
@@ -176,10 +179,227 @@ class ConfigLoader:
         )
         self._load_config()
     
-    def save_config(self, config: Dict[str, Any]) -> None:
-        """Save configuration to YAML file."""
+    def validate_config(self, config: Optional[Dict[str, Any]] = None) -> ConfigValidationResult:
+        """Validate MCP server configuration."""
+        if config is None:
+            config = self.get_config()
+        
+        errors = []
+        warnings = []
+        server_count = len(config)
+        enabled_count = 0
+        
         try:
+            # Validate using Pydantic model
+            validated_config = MCPServersConfig(config)
+            
+            # Count enabled servers
+            for server_config in validated_config.values():
+                if server_config.enabled:
+                    enabled_count += 1
+            
+            # Check for warnings
+            if enabled_count == 0:
+                warnings.append("No MCP servers are enabled")
+            
+            if server_count > 10:
+                warnings.append(f"Large number of servers configured ({server_count})")
+            
+            logger.info(
+                "Configuration validation successful",
+                extra={
+                    "data": {
+                        "server_count": server_count,
+                        "enabled_count": enabled_count,
+                        "warnings": len(warnings)
+                    }
+                }
+            )
+            
+        except ValidationError as e:
+            for error in e.errors():
+                field_path = " -> ".join(str(x) for x in error["loc"]) if error["loc"] else "root"
+                errors.append(f"{field_path}: {error['msg']}")
+            
+            logger.warning(
+                "Configuration validation failed",
+                extra={
+                    "data": {
+                        "error_count": len(errors),
+                        "server_count": server_count
+                    }
+                }
+            )
+        
+        except Exception as e:
+            errors.append(f"Unexpected validation error: {str(e)}")
+            logger.error(
+                "Unexpected error during configuration validation",
+                exc_info=True,
+                extra={"data": {"error": str(e)}}
+            )
+        
+        return ConfigValidationResult(
+            valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+            server_count=server_count,
+            enabled_count=enabled_count
+        )
+    
+    def create_backup(self, description: Optional[str] = None) -> ConfigBackupInfo:
+        """Create a backup of the current configuration."""
+        config = self.get_config()
+        
+        # Generate backup ID with timestamp
+        timestamp = datetime.now()
+        backup_id = f"{timestamp.strftime('%Y%m%d_%H%M%S')}_mcp_config"
+        
+        # Create backups directory
+        backup_dir = self.config_path.parent / "backups"
+        backup_dir.mkdir(exist_ok=True)
+        
+        # Save backup
+        backup_path = backup_dir / f"{backup_id}.yaml"
+        with open(backup_path, 'w', encoding='utf-8') as file:
+            yaml.safe_dump(config, file, default_flow_style=False, sort_keys=True, indent=2)
+        
+        backup_info = ConfigBackupInfo(
+            backup_id=backup_id,
+            timestamp=timestamp.isoformat(),
+            server_count=len(config),
+            description=description
+        )
+        
+        logger.info(
+            f"Configuration backup created: {backup_id}",
+            extra={
+                "data": {
+                    "backup_id": backup_id,
+                    "path": str(backup_path),
+                    "server_count": len(config)
+                }
+            }
+        )
+        
+        return backup_info
+    
+    def list_backups(self) -> List[ConfigBackupInfo]:
+        """List available configuration backups."""
+        backup_dir = self.config_path.parent / "backups"
+        if not backup_dir.exists():
+            return []
+        
+        backups = []
+        for backup_file in backup_dir.glob("*_mcp_config.yaml"):
+            try:
+                # Parse timestamp from filename
+                name_parts = backup_file.stem.split("_")
+                if len(name_parts) >= 3:
+                    date_str = "_".join(name_parts[:2])
+                    timestamp = datetime.strptime(date_str, "%Y%m%d_%H%M%S")
+                    
+                    # Load backup to get server count
+                    with open(backup_file, 'r', encoding='utf-8') as file:
+                        backup_config = yaml.safe_load(file) or {}
+                    
+                    backups.append(ConfigBackupInfo(
+                        backup_id=backup_file.stem,
+                        timestamp=timestamp.isoformat(),
+                        server_count=len(backup_config)
+                    ))
+                    
+            except Exception as e:
+                logger.warning(
+                    f"Failed to parse backup file: {backup_file}",
+                    extra={"data": {"error": str(e)}}
+                )
+        
+        # Sort by timestamp (newest first)
+        backups.sort(key=lambda x: x.timestamp, reverse=True)
+        return backups
+    
+    def restore_backup(self, backup_id: str) -> bool:
+        """Restore configuration from backup."""
+        backup_dir = self.config_path.parent / "backups"
+        backup_path = backup_dir / f"{backup_id}.yaml"
+        
+        if not backup_path.exists():
+            logger.error(
+                f"Backup not found: {backup_id}",
+                extra={"data": {"backup_id": backup_id, "path": str(backup_path)}}
+            )
+            return False
+        
+        try:
+            # Load backup configuration
+            with open(backup_path, 'r', encoding='utf-8') as file:
+                backup_config = yaml.safe_load(file) or {}
+            
+            # Validate backup before restoring
+            validation_result = self.validate_config(backup_config)
+            if not validation_result.valid:
+                logger.error(
+                    f"Backup configuration is invalid: {backup_id}",
+                    extra={
+                        "data": {
+                            "backup_id": backup_id,
+                            "errors": validation_result.errors
+                        }
+                    }
+                )
+                return False
+            
+            # Create current backup before restoring
+            self.create_backup("Pre-restore backup")
+            
+            # Restore configuration
+            self.save_config(backup_config)
+            
+            logger.info(
+                f"Configuration restored from backup: {backup_id}",
+                extra={
+                    "data": {
+                        "backup_id": backup_id,
+                        "server_count": len(backup_config)
+                    }
+                }
+            )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(
+                f"Failed to restore backup: {backup_id}",
+                exc_info=True,
+                extra={"data": {"backup_id": backup_id, "error": str(e)}}
+            )
+            return False
+
+    def save_config(self, config: Dict[str, Any], validate: bool = True) -> None:
+        """Save configuration to YAML file with optional validation."""
+        try:
+            # Validate configuration before saving if requested
+            if validate:
+                validation_result = self.validate_config(config)
+                if not validation_result.valid:
+                    error_msg = f"Configuration validation failed: {'; '.join(validation_result.errors)}"
+                    logger.error(
+                        "Cannot save invalid configuration",
+                        extra={
+                            "data": {
+                                "errors": validation_result.errors,
+                                "server_count": validation_result.server_count
+                            }
+                        }
+                    )
+                    raise ValueError(error_msg)
+            
             with self._lock:
+                # Create backup before saving
+                if self.config_path.exists():
+                    self.create_backup("Auto-backup before save")
+                
                 # Create parent directory if it doesn't exist
                 self.config_path.parent.mkdir(parents=True, exist_ok=True)
                 

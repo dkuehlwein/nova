@@ -177,8 +177,10 @@ async def toggle_mcp_server(server_name: str, request: MCPToggleRequest):
         # Update configuration
         mcp_config[server_name]["enabled"] = request.enabled
         
-        # Save configuration
-        save_mcp_yaml(mcp_config)
+        # Save configuration with validation
+        from utils.config_loader import get_mcp_config_loader
+        config_loader = get_mcp_config_loader()
+        config_loader.save_config(mcp_config)
         
         # Log the configuration change
         log_config_change(

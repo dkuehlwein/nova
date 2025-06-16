@@ -7,7 +7,6 @@ infrastructure as the chat service but runs independently.
 """
 
 import asyncio
-import logging
 import os
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -21,18 +20,21 @@ from sqlalchemy import text
 
 from agent.core_agent import CoreAgent
 from database.database import db_manager
+from utils.logging import configure_logging, get_logger, RequestLoggingMiddleware
 
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+# Configure structured logging
+configure_logging(
+    service_name="core-agent",
+    log_level=os.getenv("LOG_LEVEL", "INFO"),
+    enable_json=os.getenv("LOG_FORMAT", "json").lower() == "json"
 )
-logger = logging.getLogger(__name__)
+logger = get_logger("startup")
 
 # Reduce verbosity of third-party libraries
+import logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("mcp").setLevel(logging.WARNING)
 logging.getLogger("mcp.client").setLevel(logging.WARNING)
@@ -133,6 +135,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Add request logging middleware
+app.add_middleware(RequestLoggingMiddleware, service_name="core-agent")
 
 
 @app.get("/")

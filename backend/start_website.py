@@ -7,7 +7,6 @@ and provides native LangChain tools for Nova agent integration.
 """
 
 import asyncio
-import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -22,14 +21,20 @@ from api.chat_endpoints import router as chat_router
 from api.websocket_endpoints import router as websocket_router
 from api.mcp_endpoints import router as mcp_router
 from api.admin_endpoints import router as admin_router
+from api.config_endpoints import router as config_router
 from database.database import db_manager
+from utils.logging import configure_logging, get_logger, RequestLoggingMiddleware
 
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure structured logging
+configure_logging(
+    service_name="chat-agent",
+    log_level=os.getenv("LOG_LEVEL", "INFO"),
+    enable_json=os.getenv("LOG_FORMAT", "json").lower() == "json"
+)
+logger = get_logger("startup")
 
 
 @asynccontextmanager
@@ -178,6 +183,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Add request logging middleware
+app.add_middleware(RequestLoggingMiddleware, service_name="chat-agent")
+
 # Add CORS middleware for frontend
 default_cors_origins = "http://localhost:3000,http://localhost:3001,http://172.29.172.59:3000"
 cors_origins = os.getenv("CORS_ORIGINS", default_cors_origins).split(",")
@@ -195,6 +203,7 @@ app.include_router(chat_router)
 app.include_router(websocket_router)
 app.include_router(mcp_router)
 app.include_router(admin_router)
+app.include_router(config_router)
 
 # Root endpoint
 @app.get("/")

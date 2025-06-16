@@ -86,9 +86,9 @@ class TestMCPEndpoints:
         assert servers["disabled_server"]["healthy"] is False
     
     @patch('backend.api.mcp_endpoints.load_mcp_yaml')
-    @patch('backend.api.mcp_endpoints.save_mcp_yaml')
+    @patch('utils.config_loader.get_mcp_config_loader')
     @patch('backend.api.mcp_endpoints.publish')
-    def test_toggle_mcp_server_enable(self, mock_publish, mock_save_yaml, mock_load_yaml, client):
+    def test_toggle_mcp_server_enable(self, mock_publish, mock_get_loader, mock_load_yaml, client):
         """Test PUT /api/mcp/{name}/toggle to enable server."""
         mock_load_yaml.return_value = {
             "gmail": {
@@ -99,6 +99,10 @@ class TestMCPEndpoints:
             }
         }
         
+        # Mock the config loader
+        mock_loader = MagicMock()
+        mock_get_loader.return_value = mock_loader
+        
         response = client.put("/api/mcp/gmail/toggle", json={"enabled": True})
         
         assert response.status_code == 200
@@ -108,9 +112,9 @@ class TestMCPEndpoints:
         assert data["enabled"] is True
         assert "enabled" in data["message"]
         
-        # Verify YAML was saved
-        mock_save_yaml.assert_called_once()
-        saved_config = mock_save_yaml.call_args[0][0]
+        # Verify config was saved through the loader
+        mock_loader.save_config.assert_called_once()
+        saved_config = mock_loader.save_config.call_args[0][0]
         assert saved_config["gmail"]["enabled"] is True
         
         # Verify event was published

@@ -24,7 +24,6 @@ nova/
 ├── mcp_servers/              # Independent MCP servers
 │   ├── gmail/                # Gmail MCP server
 │   └── ...                   # Future MCP servers
-└── memory-bank/              # Project documentation
 ```
 
 # Techstack
