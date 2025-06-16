@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ApiInitializer from "../components/ApiInitializer";
+import { NovaQueryClientProvider } from '../components/QueryClientProvider';
+import { NovaWebSocketProvider } from '../components/NovaWebSocketProvider';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,8 +30,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <ApiInitializer />
-        {children}
+        <NovaQueryClientProvider>
+          <NovaWebSocketProvider debug={process.env.NODE_ENV === 'development'}>
+            <ApiInitializer />
+            {children}
+          </NovaWebSocketProvider>
+        </NovaQueryClientProvider>
       </body>
     </html>
   );

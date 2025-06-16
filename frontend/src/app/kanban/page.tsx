@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Plus, Calendar, Trash2, FileText, MessageCircle, Activity, CornerDownLeft, Edit2, Check, X, MessageSquare } from "lucide-react";
+import { Plus, Calendar, Trash2, FileText, MessageCircle, Activity, Edit2, Check, X, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 import { useKanban, Task } from "@/hooks/useKanban";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 interface Lane {
@@ -83,8 +83,6 @@ function KanbanPage() {
     description: '',
     tags: []
   });
-  const [commentText, setCommentText] = useState('');
-  const [isAddingComment, setIsAddingComment] = useState(false);
   const [taskComments, setTaskComments] = useState<Comment[]>([]);
   const [taskActivity, setTaskActivity] = useState<Activity[]>([]);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -92,7 +90,7 @@ function KanbanPage() {
   const [editedTitle, setEditedTitle] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
 
-  const handleTaskClick = async (task: Task) => {
+  const handleTaskClick = useCallback(async (task: Task) => {
     try {
       // Fetch latest task details
       const taskDetails = await getTaskById(task.id);
@@ -113,7 +111,7 @@ function KanbanPage() {
       setTaskActivity([]);
       setIsTaskDetailOpen(true);
     }
-  };
+  }, [getTaskById]);
 
   // Handle URL task parameter to auto-open task dialog
   useEffect(() => {
@@ -233,51 +231,9 @@ function KanbanPage() {
     return `${Math.floor(diffInSeconds / 86400)} days ago`;
   };
 
-  const handleCommentKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleAddComment();
-    }
-  };
-
   const handleTagInput = (value: string) => {
     const tags = value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
     setNewTask(prev => ({ ...prev, tags }));
-  };
-
-  const handleAddComment = async () => {
-    if (!selectedTask || !commentText.trim()) return;
-    
-    try {
-      setIsAddingComment(true);
-      const response = await fetch(`http://localhost:8000/api/tasks/${selectedTask.id}/comments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          content: commentText,
-          author: 'user'
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to add comment');
-      }
-      
-      // Refresh task details, comments, and activity
-      const updatedTask = await getTaskById(selectedTask.id);
-      setSelectedTask(updatedTask);
-      await Promise.all([
-        fetchTaskComments(selectedTask.id),
-        fetchTaskActivity(selectedTask.id)
-      ]);
-      setCommentText('');
-    } catch (err) {
-      console.error('Failed to add comment:', err);
-    } finally {
-      setIsAddingComment(false);
-    }
   };
 
   const handleSaveTitle = async () => {

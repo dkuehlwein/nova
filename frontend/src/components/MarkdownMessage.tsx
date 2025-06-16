@@ -65,8 +65,8 @@ export function MarkdownMessage({ content, className = "" }: MarkdownMessageProp
             p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
             
             // Style code blocks
-            code: ({ children, ...props }: any) => {
-              const { inline } = props;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            code: ({ children, inline }: any) => {
               if (inline) {
                 return (
                   <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono">
@@ -135,8 +135,8 @@ export function MarkdownMessage({ content, className = "" }: MarkdownMessageProp
                 components={{
                   // Same component styling as above
                   p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                  code: ({ children, ...props }: any) => {
-                    const { inline } = props;
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  code: ({ children, inline }: any) => {
                     if (inline) {
                       return (
                         <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono">

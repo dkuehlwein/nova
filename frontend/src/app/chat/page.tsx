@@ -5,7 +5,7 @@ import { Send, AlertTriangle, MessageSquare, Bot, User, Loader2, StopCircle } fr
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from "react";
 import { useChat, ChatMessage } from "@/hooks/useChat";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
@@ -710,5 +710,17 @@ function ChatPage() {
   );
 }
 
-// Export with React.memo to prevent unnecessary re-renders
-export default ChatPage; 
+export default function ChatPageWithSuspense() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="flex items-center justify-center h-96">
+          <div className="text-muted-foreground">Loading chat...</div>
+        </div>
+      </div>
+    }>
+      <ChatPage />
+    </Suspense>
+  );
+} 
