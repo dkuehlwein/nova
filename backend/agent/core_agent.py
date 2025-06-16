@@ -53,6 +53,21 @@ class CoreAgent:
         
         logger.info("Core Agent initialized successfully")
     
+    async def reload_agent(self):
+        """Reload the agent with updated prompt."""
+        logger.info("Reloading Core Agent with updated prompt...")
+        
+        try:
+            # Recreate the agent with new prompt and tools
+            self.agent = await create_chat_agent(reload_tools=True)
+            
+            logger.info("Core Agent reloaded successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to reload Core Agent: {e}")
+            # Keep the old agent if reload fails
+            raise
+    
     async def _initialize_status(self):
         """Initialize the agent status in database."""
         async with db_manager.get_session() as session:

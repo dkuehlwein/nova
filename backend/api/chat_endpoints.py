@@ -34,7 +34,8 @@ async def get_chat_agent():
     if _chat_agent is None:
         logger.info("Creating new chat agent instance")
         try:
-            _chat_agent = await create_chat_agent()
+            # Always reload tools when creating a new agent to get latest tools and prompts
+            _chat_agent = await create_chat_agent(reload_tools=True)
             logger.info(f"Created chat agent with checkpointer: {type(_chat_agent.checkpointer)}")
         except Exception as e:
             logger.error(f"Error creating chat agent: {e}")
@@ -43,11 +44,12 @@ async def get_chat_agent():
         logger.debug("Reusing existing chat agent instance")
     return _chat_agent
 
+
 def clear_chat_agent_cache():
-    """Clear the global chat agent cache. Useful for testing."""
+    """Clear the global chat agent cache to force recreation with new prompt."""
     global _chat_agent
     _chat_agent = None
-    logger.info("Cleared chat agent cache")
+    logger.info("Chat agent cache cleared - will be recreated with updated prompt on next request")
 
 
 # Pydantic models for request/response

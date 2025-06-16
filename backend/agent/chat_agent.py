@@ -94,11 +94,21 @@ async def create_checkpointer():
         return MemorySaver()
 
 
-async def create_chat_agent(checkpointer=None):
+async def create_chat_agent(checkpointer=None, reload_tools=False):
     """Create a LangGraph chat agent using modern patterns.
+    
+    Args:
+        checkpointer: Optional checkpointer to use (created if not provided)
+        reload_tools: If True, clear tools cache to reload tools and prompts
     
     Uses create_react_agent prebuilt which is the current best practice.
     """
+    # Clear tools cache if reload requested
+    if reload_tools:
+        global _cached_tools
+        _cached_tools = None
+        logger.info("Tools cache cleared for reload")
+    
     # Create LLM
     llm = create_llm()
     
@@ -109,9 +119,9 @@ async def create_chat_agent(checkpointer=None):
     if checkpointer is None:
         checkpointer = await create_checkpointer()
     
-    # Import system prompt
-    from agent.prompts import NOVA_SYSTEM_PROMPT
-    system_prompt = NOVA_SYSTEM_PROMPT
+    # Get current system prompt (with hot-reload support)
+    from agent.prompts import get_nova_system_prompt
+    system_prompt = get_nova_system_prompt()
 
     # Create agent using modern create_react_agent pattern
     agent = create_react_agent(
@@ -124,9 +134,3 @@ async def create_chat_agent(checkpointer=None):
     logger.info(f"Created chat agent with {len(tools)} tools")
     return agent
 
-
-def clear_tools_cache():
-    """Clear the tools cache to force reload on next access."""
-    global _cached_tools
-    _cached_tools = None
-    logger.info("Tools cache cleared") 
