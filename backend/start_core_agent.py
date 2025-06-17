@@ -12,6 +12,10 @@ from typing import Optional
 
 import uvicorn
 from dotenv import load_dotenv
+
+# Load environment variables FIRST before importing config
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -20,10 +24,7 @@ from utils.service_manager import ServiceManager, create_prompt_updated_handler
 from utils.logging import RequestLoggingMiddleware, configure_logging
 from config import settings
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging based on settings
+# Configure logging based on settings (after environment is loaded)
 configure_logging(
     service_name="core-agent",
     log_level=settings.LOG_LEVEL,

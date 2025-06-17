@@ -11,6 +11,10 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from dotenv import load_dotenv
+
+# Load environment variables FIRST before importing config
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -24,18 +28,15 @@ from utils.service_manager import ServiceManager, create_prompt_updated_handler
 from utils.logging import RequestLoggingMiddleware, configure_logging
 from config import settings
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging based on settings
+# Configure logging based on settings (after environment is loaded)
 configure_logging(
-    service_name="website",
+    service_name="chat-agent",
     log_level=settings.LOG_LEVEL,
     enable_json=settings.LOG_JSON
 )
 
 # Global instances
-service_manager = ServiceManager("website")
+service_manager = ServiceManager("chat-agent")
 
 
 async def create_website_event_handler():

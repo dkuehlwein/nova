@@ -20,13 +20,6 @@ class ServiceManager:
         self.service_name = service_name
         self.logger = get_logger(f"{service_name}-startup")
         
-        # Configure structured logging
-        configure_logging(
-            service_name=service_name,
-            log_level=os.getenv("LOG_LEVEL", "INFO"),
-            enable_json=os.getenv("LOG_FORMAT", "json").lower() == "json"
-        )
-        
         # Reduce verbosity of third-party libraries
         import logging
         logging.getLogger("httpx").setLevel(logging.WARNING)

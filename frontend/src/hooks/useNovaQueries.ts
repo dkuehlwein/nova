@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiRequest } from '../lib/api'
-import type { MCPServersData } from '../lib/queryClient'
 
 // Type definitions for API responses
 interface ConfigValidationResult {
@@ -22,6 +21,48 @@ interface AdminOperationResult {
   output: string
   error?: string
   exit_code: number
+}
+
+interface SystemHealthSummary {
+  overall_status: 'operational' | 'degraded' | 'critical'
+  chat_agent_status: string
+  core_agent_status: string
+  mcp_servers_healthy: number
+  mcp_servers_total: number
+  database_status: string
+}
+
+interface MCPServerStatus {
+  name: string
+  url: string
+  health_url: string
+  description: string
+  enabled: boolean
+  healthy: boolean
+  tools_count?: number
+  error?: string
+  last_check?: string
+}
+
+interface MCPServersData {
+  servers: MCPServerStatus[]
+  total_servers: number
+  healthy_servers: number
+  enabled_servers: number
+}
+
+interface SystemHealthData {
+  status: string
+  service: string
+  version: string
+  database: string
+  chat_checkpointer?: string
+  error?: string
+  chat_agent?: string
+  chat_agent_last_check?: string
+  database_last_check?: string
+  core_agent?: string
+  core_agent_last_check?: string
 }
 
 // MCP Servers Queries
@@ -164,8 +205,19 @@ export function useValidateConfig() {
 export function useTaskCounts() {
   return useQuery({
     queryKey: ['task-counts'],
+    queryFn: async (): Promise<{ task_counts: Record<string, number>, total_tasks: number }> => {
+      return await apiRequest('/api/overview')
+    },
+    staleTime: 0, // Real-time updates via WebSocket
+    refetchInterval: 30000, // Backup polling
+  })
+}
+
+export function useOverview() {
+  return useQuery({
+    queryKey: ['overview'],
     queryFn: async () => {
-      return await apiRequest('/api/tasks/counts')
+      return await apiRequest('/api/overview')
     },
     staleTime: 0, // Real-time updates via WebSocket
     refetchInterval: 30000, // Backup polling
@@ -176,11 +228,23 @@ export function useTaskCounts() {
 export function useSystemHealth() {
   return useQuery({
     queryKey: ['system-health'],
-    queryFn: async () => {
+    queryFn: async (): Promise<SystemHealthData> => {
       return await apiRequest('/api/admin/health')
     },
     staleTime: 30000, // 30 seconds
     refetchInterval: 60000, // Refetch every minute
+    retry: 2
+  })
+}
+
+export function useSystemHealthSummary() {
+  return useQuery({
+    queryKey: ['system-health-summary'],
+    queryFn: async (): Promise<SystemHealthSummary> => {
+      return await apiRequest('/api/system/system-health-summary')
+    },
+    staleTime: 0, // Always refetch for real-time navbar updates
+    refetchInterval: 30000, // Backup polling every 30 seconds
     retry: 2
   })
 }

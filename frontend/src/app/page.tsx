@@ -1,13 +1,18 @@
 "use client";
 
-import Navbar from "@/components/Navbar";
-import { AlertTriangle, CheckCircle, ArrowRight, MessageSquare, Clock, RefreshCw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { 
+  MessageSquare, 
+  RefreshCw, 
+  Clock
+} from "lucide-react";
+import Navbar from "@/components/Navbar";
 import { useOverview } from "@/hooks/useOverview";
 import { useState, useEffect } from "react";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { AlertTriangle, ArrowRight, Settings } from "lucide-react";
 
 interface PendingDecision {
   id: string;
@@ -29,8 +34,15 @@ interface RecentActivityItem {
   tags: string[];
 }
 
-export default function Nova() {
-  const { data: overviewData, loading: overviewLoading, refreshing: overviewRefreshing, refresh } = useOverview();
+export default function HomePage() {
+  const { loading, refreshing, refresh: handleRefresh } = useOverview();
+
+  // Extract data with safe defaults
+  const overviewRefreshing = refreshing;
+
+  // Use state variables instead of extracting from overview data
+  // since the overview data doesn't include recent_tasks/pending_decisions
+
   const [pendingDecisions, setPendingDecisions] = useState<PendingDecision[]>([]);
   const [recentTasks, setRecentTasks] = useState<RecentActivityItem[]>([]);
   const [decisionsLoading, setDecisionsLoading] = useState(true);
@@ -83,8 +95,8 @@ export default function Nova() {
   }, []);
 
   // Manual refresh function
-  const handleRefresh = async () => {
-    refresh(); // Refresh overview data
+  const handleRefreshManual = async () => {
+    handleRefresh(); // Refresh overview data
     
     // Also refresh the other data
     try {
@@ -151,7 +163,7 @@ export default function Nova() {
     return status.replace(/_/g, ' ').toUpperCase();
   };
 
-  if (overviewLoading || decisionsLoading || recentTasksLoading) {
+  if (loading || decisionsLoading || recentTasksLoading) {
     return (
       <div className="min-h-screen bg-background">
         <Navbar />
@@ -183,7 +195,7 @@ export default function Nova() {
             </div>
             <div className="flex items-center space-x-3">
               <Button 
-                onClick={handleRefresh}
+                onClick={handleRefreshManual}
                 variant="outline"
                 size="lg"
                 disabled={overviewRefreshing || decisionsLoading || recentTasksLoading}
@@ -318,22 +330,6 @@ export default function Nova() {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* System Status - Bottom spanning both columns */}
-          <div className="bg-card border border-border rounded-lg p-6">
-            <div className="flex items-center space-x-3 mb-4">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">System Status</h3>
-                <p className="text-sm text-muted-foreground">
-                  {overviewData?.system_status === 'operational' 
-                    ? 'All services running normally' 
-                    : 'Check system status'}
-                </p>
-              </div>
-            </div>
-            
           </div>
         </div>
       </main>

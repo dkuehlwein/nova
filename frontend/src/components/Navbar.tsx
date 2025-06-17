@@ -11,15 +11,22 @@ import {
   UserCheck,
   Eye,
   HourglassIcon,
-  XCircle
+  XCircle,
+  AlertTriangle
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useOverview } from "@/hooks/useOverview";
+import { useSystemHealthSummary } from "@/hooks/useNovaQueries";
+import { useNovaWebSocket } from "@/hooks/useNovaWebSocket";
 
 export default function Navbar() {
   const pathname = usePathname();
   const { data, loading, refreshing, currentTask } = useOverview();
+  const { data: healthSummary, isLoading: healthLoading } = useSystemHealthSummary();
+  
+  // Subscribe to WebSocket events for real-time updates
+  const { isConnected } = useNovaWebSocket();
 
   const isActive = (path: string) => pathname === path;
 
@@ -39,6 +46,46 @@ export default function Navbar() {
 
   const pendingDecisions = data.task_counts.NEEDS_REVIEW || 0;
 
+  // Get system status icon and color based on health summary
+  const getSystemStatusDisplay = () => {
+    if (healthLoading || !healthSummary) {
+      return {
+        icon: <CheckCircle className="h-4 w-4 text-gray-500" />,
+        text: "System Status",
+        color: "text-gray-500"
+      };
+    }
+
+    switch (healthSummary.overall_status) {
+      case "operational":
+        return {
+          icon: <CheckCircle className="h-4 w-4 text-green-500" />,
+          text: "System Status",
+          color: "text-green-500"
+        };
+      case "degraded":
+        return {
+          icon: <AlertTriangle className="h-4 w-4 text-yellow-500" />,
+          text: "System Status",
+          color: "text-yellow-500"
+        };
+      case "critical":
+        return {
+          icon: <XCircle className="h-4 w-4 text-red-500" />,
+          text: "System Status",
+          color: "text-red-500"
+        };
+      default:
+        return {
+          icon: <CheckCircle className="h-4 w-4 text-gray-500" />,
+          text: "System Status",
+          color: "text-gray-500"
+        };
+    }
+  };
+
+  const systemStatus = getSystemStatusDisplay();
+
   return (
     <nav className="border-b border-border bg-card">
       <div className="flex h-20 items-center px-6">
@@ -50,6 +97,10 @@ export default function Navbar() {
             <h1 className="text-2xl font-bold text-foreground">Nova</h1>
             {refreshing && (
               <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse"></div>
+            )}
+            {/* WebSocket connection indicator */}
+            {!isConnected && (
+              <div className="h-2 w-2 bg-red-500 rounded-full" title="WebSocket disconnected"></div>
             )}
           </Link>
 
@@ -153,58 +204,27 @@ export default function Navbar() {
               </Badge>
             </div>
             
-            {/* Needs Review - Highlighted */}
-            <div className="flex items-center space-x-1">
-              <Eye className="h-3 w-3 text-red-500" />
-              <Badge variant={pendingDecisions > 0 ? "destructive" : "secondary"} className="text-xs px-1 py-0">
-                {data.task_counts.NEEDS_REVIEW || 0}
-              </Badge>
-            </div>
-            
-            {/* Waiting */}
-            <div className="flex items-center space-x-1">
-              <HourglassIcon className="h-3 w-3 text-orange-500" />
-              <Badge variant="secondary" className="text-xs px-1 py-0">
-                {data.task_counts.WAITING || 0}
-              </Badge>
-            </div>
-            
             {/* In Progress */}
             <div className="flex items-center space-x-1">
-              <PlayCircle className="h-3 w-3 text-yellow-500" />
+              <Eye className="h-3 w-3 text-orange-500" />
               <Badge variant="secondary" className="text-xs px-1 py-0">
                 {data.task_counts.IN_PROGRESS || 0}
               </Badge>
             </div>
             
-            {/* Done */}
+            {/* Needs Review */}
             <div className="flex items-center space-x-1">
-              <CheckCircle className="h-3 w-3 text-gray-500" />
-              <Badge variant="outline" className="text-xs px-1 py-0">
-                {data.task_counts.DONE || 0}
+              <HourglassIcon className="h-3 w-3 text-yellow-500" />
+              <Badge variant="secondary" className="text-xs px-1 py-0">
+                {data.task_counts.NEEDS_REVIEW || 0}
               </Badge>
             </div>
-            
-            {/* Failed - Only show if there are failed tasks */}
-            {(data.task_counts.FAILED || 0) > 0 && (
-              <div className="flex items-center space-x-1">
-                <XCircle className="h-3 w-3 text-red-600" />
-                <Badge variant="destructive" className="text-xs px-1 py-0">
-                  {data.task_counts.FAILED}
-                </Badge>
-              </div>
-            )}
           </div>
 
-          {/* System Status & Alert */}
-          <div className="flex items-center space-x-3">
-            {/* System Status */}
-            <div className="flex items-center space-x-1">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span className="text-sm text-muted-foreground">
-                {data.system_status}
-              </span>
-            </div>
+          {/* System Status */}
+          <div className={`flex items-center space-x-2 ${systemStatus.color}`}>
+            {systemStatus.icon}
+            <span className="text-sm font-medium">{systemStatus.text}</span>
           </div>
         </div>
       </div>

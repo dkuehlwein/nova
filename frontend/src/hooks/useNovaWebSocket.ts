@@ -25,7 +25,7 @@ const DEFAULT_OPTIONS: Required<Omit<UseNovaWebSocketOptions, 'shouldReconnect'>
   shouldReconnect: (closeEvent: CloseEvent) => boolean
 } = {
   shouldReconnect: () => true,
-  reconnectAttempts: 10,
+  reconnectAttempts: 5,
   // Exponential backoff: 1s, 2s, 4s, 8s, then cap at 10s
   reconnectInterval: (attemptNumber: number) => 
     Math.min(Math.pow(2, attemptNumber) * 1000, 10000),
@@ -85,8 +85,40 @@ export function useNovaWebSocket(options: UseNovaWebSocketOptions = {}) {
         }
       },
       onError: (event) => {
+        // Extract meaningful error information
+        let errorMessage = 'WebSocket connection error'
+        let errorDetails = {}
+        
+        if (event instanceof ErrorEvent) {
+          errorMessage = event.message || 'Connection failed'
+          errorDetails = {
+            type: event.type,
+            filename: event.filename,
+            lineno: event.lineno,
+            colno: event.colno
+          }
+        } else if (event instanceof CloseEvent) {
+          errorMessage = `Connection closed: ${event.reason || 'Unknown reason'}`
+          errorDetails = {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean
+          }
+        } else {
+          // Generic event object
+          errorDetails = {
+            type: event?.type || 'unknown',
+            target: event?.target?.constructor?.name || 'unknown'
+          }
+        }
+        
         if (opts.debug) {
-          console.error('[Nova WebSocket] Error:', event)
+          console.error('[Nova WebSocket] Error details:', errorMessage, errorDetails)
+        } else {
+          // Only log meaningful errors to avoid spam
+          if (readyState === ReadyState.CONNECTING || readyState === ReadyState.OPEN) {
+            console.error(`[Nova WebSocket] ${errorMessage} - check if backend is running on port 8000`)
+          }
         }
       },
       onMessage: (event: MessageEvent) => {
