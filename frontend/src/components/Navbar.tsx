@@ -223,8 +223,8 @@ export default function Navbar() {
 
           {/* System Status */}
           <div className={`flex items-center space-x-2 ${systemStatus.color}`}>
-            {systemStatus.icon}
             <span className="text-sm font-medium">{systemStatus.text}</span>
+            {systemStatus.icon}
           </div>
         </div>
       </div>

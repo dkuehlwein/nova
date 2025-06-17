@@ -28,11 +28,6 @@ export interface MCPServer {
   [key: string]: unknown
 }
 
-export interface MCPServersData {
-  servers: MCPServer[]
-  [key: string]: unknown
-}
-
 export interface TaskCountsData {
   last_updated?: string
   [key: string]: unknown
@@ -92,6 +87,8 @@ export const invalidateQueriesByEvent = (eventType: string, data: EventData) => 
     case 'mcp_toggled':
       // Invalidate MCP server queries when a server is toggled
       client.invalidateQueries({ queryKey: ['mcp-servers'] })
+      // Also invalidate system health since MCP server status affects overall health
+      client.invalidateQueries({ queryKey: ['system-health-summary'] })
       break
     case 'prompt_updated':
       // Potentially invalidate agent-related queries
@@ -101,15 +98,19 @@ export const invalidateQueriesByEvent = (eventType: string, data: EventData) => 
       // Invalidate task-related queries
       client.invalidateQueries({ queryKey: ['tasks'] })
       client.invalidateQueries({ queryKey: ['task-counts'] })
+      // Also invalidate overview data that includes task counts
+      client.invalidateQueries({ queryKey: ['overview'] })
       break
     case 'system_health':
       // Invalidate health-related queries
       client.invalidateQueries({ queryKey: ['system-health'] })
+      client.invalidateQueries({ queryKey: ['system-health-summary'] })
       client.invalidateQueries({ queryKey: ['mcp-servers'] })
       break
     case 'config_validated':
       // Invalidate configuration queries
       client.invalidateQueries({ queryKey: ['config'] })
+      client.invalidateQueries({ queryKey: ['config-validation'] })
       break
     default:
       // For unknown events, invalidate all queries to be safe
@@ -125,7 +126,8 @@ export const updateQueryDataFromEvent = (eventType: string, data: EventData) => 
     case 'mcp_toggled':
       // Update MCP server data in cache directly
       client.setQueryData(['mcp-servers'], (oldData: unknown) => {
-        const typedOldData = oldData as MCPServersData | undefined
+        // Generic typing approach to handle MCP server data
+        const typedOldData = oldData as { servers?: MCPServer[] } | undefined
         if (!typedOldData?.servers) return oldData
         
         return {
@@ -139,15 +141,30 @@ export const updateQueryDataFromEvent = (eventType: string, data: EventData) => 
       })
       break
     case 'task_updated':
-      // Update task counts in cache
-      if (data.status_change) {
-        client.setQueryData(['task-counts'], (oldData: unknown) => {
-          const typedOldData = oldData as TaskCountsData | undefined
-          if (!typedOldData) return oldData
-          // Update counts based on status change
-          return { ...typedOldData, last_updated: new Date().toISOString() }
-        })
-      }
+      // Update overview and task counts cache for real-time updates
+      const timestamp = new Date().toISOString()
+      
+      // Update overview data (used by Navbar)
+      client.setQueryData(['overview'], (oldData: unknown) => {
+        const typedOldData = oldData as TaskCountsData | undefined
+        if (!typedOldData) return oldData
+        
+        return { 
+          ...typedOldData, 
+          last_updated: timestamp
+        }
+      })
+      
+      // Update task-counts cache
+      client.setQueryData(['task-counts'], (oldData: unknown) => {
+        const typedOldData = oldData as TaskCountsData | undefined
+        if (!typedOldData) return oldData
+        
+        return { 
+          ...typedOldData, 
+          last_updated: timestamp 
+        }
+      })
       break
   }
 }

@@ -38,10 +38,10 @@ async def get_all_tools_with_mcp() -> List[Any]:
     # Get local Nova tools
     local_tools = get_all_tools()
     
-    # Get MCP tools from external servers
+    # Get MCP tools from external servers (respects enabled/disabled state)
     try:
         _, mcp_tools = await mcp_manager.get_client_and_tools()
-        logger.info(f"Loaded {len(mcp_tools)} MCP tools")
+        logger.info(f"Loaded {len(mcp_tools)} MCP tools from enabled servers")
     except Exception as e:
         logger.warning(f"Could not fetch MCP tools: {e}")
         mcp_tools = []
