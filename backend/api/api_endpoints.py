@@ -27,6 +27,8 @@ from models.models import (
     Task, TaskComment, Person, Project, Artifact,
     TaskStatus
 )
+from utils.redis_manager import publish
+from models.events import create_task_updated_event
 
 
 # === Pydantic Models for API ===
@@ -428,6 +430,17 @@ async def create_task(task_data: TaskCreate):
         
         await session.commit()
         
+        # Publish WebSocket event for real-time updates
+        try:
+            await publish(create_task_updated_event(
+                task_id=str(task.id),
+                status=task.status.value,
+                action="created",
+                source="api-endpoint"
+            ))
+        except Exception as e:
+            logging.warning(f"Failed to publish task creation event: {e}")
+        
         return TaskResponse(
             id=task.id,
             title=task.title,
@@ -495,6 +508,7 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
         # Track what changed for activity logging
         changes = []
         update_data = task_data.model_dump(exclude_unset=True)
+        old_status = task.status
         
         if 'title' in update_data and update_data['title'] != task.title:
             changes.append(f"title from '{task.title}' to '{update_data['title']}'")
@@ -524,6 +538,18 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
         
         await session.commit()
         await session.refresh(task)
+        
+        # Publish WebSocket event for real-time updates
+        try:
+            status_changed = task_data.status and old_status != task.status
+            await publish(create_task_updated_event(
+                task_id=str(task.id),
+                status=task.status.value,
+                action="status_changed" if status_changed else "updated",
+                source="api-endpoint"
+            ))
+        except Exception as e:
+            logging.warning(f"Failed to publish task update event: {e}")
         
         return TaskResponse(
             id=task.id,

@@ -18,8 +18,8 @@ from api.api_endpoints import router as api_router
 from api.chat_endpoints import router as chat_router
 from api.websocket_endpoints import router as websocket_router
 from api.mcp_endpoints import router as mcp_router
-from api.admin_endpoints import router as admin_router
 from api.config_endpoints import router as config_router
+from api.system_endpoints import router as system_router
 from utils.service_manager import ServiceManager, create_prompt_updated_handler
 from utils.logging import RequestLoggingMiddleware
 
@@ -192,7 +192,7 @@ app.include_router(api_router)
 app.include_router(chat_router)
 app.include_router(websocket_router)
 app.include_router(mcp_router)
-app.include_router(admin_router)
+app.include_router(system_router)
 app.include_router(config_router)
 
 

@@ -1,5 +1,7 @@
 """
 Task management LangChain tools.
+
+Refactored to use API endpoint functions to avoid code duplication.
 """
 
 import json
@@ -12,8 +14,10 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from database.database import db_manager
-from models.models import Task, TaskComment, TaskStatus, Person, Project
+from models.models import Task, TaskComment, Person, Project
+from models.models import TaskStatus
 from .helpers import find_person_by_email, find_project_by_name, format_task_for_agent
+from api.api_endpoints import create_task as api_create_task, update_task as api_update_task, TaskCreate, TaskUpdate
 
 
 async def create_task_tool(
@@ -25,7 +29,7 @@ async def create_task_tool(
     project_names: List[str] = None
 ) -> str:
     """Create a new task with optional relationships."""
-    async with db_manager.get_session() as session:
+    try:
         # Parse due date
         due_date_obj = None
         if due_date:
@@ -34,41 +38,56 @@ async def create_task_tool(
             except ValueError:
                 pass
         
-        # Create task
-        task = Task(
+        # Get person and project IDs (keep this logic since it's specific to email/name lookup)
+        person_ids = []
+        project_ids = []
+        
+        if person_emails:
+            async with db_manager.get_session() as session:
+                for email in person_emails:
+                    person = await find_person_by_email(session, email)
+                    if person:
+                        person_ids.append(person.id)
+        
+        if project_names:
+            async with db_manager.get_session() as session:
+                for name in project_names:
+                    project = await find_project_by_name(session, name)
+                    if project:
+                        project_ids.append(project.id)
+        
+        # Use the API endpoint function
+        task_data = TaskCreate(
             title=title,
             description=description,
             due_date=due_date_obj,
-            tags=tags or []
+            tags=tags or [],
+            person_ids=person_ids,
+            project_ids=project_ids
         )
         
-        session.add(task)
-        await session.flush()
+        result = await api_create_task(task_data)
         
-        # Add person relationships
-        if person_emails:
-            for email in person_emails:
-                person = await find_person_by_email(session, email)
-                if person:
-                    task.persons.append(person)
+        # Fetch the actual Task object to use format_task_for_agent
+        async with db_manager.get_session() as session:
+            task_result = await session.execute(
+                select(Task)
+                .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
+                .where(Task.id == result.id)
+            )
+            task = task_result.scalar_one()
+            
+            # Get comments count
+            comments_count = await session.scalar(
+                select(func.count(TaskComment.id)).where(TaskComment.task_id == task.id)
+            )
+            
+            formatted_task = await format_task_for_agent(task, comments_count or 0)
         
-        # Add project relationships
-        if project_names:
-            for name in project_names:
-                project = await find_project_by_name(session, name)
-                if project:
-                    task.projects.append(project)
-        
-        await session.commit()
-        await session.refresh(task, ['persons', 'projects'])
-        
-        # Get comments count
-        comments_count = await session.scalar(
-            select(func.count(TaskComment.id)).where(TaskComment.task_id == task.id)
-        )
-        
-        formatted_task = await format_task_for_agent(task, comments_count or 0)
         return f"Task created successfully: {json.dumps(formatted_task, indent=2)}"
+        
+    except Exception as e:
+        return f"Error creating task: {str(e)}"
 
 
 async def update_task_tool(
@@ -81,60 +100,62 @@ async def update_task_tool(
     tags: List[str] = None
 ) -> str:
     """Update an existing task."""
-    async with db_manager.get_session() as session:
-        try:
-            task_id_uuid = UUID(task_id)
-        except ValueError:
-            return f"Error: Invalid task ID format: {task_id}"
+    try:
+        task_id_uuid = UUID(task_id)
+    except ValueError:
+        return f"Error: Invalid task ID format: {task_id}"
+    
+    try:
+        # Prepare update data
+        update_data = {}
         
-        result = await session.execute(
-            select(Task)
-            .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
-            .where(Task.id == task_id_uuid)
-        )
-        task = result.scalar_one_or_none()
-        
-        if not task:
-            return f"Error: Task not found with ID: {task_id}"
-        
-        # Update fields
         if title is not None:
-            task.title = title
+            update_data["title"] = title
         if description is not None:
-            task.description = description
+            update_data["description"] = description
         if summary is not None:
-            task.summary = summary
+            update_data["summary"] = summary
         if tags is not None:
-            task.tags = tags
+            update_data["tags"] = tags
             
-        # Update status
+        # Handle status conversion
         if status:
             try:
-                task.status = TaskStatus(status.lower())
-                if task.status == TaskStatus.DONE and not task.completed_at:
-                    task.completed_at = datetime.utcnow()
-                elif task.status != TaskStatus.DONE:
-                    task.completed_at = None
+                update_data["status"] = TaskStatus(status.lower())
             except ValueError:
                 return f"Error: Invalid status '{status}'. Valid options: {[s.value for s in TaskStatus]}"
         
-        # Update due date
+        # Handle due date
         if due_date:
             try:
-                task.due_date = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+                update_data["due_date"] = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
             except ValueError:
                 return f"Error: Invalid due_date format. Use ISO format."
         
-        await session.commit()
-        await session.refresh(task)
+        # Use the API endpoint function
+        task_update = TaskUpdate(**update_data)
+        result = await api_update_task(task_id_uuid, task_update)
         
-        # Get comments count
-        comments_count = await session.scalar(
-            select(func.count(TaskComment.id)).where(TaskComment.task_id == task.id)
-        )
+        # Fetch the actual Task object to use format_task_for_agent
+        async with db_manager.get_session() as session:
+            task_result = await session.execute(
+                select(Task)
+                .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
+                .where(Task.id == result.id)
+            )
+            task = task_result.scalar_one()
+            
+            # Get comments count
+            comments_count = await session.scalar(
+                select(func.count(TaskComment.id)).where(TaskComment.task_id == task.id)
+            )
+            
+            formatted_task = await format_task_for_agent(task, comments_count or 0)
         
-        formatted_task = await format_task_for_agent(task, comments_count or 0)
         return f"Task updated successfully: {json.dumps(formatted_task, indent=2)}"
+        
+    except Exception as e:
+        return f"Error updating task: {str(e)}"
 
 
 async def get_tasks_tool(
