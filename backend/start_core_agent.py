@@ -17,10 +17,18 @@ from fastapi.responses import JSONResponse
 
 from agent.core_agent import CoreAgent
 from utils.service_manager import ServiceManager, create_prompt_updated_handler
-from utils.logging import RequestLoggingMiddleware
+from utils.logging import RequestLoggingMiddleware, configure_logging
+from config import settings
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging based on settings
+configure_logging(
+    service_name="core-agent",
+    log_level=settings.LOG_LEVEL,
+    enable_json=settings.LOG_JSON
+)
 
 # Configure LangSmith tracing
 os.environ["LANGSMITH_TRACING"] = "true"

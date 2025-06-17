@@ -21,13 +21,21 @@ from api.mcp_endpoints import router as mcp_router
 from api.config_endpoints import router as config_router
 from api.system_endpoints import router as system_router
 from utils.service_manager import ServiceManager, create_prompt_updated_handler
-from utils.logging import RequestLoggingMiddleware
+from utils.logging import RequestLoggingMiddleware, configure_logging
+from config import settings
 
 # Load environment variables
 load_dotenv()
 
+# Configure logging based on settings
+configure_logging(
+    service_name="website",
+    log_level=settings.LOG_LEVEL,
+    enable_json=settings.LOG_JSON
+)
+
 # Global instances
-service_manager = ServiceManager("chat-agent")
+service_manager = ServiceManager("website")
 
 
 async def create_website_event_handler():
@@ -185,7 +193,7 @@ app.add_middleware(
 )
 
 # Add request logging middleware
-app.add_middleware(RequestLoggingMiddleware, service_name="chat-agent")
+app.add_middleware(RequestLoggingMiddleware, service_name="website")
 
 # Include routers
 app.include_router(api_router)
