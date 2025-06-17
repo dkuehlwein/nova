@@ -69,8 +69,8 @@ class PromptUpdatedEventData(BaseModel):
 class TaskUpdatedEventData(BaseModel):
     """Data structure for task update events."""
     task_id: str
-    previous_lane: str
-    new_lane: str
+    status: str
+    action: str  # "created", "updated", "status_changed", etc.
     agent_action: bool = True
 
 
@@ -123,8 +123,8 @@ def create_prompt_updated_event(
 
 def create_task_updated_event(
     task_id: str,
-    previous_lane: str,
-    new_lane: str,
+    status: str,
+    action: str,
     source: str = "core-agent"
 ) -> NovaEvent:
     """Create a typed task update event."""
@@ -132,8 +132,8 @@ def create_task_updated_event(
         type="task_updated",
         data=TaskUpdatedEventData(
             task_id=task_id,
-            previous_lane=previous_lane,
-            new_lane=new_lane
+            status=status,
+            action=action
         ).model_dump(),
         source=source
     )

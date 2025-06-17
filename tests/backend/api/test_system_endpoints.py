@@ -1,6 +1,8 @@
 """
-Tests for admin management endpoints.
-Tests work package B6 implementation.
+Tests for system management API endpoints.
+
+Tests system health monitoring, service restart functionality,
+and admin operations.
 """
 
 import pytest
@@ -8,8 +10,7 @@ import subprocess
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
-
-from backend.api.admin_endpoints import router, ALLOWED_SERVICES
+from backend.api.system_endpoints import router, ALLOWED_SERVICES, SystemHealthSummary
 
 
 @pytest.fixture
@@ -26,12 +27,12 @@ def client(app):
     return TestClient(app)
 
 
-class TestAdminEndpoints:
-    """Test admin management endpoints."""
+class TestSystemEndpoints:
+    """Test system management endpoints."""
     
     def test_get_allowed_services(self, client):
-        """Test GET /api/admin/allowed-services."""
-        response = client.get("/api/admin/allowed-services")
+        """Test GET /api/system/allowed-services."""
+        response = client.get("/api/system/allowed-services")
         
         assert response.status_code == 200
         data = response.json()
@@ -41,20 +42,20 @@ class TestAdminEndpoints:
         assert data["total_count"] == len(ALLOWED_SERVICES)
         assert set(data["allowed_services"]) == ALLOWED_SERVICES
     
-    def test_admin_health(self, client):
-        """Test GET /api/admin/health."""
-        response = client.get("/api/admin/health")
+    def test_system_health(self, client):
+        """Test GET /api/system/health."""
+        response = client.get("/api/system/health")
         
         assert response.status_code == 200
         data = response.json()
         
         assert data["status"] == "healthy"
-        assert data["service"] == "admin-api"
+        assert data["service"] == "system-api"
         assert "version" in data
     
     @patch('subprocess.run')
     def test_restart_service_success(self, mock_subprocess, client):
-        """Test POST /api/admin/restart/{service_name} with successful restart."""
+        """Test POST /api/system/restart/{service_name} with successful restart."""
         # Mock successful subprocess result
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -62,7 +63,7 @@ class TestAdminEndpoints:
         mock_result.stderr = ""
         mock_subprocess.return_value = mock_result
         
-        response = client.post("/api/admin/restart/redis")
+        response = client.post("/api/system/restart/redis")
         
         assert response.status_code == 200
         data = response.json()
@@ -84,7 +85,7 @@ class TestAdminEndpoints:
     
     @patch('subprocess.run')
     def test_restart_service_failure(self, mock_subprocess, client):
-        """Test POST /api/admin/restart/{service_name} with failed restart."""
+        """Test POST /api/system/restart/{service_name} with failed restart."""
         # Mock failed subprocess result
         mock_result = MagicMock()
         mock_result.returncode = 1
@@ -92,7 +93,7 @@ class TestAdminEndpoints:
         mock_result.stderr = "Service not found"
         mock_subprocess.return_value = mock_result
         
-        response = client.post("/api/admin/restart/redis")
+        response = client.post("/api/system/restart/redis")
         
         assert response.status_code == 200  # Still returns 200, but with error status
         data = response.json()
@@ -105,8 +106,8 @@ class TestAdminEndpoints:
         assert data["exit_code"] == 1
     
     def test_restart_service_unauthorized(self, client):
-        """Test POST /api/admin/restart/{service_name} with unauthorized service."""
-        response = client.post("/api/admin/restart/unauthorized_service")
+        """Test POST /api/system/restart/{service_name} with unauthorized service."""
+        response = client.post("/api/system/restart/unauthorized_service")
         
         assert response.status_code == 400
         data = response.json()
@@ -122,7 +123,7 @@ class TestAdminEndpoints:
             timeout=60
         )
         
-        response = client.post("/api/admin/restart/redis")
+        response = client.post("/api/system/restart/redis")
         
         assert response.status_code == 408
         data = response.json()
@@ -134,7 +135,7 @@ class TestAdminEndpoints:
         """Test POST /api/admin/restart/{service_name} when docker-compose is not found."""
         mock_subprocess.side_effect = FileNotFoundError()
         
-        response = client.post("/api/admin/restart/redis")
+        response = client.post("/api/system/restart/redis")
         
         assert response.status_code == 500
         data = response.json()
@@ -151,7 +152,7 @@ class TestAdminEndpoints:
             mock_subprocess.return_value = mock_result
             
             response = client.post(
-                "/api/admin/restart/redis",
+                "/api/system/restart/redis",
                 json={"force": True}
             )
             
