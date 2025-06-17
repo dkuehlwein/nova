@@ -765,16 +765,27 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
         else:
             logger.info(f"Adding regular message to task {task_id} chat")
             
-            # Add human message to the conversation
-            human_message = HumanMessage(content=message_data.content)
+            # IMPORTANT: This endpoint should NOT be used for regular task conversations!
+            # Regular conversations should use /chat/stream with the thread_id: core_agent_task_{task_id}
+            # This endpoint is ONLY for escalation responses to avoid duplication issues.
             
-            # Stream the agent response
-            async for chunk in agent.astream(
-                {"messages": [human_message]},
-                config=config,
-                stream_mode="updates"
-            ):
-                logger.debug(f"Chat chunk: {chunk}")
+            # Return a helpful error that guides developers to the correct endpoint
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Invalid endpoint for regular task conversations",
+                    "message": "This endpoint is only for escalation responses. Use /chat/stream for regular messages.",
+                    "correct_usage": {
+                        "endpoint": "/chat/stream",
+                        "method": "POST",
+                        "body": {
+                            "messages": "[array of messages]",
+                            "thread_id": f"core_agent_task_{task_id}",
+                            "stream": True
+                        }
+                    }
+                }
+            )
         
         # Update task status so core agent can process the response
         # But only if still in needs_review - don't override completed tasks
