@@ -25,6 +25,13 @@ logger = logging.getLogger(__name__)
 _cached_tools: Optional[List[Any]] = None
 
 
+def clear_tools_cache():
+    """Clear the tools cache to force reload on next agent creation."""
+    global _cached_tools
+    _cached_tools = None
+    logger.info("Tools cache cleared - will reload tools on next agent creation")
+
+
 async def get_all_tools_with_mcp() -> List[Any]:
     """Get all tools including both local Nova tools and external MCP tools.
     
