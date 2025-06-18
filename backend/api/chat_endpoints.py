@@ -21,6 +21,13 @@ from langgraph.types import Command
 from agent.chat_agent import create_chat_agent
 import logging
 
+# System prompt management imports
+from models.models import SystemPromptResponse, SystemPromptUpdateRequest
+from utils.redis_manager import publish
+from models.events import NovaEvent
+from pathlib import Path
+import datetime
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -875,3 +882,199 @@ async def get_task_chat_data(request: Request, chat_id: str):
 # Note: Task chat message posting moved back to api_endpoints.py 
 # due to router prefix conflicts. The logic belongs here semantically,
 # but the URL structure requires it to be in the /api router. 
+
+@router.post("/system-prompt/clear-cache")
+async def clear_prompt_cache():
+    """Clear the chat agent cache to force recreation with updated prompt."""
+    clear_chat_agent_cache()
+    return {"message": "Chat agent cache cleared - will recreate with updated prompt"}
+
+
+@router.get("/system-prompt", response_model=SystemPromptResponse)
+async def get_system_prompt():
+    """Get the current system prompt content."""
+    try:
+        prompt_file = Path("backend/agent/prompts/NOVA_SYSTEM_PROMPT.md")
+        if not prompt_file.exists():
+            raise HTTPException(status_code=404, detail="System prompt file not found")
+        
+        with open(prompt_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        stats = prompt_file.stat()
+        
+        return SystemPromptResponse(
+            content=content,
+            file_path=str(prompt_file),
+            last_modified=datetime.datetime.fromtimestamp(stats.st_mtime).isoformat(),
+            size_bytes=stats.st_size
+        )
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is
+        raise
+    except Exception as e:
+        logger.error("Failed to read system prompt", extra={"data": {"error": str(e)}})
+        raise HTTPException(status_code=500, detail=f"Failed to read system prompt: {str(e)}")
+
+
+@router.put("/system-prompt", response_model=SystemPromptResponse)
+async def update_system_prompt(request: SystemPromptUpdateRequest):
+    """Update the system prompt content and clear agent cache."""
+    try:
+        prompt_file = Path("backend/agent/prompts/NOVA_SYSTEM_PROMPT.md")
+        
+        # Create backup before modifying - use shared backup directory
+        backup_dir = Path("backups")
+        backup_dir.mkdir(exist_ok=True)
+        
+        if prompt_file.exists():
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_file = backup_dir / f"prompt_{timestamp}.bak"
+            with open(prompt_file, 'r', encoding='utf-8') as f:
+                backup_content = f.read()
+            with open(backup_file, 'w', encoding='utf-8') as f:
+                f.write(backup_content)
+            logger.info("Created prompt backup", extra={"data": {"backup_file": str(backup_file)}})
+        
+        # Write new content
+        with open(prompt_file, 'w', encoding='utf-8') as f:
+            f.write(request.content)
+        
+        stats = prompt_file.stat()
+        
+        # Clear agent cache to force recreation with new prompt
+        clear_chat_agent_cache()
+        
+        # Publish event for real-time updates
+        event = NovaEvent(
+            id=f"prompt_update_{datetime.datetime.now().isoformat()}",
+            type="prompt_updated",
+            timestamp=datetime.datetime.now(),
+            data={
+                "prompt_file": str(prompt_file),
+                "change_type": "manual_update",
+                "size_bytes": stats.st_size
+            },
+            source="chat-api"
+        )
+        await publish(event)
+        
+        logger.info("System prompt updated", extra={"data": {
+            "file_path": str(prompt_file),
+            "size_bytes": stats.st_size,
+            "updated_by": "chat_api"
+        }})
+        
+        return SystemPromptResponse(
+            content=request.content,
+            file_path=str(prompt_file),
+            last_modified=datetime.datetime.fromtimestamp(stats.st_mtime).isoformat(),
+            size_bytes=stats.st_size
+        )
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is
+        raise
+    except Exception as e:
+        logger.error("Failed to update system prompt", extra={"data": {"error": str(e)}})
+        raise HTTPException(status_code=500, detail=f"Failed to update system prompt: {str(e)}")
+
+
+@router.get("/system-prompt/backups")
+async def list_prompt_backups():
+    """List available system prompt backups."""
+    try:
+        backup_dir = Path("backups")
+        if not backup_dir.exists():
+            return {"backups": []}
+        
+        backups = []
+        for backup_file in backup_dir.glob("prompt_*.bak"):
+            stats = backup_file.stat()
+            backups.append({
+                "filename": backup_file.name,
+                "path": str(backup_file),
+                "created": datetime.datetime.fromtimestamp(stats.st_mtime).isoformat(),
+                "size_bytes": stats.st_size
+            })
+        
+        # Sort by creation time, newest first
+        backups.sort(key=lambda x: x["created"], reverse=True)
+        
+        return {"backups": backups}
+    except Exception as e:
+        logger.error("Failed to list prompt backups", extra={"data": {"error": str(e)}})
+        raise HTTPException(status_code=500, detail=f"Failed to list backups: {str(e)}")
+
+
+@router.post("/system-prompt/restore/{backup_filename}")
+async def restore_prompt_backup(backup_filename: str):
+    """Restore system prompt from a backup file and clear agent cache."""
+    try:
+        backup_dir = Path("backups")
+        backup_file = backup_dir / backup_filename
+        
+        if not backup_file.exists():
+            raise HTTPException(status_code=404, detail="Backup file not found")
+        
+        # Validate filename format for security
+        if not backup_filename.startswith("prompt_") or not backup_filename.endswith(".bak"):
+            raise HTTPException(status_code=400, detail="Invalid backup filename format")
+        
+        # Read backup content
+        with open(backup_file, 'r', encoding='utf-8') as f:
+            backup_content = f.read()
+        
+        # Create backup of current version before restoring
+        prompt_file = Path("backend/agent/prompts/NOVA_SYSTEM_PROMPT.md")
+        if prompt_file.exists():
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            current_backup = backup_dir / f"prompt_{timestamp}_pre_restore.bak"
+            with open(prompt_file, 'r', encoding='utf-8') as f:
+                current_content = f.read()
+            with open(current_backup, 'w', encoding='utf-8') as f:
+                f.write(current_content)
+        
+        # Restore from backup
+        with open(prompt_file, 'w', encoding='utf-8') as f:
+            f.write(backup_content)
+        
+        stats = prompt_file.stat()
+        
+        # Clear agent cache to force recreation with restored prompt
+        clear_chat_agent_cache()
+        
+        # Publish event for real-time updates
+        event = NovaEvent(
+            id=f"prompt_restore_{datetime.datetime.now().isoformat()}",
+            type="prompt_updated",
+            timestamp=datetime.datetime.now(),
+            data={
+                "prompt_file": str(prompt_file),
+                "change_type": "restore_backup",
+                "backup_file": backup_filename,
+                "size_bytes": stats.st_size
+            },
+            source="chat-api"
+        )
+        await publish(event)
+        
+        logger.info("System prompt restored from backup", extra={"data": {
+            "backup_file": backup_filename,
+            "restored_to": str(prompt_file)
+        }})
+        
+        return SystemPromptResponse(
+            content=backup_content,
+            file_path=str(prompt_file),
+            last_modified=datetime.datetime.fromtimestamp(stats.st_mtime).isoformat(),
+            size_bytes=stats.st_size
+        )
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is
+        raise
+    except Exception as e:
+        logger.error("Failed to restore prompt backup", extra={"data": {
+            "backup_filename": backup_filename,
+            "error": str(e)
+        }})
+        raise HTTPException(status_code=500, detail=f"Failed to restore backup: {str(e)}") 

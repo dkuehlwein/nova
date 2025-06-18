@@ -15,7 +15,6 @@ from pydantic import BaseModel
 
 from config import settings
 from utils.logging import get_logger
-from utils.config_loader import load_mcp_yaml
 from mcp_client import mcp_manager
 from api.mcp_endpoints import get_mcp_servers
 from database.database import db_manager
@@ -243,4 +242,6 @@ async def system_health() -> Dict[str, str]:
         "status": "healthy",
         "service": "system-api",
         "version": "1.0.0"
-    } 
+    }
+
+
