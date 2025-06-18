@@ -65,6 +65,25 @@ async def create_website_event_handler():
                 service_manager.logger.info("Chat agent cache cleared - will use updated prompt on next request")
             except Exception as e:
                 service_manager.logger.error(f"Failed to reload chat agent: {e}")
+        
+        # Handle agent reloading for MCP server changes
+        elif event.type == "mcp_toggled":
+            try:
+                service_manager.logger.info(
+                    f"MCP server toggled, reloading chat agent: {event.data.get('server_name')} -> {event.data.get('enabled')}",
+                    extra={
+                        "data": {
+                            "event_id": event.id,
+                            "server_name": event.data.get('server_name'),
+                            "enabled": event.data.get('enabled'),
+                            "source": event.source
+                        }
+                    }
+                )
+                clear_chat_agent_cache()
+                service_manager.logger.info("Chat agent cache cleared - will use updated MCP tools on next request")
+            except Exception as e:
+                service_manager.logger.error(f"Failed to reload chat agent after MCP toggle: {e}")
     
     return handle_event
 
