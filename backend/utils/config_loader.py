@@ -253,9 +253,9 @@ class ConfigLoader:
         
         # Generate backup ID with timestamp
         timestamp = datetime.now()
-        backup_id = f"{timestamp.strftime('%Y%m%d_%H%M%S')}_mcp_config"
+        backup_id = f"mcp_config_{timestamp.strftime('%Y%m%d_%H%M%S')}"
         
-        # Create backups directory
+        # Create backup directory relative to config file
         backup_dir = self.config_path.parent / "backups"
         backup_dir.mkdir(exist_ok=True)
         
@@ -291,12 +291,12 @@ class ConfigLoader:
             return []
         
         backups = []
-        for backup_file in backup_dir.glob("*_mcp_config.yaml"):
+        for backup_file in backup_dir.glob("mcp_config_*.yaml"):
             try:
                 # Parse timestamp from filename
                 name_parts = backup_file.stem.split("_")
-                if len(name_parts) >= 3:
-                    date_str = "_".join(name_parts[:2])
+                if len(name_parts) >= 4:  # mcp_config_YYYYMMDD_HHMMSS
+                    date_str = "_".join(name_parts[2:4])
                     timestamp = datetime.strptime(date_str, "%Y%m%d_%H%M%S")
                     
                     # Load backup to get server count

@@ -35,6 +35,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      # Mount docker socket for service restart functionality (dev-only)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount configs directory for hot-reload
+      - ./configs:/app/configs
+      # Mount prompts directory for hot-reload
+      - ./backend/agent/prompts:/app/backend/agent/prompts
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${PORT:-8000}/health"]

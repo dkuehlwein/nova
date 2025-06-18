@@ -174,6 +174,72 @@ async def auto_cleanup_core_agent_data():
         )
 
 
+# Auto-use fixture for backup file cleanup
+@pytest.fixture(autouse=True)
+def auto_cleanup_backup_files():
+    """
+    Auto-cleanup fixture for backup files created during tests.
+    
+    Removes any .bak files and backup directories created during testing
+    to prevent accumulation of test backup files.
+    """
+    import shutil
+    from pathlib import Path
+    
+    def cleanup_backups():
+        """Remove backup files and directories created during tests."""
+        try:
+            # Clean up backup directories that might be created during tests
+            backup_dirs = [
+                Path("configs/backups"),
+                Path("backend/agent/prompts/backups"),
+                Path("backups"),  # Legacy location
+            ]
+            
+            for backup_dir in backup_dirs:
+                if backup_dir.exists() and backup_dir.is_dir():
+                    # Only remove if it contains test-related backup files
+                    test_backups = list(backup_dir.glob("*test*")) + list(backup_dir.glob("*Test*"))
+                    if test_backups:
+                        for backup_file in test_backups:
+                            if backup_file.is_file():
+                                backup_file.unlink()
+                    
+                    # Remove directory if empty
+                    try:
+                        if not any(backup_dir.iterdir()):
+                            backup_dir.rmdir()
+                    except OSError:
+                        pass  # Directory not empty or other issue
+            
+            # Clean up any .bak files in common test locations
+            test_locations = [
+                Path("configs"),
+                Path("backend/agent/prompts"),
+                Path("tests"),
+                Path("."),  # Current directory
+            ]
+            
+            for location in test_locations:
+                if location.exists():
+                    for bak_file in location.glob("**/*test*.bak"):
+                        bak_file.unlink()
+                    for bak_file in location.glob("**/*Test*.bak"):
+                        bak_file.unlink()
+                        
+        except Exception as e:
+            # Don't fail tests if backup cleanup fails
+            print(f"Warning: Backup cleanup failed: {e}")
+    
+    # Clean up before test to ensure clean state
+    cleanup_backups()
+    
+    yield  # Let the test run
+    
+    # Clean up after test
+    cleanup_backups()
+
+
 # Mark all tests as asyncio by default if they're async
 def pytest_configure(config):
     """Configure pytest for async tests."""

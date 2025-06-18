@@ -123,7 +123,10 @@ class TestSystemPromptEndpoints:
         
         def path_constructor(path_str):
             if "NOVA_SYSTEM_PROMPT.md" in str(path_str):
+                # Mock the prompt file with a parent attribute
                 mock_prompt_file.__str__ = lambda self: str(path_str)
+                mock_prompt_file.parent = Mock()
+                mock_prompt_file.parent.__truediv__ = lambda self, other: mock_backup_dir if other == "backups" else Mock()
                 return mock_prompt_file
             elif str(path_str) == "backups":
                 mock_backup_dir.__str__ = lambda self: str(path_str)
@@ -204,7 +207,13 @@ class TestSystemPromptEndpoints:
         mock_backup_dir.glob.return_value = [mock_backup1, mock_backup2]
         
         def path_constructor(path_str):
-            if str(path_str) == "backups":
+            if "NOVA_SYSTEM_PROMPT.md" in str(path_str):
+                mock_prompt_file = Mock()
+                mock_prompt_file.__str__ = lambda self: str(path_str)
+                mock_prompt_file.parent = Mock()
+                mock_prompt_file.parent.__truediv__ = lambda self, other: mock_backup_dir if other == "backups" else Mock()
+                return mock_prompt_file
+            elif str(path_str) == "backups":
                 return mock_backup_dir
             return Mock()
         
@@ -226,7 +235,13 @@ class TestSystemPromptEndpoints:
         mock_backup_dir.exists.return_value = False
         
         def path_constructor(path_str):
-            if str(path_str) == "backups":
+            if "NOVA_SYSTEM_PROMPT.md" in str(path_str):
+                mock_prompt_file = Mock()
+                mock_prompt_file.__str__ = lambda self: str(path_str)
+                mock_prompt_file.parent = Mock()
+                mock_prompt_file.parent.__truediv__ = lambda self, other: mock_backup_dir if other == "backups" else Mock()
+                return mock_prompt_file
+            elif str(path_str) == "backups":
                 return mock_backup_dir
             return Mock()
         
@@ -236,7 +251,7 @@ class TestSystemPromptEndpoints:
         
         assert response.status_code == 200
         data = response.json()
-        assert data["backups"] == []
+        assert data == {"backups": []}
 
     @patch("backend.api.chat_endpoints.publish")
     @patch("backend.api.chat_endpoints.clear_chat_agent_cache")
@@ -262,15 +277,17 @@ class TestSystemPromptEndpoints:
         mock_prompt_file.stat.return_value = mock_stat_obj
         
         def path_constructor(path_str):
-            if str(path_str) == "backups":
+            if "NOVA_SYSTEM_PROMPT.md" in str(path_str):
+                mock_prompt_file.__str__ = lambda self: str(path_str)
+                mock_prompt_file.parent = Mock()
+                mock_prompt_file.parent.__truediv__ = lambda self, other: mock_backup_dir if other == "backups" else Mock()
+                return mock_prompt_file
+            elif str(path_str) == "backups":
                 mock_backup_dir.__str__ = lambda self: str(path_str)
                 return mock_backup_dir
             elif backup_filename in str(path_str):
                 mock_backup_file.__str__ = lambda self: str(path_str)
                 return mock_backup_file
-            elif "NOVA_SYSTEM_PROMPT.md" in str(path_str):
-                mock_prompt_file.__str__ = lambda self: str(path_str)
-                return mock_prompt_file
             else:
                 mock_path = Mock()
                 mock_path.__str__ = lambda self: str(path_str)
@@ -307,7 +324,13 @@ class TestSystemPromptEndpoints:
         mock_backup_dir.__truediv__ = lambda self, other: mock_backup_file
         
         def path_constructor(path_str):
-            if str(path_str) == "backups":
+            if "NOVA_SYSTEM_PROMPT.md" in str(path_str):
+                mock_prompt_file = Mock()
+                mock_prompt_file.__str__ = lambda self: str(path_str)
+                mock_prompt_file.parent = Mock()
+                mock_prompt_file.parent.__truediv__ = lambda self, other: mock_backup_dir if other == "backups" else Mock()
+                return mock_prompt_file
+            elif str(path_str) == "backups":
                 mock_backup_dir.__str__ = lambda self: str(path_str)
                 return mock_backup_dir
             elif backup_filename in str(path_str):
@@ -335,7 +358,13 @@ class TestSystemPromptEndpoints:
             mock_backup_dir.__truediv__ = lambda self, other: Mock(name=f"backup_path_{other}", spec=Path)
             
             def path_constructor(path_str):
-                if str(path_str) == "backups":
+                if "NOVA_SYSTEM_PROMPT.md" in str(path_str):
+                    mock_prompt_file = Mock()
+                    mock_prompt_file.__str__ = lambda self: str(path_str)
+                    mock_prompt_file.parent = Mock()
+                    mock_prompt_file.parent.__truediv__ = lambda self, other: mock_backup_dir if other == "backups" else Mock()
+                    return mock_prompt_file
+                elif str(path_str) == "backups":
                     return mock_backup_dir
                 else:
                     mock_path = Mock()
@@ -363,7 +392,13 @@ class TestSystemPromptEndpoints:
         mock_backup_dir.__truediv__ = lambda self, other: mock_backup_file
         
         def path_constructor(path_str):
-            if str(path_str) == "backups":
+            if "NOVA_SYSTEM_PROMPT.md" in str(path_str):
+                mock_prompt_file = Mock()
+                mock_prompt_file.__str__ = lambda self: str(path_str)
+                mock_prompt_file.parent = Mock()
+                mock_prompt_file.parent.__truediv__ = lambda self, other: mock_backup_dir if other == "backups" else Mock()
+                return mock_prompt_file
+            elif str(path_str) == "backups":
                 return mock_backup_dir
             elif backup_filename in str(path_str):
                 return mock_backup_file

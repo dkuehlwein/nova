@@ -923,8 +923,8 @@ async def update_system_prompt(request: SystemPromptUpdateRequest):
     try:
         prompt_file = Path("backend/agent/prompts/NOVA_SYSTEM_PROMPT.md")
         
-        # Create backup before modifying - use shared backup directory
-        backup_dir = Path("backups")
+        # Create backup directory relative to prompt file (consistent with config backups)
+        backup_dir = prompt_file.parent / "backups"
         backup_dir.mkdir(exist_ok=True)
         
         if prompt_file.exists():
@@ -983,7 +983,8 @@ async def update_system_prompt(request: SystemPromptUpdateRequest):
 async def list_prompt_backups():
     """List available system prompt backups."""
     try:
-        backup_dir = Path("backups")
+        prompt_file = Path("backend/agent/prompts/NOVA_SYSTEM_PROMPT.md")
+        backup_dir = prompt_file.parent / "backups"
         if not backup_dir.exists():
             return {"backups": []}
         
@@ -1010,7 +1011,8 @@ async def list_prompt_backups():
 async def restore_prompt_backup(backup_filename: str):
     """Restore system prompt from a backup file and clear agent cache."""
     try:
-        backup_dir = Path("backups")
+        prompt_file = Path("backend/agent/prompts/NOVA_SYSTEM_PROMPT.md")
+        backup_dir = prompt_file.parent / "backups"
         backup_file = backup_dir / backup_filename
         
         if not backup_file.exists():
@@ -1025,7 +1027,6 @@ async def restore_prompt_backup(backup_filename: str):
             backup_content = f.read()
         
         # Create backup of current version before restoring
-        prompt_file = Path("backend/agent/prompts/NOVA_SYSTEM_PROMPT.md")
         if prompt_file.exists():
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             current_backup = backup_dir / f"prompt_{timestamp}_pre_restore.bak"
