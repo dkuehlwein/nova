@@ -26,7 +26,6 @@ from models.chat import SystemPromptResponse, SystemPromptUpdateRequest
 from utils.redis_manager import publish
 from models.events import NovaEvent
 from pathlib import Path
-import datetime
 
 logger = logging.getLogger(__name__)
 
