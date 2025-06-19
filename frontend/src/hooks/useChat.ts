@@ -3,10 +3,22 @@ import { apiRequest, API_ENDPOINTS, getApiBaseUrlSync } from '@/lib/api';
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
   isStreaming?: boolean;
+  metadata?: {
+    type?: string;
+    collapsible_content?: string;
+    is_collapsible?: boolean;
+    title?: string;
+  };
+}
+
+export interface PendingEscalation {
+  question: string;
+  instructions: string;
+  tool_call_id?: string;
 }
 
 export interface ChatState {
@@ -14,11 +26,30 @@ export interface ChatState {
   isLoading: boolean;
   error: string | null;
   isConnected: boolean;
+  pendingEscalation: PendingEscalation | null;
+}
+
+interface StreamMessageData {
+  role: string;
+  content: string;
+  timestamp?: string;
+}
+
+interface StreamToolData {
+  tool: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+  timestamp?: string;
+}
+
+interface StreamErrorData {
+  error: string;
+  details?: string;
 }
 
 export interface StreamEvent {
   type: 'message' | 'tool_call' | 'tool_result' | 'complete' | 'error';
-  data: any;
+  data: StreamMessageData | StreamToolData | StreamErrorData | Record<string, unknown>;
 }
 
 export function useChat() {
@@ -27,6 +58,7 @@ export function useChat() {
     isLoading: false,
     error: null,
     isConnected: true, // Start as connected to avoid initial health check
+    pendingEscalation: null,
   });
 
   const [currentThreadId, setCurrentThreadId] = useState(() => `chat-${Date.now()}`);
@@ -63,42 +95,58 @@ export function useChat() {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     
     try {
-      // Fetch chat messages from the backend
-      const backendMessages = await apiRequest<{
-        id: string;
-        sender: string;
-        content: string;
-        created_at: string;
-        needs_decision: boolean;
-      }[]>(API_ENDPOINTS.chatMessages(chatId));
-
-      // Convert backend messages to frontend format
-      const chatMessages: ChatMessage[] = backendMessages.map((msg, index) => ({
-        id: msg.id || `loaded-msg-${index}`,
-        role: msg.sender === 'user' ? 'user' : 'assistant',
-        content: msg.content,
-        timestamp: msg.created_at,
-        isStreaming: false,
-      }));
-
-      // Set the messages and update thread ID
-      setState(prev => ({
-        ...prev,
-        messages: chatMessages,
-        isLoading: false,
-        error: null,
-      }));
-
+      // Set the thread ID first (especially important for task threads)
       setCurrentThreadId(chatId);
-
-      console.log(`Loaded chat ${chatId} with ${chatMessages.length} messages`);
       
-    } catch (error: any) {
+      // Try to fetch chat messages from the backend
+      try {
+        const backendMessages = await apiRequest<{
+          id: string;
+          sender: string;
+          content: string;
+          created_at: string;
+          needs_decision: boolean;
+        }[]>(API_ENDPOINTS.chatMessages(chatId));
+
+        // Convert backend messages to frontend format
+        const chatMessages: ChatMessage[] = backendMessages.map((msg, index) => ({
+          id: msg.id || `loaded-msg-${index}`,
+          role: msg.sender === 'user' ? 'user' : (msg.sender === 'system' ? 'system' : 'assistant'),
+          content: msg.content,
+          timestamp: msg.created_at,
+          isStreaming: false,
+          metadata: (msg as {metadata?: {type?: string; is_collapsible?: boolean; title?: string}}).metadata || undefined,
+        }));
+
+        // Set the messages
+        setState(prev => ({
+          ...prev,
+          messages: chatMessages,
+          isLoading: false,
+          error: null,
+        }));
+
+        console.log(`Loaded chat ${chatId} with ${chatMessages.length} messages`);
+        
+      } catch {
+        // For task threads that don't exist yet, this is normal
+        // Clear messages and prepare for a new conversation
+        console.log(`Chat thread ${chatId} not found or empty, starting new conversation`);
+        setState(prev => ({
+          ...prev,
+          messages: [],
+          isLoading: false,
+          error: null,
+        }));
+      }
+      
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load chat';
       console.error('Failed to load chat:', error);
       setState(prev => ({
         ...prev,
         isLoading: false,
-        error: error.message || 'Failed to load chat',
+        error: errorMessage,
       }));
     }
   }, []);
@@ -108,7 +156,7 @@ export function useChat() {
     if (!content.trim()) return;
 
     // Add user message
-    const userMessageId = addMessage({
+    addMessage({
       role: 'user',
       content: content.trim(),
     });
@@ -124,6 +172,9 @@ export function useChat() {
           isStreaming: true,
         });
 
+        let assistantContent = '';
+        let assistantTimestamp: string | null = null;
+
         // Cancel any ongoing request
         if (abortControllerRef.current) {
           abortControllerRef.current.abort();
@@ -137,15 +188,10 @@ export function useChat() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            messages: state.messages.concat([{
+            messages: [{
               role: 'user',
               content: content.trim(),
-              timestamp: new Date().toISOString(),
-              id: userMessageId,
-            }]).map(msg => ({
-              role: msg.role,
-              content: msg.content,
-            })),
+            }],
             thread_id: currentThreadId,
             stream: true,
           }),
@@ -160,8 +206,6 @@ export function useChat() {
         if (!reader) {
           throw new Error('No response reader available');
         }
-
-        let assistantContent = '';
 
         try {
           while (true) {
@@ -179,43 +223,48 @@ export function useChat() {
 
                   switch (event.type) {
                     case 'message':
-                      if (event.data.role === 'assistant') {
+                      const messageData = event.data as StreamMessageData;
+                      if (messageData.role === 'assistant') {
+                        // Store timestamp from the first message
+                        if (messageData.timestamp && !assistantTimestamp) {
+                          assistantTimestamp = messageData.timestamp;
+                        }
+                        
                         // Accumulate content instead of overwriting
-                        if (assistantContent && event.data.content) {
+                        if (assistantContent && messageData.content) {
                           // Add separator between responses for readability
-                          assistantContent += '\n\n' + event.data.content;
+                          assistantContent += '\n\n' + messageData.content;
                         } else {
-                          assistantContent = event.data.content;
+                          assistantContent = messageData.content;
                         }
                         updateMessage(assistantMessageId, {
                           content: assistantContent,
                           isStreaming: true,
+                          timestamp: assistantTimestamp || new Date().toISOString(),
                         });
                       }
                       break;
 
                     case 'tool_call':
-                      // Add a visual indicator for tool usage
-                      const toolMessage = `\n\n🔧 Using tool: ${event.data.tool}...`;
-                      assistantContent += toolMessage;
-                      updateMessage(assistantMessageId, {
-                        content: assistantContent,
-                        isStreaming: true,
-                      });
+                      // Handle tool calls for display purposes
+                      // You can display tool calls if needed
                       break;
 
                     case 'complete':
                       updateMessage(assistantMessageId, {
                         content: assistantContent,
                         isStreaming: false,
+                        timestamp: assistantTimestamp || new Date().toISOString(),
                       });
                       break;
 
                     case 'error':
-                      setState(prev => ({ ...prev, error: event.data.error }));
+                      const errorData = event.data as StreamErrorData;
+                      setState(prev => ({ ...prev, error: errorData.error }));
                       updateMessage(assistantMessageId, {
                         content: assistantContent || 'Error occurred while processing your message.',
                         isStreaming: false,
+                        timestamp: assistantTimestamp || new Date().toISOString(),
                       });
                       break;
                   }
@@ -237,15 +286,10 @@ export function useChat() {
         }>(API_ENDPOINTS.chat, {
           method: 'POST',
           body: JSON.stringify({
-            messages: state.messages.concat([{
+            messages: [{
               role: 'user',
               content: content.trim(),
-              timestamp: new Date().toISOString(),
-              id: userMessageId,
-            }]).map(msg => ({
-              role: msg.role,
-              content: msg.content,
-            })),
+            }],
             thread_id: currentThreadId,
             stream: false,
           }),
@@ -259,16 +303,17 @@ export function useChat() {
 
       setState(prev => ({ ...prev, isConnected: true }));
 
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
         // Request was cancelled, this is expected
         return;
       }
 
       console.error('Chat error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
       setState(prev => ({
         ...prev,
-        error: error.message || 'Failed to send message',
+        error: errorMessage,
         isConnected: false,
       }));
 
@@ -279,7 +324,7 @@ export function useChat() {
     } finally {
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [state.messages, currentThreadId, addMessage, updateMessage]);
+  }, [currentThreadId, addMessage, updateMessage]);
 
   // Stop any ongoing streaming
   const stopStreaming = useCallback(() => {
@@ -298,6 +343,7 @@ export function useChat() {
       isLoading: false,
       error: null,
       isConnected: true, // Keep connected status
+      pendingEscalation: null,
     });
     // Generate a new thread ID for the new chat
     setCurrentThreadId(`chat-${Date.now()}`);
@@ -318,11 +364,12 @@ export function useChat() {
       }));
 
       return health;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to check agent health';
       setState(prev => ({
         ...prev,
         isConnected: false,
-        error: error.message || 'Failed to check agent health',
+        error: errorMessage,
       }));
       throw error;
     }
@@ -337,11 +384,108 @@ export function useChat() {
       }>(API_ENDPOINTS.chatTest, { method: 'POST' });
 
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Agent test failed:', error);
       throw error;
     }
   }, []);
+
+  // Load task chat with escalation support
+  const loadTaskChat = useCallback(async (taskId: string) => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    
+    try {
+      // Set the thread ID for task chat
+      const threadId = `core_agent_task_${taskId}`;
+      setCurrentThreadId(threadId);
+      
+      // Use the new task chat data endpoint that includes escalation info
+      const taskChatData = await apiRequest<{
+        messages: Array<{
+          id: string;
+          sender: string;
+          content: string;
+          created_at: string;
+          needs_decision: boolean;
+          metadata?: {
+            type?: string;
+            is_collapsible?: boolean;
+            title?: string;
+          };
+        }>;
+        pending_escalation?: {
+          question: string;
+          instructions: string;
+          tool_call_id?: string;
+        };
+      }>(API_ENDPOINTS.taskChatData(threadId));
+
+      // Convert messages to ChatMessage format (with metadata!)
+      const chatMessages: ChatMessage[] = taskChatData.messages.map((msg, index) => ({
+        id: msg.id || `loaded-msg-${index}`,
+        role: msg.sender === 'user' ? 'user' : (msg.sender === 'system' ? 'system' : 'assistant'),
+        content: msg.content,
+        timestamp: msg.created_at,
+        isStreaming: false,
+        metadata: (msg as {metadata?: {type?: string; is_collapsible?: boolean; title?: string}}).metadata || undefined,
+      }));
+
+      // Use escalation data from the endpoint
+      const pendingEscalation = taskChatData.pending_escalation || null;
+
+      // Set the messages and escalation state
+      setState(prev => ({
+        ...prev,
+        messages: chatMessages,
+        isLoading: false,
+        error: null,
+        pendingEscalation,
+      }));
+
+      console.log(`Loaded task chat ${taskId} with ${chatMessages.length} messages`);
+      if (pendingEscalation) {
+        console.log('Pending escalation detected:', pendingEscalation);
+      }
+      
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load task chat';
+      console.error('Failed to load task chat:', error);
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage,
+        pendingEscalation: null,
+      }));
+    }
+  }, []);
+
+  // Send escalation response
+  const sendEscalationResponse = useCallback(async (taskId: string, response: string) => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    
+    try {
+      await apiRequest(API_ENDPOINTS.taskChatMessage(taskId), {
+        method: 'POST',
+        body: JSON.stringify({
+          content: response,
+          author: 'human'
+        }),
+      });
+
+      // Clear the escalation and reload the task chat
+      setState(prev => ({ ...prev, pendingEscalation: null }));
+      await loadTaskChat(taskId);
+      
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send escalation response';
+      console.error('Failed to send escalation response:', error);
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage,
+      }));
+    }
+  }, [loadTaskChat]);
 
   return {
     // State
@@ -349,6 +493,7 @@ export function useChat() {
     isLoading: state.isLoading,
     error: state.error,
     isConnected: state.isConnected,
+    pendingEscalation: state.pendingEscalation,
     threadId: currentThreadId,
 
     // Actions
@@ -358,6 +503,8 @@ export function useChat() {
     addMessage,
     updateMessage,
     loadChat, // New function for loading existing chats
+    loadTaskChat, // Load task chat with escalation support
+    sendEscalationResponse, // Send response to escalation
 
     // Utilities (manual trigger only)
     checkHealth,

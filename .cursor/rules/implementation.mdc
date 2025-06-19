@@ -1,0 +1,61 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Implementation Rules
+Use context7 to review the latest documentation of any library.
+Don't make assumption how some function/librarby could work. Look and the docs and/or test it.
+
+We are building an MVP for a single admin user and can just change things. This means:
+- Don't worry about breaking thing and deprecations. 
+- We don't need authentication
+
+## Logging Standards
+
+**All new code must follow these logging standards:**
+
+1. **Use structured logging** with `structlog` for consistent JSON output
+2. **Log levels**: DEBUG, INFO, WARNING, ERROR, CRITICAL
+3. **Required fields** in every log entry:
+   - `timestamp` (ISO format)
+   - `level` 
+   - `service` (e.g., "chat-agent", "core-agent", "settings-service")
+   - `message` (human-readable)
+   - `request_id` (for request correlation, if applicable)
+
+4. **What to log**:
+   - All configuration changes (INFO level)
+   - All external API calls (DEBUG level)
+   - All errors and exceptions (ERROR level)
+   - System state changes (INFO level)
+   - Performance metrics (DEBUG level)
+
+5. **Log format example**:
+   ```json
+   {
+     "timestamp": "2025-06-06T10:00:00Z",
+     "level": "INFO",
+     "service": "settings-service",
+     "message": "MCP server toggled",
+     "request_id": "req-123",
+     "data": {
+       "server_name": "gmail",
+       "enabled": true,
+       "user_action": true
+     }
+   }
+   ```
+
+6. **Implementation**:
+   - Use the functions in `backend/utils/logging.py` with standardized logger setup
+   - Use `logger.info("message", extra={"data": {...}})` pattern
+   - Add request ID middleware for FastAPI endpoints
+
+## Error Handling Standards
+
+1. **Always log errors** before re-raising or returning error responses
+2. **Include context** in error logs (request parameters, system state)
+3. **Use structured error responses** with consistent format
+4. **Graceful degradation** - system should continue operating when non-critical components fail
+

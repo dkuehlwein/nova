@@ -10,7 +10,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Python library directories  
+**/lib/python*/
 lib64/
 parts/
 sdist/
@@ -217,3 +218,7 @@ cython_debug/
 .pypirc
 mcp_servers/gmail/token.json
 mcp_servers/gmail/credentials.json
+
+# Nova backup files
+*.bak
+**/backups/

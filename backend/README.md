@@ -181,6 +181,21 @@ Waiting (external factors)
 - `MCP_SERVER_PORT` - Server port (default: 8001)
 - `MCP_SERVER_HOST` - Server host (default: 0.0.0.0)
 - `SQL_DEBUG` - Enable SQL query logging (default: false)
+- `FORCE_MEMORY_CHECKPOINTER` - Force in-memory checkpointer even when PostgreSQL is available (default: false)
+
+### Checkpointer Configuration
+
+The chat agent uses LangGraph checkpointers to persist conversation state:
+
+- **Production**: Uses PostgreSQL-based checkpointer when `DATABASE_URL` is configured
+- **Development**: Can force in-memory checkpointer with `FORCE_MEMORY_CHECKPOINTER=true`
+- **Fallback**: Automatically falls back to in-memory if PostgreSQL is unavailable
+
+**Development/Debugging**: Set `FORCE_MEMORY_CHECKPOINTER=true` in your `.env` file to:
+- Skip PostgreSQL connection setup complexity
+- Use simple in-memory state for faster iteration
+- Debug conversation flows without persistence overhead
+- Test agent behavior in isolation
 
 ### Docker Compose Override
 Create `docker-compose.override.yml` for custom settings:

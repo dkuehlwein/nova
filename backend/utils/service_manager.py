@@ -1,0 +1,147 @@
+"""
+Service Manager Utilities
+
+Common utilities for managing Nova services including startup, shutdown,
+and Redis event handling.
+"""
+
+import asyncio
+import os
+from typing import Optional, Callable, Any, Dict
+from contextlib import asynccontextmanager
+
+from utils.logging import configure_logging, get_logger
+
+
+class ServiceManager:
+    """Manages common service lifecycle operations."""
+    
+    def __init__(self, service_name: str):
+        self.service_name = service_name
+        self.logger = get_logger(f"{service_name}-startup")
+        
+        # Reduce verbosity of third-party libraries
+        import logging
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("mcp").setLevel(logging.WARNING)
+        logging.getLogger("mcp.client").setLevel(logging.WARNING)
+        logging.getLogger("mcp.client.streamable_http").setLevel(logging.WARNING)
+    
+    async def start_prompt_watching(self):
+        """Start watching Nova prompt file for changes."""
+        try:
+            from utils.prompt_loader import start_nova_prompt_watching
+            start_nova_prompt_watching()
+            self.logger.info("Started watching Nova system prompt file for changes")
+        except Exception as e:
+            self.logger.error(f"Failed to start prompt watching: {e}")
+    
+    async def stop_prompt_watching(self):
+        """Stop watching Nova prompt file."""
+        try:
+            from utils.prompt_loader import stop_nova_prompt_watching
+            stop_nova_prompt_watching()
+            self.logger.info("Stopped watching Nova system prompt file")
+        except Exception as e:
+            self.logger.error(f"Error stopping prompt watching: {e}")
+    
+    async def start_redis_bridge(self, app, event_handler: Callable[[Any], Any]):
+        """Start Redis event bridge with custom event handler.
+        
+        Args:
+            app: FastAPI app instance to store the task
+            event_handler: Async function to handle each Redis event
+        """
+        try:
+            from utils.redis_manager import subscribe
+            
+            async def redis_bridge():
+                """Background task to handle Redis events."""
+                try:
+                    async for event in subscribe():
+                        await event_handler(event)
+                except Exception as e:
+                    self.logger.error(f"Redis bridge error: {e}")
+            
+            # Start the background task
+            bridge_task = asyncio.create_task(redis_bridge())
+            app.state.redis_bridge_task = bridge_task
+            self.logger.info("Started Redis event bridge")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to start Redis event bridge: {e}")
+            app.state.redis_bridge_task = None
+    
+    async def stop_redis_bridge(self, app):
+        """Stop Redis event bridge."""
+        if hasattr(app.state, 'redis_bridge_task') and app.state.redis_bridge_task:
+            try:
+                app.state.redis_bridge_task.cancel()
+                await asyncio.wait_for(app.state.redis_bridge_task, timeout=5.0)
+                self.logger.info("Stopped Redis event bridge")
+            except asyncio.CancelledError:
+                self.logger.info("Redis bridge task cancelled successfully")
+            except asyncio.TimeoutError:
+                self.logger.warning("Redis bridge task shutdown timed out")
+            except Exception as e:
+                self.logger.error(f"Error stopping Redis bridge task: {e}")
+    
+    async def cleanup_mcp(self):
+        """Clean up MCP connections."""
+        try:
+            from mcp_client import mcp_manager
+            await asyncio.wait_for(mcp_manager.cleanup(), timeout=3.0)
+        except asyncio.TimeoutError:
+            self.logger.warning("MCP client cleanup timed out")
+        except Exception as e:
+            self.logger.debug(f"MCP cleanup error: {e}")
+    
+    async def cleanup_database(self):
+        """Clean up database connections."""
+        try:
+            from database.database import db_manager
+            await asyncio.wait_for(db_manager.close(), timeout=5.0)
+        except asyncio.TimeoutError:
+            self.logger.warning("Database shutdown timed out")
+    
+    async def cleanup_redis(self):
+        """Close Redis connections."""
+        try:
+            from utils.redis_manager import close_redis
+            await close_redis()
+            self.logger.info("Closed Redis connection")
+        except Exception as e:
+            self.logger.error(f"Error closing Redis connection: {e}")
+
+
+async def create_prompt_updated_handler(reload_callback: Callable[[], Any]):
+    """Create a Redis event handler for prompt updates.
+    
+    Args:
+        reload_callback: Async function to call when prompt is updated
+        
+    Returns:
+        Event handler function
+    """
+    logger = get_logger("redis-events")
+    
+    async def handle_event(event):
+        # Handle agent reloading for prompt updates
+        if event.type == "prompt_updated":
+            try:
+                logger.info(
+                    f"Prompt updated, reloading agent: {event.data.get('prompt_file')}",
+                    extra={
+                        "data": {
+                            "event_id": event.id,
+                            "prompt_file": event.data.get('prompt_file'),
+                            "source": event.source
+                        }
+                    }
+                )
+                await reload_callback()
+                logger.info("Agent reloaded with updated prompt")
+            except Exception as e:
+                logger.error(f"Failed to reload agent: {e}")
+    
+    return handle_event 

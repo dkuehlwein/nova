@@ -3,6 +3,9 @@ import aiohttp
 from typing import List, Dict, Any, Optional, Tuple
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from config import settings
+from utils.logging import get_logger
+
+logger = get_logger("mcp-client")
 
 
 class MCPClientManager:
@@ -15,6 +18,8 @@ class MCPClientManager:
     
     async def check_server_health(self, server_info: Dict[str, Any], timeout: float = 5.0) -> bool:
         """Check if a single MCP server is healthy via its /health endpoint"""
+        server_name = server_info.get("name", "unknown")
+        
         try:
             health_url = server_info.get("health_url")
             if not health_url:
@@ -22,19 +27,21 @@ class MCPClientManager:
                 base_url = server_info["url"].replace("/mcp", "")
                 health_url = f"{base_url}/health"
             
+
+            
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
                 async with session.get(health_url) as response:
                     if response.status == 200:
                         return True
                     else:
-                        print(f"  ❌ {server_info['name'].title()}: Health check failed with status {response.status}")
+                        logger.warning(f"Health check failed for {server_name}: HTTP {response.status}")
                         return False
                         
         except asyncio.TimeoutError:
-            print(f"  ❌ {server_info['name'].title()}: Health check timed out")
+            logger.warning(f"Health check timeout for {server_name}")
             return False
         except Exception as e:
-            print(f"  ❌ {server_info['name'].title()}: Health check error: {e}")
+            logger.error(f"Health check error for {server_name}: {e}")
             return False
     
     async def discover_working_servers(self) -> List[Dict[str, Any]]:
@@ -42,10 +49,10 @@ class MCPClientManager:
         all_servers = settings.MCP_SERVERS
         
         if not all_servers:
-            print("No MCP servers are configured. Please check your configuration.")
+            logger.warning("No MCP servers configured")
             return []
         
-        print(f"🔍 Checking health of {len(all_servers)} configured MCP servers...")
+        logger.info(f"Checking health of {len(all_servers)} MCP servers")
         
         # Check health of all servers concurrently
         health_checks = [
@@ -57,24 +64,38 @@ class MCPClientManager:
         
         # Filter to only healthy servers
         working_servers = []
+        failed_servers = []
         for server, is_healthy in zip(all_servers, health_results):
+            server_name = server.get("name", "unknown")
             if isinstance(is_healthy, Exception):
-                print(f"  ❌ {server['name'].title()}: Health check exception: {is_healthy}")
+                failed_servers.append({
+                    "name": server_name,
+                    "reason": f"exception: {str(is_healthy)}"
+                })
                 continue
             
             if is_healthy:
-                print(f"  ✅ {server['name'].title()}: Server is healthy")
                 working_servers.append(server)
             else:
-                print(f"  ❌ {server['name'].title()}: Server is not responding")
+                failed_servers.append({
+                    "name": server_name,
+                    "reason": "health_check_failed"
+                })
+        
+        if failed_servers:
+            failed_names = [f["name"] for f in failed_servers]
+            logger.warning(f"Unavailable MCP servers: {', '.join(failed_names)}")
+        
+        logger.info(f"Found {len(working_servers)} healthy MCP servers")
         
         self.working_servers = working_servers
         return working_servers
     
     async def test_server_tools(self, server_info: Dict[str, Any]) -> Dict[str, Any]:
         """Test if a single MCP server's tools can be fetched"""
+        server_name = server_info.get("name", "unknown")
+        
         try:
-            server_name = server_info["name"].title()
             server_config = {
                 server_name: {
                     "url": server_info["url"],
@@ -95,6 +116,8 @@ class MCPClientManager:
             }
             
         except Exception as e:
+            logger.error(f"Tool fetch failed for {server_name}: {e}")
+            
             return {
                 "server": server_info,
                 "status": "error", 
@@ -105,15 +128,18 @@ class MCPClientManager:
     async def initialize_client(self) -> Tuple[Optional[MultiServerMCPClient], List[Any]]:
         """Initialize MCP client with working servers and fetch tools"""
         
+        logger.info("Initializing MCP client")
+        
         # First discover working servers
         working_servers = await self.discover_working_servers()
         
         if not working_servers:
-            print("❌ No working MCP servers found. Please check your server configurations.")
+            logger.error("No working MCP servers found")
             return None, []
         
         # Test tool fetching for each working server
-        print(f"\n🔧 Testing tool fetching for {len(working_servers)} working servers...")
+        logger.info(f"Testing tool fetching for {len(working_servers)} servers")
+        
         tool_tests = [
             self.test_server_tools(server) 
             for server in working_servers
@@ -124,68 +150,61 @@ class MCPClientManager:
         # Filter to servers that can provide tools
         functional_servers = []
         total_tools_expected = 0
+        failed_tool_servers = []
         
-        print("\n📊 Tool Test Results:")
         for result in test_results:
             if isinstance(result, Exception):
-                print(f"  ❌ Tool test error: {result}")
+                logger.error(f"Tool test resulted in exception: {result}")
                 continue
                 
-            server_name = result["server"]["name"].title()
+            server_name = result["server"].get("name", "unknown")
             if result["status"] == "success":
-                print(f"  ✅ {server_name}: {result['tools_count']} tools available")
                 functional_servers.append(result["server"])
                 total_tools_expected += result["tools_count"]
             else:
-                print(f"  ❌ {server_name}: {result['error']}")
+                error_msg = result.get('error', 'unknown error')
+                failed_tool_servers.append({
+                    "name": server_name,
+                    "error": error_msg[:100] + "..." if len(error_msg) > 100 else error_msg
+                })
+        
+        if failed_tool_servers:
+            failed_names = [f["name"] for f in failed_tool_servers]
+            logger.warning(f"Tool fetch failures: {', '.join(failed_names)}")
         
         if not functional_servers:
-            print("\n❌ No MCP servers can provide tools. Please check your server implementations.")
+            logger.error("No MCP servers can provide tools")
             return None, []
         
-        print(f"\n✅ Found {len(functional_servers)} functional server(s) with {total_tools_expected} total tools")
+        logger.info(f"Found {len(functional_servers)} functional servers with {total_tools_expected} tools")
         
         # Prepare server configuration for MultiServerMCPClient
         server_config = {}
         for server_info in functional_servers:
-            server_name = server_info["name"].title()
+            server_name = server_info.get("name", "unknown")
             server_config[server_name] = {
                 "url": server_info["url"],
                 "transport": "streamable_http",
                 "description": server_info["description"]
             }
-            print(f"  - {server_name}: {server_info['url']}")
         
         # Create MultiServerMCPClient with functional servers
         try:
             client = MultiServerMCPClient(server_config)
-            print(f"\n🔌 Fetching tools from {len(server_config)} functional MCP server(s)...")
-            
             tools = await client.get_tools()
             
             if not tools:
-                print("⚠️ No tools were fetched from functional MCP servers.")
+                logger.warning("No tools were fetched from functional MCP servers")
                 return client, []
             
-            print(f"\n✅ Successfully fetched {len(tools)} tool(s) total:")
-            for tool in tools:
-                print(f"  - {tool.name}: {tool.description}")
+            logger.info(f"Successfully initialized MCP client with {len(tools)} tools")
             
             self.client = client
             self.tools = tools
             return client, tools
             
         except Exception as e:
-            print(f"❌ Error creating MCP client or fetching tools: {e}")
-            
-            # Add detailed error debugging
-            print(f"Error type: {type(e).__name__}")
-            if hasattr(e, '__cause__') and e.__cause__:
-                print(f"Caused by: {e.__cause__}")
-            
-            import traceback
-            print("Full traceback:")
-            traceback.print_exc()
+            logger.error(f"Error creating MCP client or fetching tools: {e}")
             return None, []
     
     async def get_client_and_tools(self) -> Tuple[Optional[MultiServerMCPClient], List[Any]]:
@@ -193,6 +212,24 @@ class MCPClientManager:
         if self.client is None or not self.tools:
             return await self.initialize_client()
         return self.client, self.tools
+    
+    async def cleanup(self):
+        """Clean up MCP client connections"""
+        if self.client:
+            try:
+                # Try to close client connections if possible
+                # Note: MultiServerMCPClient might not have explicit close method
+                # but this allows for graceful cleanup if needed
+                if hasattr(self.client, 'close'):
+                    await self.client.close()
+                
+                logger.info("MCP client connections cleaned up")
+            except Exception as e:
+                logger.error(f"Error during MCP client cleanup: {e}")
+            finally:
+                self.client = None
+                self.tools = []
+                self.working_servers = []
 
 
 # Global instance for reuse

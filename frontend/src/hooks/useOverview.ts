@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiRequest, API_ENDPOINTS } from '@/lib/api';
 
 interface TaskCounts {
@@ -35,7 +35,6 @@ interface ActivityItem {
 interface CurrentTask {
   id: string;
   title: string;
-  assignee: string;
   priority: string;
 }
 
@@ -59,9 +58,13 @@ interface TasksByStatusResponse {
   in_progress: Array<{
     id: string;
     title: string;
-    persons: string[];
+    persons?: string[];
   }>;
-  [key: string]: Array<any>;
+  [key: string]: Array<{
+    id: string;
+    title: string;
+    persons?: string[];
+  }>;
 }
 
 // Function to transform API response to frontend format
@@ -78,6 +81,7 @@ const transformTaskCounts = (apiCounts: ApiTaskCounts): TaskCounts => ({
 export function useOverview() {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentTask, setCurrentTask] = useState<CurrentTask | null>(null);
 
@@ -91,7 +95,6 @@ export function useOverview() {
         setCurrentTask({
           id: task.id,
           title: task.title,
-          assignee: task.persons.length > 0 ? task.persons[0] : 'Nova AI',
           priority: 'high' // Could be derived from task data if needed
         });
       } else {
@@ -103,9 +106,13 @@ export function useOverview() {
     }
   };
 
-  const fetchOverview = async () => {
+  const fetchOverview = useCallback(async (isRefresh = false) => {
     try {
-      setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       const apiResult: ApiOverviewResponse = await apiRequest<ApiOverviewResponse>(API_ENDPOINTS.overview);
       
       // Transform API response to frontend format
@@ -142,17 +149,35 @@ export function useOverview() {
       });
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchOverview();
     
-    // Refresh every 30 seconds for real-time updates
-    const interval = setInterval(fetchOverview, 30000);
+    // Only poll when tab is visible to avoid unnecessary requests
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchOverview(true); // Mark as refresh
+      }
+    };
     
-    return () => clearInterval(interval);
-  }, []);
+    // Refresh every 5 minutes for periodic updates (less aggressive)
+    const interval = setInterval(() => {
+      if (!document.hidden) {
+        fetchOverview(true); // Mark as refresh
+      }
+    }, 300000); // 5 minutes
+    
+    // Also refresh when tab becomes visible again
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchOverview]);
 
   // Calculate derived values
   const activeTasks = data ? 
@@ -165,9 +190,10 @@ export function useOverview() {
   return {
     data,
     loading,
+    refreshing,
     error,
     currentTask,
     activeTasks,
-    refresh: fetchOverview
+    refresh: () => fetchOverview(true)
   };
 } 

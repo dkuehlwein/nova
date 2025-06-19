@@ -127,6 +127,7 @@
   .chat-container {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+    /* Removed scroll-behavior: smooth to allow instant scrolling when switching chats */
   }
 
   .chat-container::-webkit-scrollbar {

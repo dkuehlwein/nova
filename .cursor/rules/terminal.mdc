@@ -1,0 +1,11 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Terminal Rules
+We use uv for python code execution. Its corresponding venv is based in /backend
+Unless stated otherwise assume that backend and frontend servers are up and running.
+
+You cannot edit .env files. Use "cat" to list their content. Ask the user to do it for you!
+Terminal sessions, in particuar the working directories, persist between different tool calls. 

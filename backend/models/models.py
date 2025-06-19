@@ -10,15 +10,17 @@ from enum import Enum
 from typing import List, Optional
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel
 from sqlalchemy import (
     Boolean, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text, Table,
     Column, func
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class TaskStatus(str, Enum):
@@ -217,4 +219,43 @@ class Artifact(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     # Relationships
-    tasks: Mapped[List["Task"]] = relationship("Task", secondary=task_artifact_association, back_populates="artifacts") 
+    tasks: Mapped[List["Task"]] = relationship("Task", secondary=task_artifact_association, back_populates="artifacts")
+
+
+class AgentStatusEnum(str, Enum):
+    """Core agent status enumeration."""
+    IDLE = "idle"
+    PROCESSING = "processing"
+    PAUSED = "paused"
+    ERROR = "error"
+
+
+class AgentStatus(Base):
+    """
+    Model to track the core agent's current status and state.
+    
+    This ensures only one agent instance processes tasks at a time
+    and provides visibility into agent activity.
+    """
+    __tablename__ = 'agent_status'
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    
+    # Agent state
+    status: Mapped[AgentStatusEnum] = mapped_column(SQLEnum(AgentStatusEnum), nullable=False, default=AgentStatusEnum.IDLE)
+    current_task_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True))
+    
+    # Timestamps
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_activity: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Metrics
+    total_tasks_processed: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Error information
+    last_error: Mapped[Optional[str]] = mapped_column(String(1000))
+    error_count: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Metadata
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now()) 

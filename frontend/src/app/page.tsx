@@ -1,13 +1,18 @@
 "use client";
 
-import Navbar from "@/components/Navbar";
-import { AlertTriangle, CheckCircle, ArrowRight, MessageSquare, Clock } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { 
+  MessageSquare, 
+  RefreshCw, 
+  Clock
+} from "lucide-react";
+import Navbar from "@/components/Navbar";
 import { useOverview } from "@/hooks/useOverview";
 import { useState, useEffect } from "react";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { AlertTriangle, ArrowRight } from "lucide-react";
 
 interface PendingDecision {
   id: string;
@@ -29,8 +34,15 @@ interface RecentActivityItem {
   tags: string[];
 }
 
-export default function Nova() {
-  const { data: overviewData, loading: overviewLoading } = useOverview();
+export default function HomePage() {
+  const { loading, refreshing, refresh: handleRefresh } = useOverview();
+
+  // Extract data with safe defaults
+  const overviewRefreshing = refreshing;
+
+  // Use state variables instead of extracting from overview data
+  // since the overview data doesn't include recent_tasks/pending_decisions
+
   const [pendingDecisions, setPendingDecisions] = useState<PendingDecision[]>([]);
   const [recentTasks, setRecentTasks] = useState<RecentActivityItem[]>([]);
   const [decisionsLoading, setDecisionsLoading] = useState(true);
@@ -81,7 +93,43 @@ export default function Nova() {
 
     fetchRecentTasks();
   }, []);
-  
+
+  // Manual refresh function
+  const handleRefreshManual = async () => {
+    handleRefresh(); // Refresh overview data
+    
+    // Also refresh the other data
+    try {
+      setDecisionsLoading(true);
+      const decisions = await apiRequest<PendingDecision[]>(API_ENDPOINTS.pendingDecisions);
+      setPendingDecisions(decisions.slice(0, 4));
+    } catch (error) {
+      console.error('Failed to refresh pending decisions:', error);
+    } finally {
+      setDecisionsLoading(false);
+    }
+
+    try {
+      setRecentTasksLoading(true);
+      const tasksByStatus = await apiRequest<Record<string, RecentActivityItem[]>>(API_ENDPOINTS.tasksByStatus);
+      const allTasks: RecentActivityItem[] = [];
+      Object.values(tasksByStatus).forEach((tasks) => {
+        if (Array.isArray(tasks)) {
+          allTasks.push(...tasks);
+        }
+      });
+      
+      const sortedTasks = allTasks
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, 4);
+      
+      setRecentTasks(sortedTasks);
+    } catch (error) {
+      console.error('Failed to refresh recent tasks:', error);
+    } finally {
+      setRecentTasksLoading(false);
+    }
+  };
 
   // Format time difference for display
   const formatTimeAgo = (timestamp: string) => {
@@ -115,7 +163,7 @@ export default function Nova() {
     return status.replace(/_/g, ' ').toUpperCase();
   };
 
-  if (overviewLoading || decisionsLoading || recentTasksLoading) {
+  if (loading || decisionsLoading || recentTasksLoading) {
     return (
       <div className="min-h-screen bg-background">
         <Navbar />
@@ -145,12 +193,24 @@ export default function Nova() {
                 }
               </p>
             </div>
-            <Link href="/chat">
-              <Button className="flex items-center space-x-2" size="lg">
-                <MessageSquare className="h-5 w-5" />
-                <span>Start Chat</span>
+            <div className="flex items-center space-x-3">
+              <Button 
+                onClick={handleRefreshManual}
+                variant="outline"
+                size="lg"
+                disabled={overviewRefreshing || decisionsLoading || recentTasksLoading}
+                className="flex items-center space-x-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${overviewRefreshing ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
               </Button>
-            </Link>
+              <Link href="/chat">
+                <Button className="flex items-center space-x-2" size="lg">
+                  <MessageSquare className="h-5 w-5" />
+                  <span>Start Chat</span>
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {/* Two Column Layout */}
@@ -270,22 +330,6 @@ export default function Nova() {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* System Status - Bottom spanning both columns */}
-          <div className="bg-card border border-border rounded-lg p-6">
-            <div className="flex items-center space-x-3 mb-4">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">System Status</h3>
-                <p className="text-sm text-muted-foreground">
-                  {overviewData?.system_status === 'operational' 
-                    ? 'All services running normally' 
-                    : 'Check system status'}
-                </p>
-              </div>
-            </div>
-            
           </div>
         </div>
       </main>

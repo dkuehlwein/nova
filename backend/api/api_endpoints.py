@@ -9,6 +9,7 @@ Provides REST API endpoints that match the UI requirements:
 """
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import UUID
@@ -17,179 +18,24 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, func, or_, select, text, desc
 from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import create_async_engine
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg_pool import AsyncConnectionPool
 
 from database.database import db_manager
 from models.models import (
-    Task, TaskComment, Person, Project, Chat, ChatMessage, Artifact,
+    Task, TaskComment, Person, Project, Artifact,
     TaskStatus
 )
-from api.chat_endpoints import (
-    ChatSummary, 
-    ChatMessageDetail,
-    get_checkpointer_from_app,
-    _get_chat_history_with_checkpointer,
-    _list_chat_threads
-)
+from utils.redis_manager import publish
+from models.events import create_task_updated_event
 
 
-# === Pydantic Models for API ===
-
-class TaskCreate(BaseModel):
-    title: str
-    description: str
-    status: TaskStatus = TaskStatus.NEW
-    due_date: Optional[datetime] = None
-    tags: List[str] = []
-    person_ids: List[UUID] = []
-    project_ids: List[UUID] = []
-
-
-class TaskUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[TaskStatus] = None
-    summary: Optional[str] = None
-    due_date: Optional[datetime] = None
-    tags: Optional[List[str]] = None
-    completed_at: Optional[datetime] = None
-
-
-class TaskCommentCreate(BaseModel):
-    content: str
-    author: str = "user"
-
-
-class TaskResponse(BaseModel):
-    id: UUID
-    title: str
-    description: str
-    summary: Optional[str]
-    status: TaskStatus
-    created_at: datetime
-    updated_at: datetime
-    due_date: Optional[datetime]
-    completed_at: Optional[datetime]
-    tags: List[str]
-    needs_decision: bool = False
-    decision_type: Optional[str] = None
-    
-    # Related entities
-    persons: List[str] = []  # Names for UI
-    projects: List[str] = []  # Names for UI
-    comments_count: int = 0
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PersonCreate(BaseModel):
-    name: str
-    email: str
-    role: Optional[str] = None
-    description: Optional[str] = None
-    current_focus: Optional[str] = None
-
-
-class PersonResponse(BaseModel):
-    id: UUID
-    name: str
-    email: str
-    role: Optional[str]
-    description: Optional[str]
-    current_focus: Optional[str]
-    created_at: datetime
-    
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ProjectCreate(BaseModel):
-    name: str
-    client: str
-    booking_code: Optional[str] = None
-    summary: Optional[str] = None
-
-
-class ProjectResponse(BaseModel):
-    id: UUID
-    name: str
-    client: str
-    booking_code: Optional[str]
-    summary: Optional[str]
-    created_at: datetime
-    
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ChatCreate(BaseModel):
-    title: str
-    project_id: Optional[UUID] = None
-    person_ids: List[UUID] = []
-
-
-class ChatMessageCreate(BaseModel):
-    sender: str  # "user" or "assistant"
-    content: str
-    needs_decision: bool = False
-    decision_type: Optional[str] = None
-    decision_metadata: Dict = {}
-
-
-class ChatMessageResponse(BaseModel):
-    id: UUID
-    sender: str
-    content: str
-    needs_decision: bool
-    decision_type: Optional[str]
-    decision_metadata: Dict
-    created_at: datetime
-    
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ChatResponse(BaseModel):
-    id: UUID
-    title: str
-    created_at: datetime
-    updated_at: datetime
-    last_message: Optional[str] = None
-    last_activity: Optional[datetime] = None
-    has_decision: bool = False
-    message_count: int = 0
-    
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ActivityItem(BaseModel):
-    type: str  # "task_created", "task_completed", "email_processed", etc.
-    title: str
-    description: str
-    time: str  # human readable time like "5 minutes ago"
-    timestamp: datetime
-    related_task_id: Optional[UUID] = None
-    related_chat_id: Optional[UUID] = None
-
-
-class OverviewStats(BaseModel):
-    task_counts: Dict[str, int]  # counts by status
-    total_tasks: int
-    pending_decisions: int
-    recent_activity: List[ActivityItem]
-    system_status: str
-
-
-class ArtifactCreate(BaseModel):
-    link: str
-    title: Optional[str] = None
-    summary: Optional[str] = None
-
-
-class ArtifactResponse(BaseModel):
-    id: UUID
-    link: str
-    title: Optional[str]
-    summary: Optional[str]
-    created_at: datetime
-    
-    model_config = ConfigDict(from_attributes=True)
+# === Import Domain-Specific Pydantic Models ===
+from models.tasks import TaskCreate, TaskUpdate, TaskCommentCreate, TaskResponse
+from models.entities import PersonCreate, PersonResponse, ProjectCreate, ProjectResponse, ArtifactCreate, ArtifactResponse
+from models.admin import ActivityItem, OverviewStats
+from models.chat import TaskChatMessageCreate
 
 
 # === API Router ===
@@ -262,16 +108,35 @@ async def get_recent_activity_items(session, limit: int = 10) -> List[ActivityIt
         else:
             time_str = f"{time_diff.days} day{'s' if time_diff.days != 1 else ''} ago"
         
-        # Determine activity type and description
-        if task.status == TaskStatus.DONE:
+        # Determine activity type and description based on stored changes
+        changes = task.task_metadata.get('last_changes', []) if task.task_metadata else []
+        
+        if task.status == TaskStatus.DONE and 'status' in str(changes):
             activity_type = "task_completed"
             description = f"Moved to DONE lane"
-        elif task.status == TaskStatus.NEW:
+        elif task.status == TaskStatus.NEW and not changes:
             activity_type = "task_created" 
             description = f"Created in {task.status.value} lane"
+        elif changes:
+            activity_type = "task_updated"
+            # Create a more descriptive message based on what changed
+            if len(changes) == 1:
+                change = changes[0]
+                if 'title' in change:
+                    description = f"Updated {change}"
+                elif change == 'description':
+                    description = "Updated description"
+                elif 'status' in change:
+                    description = f"Updated {change}"
+                elif change == 'tags':
+                    description = "Updated tags"
+                else:
+                    description = f"Updated {change}"
+            else:
+                description = f"Updated {', '.join(changes)}"
         else:
             activity_type = "task_updated"
-            description = f"Updated status to {task.status.value}"
+            description = f"Updated task"
         
         activities.append(ActivityItem(
             type=activity_type,
@@ -451,6 +316,17 @@ async def create_task(task_data: TaskCreate):
         
         await session.commit()
         
+        # Publish WebSocket event for real-time updates
+        try:
+            await publish(create_task_updated_event(
+                task_id=str(task.id),
+                status=task.status.value,
+                action="created",
+                source="api-endpoint"
+            ))
+        except Exception as e:
+            logging.warning(f"Failed to publish task creation event: {e}")
+        
         return TaskResponse(
             id=task.id,
             title=task.title,
@@ -515,8 +391,22 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
         
+        # Track what changed for activity logging
+        changes = []
+        update_data = task_data.model_dump(exclude_unset=True)
+        old_status = task.status
+        
+        if 'title' in update_data and update_data['title'] != task.title:
+            changes.append(f"title from '{task.title}' to '{update_data['title']}'")
+        if 'description' in update_data and update_data['description'] != task.description:
+            changes.append("description")
+        if 'status' in update_data and update_data['status'] != task.status:
+            changes.append(f"status from '{task.status.value}' to '{update_data['status'].value}'")
+        if 'tags' in update_data and update_data['tags'] != task.tags:
+            changes.append("tags")
+        
         # Update fields
-        for field, value in task_data.model_dump(exclude_unset=True).items():
+        for field, value in update_data.items():
             setattr(task, field, value)
         
         # Set completed_at if status is DONE
@@ -525,8 +415,27 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
         elif task_data.status != TaskStatus.DONE:
             task.completed_at = None
         
+        # Store the changes in task_metadata for activity tracking
+        if changes:
+            if not task.task_metadata:
+                task.task_metadata = {}
+            task.task_metadata['last_changes'] = changes
+            task.task_metadata['last_change_time'] = datetime.utcnow().isoformat()
+        
         await session.commit()
         await session.refresh(task)
+        
+        # Publish WebSocket event for real-time updates
+        try:
+            status_changed = task_data.status and old_status != task.status
+            await publish(create_task_updated_event(
+                task_id=str(task.id),
+                status=task.status.value,
+                action="status_changed" if status_changed else "updated",
+                source="api-endpoint"
+            ))
+        except Exception as e:
+            logging.warning(f"Failed to publish task update event: {e}")
         
         return TaskResponse(
             id=task.id,
@@ -546,9 +455,84 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
         )
 
 
+async def cleanup_task_chat_data(task_id: str):
+    """Clean up chat data associated with a task."""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get database URL
+        database_url = os.getenv(
+            'DATABASE_URL', 
+            'postgresql+asyncpg://nova:nova_dev_password@localhost:5432/nova_kanban'
+        )
+        
+        # Clean up LangGraph checkpointer data
+        thread_id = f"core_agent_task_{task_id}"
+        
+        try:
+            # Create connection pool for checkpointer
+            pool = AsyncConnectionPool(
+                database_url.replace('+asyncpg', ''),
+                open=False
+            )
+            await pool.open()
+            
+            async with pool.connection() as conn:
+                checkpointer = AsyncPostgresSaver(conn)
+                await checkpointer.adelete_thread(thread_id)
+                logger.info(f"✅ Deleted LangGraph thread: {thread_id}")
+            
+            await pool.close()
+            
+        except Exception as e:
+            logger.warning(f"Failed to delete LangGraph thread {thread_id}: {e}")
+        
+        # Clean up Nova database chat data
+        # Look for chats with IDs that might be related to this task
+        potential_chat_ids = [
+            f"core_agent_task_{task_id}",
+            f"chat-{task_id}",
+            f"task-{task_id}",
+            task_id  # Direct task ID as chat ID
+        ]
+        
+        engine = create_async_engine(database_url)
+        try:
+            async with engine.begin() as conn:
+                for chat_id in potential_chat_ids:
+                    try:
+                        # Delete chat messages first (foreign key constraint)
+                        result = await conn.execute(
+                            text("DELETE FROM chat_messages WHERE chat_id = :chat_id"),
+                            {"chat_id": chat_id}
+                        )
+                        message_count = result.rowcount
+                        
+                        # Delete chat
+                        result = await conn.execute(
+                            text("DELETE FROM chats WHERE id = :chat_id"),
+                            {"chat_id": chat_id}
+                        )
+                        chat_count = result.rowcount
+                        
+                        if message_count > 0 or chat_count > 0:
+                            logger.info(f"✅ Deleted chat {chat_id}: {message_count} messages, {chat_count} chat record")
+                            
+                    except Exception as e:
+                        logger.debug(f"No chat found with ID {chat_id}: {e}")
+                        
+        except Exception as e:
+            logger.warning(f"Failed to clean database chat data for task {task_id}: {e}")
+        finally:
+            await engine.dispose()
+            
+    except Exception as e:
+        logger.error(f"Error during chat cleanup for task {task_id}: {e}")
+
+
 @router.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: UUID):
-    """Delete a task."""
+    """Delete a task and its associated chat data."""
     async with db_manager.get_session() as session:
         result = await session.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
@@ -556,10 +540,14 @@ async def delete_task(task_id: UUID):
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
         
+        # Delete the task from database first
         await session.delete(task)
         await session.commit()
         
-        return {"message": "Task deleted successfully"}
+        # Clean up associated chat data
+        await cleanup_task_chat_data(str(task_id))
+        
+        return {"message": "Task and associated chat data deleted successfully"}
 
 
 # === Task Comments ===
@@ -614,188 +602,101 @@ async def add_task_comment(task_id: UUID, comment_data: TaskCommentCreate):
         return {"message": "Comment added successfully", "id": comment.id}
 
 
-# === Chat Endpoints ===
+# === Task Chat Endpoints ===
 
-@router.get("/api/chats", response_model=List[ChatSummary])
-async def list_chats(request: Request):
-    """List all chat conversations."""
-    try:
-        # Get checkpointer from app state
-        checkpointer = await get_checkpointer_from_app(request)
-        thread_ids = await _list_chat_threads(request)
-        chat_summaries = []
-        
-        for thread_id in thread_ids:
-            try:
-                messages = await _get_chat_history_with_checkpointer(thread_id, checkpointer)
-                
-                if not messages:
-                    continue
-                
-                # Create title from first user message
-                first_user_msg = next((msg for msg in messages if msg.sender == "user"), None)
-                title = first_user_msg.content[:50] + "..." if first_user_msg and len(first_user_msg.content) > 50 else (first_user_msg.content if first_user_msg else "New Chat")
-                
-                # Get last message
-                last_message = messages[-1] if messages else None
-                
-                chat_summaries.append(ChatSummary(
-                    id=thread_id,
-                    title=title,
-                    created_at=messages[0].created_at if messages else datetime.now().isoformat(),
-                    updated_at=last_message.created_at if last_message else datetime.now().isoformat(),
-                    last_message=last_message.content[:100] + "..." if last_message and len(last_message.content) > 100 else (last_message.content if last_message else ""),
-                    last_activity=last_message.created_at if last_message else datetime.now().isoformat(),
-                    has_decision=any(msg.needs_decision for msg in messages),
-                    message_count=len(messages)
-                ))
-                
-            except Exception as msg_error:
-                # Log individual chat processing errors but continue
-                logging.warning(f"Error processing chat {thread_id}: {msg_error}")
-                continue
-        
-        # Sort by last activity (most recent first)
-        chat_summaries.sort(key=lambda x: x.updated_at, reverse=True)
-        
-        return chat_summaries
-        
-    except Exception as e:
-        logging.error(f"Error listing chats: {e}")
-        # Return empty list for frontend compatibility, but this is still a successful response
-        return []
+# TaskChatMessageCreate model now imported from models.chat
 
 
-@router.get("/api/chats/{chat_id}", response_model=ChatSummary)
-async def get_chat(request: Request, chat_id: str):
-    """Get a specific chat conversation summary."""
-    try:
-        # Get checkpointer from app state
-        checkpointer = await get_checkpointer_from_app(request)
-        messages = await _get_chat_history_with_checkpointer(chat_id, checkpointer)
-        
-        if not messages:
-            # Return empty chat for non-existent chats (404 would break frontend flow)
-            return ChatSummary(
-                id=chat_id,
-                title="New Chat",
-                created_at=datetime.now().isoformat(),
-                updated_at=datetime.now().isoformat(),
-                last_message="",
-                last_activity=datetime.now().isoformat(),
-                has_decision=False,
-                message_count=0
-            )
-        
-        # Create title from first user message
-        first_user_msg = next((msg for msg in messages if msg.sender == "user"), None)
-        title = first_user_msg.content[:50] + "..." if first_user_msg and len(first_user_msg.content) > 50 else (first_user_msg.content if first_user_msg else "New Chat")
-        
-        # Get last message
-        last_message = messages[-1] if messages else None
-        
-        return ChatSummary(
-            id=chat_id,
-            title=title,
-            created_at=messages[0].created_at if messages else datetime.now().isoformat(),
-            updated_at=last_message.created_at if last_message else datetime.now().isoformat(),
-            last_message=last_message.content[:100] + "..." if last_message and len(last_message.content) > 100 else (last_message.content if last_message else ""),
-            last_activity=last_message.created_at if last_message else datetime.now().isoformat(),
-            has_decision=any(msg.needs_decision for msg in messages),
-            message_count=len(messages)
-        )
-        
-    except Exception as e:
-        logging.error(f"Error getting chat {chat_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve chat: {str(e)}")
+# Removed - this endpoint is no longer used. Task chats now use /chat/conversations/{threadId}/messages
 
 
-@router.get("/api/chats/{chat_id}/messages", response_model=List[ChatMessageDetail])
-async def get_chat_messages(request: Request, chat_id: str):
-    """Get messages for a specific chat conversation."""
-    try:
-        # Get checkpointer from app state
-        checkpointer = await get_checkpointer_from_app(request)
-        messages = await _get_chat_history_with_checkpointer(chat_id, checkpointer)
-        return messages
-        
-    except Exception as e:
-        logging.error(f"Error getting chat messages for {chat_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve chat messages: {str(e)}")
-
-
-@router.post("/api/chats", response_model=ChatResponse)
-async def create_chat(chat_data: ChatCreate):
-    """Create a new chat conversation."""
+@router.post("/api/tasks/{task_id}/chat/message")
+async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCreate):
+    """Post a human response to task escalation or regular task chat."""
+    from agent.chat_agent import create_chat_agent
+    from langchain_core.messages import HumanMessage
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.types import Command
+    from tools.task_tools import update_task_tool
+    
+    logger = logging.getLogger(__name__)
+    
     async with db_manager.get_session() as session:
-        try:
-            chat = Chat(
-                title=chat_data.title,
-                project_id=chat_data.project_id
+        # Verify task exists
+        task_result = await session.execute(select(Task).where(Task.id == task_id))
+        task = task_result.scalar_one_or_none()
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+    
+    thread_id = f"core_agent_task_{task_id}"
+    config = RunnableConfig(configurable={"thread_id": thread_id})
+    
+    try:
+        # Get agent and check current state
+        agent = await create_chat_agent()
+        state = await agent.aget_state(config)
+        
+        # Determine if this is an escalation response or regular message
+        if state.interrupts:
+            logger.info(f"Handling escalation response for task {task_id}")
+            
+            # Resume the graph with the human's response using Command(resume=...)
+            async for chunk in agent.astream(
+                Command(resume=message_data.content),
+                config=config,
+                stream_mode="updates"
+            ):
+                logger.debug(f"Resume chunk: {chunk}")
+        else:
+            logger.info(f"Adding regular message to task {task_id} chat")
+            
+            # IMPORTANT: This endpoint should NOT be used for regular task conversations!
+            # Regular conversations should use /chat/stream with the thread_id: core_agent_task_{task_id}
+            # This endpoint is ONLY for escalation responses to avoid duplication issues.
+            
+            # Return a helpful error that guides developers to the correct endpoint
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Invalid endpoint for regular task conversations",
+                    "message": "This endpoint is only for escalation responses. Use /chat/stream for regular messages.",
+                    "correct_usage": {
+                        "endpoint": "/chat/stream",
+                        "method": "POST",
+                        "body": {
+                            "messages": "[array of messages]",
+                            "thread_id": f"core_agent_task_{task_id}",
+                            "stream": True
+                        }
+                    }
+                }
             )
+        
+        # Update task status so core agent can process the response
+        # But only if still in needs_review - don't override completed tasks
+        async with db_manager.get_session() as session:
+            task_result = await session.execute(select(Task).where(Task.id == task_id))
+            current_task = task_result.scalar_one()
             
-            session.add(chat)
-            await session.flush()
-            
-            # Add person relationships
-            if chat_data.person_ids:
-                persons_result = await session.execute(
-                    select(Person).where(Person.id.in_(chat_data.person_ids))
+            if current_task.status == TaskStatus.NEEDS_REVIEW:
+                await update_task_tool(
+                    task_id=str(task_id),
+                    status="user_input_received"
                 )
-                persons = persons_result.scalars().all()
-                chat.persons.extend(persons)
-            
-            await session.commit()
-            await session.refresh(chat)
-            
-            return ChatResponse(
-                id=chat.id,
-                title=chat.title,
-                created_at=chat.created_at,
-                updated_at=chat.updated_at,
-                message_count=0
-            )
-        except Exception as e:
-            await session.rollback()
-            logging.error(f"Error creating chat: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to create chat: {str(e)}")
-
-
-@router.post("/api/chats/{chat_id}/messages")
-async def add_chat_message(chat_id: UUID, message_data: ChatMessageCreate):
-    """Add a message to a chat."""
-    async with db_manager.get_session() as session:
-        try:
-            # Verify chat exists
-            result = await session.execute(select(Chat).where(Chat.id == chat_id))
-            chat = result.scalar_one_or_none()
-            
-            if not chat:
-                raise HTTPException(status_code=404, detail="Chat not found")
-            
-            # Create message
-            message = ChatMessage(
-                chat_id=chat_id,
-                sender=message_data.sender,
-                content=message_data.content,
-                needs_decision=message_data.needs_decision,
-                decision_type=message_data.decision_type,
-                decision_metadata=message_data.decision_metadata
-            )
-            session.add(message)
-            
-            # Update chat timestamp
-            chat.updated_at = datetime.now(timezone.utc)
-            
-            await session.commit()
-            
-            return {"message": "Message added successfully", "id": message.id}
-        except HTTPException:
-            raise
-        except Exception as e:
-            await session.rollback()
-            logging.error(f"Error adding message to chat {chat_id}: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to add message: {str(e)}")
+                final_status = "user_input_received"
+            else:
+                # Task was completed by chat agent, preserve its status
+                final_status = current_task.status.value
+        
+        return {
+            "success": True,
+            "task_status": final_status,
+            "message": "Message posted successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to post message to task {task_id} chat: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to post message: {str(e)}")
 
 
 # === Entity Management Endpoints ===
