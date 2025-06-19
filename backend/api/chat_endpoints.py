@@ -842,7 +842,7 @@ async def clear_prompt_cache():
 async def get_system_prompt():
     """Get the current system prompt content."""
     try:
-        prompt_file = Path("backend/agent/prompts/NOVA_SYSTEM_PROMPT.md")
+        prompt_file = Path("agent/prompts/NOVA_SYSTEM_PROMPT.md")
         if not prompt_file.exists():
             raise HTTPException(status_code=404, detail="System prompt file not found")
         
@@ -854,7 +854,7 @@ async def get_system_prompt():
         return SystemPromptResponse(
             content=content,
             file_path=str(prompt_file),
-            last_modified=datetime.datetime.fromtimestamp(stats.st_mtime).isoformat(),
+            last_modified=datetime.fromtimestamp(stats.st_mtime).isoformat(),
             size_bytes=stats.st_size
         )
     except HTTPException:
@@ -869,14 +869,14 @@ async def get_system_prompt():
 async def update_system_prompt(request: SystemPromptUpdateRequest):
     """Update the system prompt content and clear agent cache."""
     try:
-        prompt_file = Path("backend/agent/prompts/NOVA_SYSTEM_PROMPT.md")
+        prompt_file = Path("agent/prompts/NOVA_SYSTEM_PROMPT.md")
         
         # Create backup directory relative to prompt file (consistent with config backups)
         backup_dir = prompt_file.parent / "backups"
         backup_dir.mkdir(exist_ok=True)
         
         if prompt_file.exists():
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_file = backup_dir / f"prompt_{timestamp}.bak"
             with open(prompt_file, 'r', encoding='utf-8') as f:
                 backup_content = f.read()
@@ -895,9 +895,9 @@ async def update_system_prompt(request: SystemPromptUpdateRequest):
         
         # Publish event for real-time updates
         event = NovaEvent(
-            id=f"prompt_update_{datetime.datetime.now().isoformat()}",
+            id=f"prompt_update_{datetime.now().isoformat()}",
             type="prompt_updated",
-            timestamp=datetime.datetime.now(),
+            timestamp=datetime.now(),
             data={
                 "prompt_file": str(prompt_file),
                 "change_type": "manual_update",
@@ -916,7 +916,7 @@ async def update_system_prompt(request: SystemPromptUpdateRequest):
         return SystemPromptResponse(
             content=request.content,
             file_path=str(prompt_file),
-            last_modified=datetime.datetime.fromtimestamp(stats.st_mtime).isoformat(),
+            last_modified=datetime.fromtimestamp(stats.st_mtime).isoformat(),
             size_bytes=stats.st_size
         )
     except HTTPException:
@@ -931,7 +931,7 @@ async def update_system_prompt(request: SystemPromptUpdateRequest):
 async def list_prompt_backups():
     """List available system prompt backups."""
     try:
-        prompt_file = Path("backend/agent/prompts/NOVA_SYSTEM_PROMPT.md")
+        prompt_file = Path("agent/prompts/NOVA_SYSTEM_PROMPT.md")
         backup_dir = prompt_file.parent / "backups"
         if not backup_dir.exists():
             return {"backups": []}
@@ -942,7 +942,7 @@ async def list_prompt_backups():
             backups.append({
                 "filename": backup_file.name,
                 "path": str(backup_file),
-                "created": datetime.datetime.fromtimestamp(stats.st_mtime).isoformat(),
+                "created": datetime.fromtimestamp(stats.st_mtime).isoformat(),
                 "size_bytes": stats.st_size
             })
         
@@ -959,7 +959,7 @@ async def list_prompt_backups():
 async def restore_prompt_backup(backup_filename: str):
     """Restore system prompt from a backup file and clear agent cache."""
     try:
-        prompt_file = Path("backend/agent/prompts/NOVA_SYSTEM_PROMPT.md")
+        prompt_file = Path("agent/prompts/NOVA_SYSTEM_PROMPT.md")
         backup_dir = prompt_file.parent / "backups"
         backup_file = backup_dir / backup_filename
         
@@ -976,7 +976,7 @@ async def restore_prompt_backup(backup_filename: str):
         
         # Create backup of current version before restoring
         if prompt_file.exists():
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             current_backup = backup_dir / f"prompt_{timestamp}_pre_restore.bak"
             with open(prompt_file, 'r', encoding='utf-8') as f:
                 current_content = f.read()
@@ -994,9 +994,9 @@ async def restore_prompt_backup(backup_filename: str):
         
         # Publish event for real-time updates
         event = NovaEvent(
-            id=f"prompt_restore_{datetime.datetime.now().isoformat()}",
+            id=f"prompt_restore_{datetime.now().isoformat()}",
             type="prompt_updated",
-            timestamp=datetime.datetime.now(),
+            timestamp=datetime.now(),
             data={
                 "prompt_file": str(prompt_file),
                 "change_type": "restore_backup",
@@ -1015,7 +1015,7 @@ async def restore_prompt_backup(backup_filename: str):
         return SystemPromptResponse(
             content=backup_content,
             file_path=str(prompt_file),
-            last_modified=datetime.datetime.fromtimestamp(stats.st_mtime).isoformat(),
+            last_modified=datetime.fromtimestamp(stats.st_mtime).isoformat(),
             size_bytes=stats.st_size
         )
     except HTTPException:
