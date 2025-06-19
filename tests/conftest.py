@@ -41,19 +41,27 @@ async def auto_cleanup_connections():
     This prevents asyncio warnings about pending tasks when connection pools
     aren't cleanly shut down during test teardown.
     """
+    # Start tracking connection pools created during this test
+    from test_cleanup import start_connection_pool_tracking, cleanup_connection_pools, stop_connection_pool_tracking
+    await start_connection_pool_tracking()
+    
     # Let the test run
     yield
     
     # Proper async cleanup based on SQLAlchemy best practices
     try:
-        from database.database import db_manager
+        # 1. Close all tracked connection pools (prevents "ignored exceptions")
+        await cleanup_connection_pools()
         
-        # Close the database manager's engine properly to prevent connection pool warnings
+        # 2. Stop tracking
+        await stop_connection_pool_tracking()
+        
+        # 3. Close database manager's engine
+        from database.database import db_manager
         if hasattr(db_manager, 'engine') and db_manager.engine:
-            # Dispose of the engine to close all connections
             await db_manager.engine.dispose()
         
-        # Give a small delay for connection pool cleanup without aggressive task cancellation
+        # 4. Give a small delay for connection pool cleanup
         await asyncio.sleep(0.05)
         
     except Exception as e:
