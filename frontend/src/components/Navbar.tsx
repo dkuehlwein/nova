@@ -95,13 +95,6 @@ export default function Navbar() {
           <Link href="/" className="flex items-center space-x-2">
             <Brain className={`h-8 w-8 text-primary ${refreshing ? 'animate-pulse' : ''}`} />
             <h1 className="text-2xl font-bold text-foreground">Nova</h1>
-            {refreshing && (
-              <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse"></div>
-            )}
-            {/* WebSocket connection indicator */}
-            {!isConnected && (
-              <div className="h-2 w-2 bg-red-500 rounded-full" title="WebSocket disconnected"></div>
-            )}
           </Link>
 
           {/* Main Navigation */}
