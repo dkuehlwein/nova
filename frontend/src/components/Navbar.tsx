@@ -26,7 +26,7 @@ export default function Navbar() {
   const { data: healthSummary, isLoading: healthLoading } = useSystemHealthSummary();
   
   // Subscribe to WebSocket events for real-time updates
-  const { isConnected } = useNovaWebSocket();
+  useNovaWebSocket();
 
   const isActive = (path: string) => pathname === path;
 
