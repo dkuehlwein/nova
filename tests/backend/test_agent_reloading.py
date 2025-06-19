@@ -457,26 +457,20 @@ class TestMCPServerToolReloading:
         from backend.models.events import create_mcp_toggled_event
         import backend.api.chat_endpoints
         
-        # Clear any existing agent first
-        clear_chat_agent_cache()
-        
-        # Set up a mock agent in the cache to verify clearing
-        mock_agent = Mock()
-        backend.api.chat_endpoints._chat_agent = mock_agent
-        
-        # Verify agent is cached
-        assert backend.api.chat_endpoints._chat_agent is not None
-        assert backend.api.chat_endpoints._chat_agent is mock_agent
-        
-        # Create the event handler and simulate MCP toggle event
-        event_handler = await create_website_event_handler()
-        mcp_event = create_mcp_toggled_event("gmail", False, "test")
-        
-        # Process the event - this should clear the cache
-        await event_handler(mcp_event)
-        
-        # Verify cache was cleared (agent set to None)
-        assert backend.api.chat_endpoints._chat_agent is None
+        # Mock the actual cache clearing functions used by the event handler
+        with patch('api.chat_endpoints.clear_chat_agent_cache') as mock_clear_agent:
+            with patch('agent.chat_agent.clear_tools_cache') as mock_clear_tools:
+                
+                # Create the event handler and simulate MCP toggle event
+                event_handler = await create_website_event_handler()
+                mcp_event = create_mcp_toggled_event("gmail", False, "test")
+                
+                # Process the event - this should call the clearing functions
+                await event_handler(mcp_event)
+                
+                # Verify the cache clearing functions were called
+                mock_clear_agent.assert_called_once()
+                mock_clear_tools.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_system_prompt_loading_in_agent_creation(self):

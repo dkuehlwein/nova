@@ -60,7 +60,7 @@ class TestSystemPromptEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["content"] == "Test prompt content"
-        assert data["file_path"] == "backend/agent/prompts/NOVA_SYSTEM_PROMPT.md"
+        assert data["file_path"] == "agent/prompts/NOVA_SYSTEM_PROMPT.md"
         assert "last_modified" in data
         assert data["size_bytes"] == 100
 
