@@ -4,12 +4,13 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, Save, RotateCcw, Clock, FileText, Loader2 } from "lucide-react";
+import { AlertCircle, Save, RotateCcw, Clock, FileText, Loader2, Trash2 } from "lucide-react";
 import { 
   useSystemPrompt, 
   useUpdateSystemPrompt, 
   useSystemPromptBackups, 
-  useRestorePromptBackup 
+  useRestorePromptBackup,
+  useDeletePromptBackup
 } from "@/hooks/useNovaQueries";
 import {
   Dialog,
@@ -24,6 +25,7 @@ export default function SystemPromptEditor() {
   const { data: backupsData } = useSystemPromptBackups();
   const updateMutation = useUpdateSystemPrompt();
   const restoreMutation = useRestorePromptBackup();
+  const deleteMutation = useDeletePromptBackup();
   
   const [content, setContent] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
@@ -66,6 +68,14 @@ export default function SystemPromptEditor() {
       setShowBackups(false);
     } catch (error) {
       console.error('Failed to restore backup:', error);
+    }
+  };
+
+  const handleDeleteBackup = async (backupFilename: string) => {
+    try {
+      await deleteMutation.mutateAsync(backupFilename);
+    } catch (error) {
+      console.error('Failed to delete backup:', error);
     }
   };
 
@@ -150,19 +160,35 @@ export default function SystemPromptEditor() {
                             {formatDate(backup.created)} • {formatFileSize(backup.size_bytes)}
                           </p>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRestoreBackup(backup.filename)}
-                          disabled={restoreMutation.isPending}
-                        >
-                          {restoreMutation.isPending ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <RotateCcw className="h-4 w-4" />
-                          )}
-                          Restore
-                        </Button>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRestoreBackup(backup.filename)}
+                            disabled={restoreMutation.isPending || deleteMutation.isPending}
+                          >
+                            {restoreMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-4 w-4" />
+                            )}
+                            Restore
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteBackup(backup.filename)}
+                            disabled={restoreMutation.isPending || deleteMutation.isPending}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            {deleteMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                            Delete
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -388,4 +388,23 @@ export function useRestorePromptBackup() {
       console.error('Failed to restore prompt backup:', error)
     }
   })
+}
+
+export function useDeletePromptBackup() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (backupFilename: string): Promise<{ message: string }> => {
+      return await apiRequest(`/chat/system-prompt/backups/${backupFilename}`, {
+        method: 'DELETE'
+      })
+    },
+    onSuccess: () => {
+      // Refresh backups list after deletion
+      queryClient.invalidateQueries({ queryKey: ['system-prompt-backups'] })
+    },
+    onError: (error) => {
+      console.error('Failed to delete prompt backup:', error)
+    }
+  })
 } 

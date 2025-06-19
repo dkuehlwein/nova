@@ -102,11 +102,12 @@ class TestSystemPromptEndpoints:
         assert response.status_code == 500
         assert "Failed to read system prompt" in response.json()["detail"]
 
+    @patch("backend.api.chat_endpoints.should_create_backup", return_value=True)
     @patch("backend.api.chat_endpoints.publish")
     @patch("backend.api.chat_endpoints.clear_chat_agent_cache")
     @patch("builtins.open", new_callable=mock_open)
     @patch("backend.api.chat_endpoints.Path")
-    def test_update_system_prompt_success(self, mock_path_class, mock_file, mock_clear_cache, mock_publish, client):
+    def test_update_system_prompt_success(self, mock_path_class, mock_file, mock_clear_cache, mock_publish, mock_should_create_backup, client):
         """Test successful system prompt update."""
         # Setup mocks for different paths
         mock_prompt_file = Mock()
@@ -253,11 +254,12 @@ class TestSystemPromptEndpoints:
         data = response.json()
         assert data == {"backups": []}
 
+    @patch("backend.api.chat_endpoints.should_create_backup", return_value=True)
     @patch("backend.api.chat_endpoints.publish")
     @patch("backend.api.chat_endpoints.clear_chat_agent_cache")
     @patch("builtins.open", new_callable=mock_open, read_data="Backup content")
     @patch("backend.api.chat_endpoints.Path")
-    def test_restore_prompt_backup_success(self, mock_path_class, mock_file, mock_clear_cache, mock_publish, client):
+    def test_restore_prompt_backup_success(self, mock_path_class, mock_file, mock_clear_cache, mock_publish, mock_should_create_backup, client):
         """Test successful backup restoration."""
         backup_filename = "prompt_20250101_120000.bak"
         
@@ -410,4 +412,274 @@ class TestSystemPromptEndpoints:
         response = client.post(f"/chat/system-prompt/restore/{backup_filename}")
         
         assert response.status_code == 500
-        assert "Failed to restore backup" in response.json()["detail"] 
+        assert "Failed to restore backup" in response.json()["detail"]
+
+    @patch("backend.api.chat_endpoints.should_create_backup")
+    @patch("backend.api.chat_endpoints.publish")
+    @patch("backend.api.chat_endpoints.clear_chat_agent_cache")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("backend.api.chat_endpoints.Path")
+    def test_update_prompt_skips_duplicate_backup(self, mock_path_class, mock_file, mock_clear_cache, mock_publish, mock_should_create_backup, client):
+        """Test that backup is skipped when content is identical to existing backup."""
+        # Setup mocks
+        mock_prompt_file = Mock()
+        mock_prompt_file.exists.return_value = True
+        mock_stat_obj = Mock()
+        mock_stat_obj.st_mtime = 1234567890.0
+        mock_stat_obj.st_size = 150
+        mock_prompt_file.stat.return_value = mock_stat_obj
+        
+        mock_backup_dir = Mock()
+        mock_backup_dir.mkdir.return_value = None
+        
+        def path_constructor(path_str):
+            if "NOVA_SYSTEM_PROMPT.md" in str(path_str):
+                mock_prompt_file.__str__ = lambda self: str(path_str)
+                mock_prompt_file.parent = Mock()
+                mock_prompt_file.parent.__truediv__ = lambda self, other: mock_backup_dir if other == "backups" else Mock()
+                return mock_prompt_file
+            elif str(path_str) == "backups":
+                return mock_backup_dir
+            else:
+                return Mock()
+        
+        mock_path_class.side_effect = path_constructor
+        
+        # Mock should_create_backup to return False (duplicate content)
+        mock_should_create_backup.return_value = False
+        
+        # Configure mock_file to read current content when opening prompt file
+        mock_file.return_value.read.return_value = "Current prompt content"
+        
+        response = client.put(
+            "/chat/system-prompt",
+            json={"content": "New prompt content"}
+        )
+        
+        assert response.status_code == 200
+        
+        # Verify should_create_backup was called with current content and backup dir
+        mock_should_create_backup.assert_called_once()
+        call_args = mock_should_create_backup.call_args[0]
+        assert call_args[0] == "Current prompt content"  # current content
+        assert call_args[1] == mock_backup_dir  # backup directory
+        
+        # Agent cache should still be cleared and event published
+        mock_clear_cache.assert_called_once()
+        mock_publish.assert_called_once()
+
+    @patch("backend.api.chat_endpoints.Path")
+    def test_delete_prompt_backup_success(self, mock_path_class, client):
+        """Test successful backup deletion."""
+        backup_filename = "prompt_20250101_120000.bak"
+        
+        # Setup mocks
+        mock_backup_file = Mock()
+        mock_backup_file.exists.return_value = True
+        mock_backup_file.unlink = Mock()  # Mock the delete operation
+        
+        mock_backup_dir = Mock()
+        mock_backup_dir.__truediv__ = lambda self, other: mock_backup_file
+        
+        def path_constructor(path_str):
+            if "NOVA_SYSTEM_PROMPT.md" in str(path_str):
+                mock_prompt_file = Mock()
+                mock_prompt_file.parent = Mock()
+                mock_prompt_file.parent.__truediv__ = lambda self, other: mock_backup_dir if other == "backups" else Mock()
+                return mock_prompt_file
+            elif str(path_str) == "backups":
+                return mock_backup_dir
+            elif backup_filename in str(path_str):
+                return mock_backup_file
+            else:
+                return Mock()
+        
+        mock_path_class.side_effect = path_constructor
+        
+        response = client.delete(f"/chat/system-prompt/backups/{backup_filename}")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert f"Backup {backup_filename} deleted successfully" in data["message"]
+        
+        # Verify file was actually deleted
+        mock_backup_file.unlink.assert_called_once()
+
+    @patch("backend.api.chat_endpoints.Path")
+    def test_delete_prompt_backup_not_found(self, mock_path_class, client):
+        """Test 404 when backup file doesn't exist for deletion."""
+        backup_filename = "prompt_20250101_120000.bak"
+        
+        mock_backup_file = Mock()
+        mock_backup_file.exists.return_value = False
+        
+        mock_backup_dir = Mock()
+        mock_backup_dir.__truediv__ = lambda self, other: mock_backup_file
+        
+        def path_constructor(path_str):
+            if "NOVA_SYSTEM_PROMPT.md" in str(path_str):
+                mock_prompt_file = Mock()
+                mock_prompt_file.parent = Mock()
+                mock_prompt_file.parent.__truediv__ = lambda self, other: mock_backup_dir if other == "backups" else Mock()
+                return mock_prompt_file
+            elif backup_filename in str(path_str):
+                return mock_backup_file
+            else:
+                return Mock()
+        
+        mock_path_class.side_effect = path_constructor
+        
+        response = client.delete(f"/chat/system-prompt/backups/{backup_filename}")
+        
+        assert response.status_code == 404
+        assert "Backup file not found" in response.json()["detail"]
+
+    def test_delete_prompt_backup_invalid_filename(self, client):
+        """Test 400 for invalid backup filename format in deletion."""
+        invalid_filename = "invalid_file.txt"
+        
+        response = client.delete(f"/chat/system-prompt/backups/{invalid_filename}")
+        
+        assert response.status_code == 400
+        assert "Invalid backup filename format" in response.json()["detail"]
+
+    @patch("backend.api.chat_endpoints.Path")
+    def test_delete_prompt_backup_error(self, mock_path_class, client):
+        """Test 500 when backup deletion fails."""
+        backup_filename = "prompt_20250101_120000.bak"
+        
+        mock_backup_file = Mock()
+        mock_backup_file.exists.return_value = True
+        mock_backup_file.unlink.side_effect = OSError("Permission denied")
+        
+        mock_backup_dir = Mock()
+        mock_backup_dir.__truediv__ = lambda self, other: mock_backup_file
+        
+        def path_constructor(path_str):
+            if "NOVA_SYSTEM_PROMPT.md" in str(path_str):
+                mock_prompt_file = Mock()
+                mock_prompt_file.parent = Mock()
+                mock_prompt_file.parent.__truediv__ = lambda self, other: mock_backup_dir if other == "backups" else Mock()
+                return mock_prompt_file
+            elif backup_filename in str(path_str):
+                return mock_backup_file
+            else:
+                return Mock()
+        
+        mock_path_class.side_effect = path_constructor
+        
+        response = client.delete(f"/chat/system-prompt/backups/{backup_filename}")
+        
+        assert response.status_code == 500
+        assert "Failed to delete backup" in response.json()["detail"]
+
+
+class TestBackupDeduplicationUtils:
+    """Test the backup deduplication utility functions."""
+
+    def test_get_content_hash(self):
+        """Test content hash generation."""
+        from backend.api.chat_endpoints import get_content_hash
+        
+        content1 = "Hello world"
+        content2 = "Hello world"  # Same content
+        content3 = "Different content"
+        
+        hash1 = get_content_hash(content1)
+        hash2 = get_content_hash(content2)
+        hash3 = get_content_hash(content3)
+        
+        # Same content should produce same hash
+        assert hash1 == hash2
+        
+        # Different content should produce different hash
+        assert hash1 != hash3
+        
+        # Hash should be SHA-256 (64 characters)
+        assert len(hash1) == 64
+        assert all(c in '0123456789abcdef' for c in hash1)
+
+    @patch("builtins.open", side_effect=lambda file, mode='r', encoding=None: mock_open(read_data="Test backup content").return_value)
+    @patch("pathlib.Path.glob")
+    def test_should_create_backup_no_duplicates(self, mock_glob, mock_file):
+        """Test should_create_backup returns True when no duplicates exist."""
+        from backend.api.chat_endpoints import should_create_backup
+        from pathlib import Path
+        
+        # Mock no existing backup files
+        mock_glob.return_value = []
+        
+        backup_dir = Path("/fake/backup/dir")
+        current_content = "New unique content"
+        
+        result = should_create_backup(current_content, backup_dir)
+        
+        assert result is True
+
+    @patch("builtins.open")
+    @patch("pathlib.Path.glob")
+    def test_should_create_backup_with_duplicate(self, mock_glob, mock_open_func):
+        """Test should_create_backup returns False when duplicate exists."""
+        from backend.api.chat_endpoints import should_create_backup
+        from pathlib import Path
+        
+        # Mock existing backup file
+        mock_backup_file = Mock()
+        mock_backup_file.name = "prompt_20250101_120000.bak"
+        mock_glob.return_value = [mock_backup_file]
+        
+        current_content = "Test content"
+        
+        # Mock file reading to return the same content (duplicate)
+        mock_file_handle = mock_open_func.return_value.__enter__.return_value
+        mock_file_handle.read.return_value = current_content
+        
+        backup_dir = Path("/fake/backup/dir")
+        
+        result = should_create_backup(current_content, backup_dir)
+        
+        assert result is False
+
+    @patch("builtins.open")
+    @patch("pathlib.Path.glob")
+    def test_should_create_backup_with_different_content(self, mock_glob, mock_open_func):
+        """Test should_create_backup returns True when existing backups have different content."""
+        from backend.api.chat_endpoints import should_create_backup
+        from pathlib import Path
+        
+        # Mock existing backup file
+        mock_backup_file = Mock()
+        mock_backup_file.name = "prompt_20250101_120000.bak"
+        mock_glob.return_value = [mock_backup_file]
+        
+        current_content = "New content"
+        
+        # Mock file reading to return different content
+        mock_file_handle = mock_open_func.return_value.__enter__.return_value
+        mock_file_handle.read.return_value = "Different old content"
+        
+        backup_dir = Path("/fake/backup/dir")
+        
+        result = should_create_backup(current_content, backup_dir)
+        
+        assert result is True
+
+    @patch("builtins.open", side_effect=IOError("Read error"))
+    @patch("pathlib.Path.glob")
+    def test_should_create_backup_handles_read_errors(self, mock_glob, mock_open_func):
+        """Test should_create_backup continues when backup file read fails."""
+        from backend.api.chat_endpoints import should_create_backup
+        from pathlib import Path
+        
+        # Mock existing backup file that will fail to read
+        mock_backup_file = Mock()
+        mock_backup_file.name = "prompt_20250101_120000.bak"
+        mock_glob.return_value = [mock_backup_file]
+        
+        backup_dir = Path("/fake/backup/dir")
+        current_content = "Test content"
+        
+        # Should return True (create backup) when existing files can't be read
+        result = should_create_backup(current_content, backup_dir)
+        
+        assert result is True 

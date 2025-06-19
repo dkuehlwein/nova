@@ -10,8 +10,10 @@ import uuid
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 from uuid import UUID
+import asyncio
+import hashlib
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -22,17 +24,51 @@ from agent.chat_agent import create_chat_agent
 import logging
 
 # System prompt management imports
-from models.chat import SystemPromptResponse, SystemPromptUpdateRequest
-from utils.redis_manager import publish
+from models.chat import (
+    SystemPromptResponse, SystemPromptUpdateRequest, ChatMessage, 
+    ChatRequest, ChatResponse, HealthResponse, ChatSummary, 
+    ChatMessageDetail, TaskChatResponse, TaskChatMessageCreate
+)
+from models.tasks import TaskResponse
 from models.events import NovaEvent
-from pathlib import Path
+from utils.redis_manager import publish
+from utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+from database.database import db_manager
+from pathlib import Path
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 # Global chat agent instance for streaming endpoints
 _chat_agent = None
+
+# Utility functions for content-based backup deduplication
+def get_content_hash(content: str) -> str:
+    """Get SHA-256 hash of content for deduplication."""
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()
+
+def should_create_backup(current_content: str, backup_dir: Path) -> bool:
+    """Check if backup is needed by comparing content hashes."""
+    current_hash = get_content_hash(current_content)
+    
+    # Check if any existing backup has the same content
+    for backup_file in backup_dir.glob("prompt_*.bak"):
+        try:
+            with open(backup_file, 'r', encoding='utf-8') as f:
+                backup_content = f.read()
+            if get_content_hash(backup_content) == current_hash:
+                logger.info("Backup skipped - identical content exists", extra={
+                    "data": {"existing_backup": backup_file.name, "content_hash": current_hash}
+                })
+                return False  # Duplicate found, no backup needed
+        except Exception as e:
+            logger.warning("Failed to read backup file during deduplication check", extra={
+                "data": {"backup_file": str(backup_file), "error": str(e)}
+            })
+            continue  # Skip corrupted files
+    
+    return True  # No duplicate found, create backup
 
 async def get_chat_agent():
     """Get or create the chat agent instance."""
@@ -58,11 +94,7 @@ def clear_chat_agent_cache():
     logger.info("Chat agent cache cleared - will be recreated with updated prompt on next request")
 
 
-# Import Pydantic models from dedicated chat models file
-from models.chat import (
-    ChatMessage, ChatRequest, ChatResponse, HealthResponse,
-    ChatSummary, ChatMessageDetail, TaskChatResponse, TaskChatMessageCreate
-)
+# Models already imported above
 
 
 def _convert_messages_to_langchain(messages: List[ChatMessage]) -> List:
@@ -876,13 +908,18 @@ async def update_system_prompt(request: SystemPromptUpdateRequest):
         backup_dir.mkdir(exist_ok=True)
         
         if prompt_file.exists():
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_file = backup_dir / f"prompt_{timestamp}.bak"
             with open(prompt_file, 'r', encoding='utf-8') as f:
-                backup_content = f.read()
-            with open(backup_file, 'w', encoding='utf-8') as f:
-                f.write(backup_content)
-            logger.info("Created prompt backup", extra={"data": {"backup_file": str(backup_file)}})
+                current_content = f.read()
+            
+            # Only create backup if content is different from existing backups
+            if should_create_backup(current_content, backup_dir):
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_file = backup_dir / f"prompt_{timestamp}.bak"
+                with open(backup_file, 'w', encoding='utf-8') as f:
+                    f.write(current_content)
+                logger.info("Created prompt backup", extra={"data": {"backup_file": str(backup_file)}})
+            else:
+                logger.info("Skipped backup creation - identical content already exists")
         
         # Write new content
         with open(prompt_file, 'w', encoding='utf-8') as f:
@@ -955,6 +992,33 @@ async def list_prompt_backups():
         raise HTTPException(status_code=500, detail=f"Failed to list backups: {str(e)}")
 
 
+@router.delete("/system-prompt/backups/{backup_filename}")
+async def delete_prompt_backup(backup_filename: str):
+    """Delete a specific backup file."""
+    try:
+        prompt_file = Path("agent/prompts/NOVA_SYSTEM_PROMPT.md")
+        backup_dir = prompt_file.parent / "backups"
+        backup_file = backup_dir / backup_filename
+        
+        # Validate filename format for security
+        if not backup_filename.startswith("prompt_") or not backup_filename.endswith(".bak"):
+            raise HTTPException(status_code=400, detail="Invalid backup filename format")
+        
+        if not backup_file.exists():
+            raise HTTPException(status_code=404, detail="Backup file not found")
+        
+        backup_file.unlink()  # Delete the file
+        
+        logger.info("Deleted prompt backup", extra={"data": {"backup_file": backup_filename}})
+        return {"message": f"Backup {backup_filename} deleted successfully"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to delete backup", extra={"data": {"error": str(e)}})
+        raise HTTPException(status_code=500, detail=f"Failed to delete backup: {str(e)}")
+
+
 @router.post("/system-prompt/restore/{backup_filename}")
 async def restore_prompt_backup(backup_filename: str):
     """Restore system prompt from a backup file and clear agent cache."""
@@ -974,14 +1038,20 @@ async def restore_prompt_backup(backup_filename: str):
         with open(backup_file, 'r', encoding='utf-8') as f:
             backup_content = f.read()
         
-        # Create backup of current version before restoring
+        # Create backup of current version before restoring (only if different)
         if prompt_file.exists():
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            current_backup = backup_dir / f"prompt_{timestamp}_pre_restore.bak"
             with open(prompt_file, 'r', encoding='utf-8') as f:
                 current_content = f.read()
-            with open(current_backup, 'w', encoding='utf-8') as f:
-                f.write(current_content)
+            
+            # Only create backup if current content is different from existing backups
+            if should_create_backup(current_content, backup_dir):
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                current_backup = backup_dir / f"prompt_{timestamp}_pre_restore.bak"
+                with open(current_backup, 'w', encoding='utf-8') as f:
+                    f.write(current_content)
+                logger.info("Created pre-restore backup", extra={"data": {"backup_file": str(current_backup)}})
+            else:
+                logger.info("Skipped pre-restore backup - identical content already exists")
         
         # Restore from backup
         with open(prompt_file, 'w', encoding='utf-8') as f:
