@@ -144,30 +144,9 @@ export const updateQueryDataFromEvent = (eventType: string, data: EventData) => 
       })
       break
     case 'task_updated':
-      // Update overview and task counts cache for real-time updates
-      const timestamp = new Date().toISOString()
-      
-      // Update overview data (used by Navbar)
-      client.setQueryData(['overview'], (oldData: unknown) => {
-        const typedOldData = oldData as TaskCountsData | undefined
-        if (!typedOldData) return oldData
-        
-        return { 
-          ...typedOldData, 
-          last_updated: timestamp
-        }
-      })
-      
-      // Update task-counts cache
-      client.setQueryData(['task-counts'], (oldData: unknown) => {
-        const typedOldData = oldData as TaskCountsData | undefined
-        if (!typedOldData) return oldData
-        
-        return { 
-          ...typedOldData, 
-          last_updated: timestamp 
-        }
-      })
+      // For task updates, we need to refetch the data since we don't know 
+      // the exact change in task counts without complex state tracking.
+      // Simply invalidating queries will trigger a refetch for real-time updates.
       break
   }
 }

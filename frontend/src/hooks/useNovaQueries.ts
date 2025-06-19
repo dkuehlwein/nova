@@ -213,10 +213,26 @@ export function useTaskCounts() {
   })
 }
 
+interface OverviewData {
+  task_counts: Record<string, number>
+  total_tasks: number
+  pending_decisions: number
+  recent_activity: Array<{
+    type: string
+    title: string
+    description: string
+    time: string
+    timestamp: string
+    related_task_id?: string
+    related_chat_id?: string
+  }>
+  system_status: string
+}
+
 export function useOverview() {
   return useQuery({
     queryKey: ['overview'],
-    queryFn: async () => {
+    queryFn: async (): Promise<OverviewData> => {
       return await apiRequest('/api/overview')
     },
     staleTime: 0, // Real-time updates via WebSocket

@@ -16,6 +16,8 @@ from sqlalchemy.orm import selectinload
 from database.database import db_manager
 from models.models import Task, TaskComment, Person, Project
 from models.models import TaskStatus
+from utils.redis_manager import publish
+from models.events import create_task_updated_event
 from .helpers import find_person_by_email, find_project_by_name, format_task_for_agent
 from api.api_endpoints import create_task as api_create_task, update_task as api_update_task, TaskCreate, TaskUpdate
 
@@ -132,9 +134,30 @@ async def update_task_tool(
             except ValueError:
                 return f"Error: Invalid due_date format. Use ISO format."
         
+        # Store old status for event publishing
+        old_status = None
+        async with db_manager.get_session() as session:
+            old_task_result = await session.execute(select(Task).where(Task.id == task_id_uuid))
+            old_task = old_task_result.scalar_one_or_none()
+            if old_task:
+                old_status = old_task.status
+
         # Use the API endpoint function
         task_update = TaskUpdate(**update_data)
         result = await api_update_task(task_id_uuid, task_update)
+        
+        # Publish WebSocket event for real-time updates
+        try:
+            status_changed = "status" in update_data and old_status and old_status != result.status
+            await publish(create_task_updated_event(
+                task_id=str(result.id),
+                status=result.status.value,
+                action="status_changed" if status_changed else "updated",
+                source="task-tool"
+            ))
+        except Exception as e:
+            # Don't fail the operation if event publishing fails
+            print(f"Warning: Failed to publish task update event: {e}")
         
         # Fetch the actual Task object to use format_task_for_agent
         async with db_manager.get_session() as session:

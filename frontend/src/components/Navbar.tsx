@@ -16,13 +16,13 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useOverview } from "@/hooks/useOverview";
-import { useSystemHealthSummary } from "@/hooks/useNovaQueries";
+import { useOverview as useOverviewQuery, useSystemHealthSummary } from "@/hooks/useNovaQueries";
 import { useNovaWebSocket } from "@/hooks/useNovaWebSocket";
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { data, loading, refreshing, currentTask } = useOverview();
+  const { data, isLoading: loading, isRefetching: refreshing } = useOverviewQuery();
+  const currentTask = (data?.task_counts?.in_progress || 0) > 0 ? { title: "Task in progress", priority: "high" } : null;
   const { data: healthSummary, isLoading: healthLoading } = useSystemHealthSummary();
   
   // Subscribe to WebSocket events for real-time updates
@@ -44,7 +44,7 @@ export default function Navbar() {
     );
   }
 
-  const pendingDecisions = data.task_counts.NEEDS_REVIEW || 0;
+  const pendingDecisions = data?.task_counts?.needs_review || 0;
 
   // Get system status icon and color based on health summary
   const getSystemStatusDisplay = () => {
@@ -143,7 +143,7 @@ export default function Navbar() {
                 <KanbanSquare className="h-4 w-4" />
                 <span>Tasks</span>
                 <Badge variant="outline" className="text-xs px-1 py-0">
-                  {data.total_tasks}
+                  {data?.total_tasks || 0}
                 </Badge>
               </Button>
             </Link>
@@ -192,7 +192,7 @@ export default function Navbar() {
             <div className="flex items-center space-x-1">
               <InboxIcon className="h-3 w-3 text-blue-500" />
               <Badge variant="secondary" className="text-xs px-1 py-0">
-                {data.task_counts.NEW || 0}
+                {data?.task_counts?.new || 0}
               </Badge>
             </div>
             
@@ -200,7 +200,7 @@ export default function Navbar() {
             <div className="flex items-center space-x-1">
               <UserCheck className="h-3 w-3 text-green-500" />
               <Badge variant="secondary" className="text-xs px-1 py-0">
-                {data.task_counts.USER_INPUT_RECEIVED || 0}
+                {data?.task_counts?.user_input_received || 0}
               </Badge>
             </div>
             
@@ -208,7 +208,7 @@ export default function Navbar() {
             <div className="flex items-center space-x-1">
               <Eye className="h-3 w-3 text-orange-500" />
               <Badge variant="secondary" className="text-xs px-1 py-0">
-                {data.task_counts.IN_PROGRESS || 0}
+                {data?.task_counts?.in_progress || 0}
               </Badge>
             </div>
             
@@ -216,7 +216,7 @@ export default function Navbar() {
             <div className="flex items-center space-x-1">
               <HourglassIcon className="h-3 w-3 text-yellow-500" />
               <Badge variant="secondary" className="text-xs px-1 py-0">
-                {data.task_counts.NEEDS_REVIEW || 0}
+                {data?.task_counts?.needs_review || 0}
               </Badge>
             </div>
           </div>
