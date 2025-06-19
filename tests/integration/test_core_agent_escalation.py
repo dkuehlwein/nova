@@ -133,6 +133,7 @@ async def test_complete_escalation_workflow():
         # Step 6: Simulate user providing answer "pizza" using the same method as frontend
         from langchain_core.runnables import RunnableConfig
         from langgraph.types import Command
+        from tools.task_tools import update_task_tool
         
         thread_id = f"core_agent_task_{task_id}"
         config = RunnableConfig(configurable={"thread_id": thread_id})
@@ -158,6 +159,23 @@ async def test_complete_escalation_workflow():
                 ):
                     logger.debug(f"Resume chunk: {chunk}")
                 
+                # IMPORTANT: Also update task status like the API endpoint does
+                # The API endpoint sets task to USER_INPUT_RECEIVED so core agent can pick it up
+                async with db_manager.get_session() as session:
+                    result = await session.execute(
+                        select(Task).where(Task.id == task_id)
+                    )
+                    current_task = result.scalar_one()
+                    
+                    if current_task.status == TaskStatus.NEEDS_REVIEW:
+                        await update_task_tool(
+                            task_id=str(task_id),
+                            status="user_input_received"
+                        )
+                        logger.info("Updated task to USER_INPUT_RECEIVED after escalation response", extra={
+                            "data": {"task_id": str(task_id)}
+                        })
+                
                 logger.info("User provided response via escalation resume", extra={
                     "data": {"task_id": str(task_id), "response": "pizza"}
                 })
@@ -172,22 +190,28 @@ async def test_complete_escalation_workflow():
             })
             raise
         
-        # Step 7: Check if task has been completed after escalation response
-        # The agent should have automatically resumed and completed the task
+        # Step 7: Process task again to complete it after user input
+        # The task should now be in USER_INPUT_RECEIVED status for core agent to pick up
+        logger.info("Core agent processing task again after user input", extra={
+            "data": {"task_id": str(task_id)}
+        })
+        
+        result = await core_agent.force_process_task(str(task_id))
+        assert result == f"Task {task_id} processed successfully"
+        
+        # Step 8: Verify task is now completed
         async with db_manager.get_session() as session:
             result = await session.execute(
                 select(Task).where(Task.id == task_id)
             )
             final_task = result.scalar_one()
             
-            logger.info("Task status after escalation response", extra={
+            logger.info("Task status after second processing", extra={
                 "data": {"task_id": str(task_id), "status": final_task.status.value}
             })
             
-            # The escalation response should have automatically resumed the workflow
-            # Task should be progressing or completed
-            # Note: LLM might need multiple cycles to complete complex tasks
-            assert final_task.status in [TaskStatus.IN_PROGRESS, TaskStatus.DONE, TaskStatus.USER_INPUT_RECEIVED]
+            # Task should be completed - the agent got the user's favorite food answer
+            assert final_task.status == TaskStatus.DONE, f"Expected task to be DONE after getting user response, but got {final_task.status.value}"
             
             # Check for task comments to verify escalation workflow
             result = await session.execute(
@@ -199,7 +223,7 @@ async def test_complete_escalation_workflow():
             escalation_comments = [c for c in all_comments if "core_agent" in c.author.lower() and "input" in c.content.lower()]
             assert len(escalation_comments) > 0, "Should have escalation comment from core agent"
             
-            logger.info("Escalation workflow verified", extra={
+            logger.info("Complete escalation workflow verified", extra={
                 "data": {
                     "task_id": str(task_id),
                     "final_status": final_task.status.value,
