@@ -20,37 +20,8 @@ from models.events import create_mcp_toggled_event
 logger = get_logger("mcp-api")
 router = APIRouter(prefix="/api/mcp", tags=["MCP Servers"])
 
-
-class MCPServerStatus(BaseModel):
-    """MCP Server with health status information"""
-    name: str
-    url: str
-    health_url: str
-    description: str
-    enabled: bool
-    healthy: bool
-    tools_count: Optional[int] = None
-    error: Optional[str] = None
-
-
-class MCPServersResponse(BaseModel):
-    """Response for GET /api/mcp endpoint"""
-    servers: List[MCPServerStatus]
-    total_servers: int
-    healthy_servers: int
-    enabled_servers: int
-
-
-class MCPToggleRequest(BaseModel):
-    """Request body for toggling MCP server status"""
-    enabled: bool
-
-
-class MCPToggleResponse(BaseModel):
-    """Response for MCP server toggle operations"""
-    server_name: str
-    enabled: bool
-    message: str
+# Import domain-specific models
+from models.mcp import MCPServerStatus, MCPServersResponse, MCPToggleRequest, MCPToggleResponse
 
 
 @router.get("/", response_model=MCPServersResponse)

@@ -138,4 +138,21 @@ class ConfigBackupInfo(BaseModel):
                 "server_count": 3,
                 "description": "Pre-update backup"
             }
-        } 
+        }
+
+
+# API request/response models moved here from config_endpoints.py
+class ConfigValidateRequest(BaseModel):
+    """Request body for configuration validation."""
+    config: Dict[str, Any] = Field(..., description="Configuration to validate")
+
+
+class ConfigValidateResponse(BaseModel):
+    """Response for configuration validation.""" 
+    validation_result: ConfigValidationResult = Field(..., description="Detailed validation results")
+    message: str = Field(..., description="Human-readable validation message")
+
+
+class ConfigRestoreRequest(BaseModel):
+    """Request body for configuration restore."""
+    backup_id: str = Field(..., description="Backup identifier to restore from") 

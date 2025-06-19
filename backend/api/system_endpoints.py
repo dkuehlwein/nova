@@ -11,7 +11,6 @@ import asyncio
 import aiohttp
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
 from config import settings
 from utils.logging import get_logger
@@ -19,6 +18,9 @@ from mcp_client import mcp_manager
 from api.mcp_endpoints import get_mcp_servers
 from database.database import db_manager
 from sqlalchemy import text
+
+# Import domain-specific models
+from models.system import ServiceRestartRequest, ServiceRestartResponse, SystemHealthSummary
 
 logger = get_logger("system-api")
 router = APIRouter(prefix="/api/system", tags=["System Management"])
@@ -31,31 +33,6 @@ ALLOWED_SERVICES = {
     "chat-agent",
     "core-agent"
 }
-
-
-class ServiceRestartRequest(BaseModel):
-    """Optional request body for service restart (currently unused but ready for future params)"""
-    force: bool = False
-
-
-class ServiceRestartResponse(BaseModel):
-    """Response for service restart operations"""
-    service_name: str
-    status: str  # "success" | "error"
-    message: str
-    stdout: str
-    stderr: str
-    exit_code: int
-
-
-class SystemHealthSummary(BaseModel):
-    """System health summary for navbar display"""
-    overall_status: str  # "operational", "degraded", "critical"
-    chat_agent_status: str
-    core_agent_status: str
-    mcp_servers_healthy: int
-    mcp_servers_total: int
-    database_status: str
 
 
 async def check_database_health() -> str:

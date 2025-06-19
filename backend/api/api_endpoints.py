@@ -31,125 +31,11 @@ from utils.redis_manager import publish
 from models.events import create_task_updated_event
 
 
-# === Pydantic Models for API ===
-
-class TaskCreate(BaseModel):
-    title: str
-    description: str
-    status: TaskStatus = TaskStatus.NEW
-    due_date: Optional[datetime] = None
-    tags: List[str] = []
-    person_ids: List[UUID] = []
-    project_ids: List[UUID] = []
-
-
-class TaskUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[TaskStatus] = None
-    summary: Optional[str] = None
-    due_date: Optional[datetime] = None
-    tags: Optional[List[str]] = None
-    completed_at: Optional[datetime] = None
-
-
-class TaskCommentCreate(BaseModel):
-    content: str
-    author: str = "user"
-
-
-class TaskResponse(BaseModel):
-    id: UUID
-    title: str
-    description: str
-    summary: Optional[str]
-    status: TaskStatus
-    created_at: datetime
-    updated_at: datetime
-    due_date: Optional[datetime]
-    completed_at: Optional[datetime]
-    tags: List[str]
-    needs_decision: bool = False
-    decision_type: Optional[str] = None
-    
-    # Related entities
-    persons: List[str] = []  # Names for UI
-    projects: List[str] = []  # Names for UI
-    comments_count: int = 0
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PersonCreate(BaseModel):
-    name: str
-    email: str
-    role: Optional[str] = None
-    description: Optional[str] = None
-    current_focus: Optional[str] = None
-
-
-class PersonResponse(BaseModel):
-    id: UUID
-    name: str
-    email: str
-    role: Optional[str]
-    description: Optional[str]
-    current_focus: Optional[str]
-    created_at: datetime
-    
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ProjectCreate(BaseModel):
-    name: str
-    client: str
-    booking_code: Optional[str] = None
-    summary: Optional[str] = None
-
-
-class ProjectResponse(BaseModel):
-    id: UUID
-    name: str
-    client: str
-    booking_code: Optional[str]
-    summary: Optional[str]
-    created_at: datetime
-    
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ActivityItem(BaseModel):
-    type: str  # "task_created", "task_completed", "email_processed", etc.
-    title: str
-    description: str
-    time: str  # human readable time like "5 minutes ago"
-    timestamp: datetime
-    related_task_id: Optional[UUID] = None
-    related_chat_id: Optional[UUID] = None
-
-
-class OverviewStats(BaseModel):
-    task_counts: Dict[str, int]  # counts by status
-    total_tasks: int
-    pending_decisions: int
-    recent_activity: List[ActivityItem]
-    system_status: str
-
-
-class ArtifactCreate(BaseModel):
-    link: str
-    title: Optional[str] = None
-    summary: Optional[str] = None
-
-
-class ArtifactResponse(BaseModel):
-    id: UUID
-    link: str
-    title: Optional[str]
-    summary: Optional[str]
-    created_at: datetime
-    
-    model_config = ConfigDict(from_attributes=True)
+# === Import Domain-Specific Pydantic Models ===
+from models.tasks import TaskCreate, TaskUpdate, TaskCommentCreate, TaskResponse
+from models.entities import PersonCreate, PersonResponse, ProjectCreate, ProjectResponse, ArtifactCreate, ArtifactResponse
+from models.admin import ActivityItem, OverviewStats
+from models.chat import TaskChatMessageCreate
 
 
 # === API Router ===
@@ -718,8 +604,7 @@ async def add_task_comment(task_id: UUID, comment_data: TaskCommentCreate):
 
 # === Task Chat Endpoints ===
 
-class TaskChatMessageCreate(BaseModel):
-    content: str
+# TaskChatMessageCreate model now imported from models.chat
 
 
 # Removed - this endpoint is no longer used. Task chats now use /chat/conversations/{threadId}/messages

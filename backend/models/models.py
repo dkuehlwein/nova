@@ -10,6 +10,7 @@ from enum import Enum
 from typing import List, Optional
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel
 from sqlalchemy import (
     Boolean, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text, Table,
     Column, func

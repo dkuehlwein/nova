@@ -22,7 +22,7 @@ from agent.chat_agent import create_chat_agent
 import logging
 
 # System prompt management imports
-from models.models import SystemPromptResponse, SystemPromptUpdateRequest
+from models.chat import SystemPromptResponse, SystemPromptUpdateRequest
 from utils.redis_manager import publish
 from models.events import NovaEvent
 from pathlib import Path
@@ -59,56 +59,11 @@ def clear_chat_agent_cache():
     logger.info("Chat agent cache cleared - will be recreated with updated prompt on next request")
 
 
-# Pydantic models for request/response
-class ChatMessage(BaseModel):
-    """Chat message model."""
-    role: str = Field(..., description="Message role (user or assistant)")
-    content: str = Field(..., description="Message content")
-    timestamp: Optional[str] = Field(None, description="Message timestamp")
-    id: Optional[str] = Field(None, description="Message ID")
-
-
-class ChatRequest(BaseModel):
-    """Chat request model."""
-    messages: List[ChatMessage] = Field(..., description="List of chat messages")
-    thread_id: Optional[str] = Field(None, description="Thread identifier for conversation continuity")
-    stream: bool = Field(True, description="Whether to stream the response")
-
-
-class ChatResponse(BaseModel):
-    """Non-streaming chat response model."""
-    message: ChatMessage = Field(..., description="Assistant response message")
-    thread_id: str = Field(..., description="Thread identifier")
-
-
-class HealthResponse(BaseModel):
-    """Health check response."""
-    status: str = Field(..., description="Health status")
-    agent_ready: bool = Field(..., description="Whether the agent is ready")
-    timestamp: str = Field(..., description="Health check timestamp")
-
-
-# Models for chat management
-class ChatSummary(BaseModel):
-    """Chat summary for listing chats."""
-    id: str = Field(..., description="Chat thread ID")
-    title: str = Field(..., description="Chat title")
-    created_at: str = Field(..., description="Creation timestamp")
-    updated_at: str = Field(..., description="Last update timestamp")
-    last_message: Optional[str] = Field(None, description="Last message preview")
-    last_activity: Optional[str] = Field(None, description="Last activity timestamp")
-    has_decision: bool = Field(False, description="Whether chat needs user decision")
-    message_count: int = Field(0, description="Number of messages in chat")
-
-
-class ChatMessageDetail(BaseModel):
-    """Detailed chat message for message history."""
-    id: str = Field(..., description="Message ID")
-    sender: str = Field(..., description="Message sender (user or assistant)")
-    content: str = Field(..., description="Message content")
-    created_at: str = Field(..., description="Message creation timestamp")
-    needs_decision: bool = Field(False, description="Whether message needs user decision")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
+# Import Pydantic models from dedicated chat models file
+from models.chat import (
+    ChatMessage, ChatRequest, ChatResponse, HealthResponse,
+    ChatSummary, ChatMessageDetail, TaskChatResponse, TaskChatMessageCreate
+)
 
 
 def _convert_messages_to_langchain(messages: List[ChatMessage]) -> List:
@@ -800,12 +755,6 @@ async def get_chat(request: Request, chat_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting chat: {str(e)}")
-
-
-class TaskChatResponse(BaseModel):
-    """Response model for task chat data including escalation info."""
-    messages: List[ChatMessageDetail] = Field(..., description="Chat messages")
-    pending_escalation: Optional[Dict[str, Any]] = Field(None, description="Pending escalation info")
 
 
 @router.get("/conversations/{chat_id}/messages", response_model=List[ChatMessageDetail])

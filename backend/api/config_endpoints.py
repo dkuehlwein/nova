@@ -19,21 +19,8 @@ from models.events import create_config_validated_event
 logger = get_logger("config-api")
 router = APIRouter(prefix="/api/config", tags=["Configuration"])
 
-
-class ConfigValidateRequest(BaseModel):
-    """Request body for configuration validation."""
-    config: Dict[str, Any]
-
-
-class ConfigValidateResponse(BaseModel):
-    """Response for configuration validation."""
-    validation_result: ConfigValidationResult
-    message: str
-
-
-class ConfigRestoreRequest(BaseModel):
-    """Request body for configuration restore."""
-    backup_id: str
+# Import domain-specific models
+from models.config import ConfigValidateRequest, ConfigValidateResponse, ConfigRestoreRequest
 
 
 @router.post("/validate", response_model=ConfigValidateResponse)
