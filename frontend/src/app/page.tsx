@@ -12,7 +12,7 @@ import { useOverview } from "@/hooks/useOverview";
 import { useState, useEffect } from "react";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, ArrowRight, Settings } from "lucide-react";
+import { AlertTriangle, ArrowRight } from "lucide-react";
 
 interface PendingDecision {
   id: string;

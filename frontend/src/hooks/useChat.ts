@@ -156,7 +156,7 @@ export function useChat() {
     if (!content.trim()) return;
 
     // Add user message
-    const userMessageId = addMessage({
+    addMessage({
       role: 'user',
       content: content.trim(),
     });
@@ -188,15 +188,10 @@ export function useChat() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            messages: state.messages.concat([{
+            messages: [{
               role: 'user',
               content: content.trim(),
-              timestamp: new Date().toISOString(),
-              id: userMessageId,
-            }]).map(msg => ({
-              role: msg.role,
-              content: msg.content,
-            })),
+            }],
             thread_id: currentThreadId,
             stream: true,
           }),
@@ -291,15 +286,10 @@ export function useChat() {
         }>(API_ENDPOINTS.chat, {
           method: 'POST',
           body: JSON.stringify({
-            messages: state.messages.concat([{
+            messages: [{
               role: 'user',
               content: content.trim(),
-              timestamp: new Date().toISOString(),
-              id: userMessageId,
-            }]).map(msg => ({
-              role: msg.role,
-              content: msg.content,
-            })),
+            }],
             thread_id: currentThreadId,
             stream: false,
           }),
@@ -334,7 +324,7 @@ export function useChat() {
     } finally {
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [state.messages, currentThreadId, addMessage, updateMessage]);
+  }, [currentThreadId, addMessage, updateMessage]);
 
   // Stop any ongoing streaming
   const stopStreaming = useCallback(() => {

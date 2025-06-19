@@ -11,7 +11,7 @@ import SystemPromptEditor from "@/components/SystemPromptEditor";
 
 export default function SettingsPage() {
   const { data: mcpData, isLoading: mcpLoading, error: mcpError } = useMCPServers();
-  const { data: systemHealth, isLoading: healthLoading } = useSystemHealth();
+  const { data: systemHealth } = useSystemHealth();
   const toggleMutation = useToggleMCPServer();
   const restartMutation = useRestartService();
   const [restartingService, setRestartingService] = useState<string | null>(null);

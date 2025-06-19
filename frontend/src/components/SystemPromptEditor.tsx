@@ -113,7 +113,7 @@ export default function SystemPromptEditor() {
             <span>System Prompt</span>
           </h2>
           <p className="text-sm text-muted-foreground">
-            Configure Nova's AI behavior and capabilities
+            Configure Nova&apos;s AI behavior and capabilities
           </p>
         </div>
         <div className="flex items-center space-x-2">
