@@ -283,7 +283,93 @@ export function useAllowedServices() {
 export function useInvalidateAllQueries() {
   const queryClient = useQueryClient()
   
-  return () => {
-    queryClient.invalidateQueries()
-  }
+  return useMutation({
+    mutationFn: async () => {
+      queryClient.invalidateQueries()
+      return { success: true }
+    }
+  })
+}
+
+// System Prompt Queries
+interface SystemPromptData {
+  content: string
+  file_path: string
+  last_modified: string
+  size_bytes: number
+}
+
+interface PromptBackup {
+  filename: string
+  path: string
+  created: string
+  size_bytes: number
+}
+
+export function useSystemPrompt() {
+  return useQuery({
+    queryKey: ['system-prompt'],
+    queryFn: async (): Promise<SystemPromptData> => {
+      return await apiRequest('/chat/system-prompt')
+    },
+    staleTime: 30000, // 30 seconds - prompt doesn't change often
+    retry: 2
+  })
+}
+
+export function useUpdateSystemPrompt() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (content: string): Promise<SystemPromptData> => {
+      return await apiRequest('/chat/system-prompt', {
+        method: 'PUT',
+        body: JSON.stringify({ content }),
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+    },
+    onSuccess: (data) => {
+      // Update the cache with the new prompt data
+      queryClient.setQueryData(['system-prompt'], data)
+      // Invalidate related queries that might be affected
+      queryClient.invalidateQueries({ queryKey: ['system-prompt-backups'] })
+    },
+    onError: (error) => {
+      console.error('Failed to update system prompt:', error)
+    }
+  })
+}
+
+export function useSystemPromptBackups() {
+  return useQuery({
+    queryKey: ['system-prompt-backups'],
+    queryFn: async (): Promise<{ backups: PromptBackup[] }> => {
+      return await apiRequest('/chat/system-prompt/backups')
+    },
+    staleTime: 60000, // 1 minute - backups don't change often
+    retry: 2
+  })
+}
+
+export function useRestorePromptBackup() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (backupFilename: string): Promise<SystemPromptData> => {
+      return await apiRequest(`/chat/system-prompt/restore/${backupFilename}`, {
+        method: 'POST'
+      })
+    },
+    onSuccess: (data) => {
+      // Update the prompt cache with restored content
+      queryClient.setQueryData(['system-prompt'], data)
+      // Refresh backups list
+      queryClient.invalidateQueries({ queryKey: ['system-prompt-backups'] })
+    },
+    onError: (error) => {
+      console.error('Failed to restore prompt backup:', error)
+    }
+  })
 } 

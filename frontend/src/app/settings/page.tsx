@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useMCPServers, useToggleMCPServer, useSystemHealth, useRestartService } from "@/hooks/useNovaQueries";
 import { useState } from "react";
+import SystemPromptEditor from "@/components/SystemPromptEditor";
 
 export default function SettingsPage() {
   const { data: mcpData, isLoading: mcpLoading, error: mcpError } = useMCPServers();
@@ -113,6 +114,11 @@ export default function SettingsPage() {
             <p className="text-muted-foreground">
               Configure Nova AI Assistant and monitor system status
             </p>
+          </div>
+
+          {/* System Prompt Editor - Full Width */}
+          <div className="mb-8">
+            <SystemPromptEditor />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

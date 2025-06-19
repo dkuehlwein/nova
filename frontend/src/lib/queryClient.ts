@@ -91,7 +91,10 @@ export const invalidateQueriesByEvent = (eventType: string, data: EventData) => 
       client.invalidateQueries({ queryKey: ['system-health-summary'] })
       break
     case 'prompt_updated':
-      // Potentially invalidate agent-related queries
+      // Invalidate system prompt queries when prompt is updated
+      client.invalidateQueries({ queryKey: ['system-prompt'] })
+      client.invalidateQueries({ queryKey: ['system-prompt-backups'] })
+      // Also invalidate agent-related queries since prompt affects agent behavior
       client.invalidateQueries({ queryKey: ['agent-status'] })
       break
     case 'task_updated':
