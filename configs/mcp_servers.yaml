@@ -1,5 +1,5 @@
-gmail:
+google-workspace:
   url: http://localhost:8002/mcp
   health_url: http://localhost:8002/health
-  description: Gmail MCP Server for email operations
+  description: Google Workspace MCP Server for Gmail and Calendar operations
   enabled: true 

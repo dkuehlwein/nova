@@ -35,21 +35,25 @@ def decode_mime_header(header: str) -> str:
             decoded_string += part
     return decoded_string
 
-class GmailService:
+class GoogleWorkspaceService:
     def __init__(self,
                  creds_file_path: str,
                  token_path: str,
                  scopes: list[str] = None,
                  oauth_port: int = 9000): # Default scopes handled in _get_token
-        logger.info(f"Initializing GmailService with creds file: {creds_file_path}")
+        logger.info(f"Initializing GoogleWorkspaceService with creds file: {creds_file_path}")
         self.creds_file_path = creds_file_path
         self.token_path = token_path
-        self.scopes = scopes if scopes is not None else ['https://www.googleapis.com/auth/gmail.modify']
+        self.scopes = scopes if scopes is not None else [
+            'https://www.googleapis.com/auth/gmail.modify',
+            'https://www.googleapis.com/auth/calendar'
+        ]
         self.oauth_port = oauth_port
         self.token = self._get_token()
         logger.info("Token retrieved successfully")
-        self.service = self._get_service()
-        logger.info("Gmail service initialized")
+        self.gmail_service = self._get_gmail_service()
+        self.calendar_service = self._get_calendar_service()
+        logger.info("Google Workspace services initialized")
         self.user_email = self._get_user_email()
         logger.info(f"User email retrieved: {self.user_email}")
 
@@ -119,7 +123,7 @@ class GmailService:
                 logger.info(f'Token saved to {self.token_path}')
         return token
 
-    def _get_service(self) -> Any:
+    def _get_gmail_service(self) -> Any:
         try:
             # Disable static discovery to prevent issues in environments where
             # static discovery docs might be missing or cause errors during tests.
@@ -130,9 +134,17 @@ class GmailService:
         except HttpError as error:
             logger.error(f'An error occurred building Gmail service: {error}')
             raise ValueError(f'An error occurred building Gmail service: {error}')
+    
+    def _get_calendar_service(self) -> Any:
+        try:
+            service = build('calendar', 'v3', credentials=self.token, static_discovery=False)
+            return service
+        except HttpError as error:
+            logger.error(f'An error occurred building Calendar service: {error}')
+            raise ValueError(f'An error occurred building Calendar service: {error}')
 
     def _get_user_email(self) -> str:
-        profile = self.service.users().getProfile(userId='me').execute()
+        profile = self.workspace_service.users().getProfile(userId='me').execute()
         return profile.get('emailAddress', '')
 
     async def send_email(self, recipient_ids: List[str], subject: str, message: str) -> dict:
@@ -145,7 +157,7 @@ class GmailService:
             encoded_message = base64.urlsafe_b64encode(message_obj.as_bytes()).decode()
             create_message = {'raw': encoded_message}
             send_message = await asyncio.to_thread(
-                self.service.users().messages().send(userId="me", body=create_message).execute
+                self.workspace_service.users().messages().send(userId="me", body=create_message).execute
             )
             logger.info(f"Message sent: {send_message['id']}")
             return {"message_id": send_message["id"]}
@@ -171,7 +183,7 @@ class GmailService:
             user_id = 'me'
             query = 'in:inbox is:unread category:primary'
             response = await asyncio.to_thread(
-                self.service.users().messages().list(userId=user_id, q=query).execute
+                self.workspace_service.users().messages().list(userId=user_id, q=query).execute
             )
             messages = []
             if 'messages' in response:
@@ -179,7 +191,7 @@ class GmailService:
             while 'nextPageToken' in response:
                 page_token = response['nextPageToken']
                 response = await asyncio.to_thread(
-                    self.service.users().messages().list(userId=user_id, q=query, pageToken=page_token).execute
+                    self.workspace_service.users().messages().list(userId=user_id, q=query, pageToken=page_token).execute
                 )
                 if 'messages' in response: # check again for messages key
                     messages.extend(response['messages'])
@@ -191,7 +203,7 @@ class GmailService:
     async def read_email(self, email_id: str) -> Union[Dict[str, str], Dict[str, str]]:
         try:
             msg = await asyncio.to_thread(
-                self.service.users().messages().get(userId="me", id=email_id, format='raw').execute
+                self.workspace_service.users().messages().get(userId="me", id=email_id, format='raw').execute
             )
             email_metadata = {}
             raw_data = msg['raw']
@@ -220,7 +232,7 @@ class GmailService:
     async def trash_email(self, email_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
-                self.service.users().messages().trash(userId="me", id=email_id).execute
+                self.workspace_service.users().messages().trash(userId="me", id=email_id).execute
             )
             logger.info(f"Email moved to trash: {email_id}")
             return "Email moved to trash successfully."
@@ -231,7 +243,7 @@ class GmailService:
     async def mark_email_as_read(self, email_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
-                self.service.users().messages().modify(userId="me", id=email_id, body={'removeLabelIds': ['UNREAD']}).execute
+                self.workspace_service.users().messages().modify(userId="me", id=email_id, body={'removeLabelIds': ['UNREAD']}).execute
             )
             logger.info(f"Email marked as read: {email_id}")
             return "Email marked as read."
@@ -249,7 +261,7 @@ class GmailService:
             encoded_message = base64.urlsafe_b64encode(message_obj.as_bytes()).decode()
             create_message = {'message': {'raw': encoded_message}} # Gmail API expects 'message' key for draft
             draft = await asyncio.to_thread(
-                self.service.users().drafts().create(userId="me", body=create_message).execute
+                self.workspace_service.users().drafts().create(userId="me", body=create_message).execute
             )
             logger.info(f"Draft created: {draft['id']}")
             return {"draft_id": draft["id"]}
@@ -260,14 +272,14 @@ class GmailService:
     async def list_drafts(self) -> Union[List[Dict[str, str]], Dict[str, str]]:
         try:
             results = await asyncio.to_thread(
-                self.service.users().drafts().list(userId="me").execute
+                self.workspace_service.users().drafts().list(userId="me").execute
             )
             drafts_info = results.get('drafts', [])
             draft_list = []
             for draft_summary in drafts_info:
                 draft_id = draft_summary['id']
                 draft_data = await asyncio.to_thread(
-                    self.service.users().drafts().get(userId="me", id=draft_id, format='metadata').execute
+                    self.workspace_service.users().drafts().get(userId="me", id=draft_id, format='metadata').execute
                 )
                 message = draft_data.get('message', {})
                 headers = message.get('payload', {}).get('headers', [])
@@ -282,7 +294,7 @@ class GmailService:
     async def list_labels(self) -> Union[List[Dict[str, str]], Dict[str, str]]:
         try:
             results = await asyncio.to_thread(
-                self.service.users().labels().list(userId="me").execute
+                self.workspace_service.users().labels().list(userId="me").execute
             )
             return results.get('labels', [])
         except HttpError as error:
@@ -293,7 +305,7 @@ class GmailService:
         try:
             label_object = {'name': name, 'labelListVisibility': 'labelShow', 'messageListVisibility': 'show'}
             created_label = await asyncio.to_thread(
-                self.service.users().labels().create(userId="me", body=label_object).execute
+                self.workspace_service.users().labels().create(userId="me", body=label_object).execute
             )
             logger.info(f"Label created: {created_label['id']}")
             return {'label_id': created_label['id'], 'name': created_label['name']}
@@ -304,7 +316,7 @@ class GmailService:
     async def apply_label(self, email_id: str, label_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
-                self.service.users().messages().modify(userId="me", id=email_id, body={'addLabelIds': [label_id]}).execute
+                self.workspace_service.users().messages().modify(userId="me", id=email_id, body={'addLabelIds': [label_id]}).execute
             )
             logger.info(f"Label {label_id} applied to email {email_id}")
             return f"Label {label_id} applied successfully to email {email_id}."
@@ -315,7 +327,7 @@ class GmailService:
     async def remove_label(self, email_id: str, label_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
-                self.service.users().messages().modify(userId="me", id=email_id, body={'removeLabelIds': [label_id]}).execute
+                self.workspace_service.users().messages().modify(userId="me", id=email_id, body={'removeLabelIds': [label_id]}).execute
             )
             logger.info(f"Label {label_id} removed from email {email_id}")
             return f"Label {label_id} removed successfully from email {email_id}."
@@ -327,7 +339,7 @@ class GmailService:
         try:
             label_patch = {'name': new_name} # Only send fields to update for patch
             updated_label = await asyncio.to_thread(
-                self.service.users().labels().patch(userId="me", id=label_id, body=label_patch).execute
+                self.workspace_service.users().labels().patch(userId="me", id=label_id, body=label_patch).execute
             )
             logger.info(f"Label renamed: {label_id} to {new_name}")
             return {'label_id': updated_label['id'], 'name': updated_label['name']}
@@ -338,7 +350,7 @@ class GmailService:
     async def delete_label(self, label_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
-                self.service.users().labels().delete(userId="me", id=label_id).execute
+                self.workspace_service.users().labels().delete(userId="me", id=label_id).execute
             )
             logger.info(f"Label deleted: {label_id}")
             return f"Label {label_id} deleted successfully."
@@ -350,7 +362,7 @@ class GmailService:
         try:
             query = f"label:{label_id}"
             response = await asyncio.to_thread(
-                self.service.users().messages().list(userId="me", q=query).execute
+                self.workspace_service.users().messages().list(userId="me", q=query).execute
             )
             messages = []
             if 'messages' in response:
@@ -358,7 +370,7 @@ class GmailService:
             while 'nextPageToken' in response:
                 page_token = response['nextPageToken']
                 response = await asyncio.to_thread(
-                    self.service.users().messages().list(userId="me", q=query, pageToken=page_token).execute
+                    self.workspace_service.users().messages().list(userId="me", q=query, pageToken=page_token).execute
                 )
                 if 'messages' in response:
                      messages.extend(response['messages'])
@@ -370,7 +382,7 @@ class GmailService:
     async def list_filters(self) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         try:
             results = await asyncio.to_thread(
-                self.service.users().settings().filters().list(userId="me").execute
+                self.workspace_service.users().settings().filters().list(userId="me").execute
             )
             return results.get('filter', []) # API uses 'filter' not 'filters'
         except HttpError as error:
@@ -380,7 +392,7 @@ class GmailService:
     async def get_filter(self, filter_id: str) -> Union[Dict[str, Any], Dict[str, str]]:
         try:
             return await asyncio.to_thread(
-                self.service.users().settings().filters().get(userId="me", id=filter_id).execute
+                self.workspace_service.users().settings().filters().get(userId="me", id=filter_id).execute
             )
         except HttpError as error:
             logger.error(f"Error getting filter {filter_id}: {error}")
@@ -407,7 +419,7 @@ class GmailService:
 
             filter_object = {'criteria': criteria, 'action': action}
             created_filter = await asyncio.to_thread(
-                self.service.users().settings().filters().create(userId="me", body=filter_object).execute
+                self.workspace_service.users().settings().filters().create(userId="me", body=filter_object).execute
             )
             logger.info(f"Filter created: {created_filter['id']}")
             return {'filter_id': created_filter['id'], 'filter': created_filter}
@@ -418,7 +430,7 @@ class GmailService:
     async def delete_filter(self, filter_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
-                self.service.users().settings().filters().delete(userId="me", id=filter_id).execute
+                self.workspace_service.users().settings().filters().delete(userId="me", id=filter_id).execute
             )
             logger.info(f"Filter deleted: {filter_id}")
             return f"Filter {filter_id} deleted successfully."
@@ -437,7 +449,7 @@ class GmailService:
                     break
                 
                 response = await asyncio.to_thread(
-                    self.service.users().messages().list(
+                    self.workspace_service.users().messages().list(
                         userId=user_id, q=query, maxResults=min(remaining_results, 100), # API max is often 100 or 500
                         pageToken=page_token
                     ).execute
@@ -451,7 +463,7 @@ class GmailService:
             result_messages = []
             for msg_summary in all_messages_summary:
                 msg_data = await asyncio.to_thread(
-                    self.service.users().messages().get(
+                    self.workspace_service.users().messages().get(
                         userId=user_id, id=msg_summary['id'], format='metadata',
                         metadataHeaders=['Subject', 'From', 'Date']
                     ).execute
@@ -478,7 +490,7 @@ class GmailService:
         try:
             # Apply the folder label and remove from inbox
             await asyncio.to_thread(
-                self.service.users().messages().modify(
+                self.workspace_service.users().messages().modify(
                     userId="me", id=email_id, body={'addLabelIds': [folder_id], 'removeLabelIds': ['INBOX']}
                 ).execute
             )
@@ -504,7 +516,7 @@ class GmailService:
     async def archive_email(self, email_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
-                self.service.users().messages().modify(userId="me", id=email_id, body={'removeLabelIds': ['INBOX']}).execute
+                self.workspace_service.users().messages().modify(userId="me", id=email_id, body={'removeLabelIds': ['INBOX']}).execute
             )
             logger.info(f"Email archived: {email_id}")
             return f"Email {email_id} archived successfully."
@@ -519,7 +531,7 @@ class GmailService:
             page_token = None
             while len(messages_to_archive_ids) < max_emails:
                 response = await asyncio.to_thread(
-                    self.service.users().messages().list(
+                    self.workspace_service.users().messages().list(
                         userId=user_id, q=query + " is:inboxed", # only archive what's in inbox
                         maxResults=min(max_emails - len(messages_to_archive_ids), 100),
                         pageToken=page_token
@@ -540,7 +552,7 @@ class GmailService:
                 'removeLabelIds': ['INBOX']
             }
             await asyncio.to_thread(
-                 self.service.users().messages().batchModify(userId="me", body=batch_modify_request_body).execute
+                 self.workspace_service.users().messages().batchModify(userId="me", body=batch_modify_request_body).execute
             )
             archived_count = len(messages_to_archive_ids)
             logger.info(f"Batch archived {archived_count} emails")
@@ -562,7 +574,7 @@ class GmailService:
     async def restore_to_inbox(self, email_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
-                self.service.users().messages().modify(userId="me", id=email_id, body={'addLabelIds': ['INBOX']}).execute
+                self.workspace_service.users().messages().modify(userId="me", id=email_id, body={'addLabelIds': ['INBOX']}).execute
             )
             logger.info(f"Email restored to inbox: {email_id}")
             return f"Email {email_id} restored to inbox successfully."
@@ -572,10 +584,10 @@ class GmailService:
 
 
 # --- FastMCP Server Setup ---
-mcp = FastMCP(name="GmailToolsServer")
+mcp = FastMCP(name="GoogleWorkspaceToolsServer")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Gmail API FastMCP Server')
+    parser = argparse.ArgumentParser(description='Google Workspace API FastMCP Server')
     parser.add_argument('--creds-file-path', required=True, help='OAuth 2.0 credentials file path (e.g., credentials.json)')
     parser.add_argument('--token-path', required=True, help='File location to store/retrieve access and refresh tokens (e.g., token.json)')
     parser.add_argument('--host', default="127.0.0.1", help='Host to run the server on')
@@ -584,95 +596,95 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    # Initialize GmailService (which handles auth and core logic)
-    gmail_service = GmailService(args.creds_file_path, args.token_path, oauth_port=args.oauth_port)
+    # Initialize GoogleWorkspaceService (which handles auth and core logic)
+    workspace_service = GoogleWorkspaceService(args.creds_file_path, args.token_path, oauth_port=args.oauth_port)
 
     # --- Tool Definitions (thin wrappers around GmailService instance methods) ---
 
     @mcp.tool()
     async def send_email(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
         """Sends an email to one or more recipients. Subject and message are distinct."""
-        return await gmail_service.send_email(recipient_ids, subject, message)
+        return await workspace_service.send_email(recipient_ids, subject, message)
 
     @mcp.tool()
     async def get_unread_emails() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Retrieves a list of unread emails from the primary inbox category."""
-        return await gmail_service.get_unread_emails()
+        return await workspace_service.get_unread_emails()
 
     @mcp.tool()
     async def read_email_content(email_id: str) -> Dict[str, str]: # Union[Dict[str, str], Dict[str, str]] simplifies
         """Retrieves the full content of a specific email and marks it as read."""
-        return await gmail_service.read_email(email_id)
+        return await workspace_service.read_email(email_id)
 
     @mcp.tool()
     async def open_email_in_browser(email_id: str) -> Union[str, Dict[str, str]]:
         """Attempts to open the specified email in the default web browser (on server)."""
-        return await gmail_service.open_email(email_id)
+        return await workspace_service.open_email(email_id)
 
     @mcp.tool()
     async def trash_email(email_id: str) -> Union[str, Dict[str, str]]:
         """Moves the specified email to the trash."""
-        return await gmail_service.trash_email(email_id) 
+        return await workspace_service.trash_email(email_id) 
 
     @mcp.tool()
     async def mark_email_as_read(email_id: str) -> Union[str, Dict[str, str]]:
         """Marks the specified email as read."""
-        return await gmail_service.mark_email_as_read(email_id)
+        return await workspace_service.mark_email_as_read(email_id)
 
     @mcp.tool()
     async def create_draft_email(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
         """Creates a draft email message for one or more recipients."""
-        return await gmail_service.create_draft(recipient_ids, subject, message)
+        return await workspace_service.create_draft(recipient_ids, subject, message)
 
     @mcp.tool()
     async def list_draft_emails() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Lists all draft emails with their ID, subject, and recipient."""
-        return await gmail_service.list_drafts()
+        return await workspace_service.list_drafts()
 
     @mcp.tool()
     async def list_gmail_labels() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Lists all labels in the user's mailbox."""
-        return await gmail_service.list_labels()
+        return await workspace_service.list_labels()
 
     @mcp.tool()
     async def create_new_label(label_name: str) -> Dict[str, str]: # Service method returns Dict for success or error
         """Creates a new label in Gmail."""
-        return await gmail_service.create_label(label_name)
+        return await workspace_service.create_label(label_name)
 
     @mcp.tool()
     async def apply_label_to_email(email_id: str, label_id: str) -> Union[str, Dict[str, str]]:
         """Applies an existing label to a specific email."""
-        return await gmail_service.apply_label(email_id, label_id)
+        return await workspace_service.apply_label(email_id, label_id)
 
     @mcp.tool()
     async def remove_label_from_email(email_id: str, label_id: str) -> Union[str, Dict[str, str]]:
         """Removes a label from a specific email."""
-        return await gmail_service.remove_label(email_id, label_id)
+        return await workspace_service.remove_label(email_id, label_id)
 
     @mcp.tool()
     async def rename_gmail_label(label_id: str, new_name: str) -> Dict[str, str]: # Service method returns Dict for success or error
         """Renames an existing label."""
-        return await gmail_service.rename_label(label_id, new_name)
+        return await workspace_service.rename_label(label_id, new_name)
 
     @mcp.tool()
     async def delete_gmail_label(label_id: str) -> Union[str, Dict[str, str]]:
         """Permanently deletes a label."""
-        return await gmail_service.delete_label(label_id)
+        return await workspace_service.delete_label(label_id)
 
     @mcp.tool()
     async def search_emails_by_label(label_id: str) -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Searches for all emails that have a specific label applied."""
-        return await gmail_service.search_by_label(label_id)
+        return await workspace_service.search_by_label(label_id)
 
     @mcp.tool()
     async def list_email_filters() -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """Lists all email filters set up in the user's Gmail account."""
-        return await gmail_service.list_filters()
+        return await workspace_service.list_filters()
 
     @mcp.tool()
     async def get_email_filter_details(filter_id: str) -> Union[Dict[str, Any], Dict[str, str]]:
         """Gets the detailed configuration of a specific email filter by its ID."""
-        return await gmail_service.get_filter(filter_id)
+        return await workspace_service.get_filter(filter_id)
 
     @mcp.tool()
     async def create_new_email_filter(
@@ -684,7 +696,7 @@ if __name__ == "__main__":
             action_forward_to_email: Optional[str] = None
     ) -> Dict[str, Any]: # Service method returns Dict for success or error
         """Creates a new email filter with specified criteria and actions."""
-        return await gmail_service.create_filter(
+        return await workspace_service.create_filter(
             from_email=criteria_from, to_email=criteria_to, subject=criteria_subject, query=criteria_query,
             has_attachment=criteria_has_attachment, exclude_chats=criteria_exclude_chats,
             size_comparison=criteria_size_comparison, size=criteria_size_bytes,
@@ -695,65 +707,126 @@ if __name__ == "__main__":
     @mcp.tool()
     async def delete_email_filter(filter_id: str) -> Union[str, Dict[str, str]]:
         """Deletes a specific email filter by its ID."""
-        return await gmail_service.delete_filter(filter_id)
+        return await workspace_service.delete_filter(filter_id)
 
     @mcp.tool()
     async def search_all_emails(query: str, max_results: Optional[int] = 50) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """Searches all emails using Gmail's search syntax. Returns basic message info."""
-        return await gmail_service.search_emails(query, max_results)
+        return await workspace_service.search_emails(query, max_results)
 
     @mcp.tool()
     async def create_new_folder(folder_name: str) -> Dict[str, str]: # Service method returns Dict for success or error
         """Creates a new folder (which is a label in Gmail)."""
-        return await gmail_service.create_folder(folder_name)
+        return await workspace_service.create_folder(folder_name)
 
     @mcp.tool()
     async def move_email_to_folder(email_id: str, folder_id: str) -> Union[str, Dict[str, str]]:
         """Moves an email to a specified folder (applies label, removes from inbox)."""
-        return await gmail_service.move_to_folder(email_id, folder_id)
+        return await workspace_service.move_to_folder(email_id, folder_id)
 
     @mcp.tool()
     async def list_email_folders() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Lists all user-created folders (user-defined labels)."""
-        return await gmail_service.list_folders()
+        return await workspace_service.list_folders()
 
     @mcp.tool()
     async def archive_email(email_id: str) -> Union[str, Dict[str, str]]:
         """Archives an email (removes 'INBOX' label)."""
-        return await gmail_service.archive_email(email_id)
+        return await workspace_service.archive_email(email_id)
 
     @mcp.tool()
     async def batch_archive_emails(query: str, max_emails_to_archive: Optional[int] = 100) -> Dict[str, Any]: # Service method returns Dict for success or error
         """Archives multiple emails from inbox matching a search query."""
-        return await gmail_service.batch_archive(query, max_emails_to_archive)
+        return await workspace_service.batch_archive(query, max_emails_to_archive)
 
     @mcp.tool()
     async def list_archived_emails(max_results_to_list: Optional[int] = 50) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """Lists emails that have been archived (not in inbox)."""
-        return await gmail_service.list_archived(max_results_to_list)
+        return await workspace_service.list_archived(max_results_to_list)
 
     @mcp.tool()
     async def restore_email_to_inbox(email_id: str) -> Union[str, Dict[str, str]]:
         """Restores an archived email back to the inbox."""
-        return await gmail_service.restore_to_inbox(email_id)
+        return await workspace_service.restore_to_inbox(email_id)
 
-    # Health endpoint for server monitoring
+
+    # === Calendar Tools ===
+    
+    @mcp.tool()
+    async def list_calendars() -> Union[List[Dict[str, str]], Dict[str, str]]:
+        """Lists all calendars accessible to the user."""
+        return await workspace_service.list_calendars()
+
+    @mcp.tool()
+    async def create_calendar_event(calendar_id: str, summary: str, start_datetime: str, 
+                                  end_datetime: str, description: str = "", location: str = "",
+                                  attendees: Optional[List[str]] = None) -> Dict[str, str]:
+        """Creates a new calendar event. Datetime format: 2025-06-06T10:00:00 (ISO format)"""
+        return await workspace_service.create_event(
+            calendar_id, summary, start_datetime, end_datetime, description, location, attendees
+        )
+
+    @mcp.tool()
+    async def list_calendar_events(calendar_id: str = 'primary', max_results: int = 50, 
+                                 time_min: Optional[str] = None) -> Union[List[Dict[str, Any]], Dict[str, str]]:
+        """Lists upcoming events from a calendar. If time_min not provided, uses current time."""
+        return await workspace_service.list_events(calendar_id, max_results, time_min)
+
+    @mcp.tool()
+    async def get_calendar_event(calendar_id: str, event_id: str) -> Union[Dict[str, Any], Dict[str, str]]:
+        """Gets details of a specific calendar event."""
+        return await workspace_service.get_event(calendar_id, event_id)
+
+    @mcp.tool()
+    async def update_calendar_event(calendar_id: str, event_id: str, summary: Optional[str] = None,
+                                  description: Optional[str] = None, location: Optional[str] = None,
+                                  start_datetime: Optional[str] = None, end_datetime: Optional[str] = None,
+                                  attendees: Optional[List[str]] = None) -> Dict[str, str]:
+        """Updates an existing calendar event. Only provided fields will be updated."""
+        kwargs = {}
+        if summary is not None:
+            kwargs['summary'] = summary
+        if description is not None:
+            kwargs['description'] = description
+        if location is not None:
+            kwargs['location'] = location
+        if start_datetime is not None:
+            kwargs['start_datetime'] = start_datetime
+        if end_datetime is not None:
+            kwargs['end_datetime'] = end_datetime
+        if attendees is not None:
+            kwargs['attendees'] = attendees
+        
+        return await workspace_service.update_event(calendar_id, event_id, **kwargs)
+
+    @mcp.tool()
+    async def delete_calendar_event(calendar_id: str, event_id: str) -> Union[str, Dict[str, str]]:
+        """Deletes a calendar event."""
+        return await workspace_service.delete_event(calendar_id, event_id)
+
+    @mcp.tool()
+    async def create_quick_calendar_event(calendar_id: str, text: str) -> Dict[str, str]:
+        """Creates an event using natural language. Example: 'Meeting with John tomorrow at 2pm'"""
+        return await workspace_service.create_quick_event(calendar_id, text)
+
+
+        # Health endpoint for server monitoring
     @mcp.custom_route("/health", methods=["GET"])
     async def health_check(request):
         """Health check endpoint for monitoring server status."""
         from starlette.responses import JSONResponse
         return JSONResponse({
             "status": "healthy",
-            "service": "gmail-mcp-server", 
+            "service": "google-workspace-mcp-server", 
             "version": "1.0.0",
             "timestamp": str(datetime.now()),
             "mcp_endpoint": "/mcp/",
-            "gmail_user": gmail_service.user_email
+            "gmail_user": workspace_service.user_email
         })
 
     # --- Run FastMCP Server ---
     try:
-        logger.info(f"Starting Gmail FastMCP server on http://{args.host}:{args.port}")
+        logger.info(f"Starting Google Workspace FastMCP server on http://{args.host}:{args.port}")
         mcp.run(transport="streamable-http", host=args.host, port=args.port)
     except KeyboardInterrupt:
         logger.info("Server shutdown requested.")
