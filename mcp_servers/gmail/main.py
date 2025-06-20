@@ -121,7 +121,11 @@ class GmailService:
 
     def _get_service(self) -> Any:
         try:
-            service = build('gmail', 'v1', credentials=self.token)
+            # Disable static discovery to prevent issues in environments where
+            # static discovery docs might be missing or cause errors during tests.
+            # The mock for 'build' in tests should ideally handle this, but
+            # this makes the main code more robust for various scenarios.
+            service = build('gmail', 'v1', credentials=self.token, static_discovery=False)
             return service
         except HttpError as error:
             logger.error(f'An error occurred building Gmail service: {error}')
@@ -131,11 +135,11 @@ class GmailService:
         profile = self.service.users().getProfile(userId='me').execute()
         return profile.get('emailAddress', '')
 
-    async def send_email(self, recipient_id: str, subject: str, message: str) -> dict:
+    async def send_email(self, recipient_ids: List[str], subject: str, message: str) -> dict:
         try:
             message_obj = EmailMessage()
             message_obj.set_content(message)
-            message_obj['To'] = recipient_id
+            message_obj['To'] = ", ".join(recipient_ids)
             message_obj['From'] = self.user_email
             message_obj['Subject'] = subject
             encoded_message = base64.urlsafe_b64encode(message_obj.as_bytes()).decode()
@@ -144,7 +148,7 @@ class GmailService:
                 self.service.users().messages().send(userId="me", body=create_message).execute
             )
             logger.info(f"Message sent: {send_message['id']}")
-            return {"status": "success", "message_id": send_message["id"]}
+            return {"message_id": send_message["id"]}
         except HttpError as error:
             logger.error(f"Error sending email: {error}")
             return {"status": "error", "error_message": str(error)}
@@ -160,9 +164,9 @@ class GmailService:
             return f"Attempted to open email {email_id} in browser."
         except Exception as e: # Catch generic exception for webbrowser
             logger.error(f"Error opening email in browser: {e}")
-            return f"An error occurred opening email in browser: {str(e)}"
+            return {"status": "error", "error_message": f"An error occurred opening email in browser: {str(e)}"}
 
-    async def get_unread_emails(self) -> Union[List[Dict[str, str]], str]:
+    async def get_unread_emails(self) -> Union[List[Dict[str, str]], Dict[str, str]]:
         try:
             user_id = 'me'
             query = 'in:inbox is:unread category:primary'
@@ -182,9 +186,9 @@ class GmailService:
             return messages
         except HttpError as error:
             logger.error(f"Error getting unread emails: {error}")
-            return f"An HttpError occurred: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred: {str(error)}"}
 
-    async def read_email(self, email_id: str) -> Union[Dict[str, str], str]:
+    async def read_email(self, email_id: str) -> Union[Dict[str, str], Dict[str, str]]:
         try:
             msg = await asyncio.to_thread(
                 self.service.users().messages().get(userId="me", id=email_id, format='raw').execute
@@ -211,9 +215,9 @@ class GmailService:
             return email_metadata
         except HttpError as error:
             logger.error(f"Error reading email {email_id}: {error}")
-            return f"An HttpError occurred reading email {email_id}: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred reading email {email_id}: {str(error)}"}
 
-    async def trash_email(self, email_id: str) -> str:
+    async def trash_email(self, email_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
                 self.service.users().messages().trash(userId="me", id=email_id).execute
@@ -222,9 +226,9 @@ class GmailService:
             return "Email moved to trash successfully."
         except HttpError as error:
             logger.error(f"Error trashing email {email_id}: {error}")
-            return f"An HttpError occurred trashing email {email_id}: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred trashing email {email_id}: {str(error)}"}
 
-    async def mark_email_as_read(self, email_id: str) -> str:
+    async def mark_email_as_read(self, email_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
                 self.service.users().messages().modify(userId="me", id=email_id, body={'removeLabelIds': ['UNREAD']}).execute
@@ -233,13 +237,13 @@ class GmailService:
             return "Email marked as read."
         except HttpError as error:
             logger.error(f"Error marking email {email_id} as read: {error}")
-            return f"An HttpError occurred marking email {email_id} as read: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred marking email {email_id} as read: {str(error)}"}
 
-    async def create_draft(self, recipient_id: str, subject: str, message: str) -> dict:
+    async def create_draft(self, recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
         try:
             message_obj = EmailMessage()
             message_obj.set_content(message)
-            message_obj['To'] = recipient_id
+            message_obj['To'] = ", ".join(recipient_ids)
             message_obj['From'] = self.user_email
             message_obj['Subject'] = subject
             encoded_message = base64.urlsafe_b64encode(message_obj.as_bytes()).decode()
@@ -248,12 +252,12 @@ class GmailService:
                 self.service.users().drafts().create(userId="me", body=create_message).execute
             )
             logger.info(f"Draft created: {draft['id']}")
-            return {"status": "success", "draft_id": draft["id"]}
+            return {"draft_id": draft["id"]}
         except HttpError as error:
             logger.error(f"Error creating draft: {error}")
             return {"status": "error", "error_message": str(error)}
 
-    async def list_drafts(self) -> Union[List[Dict[str, str]], str]:
+    async def list_drafts(self) -> Union[List[Dict[str, str]], Dict[str, str]]:
         try:
             results = await asyncio.to_thread(
                 self.service.users().drafts().list(userId="me").execute
@@ -273,9 +277,9 @@ class GmailService:
             return draft_list
         except HttpError as error:
             logger.error(f"Error listing drafts: {error}")
-            return f"An HttpError occurred listing drafts: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred listing drafts: {str(error)}"}
 
-    async def list_labels(self) -> Union[List[Dict[str, str]], str]:
+    async def list_labels(self) -> Union[List[Dict[str, str]], Dict[str, str]]:
         try:
             results = await asyncio.to_thread(
                 self.service.users().labels().list(userId="me").execute
@@ -283,21 +287,21 @@ class GmailService:
             return results.get('labels', [])
         except HttpError as error:
             logger.error(f"Error listing labels: {error}")
-            return f"An HttpError occurred listing labels: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred listing labels: {str(error)}"}
 
-    async def create_label(self, name: str) -> dict:
+    async def create_label(self, name: str) -> Dict[str, str]:
         try:
             label_object = {'name': name, 'labelListVisibility': 'labelShow', 'messageListVisibility': 'show'}
             created_label = await asyncio.to_thread(
                 self.service.users().labels().create(userId="me", body=label_object).execute
             )
             logger.info(f"Label created: {created_label['id']}")
-            return {'status': 'success', 'label_id': created_label['id'], 'name': created_label['name']}
+            return {'label_id': created_label['id'], 'name': created_label['name']}
         except HttpError as error:
             logger.error(f"Error creating label '{name}': {error}")
             return {"status": "error", "error_message": str(error)}
 
-    async def apply_label(self, email_id: str, label_id: str) -> str:
+    async def apply_label(self, email_id: str, label_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
                 self.service.users().messages().modify(userId="me", id=email_id, body={'addLabelIds': [label_id]}).execute
@@ -306,9 +310,9 @@ class GmailService:
             return f"Label {label_id} applied successfully to email {email_id}."
         except HttpError as error:
             logger.error(f"Error applying label {label_id} to email {email_id}: {error}")
-            return f"An HttpError occurred applying label: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred applying label: {str(error)}"}
 
-    async def remove_label(self, email_id: str, label_id: str) -> str:
+    async def remove_label(self, email_id: str, label_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
                 self.service.users().messages().modify(userId="me", id=email_id, body={'removeLabelIds': [label_id]}).execute
@@ -317,21 +321,21 @@ class GmailService:
             return f"Label {label_id} removed successfully from email {email_id}."
         except HttpError as error:
             logger.error(f"Error removing label {label_id} from email {email_id}: {error}")
-            return f"An HttpError occurred removing label: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred removing label: {str(error)}"}
 
-    async def rename_label(self, label_id: str, new_name: str) -> dict:
+    async def rename_label(self, label_id: str, new_name: str) -> Dict[str, str]:
         try:
             label_patch = {'name': new_name} # Only send fields to update for patch
             updated_label = await asyncio.to_thread(
                 self.service.users().labels().patch(userId="me", id=label_id, body=label_patch).execute
             )
             logger.info(f"Label renamed: {label_id} to {new_name}")
-            return {'status': 'success', 'label_id': updated_label['id'], 'name': updated_label['name']}
+            return {'label_id': updated_label['id'], 'name': updated_label['name']}
         except HttpError as error:
             logger.error(f"Error renaming label {label_id} to '{new_name}': {error}")
             return {"status": "error", "error_message": str(error)}
 
-    async def delete_label(self, label_id: str) -> str:
+    async def delete_label(self, label_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
                 self.service.users().labels().delete(userId="me", id=label_id).execute
@@ -340,9 +344,9 @@ class GmailService:
             return f"Label {label_id} deleted successfully."
         except HttpError as error:
             logger.error(f"Error deleting label {label_id}: {error}")
-            return f"An HttpError occurred deleting label {label_id}: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred deleting label {label_id}: {str(error)}"}
 
-    async def search_by_label(self, label_id: str) -> Union[List[Dict[str, str]], str]:
+    async def search_by_label(self, label_id: str) -> Union[List[Dict[str, str]], Dict[str, str]]:
         try:
             query = f"label:{label_id}"
             response = await asyncio.to_thread(
@@ -361,9 +365,9 @@ class GmailService:
             return messages
         except HttpError as error:
             logger.error(f"Error searching by label {label_id}: {error}")
-            return f"An HttpError occurred searching by label {label_id}: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred searching by label {label_id}: {str(error)}"}
 
-    async def list_filters(self) -> Union[List[Dict[str, Any]], str]:
+    async def list_filters(self) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         try:
             results = await asyncio.to_thread(
                 self.service.users().settings().filters().list(userId="me").execute
@@ -371,16 +375,16 @@ class GmailService:
             return results.get('filter', []) # API uses 'filter' not 'filters'
         except HttpError as error:
             logger.error(f"Error listing filters: {error}")
-            return f"An HttpError occurred listing filters: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred listing filters: {str(error)}"}
 
-    async def get_filter(self, filter_id: str) -> Union[Dict[str, Any], str]:
+    async def get_filter(self, filter_id: str) -> Union[Dict[str, Any], Dict[str, str]]:
         try:
             return await asyncio.to_thread(
                 self.service.users().settings().filters().get(userId="me", id=filter_id).execute
             )
         except HttpError as error:
             logger.error(f"Error getting filter {filter_id}: {error}")
-            return f"An HttpError occurred getting filter {filter_id}: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred getting filter {filter_id}: {str(error)}"}
 
     async def create_filter(self,
                            from_email: Optional[str] = None, to_email: Optional[str] = None,
@@ -388,7 +392,7 @@ class GmailService:
                            has_attachment: Optional[bool] = None, exclude_chats: Optional[bool] = None,
                            size_comparison: Optional[str] = None, size: Optional[int] = None,
                            add_label_ids: Optional[List[str]] = None, remove_label_ids: Optional[List[str]] = None,
-                           forward_to: Optional[str] = None) -> dict:
+                           forward_to: Optional[str] = None) -> Dict[str, Any]:
         try:
             criteria = {k: v for k, v in {
                 'from': from_email, 'to': to_email, 'subject': subject, 'query': query,
@@ -406,12 +410,12 @@ class GmailService:
                 self.service.users().settings().filters().create(userId="me", body=filter_object).execute
             )
             logger.info(f"Filter created: {created_filter['id']}")
-            return {'status': 'success', 'filter_id': created_filter['id'], 'filter': created_filter}
+            return {'filter_id': created_filter['id'], 'filter': created_filter}
         except HttpError as error:
             logger.error(f"Error creating filter: {error}")
             return {"status": "error", "error_message": str(error)}
 
-    async def delete_filter(self, filter_id: str) -> str:
+    async def delete_filter(self, filter_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
                 self.service.users().settings().filters().delete(userId="me", id=filter_id).execute
@@ -420,9 +424,9 @@ class GmailService:
             return f"Filter {filter_id} deleted successfully."
         except HttpError as error:
             logger.error(f"Error deleting filter {filter_id}: {error}")
-            return f"An HttpError occurred deleting filter {filter_id}: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred deleting filter {filter_id}: {str(error)}"}
 
-    async def search_emails(self, query: str, max_results: int = 50) -> Union[List[Dict[str, Any]], str]:
+    async def search_emails(self, query: str, max_results: int = 50) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         try:
             user_id = 'me'
             all_messages_summary = []
@@ -464,13 +468,13 @@ class GmailService:
             return result_messages
         except HttpError as error:
             logger.error(f"Error searching emails with query '{query}': {error}")
-            return f"An HttpError occurred searching emails: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred searching emails: {str(error)}"}
 
-    async def create_folder(self, name: str) -> dict:
+    async def create_folder(self, name: str) -> Dict[str, str]: # Return type matches create_label
         # In Gmail, folders are essentially labels.
         return await self.create_label(name) # Reuse create_label logic
 
-    async def move_to_folder(self, email_id: str, folder_id: str) -> str:
+    async def move_to_folder(self, email_id: str, folder_id: str) -> Union[str, Dict[str, str]]:
         try:
             # Apply the folder label and remove from inbox
             await asyncio.to_thread(
@@ -482,21 +486,22 @@ class GmailService:
             return f"Email {email_id} moved to folder {folder_id} successfully."
         except HttpError as error:
             logger.error(f"Error moving email {email_id} to folder {folder_id}: {error}")
-            return f"An HttpError occurred moving email to folder: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred moving email to folder: {str(error)}"}
 
-    async def list_folders(self) -> Union[List[Dict[str, str]], str]:
+    async def list_folders(self) -> Union[List[Dict[str, str]], Dict[str, str]]:
         try:
             all_labels = await self.list_labels()
-            if isinstance(all_labels, str): # Error case
+            # Check if list_labels returned an error (which would now be a Dict)
+            if isinstance(all_labels, dict) and all_labels.get("status") == "error":
                 return all_labels
             # Filter for user-created labels, which are typically used as folders
             user_folders = [lbl for lbl in all_labels if lbl.get('type') == 'user']
             return user_folders
         except Exception as e: # Catch any exception during filtering
             logger.error(f"Error listing folders (processing labels): {e}")
-            return f"An error occurred while processing labels for folders: {str(e)}"
+            return {"status": "error", "error_message": f"An error occurred while processing labels for folders: {str(e)}"}
 
-    async def archive_email(self, email_id: str) -> str:
+    async def archive_email(self, email_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
                 self.service.users().messages().modify(userId="me", id=email_id, body={'removeLabelIds': ['INBOX']}).execute
@@ -505,9 +510,9 @@ class GmailService:
             return f"Email {email_id} archived successfully."
         except HttpError as error:
             logger.error(f"Error archiving email {email_id}: {error}")
-            return f"An HttpError occurred archiving email {email_id}: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred archiving email {email_id}: {str(error)}"}
 
-    async def batch_archive(self, query: str, max_emails: int = 100) -> dict:
+    async def batch_archive(self, query: str, max_emails: int = 100) -> Dict[str, Any]:
         try:
             user_id = 'me'
             messages_to_archive_ids = []
@@ -527,7 +532,7 @@ class GmailService:
                     break
             
             if not messages_to_archive_ids:
-                return {'status': 'success', 'archived_count': 0, 'message': 'No emails found in inbox matching the query.'}
+                return {'archived_count': 0, 'message': 'No emails found in inbox matching the query.'}
 
             # Gmail API supports batchModify for messages
             batch_modify_request_body = {
@@ -539,21 +544,22 @@ class GmailService:
             )
             archived_count = len(messages_to_archive_ids)
             logger.info(f"Batch archived {archived_count} emails")
-            return {'status': 'success', 'archived_count': archived_count, 'message': f"Successfully archived {archived_count} emails."}
+            return {'archived_count': archived_count, 'message': f"Successfully archived {archived_count} emails."}
         except HttpError as error:
             logger.error(f"Error batch archiving emails with query '{query}': {error}")
             return {'status': 'error', 'error_message': str(error)}
 
-    async def list_archived(self, max_results: int = 50) -> Union[List[Dict[str, Any]], str]:
+    async def list_archived(self, max_results: int = 50) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         try:
             # Archived emails are those not in INBOX but typically in ALL MAIL
             # A simple query for '-in:inbox' can work.
+            # search_emails itself handles Union[List[...], Dict[str,str]] for errors
             return await self.search_emails(query="-in:inbox", max_results=max_results)
         except Exception as error: # Catch any general error
             logger.error(f"Error listing archived emails: {error}")
-            return f"An error occurred listing archived emails: {str(error)}"
+            return {"status": "error", "error_message": f"An error occurred listing archived emails: {str(error)}"}
 
-    async def restore_to_inbox(self, email_id: str) -> str:
+    async def restore_to_inbox(self, email_id: str) -> Union[str, Dict[str, str]]:
         try:
             await asyncio.to_thread(
                 self.service.users().messages().modify(userId="me", id=email_id, body={'addLabelIds': ['INBOX']}).execute
@@ -562,11 +568,11 @@ class GmailService:
             return f"Email {email_id} restored to inbox successfully."
         except HttpError as error:
             logger.error(f"Error restoring email {email_id} to inbox: {error}")
-            return f"An HttpError occurred restoring email {email_id} to inbox: {str(error)}"
+            return {"status": "error", "error_message": f"An HttpError occurred restoring email {email_id} to inbox: {str(error)}"}
 
 
 # --- FastMCP Server Setup ---
-mcp = FastMCP(name="GmailToolsServer", description="A FastMCP server for managing Gmail.")
+mcp = FastMCP(name="GmailToolsServer")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Gmail API FastMCP Server')
@@ -584,90 +590,87 @@ if __name__ == "__main__":
     # --- Tool Definitions (thin wrappers around GmailService instance methods) ---
 
     @mcp.tool()
-    async def send_email(recipient_id: str, subject: str, message: str) -> Dict[str, str]:
-        """Sends an email. Subject and message are distinct."""
-        logger.info(f"🔧 send_email tool called: {recipient_id}, subject='{subject}', message='{message[:50]}...'")
-        result = await gmail_service.send_email(recipient_id, subject, message)
-        logger.info(f"🔧 send_email tool result: {result}")
-        return result
+    async def send_email(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
+        """Sends an email to one or more recipients. Subject and message are distinct."""
+        return await gmail_service.send_email(recipient_ids, subject, message)
 
     @mcp.tool()
-    async def get_unread_emails() -> Union[List[Dict[str, str]], str]:
+    async def get_unread_emails() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Retrieves a list of unread emails from the primary inbox category."""
         return await gmail_service.get_unread_emails()
 
     @mcp.tool()
-    async def read_email_content(email_id: str) -> Union[Dict[str, str], str]:
+    async def read_email_content(email_id: str) -> Dict[str, str]: # Union[Dict[str, str], Dict[str, str]] simplifies
         """Retrieves the full content of a specific email and marks it as read."""
         return await gmail_service.read_email(email_id)
 
     @mcp.tool()
-    async def open_email_in_browser(email_id: str) -> str:
+    async def open_email_in_browser(email_id: str) -> Union[str, Dict[str, str]]:
         """Attempts to open the specified email in the default web browser (on server)."""
         return await gmail_service.open_email(email_id)
 
     @mcp.tool()
-    async def trash_email(email_id: str) -> str: 
+    async def trash_email(email_id: str) -> Union[str, Dict[str, str]]:
         """Moves the specified email to the trash."""
         return await gmail_service.trash_email(email_id) 
 
     @mcp.tool()
-    async def mark_email_as_read(email_id: str) -> str:
+    async def mark_email_as_read(email_id: str) -> Union[str, Dict[str, str]]:
         """Marks the specified email as read."""
         return await gmail_service.mark_email_as_read(email_id)
 
     @mcp.tool()
-    async def create_draft_email(recipient_id: str, subject: str, message: str) -> Dict[str, str]:
-        """Creates a draft email message."""
-        return await gmail_service.create_draft(recipient_id, subject, message)
+    async def create_draft_email(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
+        """Creates a draft email message for one or more recipients."""
+        return await gmail_service.create_draft(recipient_ids, subject, message)
 
     @mcp.tool()
-    async def list_draft_emails() -> Union[List[Dict[str, str]], str]:
+    async def list_draft_emails() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Lists all draft emails with their ID, subject, and recipient."""
         return await gmail_service.list_drafts()
 
     @mcp.tool()
-    async def list_gmail_labels() -> Union[List[Dict[str, str]], str]:
+    async def list_gmail_labels() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Lists all labels in the user's mailbox."""
         return await gmail_service.list_labels()
 
     @mcp.tool()
-    async def create_new_label(label_name: str) -> Dict[str, str]:
+    async def create_new_label(label_name: str) -> Dict[str, str]: # Service method returns Dict for success or error
         """Creates a new label in Gmail."""
         return await gmail_service.create_label(label_name)
 
     @mcp.tool()
-    async def apply_label_to_email(email_id: str, label_id: str) -> str:
+    async def apply_label_to_email(email_id: str, label_id: str) -> Union[str, Dict[str, str]]:
         """Applies an existing label to a specific email."""
         return await gmail_service.apply_label(email_id, label_id)
 
     @mcp.tool()
-    async def remove_label_from_email(email_id: str, label_id: str) -> str:
+    async def remove_label_from_email(email_id: str, label_id: str) -> Union[str, Dict[str, str]]:
         """Removes a label from a specific email."""
         return await gmail_service.remove_label(email_id, label_id)
 
     @mcp.tool()
-    async def rename_gmail_label(label_id: str, new_name: str) -> Dict[str, str]:
+    async def rename_gmail_label(label_id: str, new_name: str) -> Dict[str, str]: # Service method returns Dict for success or error
         """Renames an existing label."""
         return await gmail_service.rename_label(label_id, new_name)
 
     @mcp.tool()
-    async def delete_gmail_label(label_id: str) -> str:
+    async def delete_gmail_label(label_id: str) -> Union[str, Dict[str, str]]:
         """Permanently deletes a label."""
         return await gmail_service.delete_label(label_id)
 
     @mcp.tool()
-    async def search_emails_by_label(label_id: str) -> Union[List[Dict[str, str]], str]:
+    async def search_emails_by_label(label_id: str) -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Searches for all emails that have a specific label applied."""
         return await gmail_service.search_by_label(label_id)
 
     @mcp.tool()
-    async def list_email_filters() -> Union[List[Dict[str, Any]], str]:
+    async def list_email_filters() -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """Lists all email filters set up in the user's Gmail account."""
         return await gmail_service.list_filters()
 
     @mcp.tool()
-    async def get_email_filter_details(filter_id: str) -> Union[Dict[str, Any], str]:
+    async def get_email_filter_details(filter_id: str) -> Union[Dict[str, Any], Dict[str, str]]:
         """Gets the detailed configuration of a specific email filter by its ID."""
         return await gmail_service.get_filter(filter_id)
 
@@ -679,7 +682,7 @@ if __name__ == "__main__":
             criteria_size_comparison: Optional[str] = None, criteria_size_bytes: Optional[int] = None,
             action_add_label_ids: Optional[List[str]] = None, action_remove_label_ids: Optional[List[str]] = None,
             action_forward_to_email: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Any]: # Service method returns Dict for success or error
         """Creates a new email filter with specified criteria and actions."""
         return await gmail_service.create_filter(
             from_email=criteria_from, to_email=criteria_to, subject=criteria_subject, query=criteria_query,
@@ -690,47 +693,47 @@ if __name__ == "__main__":
         )
 
     @mcp.tool()
-    async def delete_email_filter(filter_id: str) -> str:
+    async def delete_email_filter(filter_id: str) -> Union[str, Dict[str, str]]:
         """Deletes a specific email filter by its ID."""
         return await gmail_service.delete_filter(filter_id)
 
     @mcp.tool()
-    async def search_all_emails(query: str, max_results: Optional[int] = 50) -> Union[List[Dict[str, Any]], str]:
+    async def search_all_emails(query: str, max_results: Optional[int] = 50) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """Searches all emails using Gmail's search syntax. Returns basic message info."""
         return await gmail_service.search_emails(query, max_results)
 
     @mcp.tool()
-    async def create_new_folder(folder_name: str) -> Dict[str, str]:
+    async def create_new_folder(folder_name: str) -> Dict[str, str]: # Service method returns Dict for success or error
         """Creates a new folder (which is a label in Gmail)."""
         return await gmail_service.create_folder(folder_name)
 
     @mcp.tool()
-    async def move_email_to_folder(email_id: str, folder_id: str) -> str:
+    async def move_email_to_folder(email_id: str, folder_id: str) -> Union[str, Dict[str, str]]:
         """Moves an email to a specified folder (applies label, removes from inbox)."""
         return await gmail_service.move_to_folder(email_id, folder_id)
 
     @mcp.tool()
-    async def list_email_folders() -> Union[List[Dict[str, str]], str]:
+    async def list_email_folders() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Lists all user-created folders (user-defined labels)."""
         return await gmail_service.list_folders()
 
     @mcp.tool()
-    async def archive_email(email_id: str) -> str: 
+    async def archive_email(email_id: str) -> Union[str, Dict[str, str]]:
         """Archives an email (removes 'INBOX' label)."""
         return await gmail_service.archive_email(email_id)
 
     @mcp.tool()
-    async def batch_archive_emails(query: str, max_emails_to_archive: Optional[int] = 100) -> Dict[str, Any]:
+    async def batch_archive_emails(query: str, max_emails_to_archive: Optional[int] = 100) -> Dict[str, Any]: # Service method returns Dict for success or error
         """Archives multiple emails from inbox matching a search query."""
         return await gmail_service.batch_archive(query, max_emails_to_archive)
 
     @mcp.tool()
-    async def list_archived_emails(max_results_to_list: Optional[int] = 50) -> Union[List[Dict[str, Any]], str]:
+    async def list_archived_emails(max_results_to_list: Optional[int] = 50) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """Lists emails that have been archived (not in inbox)."""
         return await gmail_service.list_archived(max_results_to_list)
 
     @mcp.tool()
-    async def restore_email_to_inbox(email_id: str) -> str:
+    async def restore_email_to_inbox(email_id: str) -> Union[str, Dict[str, str]]:
         """Restores an archived email back to the inbox."""
         return await gmail_service.restore_to_inbox(email_id)
 
