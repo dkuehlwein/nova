@@ -29,7 +29,7 @@ class TestMCPEndpoints:
     """Test MCP management endpoints."""
     
     @patch('backend.api.mcp_endpoints.load_mcp_yaml')
-    @patch('backend.api.mcp_endpoints.mcp_manager.check_server_health')
+    @patch('backend.api.mcp_endpoints.mcp_manager.check_server_health_with_tools_count')
     def test_get_mcp_servers_empty_config(self, mock_health_check, mock_load_yaml, client):
         """Test GET /api/mcp with empty configuration."""
         mock_load_yaml.return_value = {}
@@ -44,7 +44,7 @@ class TestMCPEndpoints:
         assert data["enabled_servers"] == 0
     
     @patch('backend.api.mcp_endpoints.load_mcp_yaml')
-    @patch('backend.api.mcp_endpoints.mcp_manager.check_server_health')
+    @patch('backend.api.mcp_endpoints.mcp_manager.check_server_health_with_tools_count')
     async def test_get_mcp_servers_with_config(self, mock_health_check, mock_load_yaml, client):
         """Test GET /api/mcp with server configuration."""
         mock_load_yaml.return_value = {
@@ -62,8 +62,8 @@ class TestMCPEndpoints:
             }
         }
         
-        # Mock health check to return True for enabled servers
-        mock_health_check.return_value = True
+        # Mock health check to return (healthy, tools_count) tuple for enabled servers
+        mock_health_check.return_value = (True, 14)  # Google Workspace has 14 tools
         
         response = client.get("/api/mcp/")
         
@@ -80,10 +80,12 @@ class TestMCPEndpoints:
         assert "gmail" in servers
         assert servers["gmail"]["enabled"] is True
         assert servers["gmail"]["healthy"] is True
+        assert servers["gmail"]["tools_count"] == 14  # Now includes tools count
         
         assert "disabled_server" in servers
         assert servers["disabled_server"]["enabled"] is False
         assert servers["disabled_server"]["healthy"] is False
+        assert servers["disabled_server"]["tools_count"] is None  # Disabled servers have no tools count
     
     @patch('backend.api.mcp_endpoints.load_mcp_yaml')
     @patch('utils.config_loader.get_mcp_config_loader')

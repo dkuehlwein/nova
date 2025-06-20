@@ -62,7 +62,7 @@ async def get_mcp_servers():
             # Only check health for enabled servers
             if server_info["enabled"]:
                 health_check_tasks.append(
-                    mcp_manager.check_server_health(server_info, timeout=3.0)
+                    mcp_manager.check_server_health_with_tools_count(server_info, timeout=3.0)
                 )
             else:
                 health_check_tasks.append(None)
@@ -76,18 +76,18 @@ async def get_mcp_servers():
                     result = await asyncio.wait_for(task, timeout=3.5)
                     health_results.append(result)
                 except asyncio.TimeoutError:
-                    health_results.append(False)
+                    health_results.append((False, None))
                 except Exception:
-                    health_results.append(False)
+                    health_results.append((False, None))
             else:
-                health_results.append(False)  # Disabled servers are marked as unhealthy
+                health_results.append((False, None))  # Disabled servers are marked as unhealthy
         
-        # Build response with health status
+        # Build response with health status and tools count
         response_servers = []
         healthy_count = 0
         enabled_count = 0
         
-        for server_info, is_healthy in zip(servers, health_results):
+        for server_info, (is_healthy, tools_count) in zip(servers, health_results):
             if server_info["enabled"]:
                 enabled_count += 1
                 if is_healthy:
@@ -100,7 +100,7 @@ async def get_mcp_servers():
                 description=server_info["description"],
                 enabled=server_info["enabled"],
                 healthy=is_healthy,
-                tools_count=None,  # Could be enhanced later to include tool counts
+                tools_count=tools_count,  # Now includes actual tools count from health endpoint
                 error=None if is_healthy else "Server unavailable" if server_info["enabled"] else "Server disabled"
             ))
         
