@@ -9,3 +9,9 @@ dependencies = [
     "google-api-python-client>=2.169.0",
     "google-auth-oauthlib>=1.2.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
+]

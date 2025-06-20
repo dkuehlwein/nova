@@ -7,8 +7,8 @@ from unittest.mock import patch, MagicMock, mock_open
 from googleapiclient.errors import HttpError
 import httplib2 # Required for HttpError constructor
 
-# Assuming GmailService is in mcp_servers.gmail.main
-from mcp_servers.gmail.main import GmailService
+# Import GmailService from the local main module
+from main import GmailService
 from google.oauth2.credentials import Credentials # For spec in mock
 
 # Helper function to decode email from mock send() call
@@ -44,7 +44,7 @@ def mock_gmail_service_dependencies():
     mock_service_instance = MagicMock()
     # Patch GmailService._get_service to return this mock_service_instance
     # Note: The path to GmailService must be correct for patch.object
-    mock_get_service = patch('mcp_servers.gmail.main.GmailService._get_service', return_value=mock_service_instance).start()
+    mock_get_service = patch('main.GmailService._get_service', return_value=mock_service_instance).start()
 
     mock_users_method = MagicMock()
 
