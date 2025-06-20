@@ -8,6 +8,9 @@ from googleapiclient.errors import HttpError
 import httplib2 # Required for HttpError constructor
 
 # Import GoogleWorkspaceService from the service module
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 from src.service import GoogleWorkspaceService
 from google.oauth2.credentials import Credentials # For spec in mock
 

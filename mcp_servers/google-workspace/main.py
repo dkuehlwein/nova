@@ -119,8 +119,20 @@ def setup_tools(workspace_service: GoogleWorkspaceService):
             "service": "google-workspace-mcp-server", 
             "version": "1.0.0",
             "timestamp": str(datetime.now()),
-            "mcp_endpoint": "/mcp/",
-            "gmail_user": workspace_service.user_email
+            "mcp_endpoint": "/mcp",
+            "gmail_user": workspace_service.user_email,
+            "tools_count": len(mcp._tools) if hasattr(mcp, '_tools') else 14  # Gmail: 10 tools, Calendar: 4 tools
+        })
+
+    # Tools count endpoint for Nova integration
+    @mcp.custom_route("/tools/count", methods=["GET"])
+    async def tools_count(request):
+        tools_count = len(mcp._tools) if hasattr(mcp, '_tools') else 14
+        return JSONResponse({
+            "tools_count": tools_count,
+            "gmail_tools": 10,
+            "calendar_tools": 4,
+            "total_tools": tools_count
         })
 
 
@@ -143,7 +155,11 @@ if __name__ == "__main__":
     # --- Run FastMCP Server ---
     try:
         logger.info(f"Starting Google Workspace FastMCP server on http://{args.host}:{args.port}")
-        mcp.run(transport="streamable-http", host=args.host, port=args.port)
+        logger.info(f"MCP endpoint: http://{args.host}:{args.port}/mcp")
+        logger.info(f"Health endpoint: http://{args.host}:{args.port}/health")
+        
+        # Explicitly specify the path="/mcp" to ensure Nova compatibility
+        mcp.run(transport="streamable-http", host=args.host, port=args.port, path="/mcp")
     except KeyboardInterrupt:
         logger.info("Server shutdown requested")
     except Exception as e:
