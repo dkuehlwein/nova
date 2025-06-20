@@ -29,7 +29,7 @@ class TestMCPEndpoints:
     """Test MCP management endpoints."""
     
     @patch('backend.api.mcp_endpoints.load_mcp_yaml')
-    @patch('backend.api.mcp_endpoints.mcp_manager.check_server_health_with_tools_count')
+    @patch('backend.api.mcp_endpoints.mcp_manager.check_server_health_and_get_tools_count')
     def test_get_mcp_servers_empty_config(self, mock_health_check, mock_load_yaml, client):
         """Test GET /api/mcp with empty configuration."""
         mock_load_yaml.return_value = {}
@@ -44,19 +44,17 @@ class TestMCPEndpoints:
         assert data["enabled_servers"] == 0
     
     @patch('backend.api.mcp_endpoints.load_mcp_yaml')
-    @patch('backend.api.mcp_endpoints.mcp_manager.check_server_health_with_tools_count')
+    @patch('backend.api.mcp_endpoints.mcp_manager.check_server_health_and_get_tools_count')
     async def test_get_mcp_servers_with_config(self, mock_health_check, mock_load_yaml, client):
         """Test GET /api/mcp with server configuration."""
         mock_load_yaml.return_value = {
             "gmail": {
                 "url": "http://localhost:8002/mcp",
-                "health_url": "http://localhost:8002/health", 
                 "description": "Gmail MCP Server",
                 "enabled": True
             },
             "disabled_server": {
                 "url": "http://localhost:8003/mcp",
-                "health_url": "http://localhost:8003/health",
                 "description": "Disabled Server",
                 "enabled": False
             }
@@ -95,7 +93,6 @@ class TestMCPEndpoints:
         mock_load_yaml.return_value = {
             "gmail": {
                 "url": "http://localhost:8002/mcp",
-                "health_url": "http://localhost:8002/health",
                 "description": "Gmail MCP Server",
                 "enabled": False  # Currently disabled
             }
@@ -128,7 +125,6 @@ class TestMCPEndpoints:
         mock_load_yaml.return_value = {
             "gmail": {
                 "url": "http://localhost:8002/mcp",
-                "health_url": "http://localhost:8002/health",
                 "description": "Gmail MCP Server",
                 "enabled": True
             }
@@ -145,7 +141,6 @@ class TestMCPEndpoints:
         mock_load_yaml.return_value = {
             "gmail": {
                 "url": "http://localhost:8002/mcp",
-                "health_url": "http://localhost:8002/health", 
                 "description": "Gmail MCP Server",
                 "enabled": True  # Already enabled
             }

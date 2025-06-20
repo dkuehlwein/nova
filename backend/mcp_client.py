@@ -1,5 +1,4 @@
 import asyncio
-import aiohttp
 from typing import List, Dict, Any, Optional, Tuple
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from config import settings
@@ -16,104 +15,37 @@ class MCPClientManager:
         self.client: Optional[MultiServerMCPClient] = None
         self.tools: List[Any] = []
     
-    async def check_server_health(self, server_info: Dict[str, Any], timeout: float = 5.0) -> bool:
-        """Check if a single MCP server is healthy via its /health endpoint"""
+    async def check_server_health_and_get_tools_count(self, server_info: Dict[str, Any], timeout: float = 5.0) -> Tuple[bool, Optional[int]]:
+        """Check server health and get tools count using standard MCP tools/list endpoint"""
         server_name = server_info.get("name", "unknown")
         
         try:
-            health_url = server_info.get("health_url")
-            if not health_url:
-                # Fallback to constructing health URL from base URL
-                base_url = server_info["url"].replace("/mcp", "")
-                health_url = f"{base_url}/health"
+            # Use the MCP client to list tools from this specific server
+            server_config = {
+                server_name: {
+                    "url": server_info["url"],
+                    "transport": "streamable_http",
+                    "description": server_info["description"]
+                }
+            }
             
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
-                async with session.get(health_url) as response:
-                    if response.status == 200:
-                        return True
-                    else:
-                        logger.warning(f"Health check failed for {server_name}: HTTP {response.status}")
-                        return False
-                        
-        except asyncio.TimeoutError:
-            logger.warning(f"Health check timeout for {server_name}")
-            return False
-        except Exception as e:
-            logger.error(f"Health check error for {server_name}: {e}")
-            return False
-
-    async def get_server_tools_count(self, server_info: Dict[str, Any], timeout: float = 5.0) -> Optional[int]:
-        """Get tools count from MCP server health endpoint if available"""
-        server_name = server_info.get("name", "unknown")
-        
-        try:
-            health_url = server_info.get("health_url")
-            if not health_url:
-                # Fallback to constructing health URL from base URL
-                base_url = server_info["url"].replace("/mcp", "")
-                health_url = f"{base_url}/health"
+            # Create a temporary client for this specific server
+            client = MultiServerMCPClient(server_config)
             
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
-                async with session.get(health_url) as response:
-                    if response.status == 200:
-                        try:
-                            data = await response.json()
-                            tools_count = data.get("tools_count")
-                            if tools_count is not None:
-                                logger.debug(f"Got tools count {tools_count} from {server_name}")
-                                return int(tools_count)
-                            else:
-                                logger.debug(f"No tools_count in health response from {server_name}")
-                                return None
-                        except (ValueError, TypeError) as e:
-                            logger.warning(f"Invalid tools_count format from {server_name}: {e}")
-                            return None
-                    else:
-                        logger.warning(f"Health check failed for {server_name}: HTTP {response.status}")
-                        return None
-                        
-        except asyncio.TimeoutError:
-            logger.warning(f"Tools count timeout for {server_name}")
-            return None
-        except Exception as e:
-            logger.error(f"Tools count error for {server_name}: {e}")
-            return None
-
-    async def check_server_health_with_tools_count(self, server_info: Dict[str, Any], timeout: float = 5.0) -> Tuple[bool, Optional[int]]:
-        """Check server health and get tools count in a single request"""
-        server_name = server_info.get("name", "unknown")
-        
-        try:
-            health_url = server_info.get("health_url")
-            if not health_url:
-                # Fallback to constructing health URL from base URL
-                base_url = server_info["url"].replace("/mcp", "")
-                health_url = f"{base_url}/health"
+            # Try to get tools - this tests both health and gives us tools count
+            tools = await asyncio.wait_for(client.get_tools(), timeout=timeout)
+            tools_count = len(tools)
             
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
-                async with session.get(health_url) as response:
-                    if response.status == 200:
-                        try:
-                            data = await response.json()
-                            tools_count = data.get("tools_count")
-                            tools_count = int(tools_count) if tools_count is not None else None
-                            logger.debug(f"Health check for {server_name}: healthy=True, tools_count={tools_count}")
-                            return True, tools_count
-                        except (ValueError, TypeError) as e:
-                            logger.warning(f"Invalid JSON or tools_count from {server_name}: {e}")
-                            # Server is healthy but no valid tools count
-                            return True, None
-                    else:
-                        logger.warning(f"Health check failed for {server_name}: HTTP {response.status}")
-                        return False, None
-                        
+            logger.debug(f"MCP server {server_name}: healthy=True, tools_count={tools_count}")
+            return True, tools_count
+            
         except asyncio.TimeoutError:
-            logger.warning(f"Health check timeout for {server_name}")
+            logger.warning(f"MCP tools/list timeout for {server_name}")
             return False, None
         except Exception as e:
-            logger.error(f"Health check error for {server_name}: {e}")
+            logger.warning(f"MCP tools/list failed for {server_name}: {e}")
             return False, None
-    
+
     async def discover_working_servers(self) -> List[Dict[str, Any]]:
         """Discover which MCP servers are alive and working"""
         all_servers = settings.MCP_SERVERS
@@ -126,7 +58,7 @@ class MCPClientManager:
         
         # Check health of all servers concurrently
         health_checks = [
-            self.check_server_health(server) 
+            self.check_server_health_and_get_tools_count(server) 
             for server in all_servers
         ]
         
@@ -135,21 +67,22 @@ class MCPClientManager:
         # Filter to only healthy servers
         working_servers = []
         failed_servers = []
-        for server, is_healthy in zip(all_servers, health_results):
+        for server, result in zip(all_servers, health_results):
             server_name = server.get("name", "unknown")
-            if isinstance(is_healthy, Exception):
+            if isinstance(result, Exception):
                 failed_servers.append({
                     "name": server_name,
-                    "reason": f"exception: {str(is_healthy)}"
+                    "reason": f"exception: {str(result)}"
                 })
                 continue
             
+            is_healthy, tools_count = result
             if is_healthy:
                 working_servers.append(server)
             else:
                 failed_servers.append({
                     "name": server_name,
-                    "reason": "health_check_failed"
+                    "reason": "mcp_tools_list_failed"
                 })
         
         if failed_servers:
@@ -163,36 +96,21 @@ class MCPClientManager:
     
     async def test_server_tools(self, server_info: Dict[str, Any]) -> Dict[str, Any]:
         """Test if a single MCP server's tools can be fetched"""
-        server_name = server_info.get("name", "unknown")
+        is_healthy, tools_count = await self.check_server_health_and_get_tools_count(server_info)
         
-        try:
-            server_config = {
-                server_name: {
-                    "url": server_info["url"],
-                    "transport": "streamable_http",
-                    "description": server_info["description"]
-                }
-            }
-            
-            # Test individual server
-            client = MultiServerMCPClient(server_config)
-            mcp_tools = await client.get_tools()
-            
+        if is_healthy:
             return {
                 "server": server_info,
                 "status": "success",
-                "tools_count": len(mcp_tools),
+                "tools_count": tools_count or 0,
                 "error": None
             }
-            
-        except Exception as e:
-            logger.error(f"Tool fetch failed for {server_name}: {e}")
-            
+        else:
             return {
                 "server": server_info,
                 "status": "error", 
                 "tools_count": 0,
-                "error": str(e)
+                "error": "MCP tools/list failed"
             }
     
     async def initialize_client(self) -> Tuple[Optional[MultiServerMCPClient], List[Any]]:

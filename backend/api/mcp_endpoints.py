@@ -52,17 +52,16 @@ async def get_mcp_servers():
             server_info = {
                 "name": server_name,
                 "url": server_config["url"],
-                "health_url": server_config["health_url"],
                 "description": server_config.get("description", f"{server_name} MCP Server"),
                 "enabled": server_config.get("enabled", True)
             }
             
             servers.append(server_info)
             
-            # Only check health for enabled servers
+            # Only check health for enabled servers using standard MCP protocol
             if server_info["enabled"]:
                 health_check_tasks.append(
-                    mcp_manager.check_server_health_with_tools_count(server_info, timeout=3.0)
+                    mcp_manager.check_server_health_and_get_tools_count(server_info, timeout=3.0)
                 )
             else:
                 health_check_tasks.append(None)
@@ -96,11 +95,11 @@ async def get_mcp_servers():
             response_servers.append(MCPServerStatus(
                 name=server_info["name"],
                 url=server_info["url"],
-                health_url=server_info["health_url"],
+                health_url=server_info["url"],  # For backwards compatibility, just use the MCP URL
                 description=server_info["description"],
                 enabled=server_info["enabled"],
                 healthy=is_healthy,
-                tools_count=tools_count,  # Now includes actual tools count from health endpoint
+                tools_count=tools_count,  # Now includes actual tools count from standard MCP protocol
                 error=None if is_healthy else "Server unavailable" if server_info["enabled"] else "Server disabled"
             ))
         
