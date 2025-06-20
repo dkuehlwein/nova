@@ -21,14 +21,134 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# Import our service class
-from src.service import GoogleWorkspaceService
+# Import our tool modules
+from gmail_tools import GmailTools
+from calendar_tools import CalendarTools
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# The GoogleWorkspaceService is now imported from src.service module
+class GoogleWorkspaceService:
+    """Main service class that coordinates Gmail and Calendar operations."""
+    
+    def __init__(self,
+                 creds_file_path: str,
+                 token_path: str,
+                 scopes: list[str] = None,
+                 oauth_port: int = 9000):
+        logger.info(f"Initializing GoogleWorkspaceService with creds file: {creds_file_path}")
+        self.creds_file_path = creds_file_path
+        self.token_path = token_path
+        self.scopes = scopes if scopes is not None else [
+            'https://www.googleapis.com/auth/gmail.modify',
+            'https://www.googleapis.com/auth/calendar'
+        ]
+        self.oauth_port = oauth_port
+        
+        # Get credentials and initialize services
+        self.token = self._get_token()
+        logger.info("Token retrieved successfully")
+        
+        # Initialize Google API services
+        self.gmail_service = self._get_gmail_service()
+        self.calendar_service = self._get_calendar_service()
+        logger.info("Google services initialized")
+        
+        # Get user email
+        self.user_email = self._get_user_email()
+        logger.info(f"User email retrieved: {self.user_email}")
+        
+        # Initialize tool modules
+        self.gmail_tools = GmailTools(self.gmail_service, self.user_email)
+        self.calendar_tools = CalendarTools(self.calendar_service)
+        logger.info("Gmail and Calendar tools initialized")
+
+    def _get_token(self) -> Credentials:
+        """Retrieve or create OAuth 2.0 credentials."""
+        token = None
+        
+        # Load existing token if it exists
+        if os.path.exists(self.token_path):
+            token = Credentials.from_authorized_user_file(self.token_path, self.scopes)
+        
+        # If there are no (valid) credentials available, let the user log in
+        if not token or not token.valid:
+            if token and token.expired and token.refresh_token:
+                try:
+                    token.refresh()
+                except Exception as e:
+                    logger.warning(f"Token refresh failed: {e}. Starting new auth flow.")
+                    token = None
+            
+            if not token:
+                try:
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        self.creds_file_path, self.scopes
+                    )
+                    flow.redirect_uri = f'http://localhost:{self.oauth_port}/'
+                    token = flow.run_local_server(port=self.oauth_port, open_browser=False)
+                    logger.info(f"Please visit this URL for authorization: {flow.authorization_url()[0]}")
+                except Exception as e:
+                    logger.error(f"OAuth flow failed: {e}")
+                    # Add WSL2 troubleshooting info
+                    if 'WSL' in os.environ.get('WSL_DISTRO_NAME', '') or 'wsl' in os.environ.get('NAME', '').lower():
+                        wsl_ip = self._get_wsl_ip()
+                        logger.error('')
+                        logger.error('=== WSL2 OAuth Troubleshooting ===')
+                        logger.error('You are running in WSL2. This can cause OAuth redirect issues.')
+                        logger.error('')
+                        logger.error('SOLUTION 1 - Restart WSL2:')
+                        logger.error('  From Windows PowerShell (as Administrator):')
+                        logger.error('  > wsl --shutdown')
+                        logger.error('  Then restart your WSL2 terminal')
+                        logger.error('')
+                        logger.error('SOLUTION 2 - Use WSL2 IP address:')
+                        logger.error(f'  Instead of localhost:{self.oauth_port}, try:')
+                        logger.error(f'  http://{wsl_ip}:{self.oauth_port}/')
+                    raise ValueError(f'OAuth flow failed. Error: {e}')
+                    
+            # Save the credentials for the next run
+            with open(self.token_path, 'w') as token_file:
+                token_file.write(token.to_json())
+                logger.info(f'Token saved to {self.token_path}')
+        
+        return token
+
+    def _get_wsl_ip(self) -> str:
+        """Get WSL2 IP address for OAuth troubleshooting."""
+        try:
+            result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
+            return result.stdout.strip().split()[0]
+        except:
+            return "WSL_IP_NOT_FOUND"
+
+    def _get_gmail_service(self):
+        """Initialize Gmail API service."""
+        try:
+            return build('gmail', 'v1', credentials=self.token, static_discovery=False)
+        except HttpError as error:
+            logger.error(f'Error building Gmail service: {error}')
+            raise ValueError(f'Error building Gmail service: {error}')
+    
+    def _get_calendar_service(self):
+        """Initialize Calendar API service."""
+        try:
+            return build('calendar', 'v3', credentials=self.token, static_discovery=False)
+        except HttpError as error:
+            logger.error(f'Error building Calendar service: {error}')
+            raise ValueError(f'Error building Calendar service: {error}')
+
+    def _get_user_email(self) -> str:
+        """Get user's email address from Gmail profile."""
+        try:
+            profile = self.gmail_service.users().getProfile(userId='me').execute()
+            return profile.get('emailAddress', '')
+        except HttpError as error:
+            logger.error(f'Error getting user email: {error}')
+            return ''
+
+    # No wrapper methods needed - tools will call gmail_tools and calendar_tools directly
 
 
 # --- FastMCP Server Setup ---

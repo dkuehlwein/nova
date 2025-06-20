@@ -44,7 +44,7 @@ class CalendarTools:
 
     async def create_event(self, calendar_id: str, summary: str, start_datetime: str,
                           end_datetime: str, description: str = "", location: str = "",
-                          attendees: Optional[List[str]] = None) -> Dict[str, str]:
+                          attendees: Optional[List[str]] = None, timezone: str = 'Europe/Berlin') -> Dict[str, str]:
         """Creates a new calendar event."""
         try:
             event = {
@@ -53,11 +53,11 @@ class CalendarTools:
                 'description': description,
                 'start': {
                     'dateTime': start_datetime,
-                    'timeZone': 'Europe/Berlin',  # Daniel's timezone
+                    'timeZone': timezone,
                 },
                 'end': {
                     'dateTime': end_datetime,
-                    'timeZone': 'Europe/Berlin',
+                    'timeZone': timezone,
                 },
             }
             
@@ -80,20 +80,25 @@ class CalendarTools:
             return {"status": "error", "error_message": f"An HttpError occurred creating event: {str(error)}"}
 
     async def list_events(self, calendar_id: str = 'primary', max_results: int = 50,
-                         time_min: Optional[str] = None) -> Union[List[Dict[str, Any]], Dict[str, str]]:
+                         time_min: Optional[str] = None, time_max: Optional[str] = None) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """Lists upcoming events from a calendar."""
         try:
             if time_min is None:
                 time_min = datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
             
+            list_params = {
+                'calendarId': calendar_id,
+                'timeMin': time_min,
+                'maxResults': max_results,
+                'singleEvents': True,
+                'orderBy': 'startTime'
+            }
+            
+            if time_max:
+                list_params['timeMax'] = time_max
+            
             events_result = await asyncio.to_thread(
-                self.calendar_service.events().list(
-                    calendarId=calendar_id,
-                    timeMin=time_min,
-                    maxResults=max_results,
-                    singleEvents=True,
-                    orderBy='startTime'
-                ).execute
+                self.calendar_service.events().list(**list_params).execute
             )
             
             events = events_result.get('items', [])
@@ -147,7 +152,13 @@ class CalendarTools:
             logger.error(f"Error getting calendar event {event_id}: {error}")
             return {"status": "error", "error_message": f"An HttpError occurred getting event: {str(error)}"}
 
-    async def update_event(self, calendar_id: str, event_id: str, **kwargs) -> Dict[str, str]:
+    async def update_event(self, calendar_id: str, event_id: str, 
+                          summary: Optional[str] = None,
+                          description: Optional[str] = None,
+                          location: Optional[str] = None,
+                          start_datetime: Optional[str] = None,
+                          end_datetime: Optional[str] = None,
+                          timezone: str = 'Europe/Berlin') -> Dict[str, str]:
         """Updates an existing calendar event."""
         try:
             # First get the existing event
@@ -156,24 +167,22 @@ class CalendarTools:
             )
             
             # Update fields that were provided
-            if 'summary' in kwargs:
-                event['summary'] = kwargs['summary']
-            if 'description' in kwargs:
-                event['description'] = kwargs['description']
-            if 'location' in kwargs:
-                event['location'] = kwargs['location']
-            if 'start_datetime' in kwargs:
+            if summary is not None:
+                event['summary'] = summary
+            if description is not None:
+                event['description'] = description
+            if location is not None:
+                event['location'] = location
+            if start_datetime is not None:
                 event['start'] = {
-                    'dateTime': kwargs['start_datetime'],
-                    'timeZone': 'Europe/Berlin'
+                    'dateTime': start_datetime,
+                    'timeZone': timezone
                 }
-            if 'end_datetime' in kwargs:
+            if end_datetime is not None:
                 event['end'] = {
-                    'dateTime': kwargs['end_datetime'],
-                    'timeZone': 'Europe/Berlin'
+                    'dateTime': end_datetime,
+                    'timeZone': timezone
                 }
-            if 'attendees' in kwargs:
-                event['attendees'] = [{'email': email} for email in kwargs['attendees']]
             
             updated_event = await asyncio.to_thread(
                 self.calendar_service.events().update(

@@ -7,8 +7,8 @@ from unittest.mock import patch, MagicMock, mock_open
 from googleapiclient.errors import HttpError
 import httplib2 # Required for HttpError constructor
 
-# Import GmailService from the local main module
-from main import GmailService
+# Import GoogleWorkspaceService from the service module
+from src.service import GoogleWorkspaceService
 from google.oauth2.credentials import Credentials # For spec in mock
 
 # Helper function to decode email from mock send() call
@@ -34,7 +34,7 @@ def get_email_message_from_draft_create_call(mock_draft_create_method):
 
 @pytest.fixture
 def mock_gmail_service_dependencies():
-    """Mocks dependencies for GmailService initialization and core API interaction."""
+    """Mocks dependencies for GoogleWorkspaceService initialization and core API interaction."""
     # Mock file system and auth flow
     mock_os_path_exists = patch('os.path.exists').start()
     mock_creds_from_file = patch('google.oauth2.credentials.Credentials.from_authorized_user_file').start()
@@ -42,9 +42,9 @@ def mock_gmail_service_dependencies():
 
     # Configure a mock service instance directly
     mock_service_instance = MagicMock()
-    # Patch GmailService._get_service to return this mock_service_instance
-    # Note: The path to GmailService must be correct for patch.object
-    mock_get_service = patch('main.GmailService._get_service', return_value=mock_service_instance).start()
+    # Patch GoogleWorkspaceService._get_gmail_service to return this mock_service_instance
+    # Note: The path to GoogleWorkspaceService must be correct for patch.object
+    mock_get_service = patch('src.service.GoogleWorkspaceService._get_gmail_service', return_value=mock_service_instance).start()
 
     mock_users_method = MagicMock()
 
@@ -77,7 +77,7 @@ def mock_gmail_service_dependencies():
 
     # Mock _get_user_email to avoid another API call during init
     # This is still needed as _get_user_email is called in __init__
-    mock_get_user_email = patch.object(GmailService, '_get_user_email', return_value='testuser@example.com').start()
+    mock_get_user_email = patch('src.service.GoogleWorkspaceService._get_user_email', return_value='testuser@example.com').start()
 
     # Mock token file writing
     mock_file_write = patch('builtins.open', mock_open()).start()
@@ -115,9 +115,9 @@ async def test_send_email_single_recipient_success(mock_gmail_service_dependenci
     # mock_send_method is the object with .execute()
     mock_gmail_service_dependencies["mock_send_method"].execute.return_value = {'id': 'test_message_id'}
 
-    service = GmailService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
+    service = GoogleWorkspaceService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
     message_content = "Hello, this is a test."
-    result = await service.send_email(recipient_ids=["test@example.com"], subject="Test Subject", message=message_content)
+    result = await service.send_message(to="test@example.com", subject="Test Subject", body=message_content)
 
     mock_gmail_service_dependencies["mock_send_method"].execute.assert_called_once()
     # To check args passed to send(), we need to check the mock for send() itself
@@ -140,10 +140,10 @@ async def test_send_email_multiple_recipients_success(mock_gmail_service_depende
     mock_gmail_service_dependencies["mock_creds_from_file"].return_value = mock_creds
     mock_gmail_service_dependencies["mock_send_method"].execute.return_value = {'id': 'test_message_id_multi'}
 
-    service = GmailService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
+    service = GoogleWorkspaceService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
     recipients = ["test1@example.com", "test2@example.com", "test3@example.com"]
     message_content = "This is a test for multiple recipients."
-    result = await service.send_email(recipient_ids=recipients, subject="Multi-Recipient Test", message=message_content)
+    result = await service.send_message(to=", ".join(recipients), subject="Multi-Recipient Test", body=message_content)
 
     mock_gmail_service_dependencies["mock_send_method"].execute.assert_called_once()
     mock_gmail_service_dependencies["mock_service_instance"].users().messages().send.assert_called_once()
@@ -166,9 +166,9 @@ async def test_send_email_api_error(mock_gmail_service_dependencies):
     http_error = HttpError(resp=httplib2.Response({'status': '400'}), content=b'Bad Request Content for send')
     mock_gmail_service_dependencies["mock_send_method"].execute.side_effect = http_error
 
-    service = GmailService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
+    service = GoogleWorkspaceService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
     message_content = "This email should cause a send error."
-    result = await service.send_email(recipient_ids=["error@example.com"], subject="Error Test Send", message=message_content)
+    result = await service.send_message(to="error@example.com", subject="Error Test Send", body=message_content)
 
     mock_gmail_service_dependencies["mock_send_method"].execute.assert_called_once()
     expected_error_message = str(http_error)
@@ -189,9 +189,9 @@ async def test_create_draft_single_recipient_success(mock_gmail_service_dependen
     mock_gmail_service_dependencies["mock_creds_from_file"].return_value = mock_creds
     mock_gmail_service_dependencies["mock_draft_create_method"].execute.return_value = {'id': 'test_draft_id'}
 
-    service = GmailService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
+    service = GoogleWorkspaceService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
     message_content = "Hello, this is a draft."
-    result = await service.create_draft(recipient_ids=["draft@example.com"], subject="Draft Subject", message=message_content)
+    result = await service.create_draft(to="draft@example.com", subject="Draft Subject", body=message_content)
 
     mock_gmail_service_dependencies["mock_draft_create_method"].execute.assert_called_once()
     mock_gmail_service_dependencies["mock_service_instance"].users().drafts().create.assert_called_once()
@@ -213,10 +213,10 @@ async def test_create_draft_multiple_recipients_success(mock_gmail_service_depen
     mock_gmail_service_dependencies["mock_creds_from_file"].return_value = mock_creds
     mock_gmail_service_dependencies["mock_draft_create_method"].execute.return_value = {'id': 'test_draft_id_multi'}
 
-    service = GmailService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
+    service = GoogleWorkspaceService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
     recipients = ["draft1@example.com", "draft2@example.com"]
     message_content = "This is a draft for multiple recipients."
-    result = await service.create_draft(recipient_ids=recipients, subject="Multi-Recipient Draft", message=message_content)
+    result = await service.create_draft(to=", ".join(recipients), subject="Multi-Recipient Draft", body=message_content)
 
     mock_gmail_service_dependencies["mock_draft_create_method"].execute.assert_called_once()
     mock_gmail_service_dependencies["mock_service_instance"].users().drafts().create.assert_called_once()
@@ -239,9 +239,9 @@ async def test_create_draft_api_error(mock_gmail_service_dependencies):
     http_error = HttpError(resp=httplib2.Response({'status': '500'}), content=b'Internal Server Error for draft')
     mock_gmail_service_dependencies["mock_draft_create_method"].execute.side_effect = http_error
 
-    service = GmailService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
+    service = GoogleWorkspaceService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
     message_content = "This draft should cause an API error."
-    result = await service.create_draft(recipient_ids=["error_draft@example.com"], subject="Error Draft Test", message=message_content)
+    result = await service.create_draft(to="error_draft@example.com", subject="Error Draft Test", body=message_content)
 
     mock_gmail_service_dependencies["mock_draft_create_method"].execute.assert_called_once()
     expected_error_message = str(http_error)
@@ -263,7 +263,7 @@ async def test_create_label_success(mock_gmail_service_dependencies):
 
     mock_gmail_service_dependencies["mock_labels_create_method"].execute.return_value = {'id': 'test_label_id', 'name': 'NewLabelName'}
 
-    service = GmailService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
+    service = GoogleWorkspaceService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
     label_name = "NewLabelName"
     result = await service.create_label(name=label_name)
 
@@ -290,7 +290,7 @@ async def test_create_label_api_error(mock_gmail_service_dependencies):
     http_error = HttpError(resp=httplib2.Response({'status': '403'}), content=b'Forbidden to create label')
     mock_gmail_service_dependencies["mock_labels_create_method"].execute.side_effect = http_error
 
-    service = GmailService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
+    service = GoogleWorkspaceService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
     result = await service.create_label(name="FailedLabel")
 
     mock_gmail_service_dependencies["mock_labels_create_method"].execute.assert_called_once()
@@ -314,7 +314,7 @@ async def test_trash_email_success(mock_gmail_service_dependencies):
     # The actual return from execute() for trash doesn't matter for the success string
     mock_gmail_service_dependencies["mock_messages_trash_method"].execute.return_value = {}
 
-    service = GmailService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
+    service = GoogleWorkspaceService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
     email_id_to_trash = "email123"
     result = await service.trash_email(email_id=email_id_to_trash)
 
@@ -338,7 +338,7 @@ async def test_trash_email_api_error(mock_gmail_service_dependencies):
     http_error = HttpError(resp=httplib2.Response({'status': '404'}), content=b'Email not found')
     mock_gmail_service_dependencies["mock_messages_trash_method"].execute.side_effect = http_error
 
-    service = GmailService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
+    service = GoogleWorkspaceService(creds_file_path="dummy_creds.json", token_path="dummy_token.json")
     email_id_to_trash = "nonexistent_email"
     result = await service.trash_email(email_id=email_id_to_trash)
 

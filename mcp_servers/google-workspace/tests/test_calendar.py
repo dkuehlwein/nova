@@ -3,8 +3,7 @@ import asyncio
 from unittest.mock import Mock, patch
 from datetime import datetime
 
-# Import from the local main module (since this test is in mcp_servers/gmail/tests/)
-from main import GoogleWorkspaceService
+from src.service import GoogleWorkspaceService
 
 class TestGoogleCalendarIntegration:
     """Test suite for Google Calendar integration in the Google Workspace MCP server."""
@@ -13,8 +12,8 @@ class TestGoogleCalendarIntegration:
     def mock_workspace_service_dependencies(self):
         """Mock dependencies for GoogleWorkspaceService initialization."""
         with patch('os.path.exists', return_value=True), \
-             patch('main.Credentials') as mock_creds, \
-             patch('main.build') as mock_build:
+             patch('src.service.Credentials') as mock_creds, \
+             patch('src.service.build') as mock_build:
             
             # Mock credentials
             mock_creds.from_authorized_user_file.return_value = Mock(

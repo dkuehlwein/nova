@@ -15,6 +15,7 @@ RUN uv sync --frozen --no-cache
 
 # Copy source code
 COPY main.py ./
+COPY src/ ./src/
 
 # Expose port
 EXPOSE 8000
