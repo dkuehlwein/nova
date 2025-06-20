@@ -34,18 +34,8 @@ logger = logging.getLogger(__name__)
 # --- FastMCP Server Setup ---
 mcp = FastMCP(name="GoogleWorkspaceToolsServer")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Google Workspace API FastMCP Server')
-    parser.add_argument('--creds-file-path', required=True, help='OAuth 2.0 credentials file path (e.g., credentials.json)')
-    parser.add_argument('--token-path', required=True, help='File location to store/retrieve access and refresh tokens (e.g., token.json)')
-    parser.add_argument('--host', default='127.0.0.1', help='Host to bind the server to')
-    parser.add_argument('--port', type=int, default=8002, help='Port to bind the server to')
-    parser.add_argument('--oauth-port', type=int, default=9000, help='Port for OAuth flow')
-    
-    args = parser.parse_args()
-    
-    # Initialize GoogleWorkspaceService (which handles auth and core logic)
-    workspace_service = GoogleWorkspaceService(args.creds_file_path, args.token_path, oauth_port=args.oauth_port)
+def setup_tools(workspace_service: GoogleWorkspaceService):
+    """Set up all the MCP tools for the workspace service."""
     
     # === Gmail Tools ===
     
@@ -133,6 +123,23 @@ if __name__ == "__main__":
             "gmail_user": workspace_service.user_email
         })
 
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Google Workspace API FastMCP Server')
+    parser.add_argument('--creds-file-path', required=True, help='OAuth 2.0 credentials file path (e.g., credentials.json)')
+    parser.add_argument('--token-path', required=True, help='File location to store/retrieve access and refresh tokens (e.g., token.json)')
+    parser.add_argument('--host', default='127.0.0.1', help='Host to bind the server to')
+    parser.add_argument('--port', type=int, default=8002, help='Port to bind the server to')
+    parser.add_argument('--oauth-port', type=int, default=9000, help='Port for OAuth flow')
+    
+    args = parser.parse_args()
+    
+    # Initialize GoogleWorkspaceService (which handles auth and core logic)
+    workspace_service = GoogleWorkspaceService(args.creds_file_path, args.token_path)
+    
+    # Setup tools
+    setup_tools(workspace_service)
+    
     # --- Run FastMCP Server ---
     try:
         logger.info(f"Starting Google Workspace FastMCP server on http://{args.host}:{args.port}")
