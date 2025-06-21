@@ -96,7 +96,7 @@ class LinearClient:
         
         return result["data"]["issueCreate"]
     
-    async def update_issue(self, issue_id: str, title: str = None, description: str = None) -> Dict[str, Any]:
+    async def update_issue(self, issue_id: str, title: str = None, description: str = None, priority: int = None) -> Dict[str, Any]:
         """Update an existing issue."""
         query = """
         mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
@@ -106,6 +106,7 @@ class LinearClient:
                     id
                     title
                     url
+                    priority
                 }
             }
         }
@@ -116,6 +117,8 @@ class LinearClient:
             update_input["title"] = title
         if description:
             update_input["description"] = description
+        if priority is not None:
+            update_input["priority"] = priority
         
         variables = {
             "id": issue_id,
@@ -127,6 +130,60 @@ class LinearClient:
             raise Exception(f"Linear API error: {result['errors']}")
         
         return result["data"]["issueUpdate"]
+    
+    async def add_comment(self, issue_id: str, body: str) -> Dict[str, Any]:
+        """Add a comment to an existing issue."""
+        query = """
+        mutation CreateComment($input: CommentCreateInput!) {
+            commentCreate(input: $input) {
+                success
+                comment {
+                    id
+                    body
+                    createdAt
+                    user {
+                        name
+                    }
+                }
+            }
+        }
+        """
+        
+        variables = {
+            "input": {
+                "issueId": issue_id,
+                "body": body
+            }
+        }
+        
+        result = await self._make_request(query, variables)
+        if "errors" in result:
+            raise Exception(f"Linear API error: {result['errors']}")
+        
+        return result["data"]["commentCreate"]
+    
+    async def get_issue(self, issue_id: str) -> Dict[str, Any]:
+        """Get detailed information about a specific issue."""
+        query = """
+        query GetIssue($id: String!) {
+            issue(id: $id) {
+                id
+                title
+                description
+                priority
+                state { name }
+                url
+            }
+        }
+        """
+        
+        variables = {"id": issue_id}
+        
+        result = await self._make_request(query, variables)
+        if "errors" in result:
+            raise Exception(f"Linear API error: {result['errors']}")
+        
+        return result["data"]["issue"]
     
     async def get_teams(self) -> List[Dict[str, Any]]:
         """Get available teams."""

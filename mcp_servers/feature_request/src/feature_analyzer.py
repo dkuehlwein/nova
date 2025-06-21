@@ -38,6 +38,8 @@ Analyze the request and respond with a JSON object containing:
 4. "description": detailed issue description including problem statement, requirements, and acceptance criteria
 5. "priority": number 1-4 (1=urgent, 2=high, 3=normal, 4=low)
 6. "existing_issue_id": if action is "update", provide the EXACT ID from the existing issues list above (otherwise null)
+7. "comment": if action is "update", provide a concise comment that adds ONLY new information not already in the existing issue (new requirements, clarifications, edge cases)
+8. "should_increase_priority": if action is "update", boolean indicating if the new request suggests higher urgency than the existing issue
 
 Guidelines:
 - Create new issue if the request is genuinely new or significantly different
@@ -45,6 +47,9 @@ Guidelines:
 - Write clear, actionable descriptions
 - Set appropriate priority based on impact and urgency
 - IMPORTANT: When updating, you MUST provide the exact "id" from the existing issues list, not a made-up ID
+- For updates: Write a comment that adds ONLY new information - do NOT repeat what's already in the existing description
+- Comments should be concise and focus on: new requirements, clarifications, edge cases, or additional context not already covered
+- For updates: Only suggest priority increase if the new request genuinely indicates higher urgency than the existing issue
 """
         
         try:
@@ -71,5 +76,7 @@ Guidelines:
                 "title": f"Feature Request: {request[:80]}",
                 "description": f"**Problem**: {request}\n\n**Requirements**: To be defined\n\n**Acceptance Criteria**: To be defined",
                 "priority": 3,
-                "existing_issue_id": None
+                "existing_issue_id": None,
+                "comment": None,
+                "should_increase_priority": False
             } 

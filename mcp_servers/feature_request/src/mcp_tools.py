@@ -91,26 +91,48 @@ async def request_feature_impl(
                     }
             else:
                 try:
-                    result = await linear_client.update_issue(
-                        issue_id=issue_id,
-                        description=analysis["description"]
-                    )
+                    # Get existing issue details to check current priority
+                    existing_issue = await linear_client.get_issue(issue_id)
+                    current_priority = existing_issue.get("priority", 4)
                     
-                    if result["success"]:
+                    # Add comment with the new request/clarification
+                    comment_body = analysis.get("comment", f"**Additional Request:**\n\n{request}")
+                    comment_result = await linear_client.add_comment(issue_id, comment_body)
+                    
+                    # Update priority if needed
+                    new_priority = None
+                    if analysis.get("should_increase_priority", False) and analysis["priority"] < current_priority:
+                        new_priority = analysis["priority"]
+                    
+                    # Update issue with priority if needed (don't change description)
+                    update_result = None
+                    if new_priority is not None:
+                        update_result = await linear_client.update_issue(
+                            issue_id=issue_id,
+                            priority=new_priority
+                        )
+                    
+                    # Construct response message
+                    actions_taken = ["added comment"]
+                    if new_priority is not None:
+                        actions_taken.append(f"increased priority to {new_priority}")
+                    
+                    if comment_result["success"]:
                         return {
                             "success": True,
                             "action": "updated",
-                            "issue_id": result["issue"]["id"],
-                            "issue_url": result["issue"]["url"],
-                            "title": result["issue"]["title"],
+                            "issue_id": issue_id,
+                            "issue_url": existing_issue["url"],
+                            "title": existing_issue["title"],
                             "reasoning": analysis["reasoning"],
-                            "message": f"Updated existing issue: {result['issue']['title']}"
+                            "actions_taken": actions_taken,
+                            "message": f"Updated existing issue '{existing_issue['title']}': {', '.join(actions_taken)}"
                         }
                     else:
                         return {
                             "success": False,
-                            "error": "Failed to update issue",
-                            "details": result
+                            "error": "Failed to add comment to issue",
+                            "details": comment_result
                         }
                 except Exception as update_error:
                     # If update fails (e.g., issue doesn't exist), fallback to creating new issue
