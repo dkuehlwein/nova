@@ -4,9 +4,16 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CollapsibleToolCall } from './CollapsibleToolCall';
 
+interface ToolCall {
+  tool: string;
+  args: Record<string, unknown>;
+  timestamp: string;
+}
+
 interface MarkdownMessageProps {
   content: string;
   className?: string;
+  toolCalls?: ToolCall[];
 }
 
 // Regex to match tool call pattern: 🔧 **Using tool: toolname**\n```json\n{args}\n```
@@ -51,11 +58,11 @@ function parseContentWithToolCalls(content: string) {
   return parts;
 }
 
-export function MarkdownMessage({ content, className = "" }: MarkdownMessageProps) {
+export function MarkdownMessage({ content, className = "", toolCalls }: MarkdownMessageProps) {
   const parts = parseContentWithToolCalls(content);
 
-  // If no tool calls found, render normally
-  if (parts.length <= 1 && parts[0]?.type === 'text') {
+  // If no tool calls found in content and no toolCalls prop, render normally
+  if ((parts.length <= 1 && parts[0]?.type === 'text') && !toolCalls?.length) {
     return (
       <div className={`prose prose-sm max-w-none dark:prose-invert ${className}`}>
         <ReactMarkdown
@@ -118,6 +125,16 @@ export function MarkdownMessage({ content, className = "" }: MarkdownMessageProp
   // Render mixed content with tool calls
   return (
     <div className={`prose prose-sm max-w-none dark:prose-invert ${className}`}>
+      {/* Render streaming tool calls first (from props) */}
+      {toolCalls?.map((toolCall, index) => (
+        <CollapsibleToolCall
+          key={`streaming-tool-${index}`}
+          toolName={toolCall.tool}
+          args={JSON.stringify(toolCall.args, null, 2)}
+        />
+      ))}
+      
+      {/* Then render content parts (for legacy format compatibility) */}
       {parts.map((part, index) => {
         if (part.type === 'tool' && part.toolName && part.args) {
           return (

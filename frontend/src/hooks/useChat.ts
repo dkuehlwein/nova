@@ -1,12 +1,19 @@
 import { useState, useCallback, useRef } from 'react';
 import { apiRequest, API_ENDPOINTS, getApiBaseUrlSync } from '@/lib/api';
 
+export interface ToolCall {
+  tool: string;
+  args: Record<string, unknown>;
+  timestamp: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
   isStreaming?: boolean;
+  toolCalls?: ToolCall[];
   metadata?: {
     type?: string;
     collapsible_content?: string;
@@ -246,8 +253,26 @@ export function useChat() {
                       break;
 
                     case 'tool_call':
-                      // Handle tool calls for display purposes
-                      // You can display tool calls if needed
+                      const toolData = event.data as StreamToolData;
+                      // Add tool call to the current assistant message
+                      setState(prev => ({
+                        ...prev,
+                        messages: prev.messages.map(msg => 
+                          msg.id === assistantMessageId 
+                            ? { 
+                                ...msg, 
+                                toolCalls: [
+                                  ...(msg.toolCalls || []),
+                                  {
+                                    tool: toolData.tool,
+                                    args: toolData.args || {},
+                                    timestamp: toolData.timestamp || new Date().toISOString(),
+                                  }
+                                ]
+                              }
+                            : msg
+                        ),
+                      }));
                       break;
 
                     case 'complete':

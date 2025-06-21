@@ -389,7 +389,7 @@ function ChatPage() {
               
               <div className="text-sm break-words min-h-[1.25rem]">
                 {msg.content ? (
-                  <MarkdownMessage content={msg.content} />
+                  <MarkdownMessage content={msg.content} toolCalls={msg.toolCalls} />
                 ) : (msg.isStreaming ? (
                   <span className="opacity-60">Thinking...</span>
                 ) : '')}
