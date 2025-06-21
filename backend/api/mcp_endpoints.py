@@ -95,7 +95,7 @@ async def get_mcp_servers():
             response_servers.append(MCPServerStatus(
                 name=server_info["name"],
                 url=server_info["url"],
-                health_url=server_info["url"],  # For backwards compatibility, just use the MCP URL
+                health_url=server_info.get("health_url"),  # Optional health URL
                 description=server_info["description"],
                 enabled=server_info["enabled"],
                 healthy=is_healthy,

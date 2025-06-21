@@ -72,7 +72,6 @@ class Settings(BaseSettings):
                     servers.append({
                         "name": server_name,
                         "url": server_config["url"],
-                        "health_url": server_config["health_url"],
                         "description": server_config.get("description", f"{server_name} MCP Server")
                     })
         

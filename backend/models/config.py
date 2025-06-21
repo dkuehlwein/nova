@@ -15,15 +15,15 @@ class MCPServerConfig(BaseModel):
     """MCP Server configuration with validation."""
     
     url: HttpUrl = Field(..., description="MCP server URL endpoint")
-    health_url: HttpUrl = Field(..., description="Health check endpoint URL") 
+    health_url: Optional[HttpUrl] = Field(None, description="Optional health check endpoint URL (uses MCP tools/list if not provided)") 
     description: str = Field(..., min_length=1, max_length=500, description="Server description")
     enabled: bool = Field(default=True, description="Whether server is enabled")
     
     @field_validator('health_url')
     @classmethod
     def health_url_must_be_valid(cls, v):
-        """Ensure health URL is a valid endpoint."""
-        if not str(v).endswith(('/health', '/status', '/ping')):
+        """Ensure health URL is a valid endpoint if provided."""
+        if v is not None and not str(v).endswith(('/health', '/status', '/ping')):
             raise ValueError('Health URL should end with /health, /status, or /ping')
         return v
     
@@ -76,11 +76,11 @@ class MCPServersConfig(RootModel[Dict[str, MCPServerConfig]]):
         
         # Check for URL conflicts
         urls = [str(config.url) for config in v.values()]
-        health_urls = [str(config.health_url) for config in v.values()]
+        health_urls = [str(config.health_url) for config in v.values() if config.health_url is not None]
         
         if len(set(urls)) != len(urls):
             raise ValueError('Duplicate MCP server URLs found')
-        if len(set(health_urls)) != len(health_urls):
+        if health_urls and len(set(health_urls)) != len(health_urls):
             raise ValueError('Duplicate health check URLs found')
         
         return v

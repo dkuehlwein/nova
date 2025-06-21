@@ -13,7 +13,7 @@ class MCPServerStatus(BaseModel):
     """MCP Server with health status information."""
     name: str = Field(..., description="Server name")
     url: str = Field(..., description="Server URL")
-    health_url: str = Field(..., description="Health check URL")
+    health_url: Optional[str] = Field(None, description="Optional health check URL (uses MCP tools/list if not provided)")
     description: str = Field(..., description="Server description")
     enabled: bool = Field(..., description="Whether server is enabled")
     healthy: bool = Field(..., description="Whether server is healthy")

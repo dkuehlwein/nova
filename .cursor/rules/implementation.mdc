@@ -11,6 +11,8 @@ We are building an MVP for a single admin user and can just change things. This 
 - Don't worry about breaking thing and deprecations. 
 - We don't need authentication
 
+Pay extra attention to interfaces. Whenever you change a part that is used by multiple components (e.g. mcp_server.yaml, websocket endpoints) review all related code and make sure the change doesn't break anything. 
+
 ## Logging Standards
 
 **All new code must follow these logging standards:**
