@@ -90,27 +90,57 @@ async def request_feature_impl(
                         "details": result
                     }
             else:
-                result = await linear_client.update_issue(
-                    issue_id=issue_id,
-                    description=analysis["description"]
-                )
-                
-                if result["success"]:
-                    return {
-                        "success": True,
-                        "action": "updated",
-                        "issue_id": result["issue"]["id"],
-                        "issue_url": result["issue"]["url"],
-                        "title": result["issue"]["title"],
-                        "reasoning": analysis["reasoning"],
-                        "message": f"Updated existing issue: {result['issue']['title']}"
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "error": "Failed to update issue",
-                        "details": result
-                    }
+                try:
+                    result = await linear_client.update_issue(
+                        issue_id=issue_id,
+                        description=analysis["description"]
+                    )
+                    
+                    if result["success"]:
+                        return {
+                            "success": True,
+                            "action": "updated",
+                            "issue_id": result["issue"]["id"],
+                            "issue_url": result["issue"]["url"],
+                            "title": result["issue"]["title"],
+                            "reasoning": analysis["reasoning"],
+                            "message": f"Updated existing issue: {result['issue']['title']}"
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "error": "Failed to update issue",
+                            "details": result
+                        }
+                except Exception as update_error:
+                    # If update fails (e.g., issue doesn't exist), fallback to creating new issue
+                    if "Entity not found" in str(update_error) or "not found" in str(update_error).lower():
+                        result = await linear_client.create_issue(
+                            title=analysis["title"],
+                            description=analysis["description"],
+                            priority=analysis["priority"]
+                        )
+                        
+                        if result["success"]:
+                            return {
+                                "success": True,
+                                "action": "created",  # Report correct action for fallback
+                                "issue_id": result["issue"]["id"],
+                                "issue_url": result["issue"]["url"],
+                                "title": result["issue"]["title"],
+                                "reasoning": f"{analysis['reasoning']} (Original issue not found, created new one)",
+                                "message": f"Created new feature request (original issue not found): {result['issue']['title']}"
+                            }
+                        else:
+                            return {
+                                "success": False,
+                                "error": "Issue update failed and fallback creation also failed",
+                                "update_error": str(update_error),
+                                "create_error": result
+                            }
+                    else:
+                        # Re-raise if it's not a "not found" error
+                        raise update_error
         
         else:
             return {

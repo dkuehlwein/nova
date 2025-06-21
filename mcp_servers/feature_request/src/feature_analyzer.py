@@ -20,7 +20,7 @@ class FeatureRequestAnalyzer:
         if existing_issues:
             issues_context = "Existing issues:\n"
             for issue in existing_issues[:10]:  # Limit to prevent token overflow
-                issues_context += f"- {issue['title']}: {issue.get('description', '')[:200]}...\n"
+                issues_context += f"ID: {issue['id']}\nTitle: {issue['title']}\nDescription: {issue.get('description', '')[:200]}...\n\n"
         else:
             issues_context = "No existing issues found."
         
@@ -37,13 +37,14 @@ Analyze the request and respond with a JSON object containing:
 3. "title": suggested issue title (max 100 chars)
 4. "description": detailed issue description including problem statement, requirements, and acceptance criteria
 5. "priority": number 1-4 (1=urgent, 2=high, 3=normal, 4=low)
-6. "existing_issue_id": if action is "update", provide the ID of the issue to update (otherwise null)
+6. "existing_issue_id": if action is "update", provide the EXACT ID from the existing issues list above (otherwise null)
 
 Guidelines:
 - Create new issue if the request is genuinely new or significantly different
-- Update existing if it's clearly related to an open issue
+- Update existing if it's clearly related to an open issue (use the exact "id" field from the existing issues)
 - Write clear, actionable descriptions
 - Set appropriate priority based on impact and urgency
+- IMPORTANT: When updating, you MUST provide the exact "id" from the existing issues list, not a made-up ID
 """
         
         try:

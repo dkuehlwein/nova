@@ -219,4 +219,104 @@ class TestFeatureRequestAnalyzer:
             call_args = mock_model.generate_content_async.call_args[0][0]
             # Count how many issues are mentioned in the prompt
             issue_count = call_args.count("Test Issue")
-            assert issue_count <= 10  # Should be limited to 10 issues 
+            assert issue_count <= 10  # Should be limited to 10 issues
+
+    @pytest.fixture
+    def mock_existing_issues(self):
+        """Mock existing issues with web/URL functionality."""
+        return [
+            {
+                'id': 'existing-123',
+                'title': 'Add URL fetching and summarization capabilities',
+                'description': 'Agent needs ability to fetch and summarize web content from URLs in tasks and emails. This would enable processing of linked articles and documents.',
+                'priority': 2,
+                'state': {'name': 'In Progress'}
+            },
+            {
+                'id': 'different-456', 
+                'title': 'Improve database performance',
+                'description': 'Database queries are slow and need optimization.',
+                'priority': 1,
+                'state': {'name': 'Todo'}
+            }
+        ]
+    
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not os.getenv('GOOGLE_API_KEY'), reason="GOOGLE_API_KEY not set")
+    async def test_duplicate_detection_and_merging(self, analyzer, mock_existing_issues):
+        """Test that similar requests are correctly identified for updating existing issues."""
+        
+        # Test request that should be merged with existing URL/web functionality issue
+        similar_request = "I need the agent to process information from external links in emails and summarize web content"
+        
+        result = await analyzer.analyze_request(similar_request, mock_existing_issues)
+        
+        # Should decide to update existing issue
+        assert result["action"] == "update", f"Expected 'update' but got '{result['action']}'. Reasoning: {result['reasoning']}"
+        assert result["existing_issue_id"] == "existing-123", f"Expected 'existing-123' but got '{result['existing_issue_id']}'"
+        assert "existing" in result["reasoning"].lower() or "duplicate" in result["reasoning"].lower()
+    
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not os.getenv('GOOGLE_API_KEY'), reason="GOOGLE_API_KEY not set")
+    async def test_new_feature_creation(self, analyzer, mock_existing_issues):
+        """Test that genuinely new requests create new issues."""
+        
+        # Test request that's different from existing issues
+        new_request = "I need the agent to control IoT devices and smart home automation"
+        
+        result = await analyzer.analyze_request(new_request, mock_existing_issues)
+        
+        # Should decide to create new issue
+        assert result["action"] == "create", f"Expected 'create' but got '{result['action']}'. Reasoning: {result['reasoning']}"
+        assert result["existing_issue_id"] is None
+        assert "new" in result["reasoning"].lower() or "different" in result["reasoning"].lower()
+    
+    @pytest.mark.asyncio
+    async def test_ai_failure_fallback(self, analyzer):
+        """Test fallback behavior when AI analysis fails."""
+        
+        # Mock AI failure
+        with patch.object(analyzer, 'model') as mock_model:
+            mock_model.generate_content_async.side_effect = Exception("API rate limit")
+            
+            result = await analyzer.analyze_request("test request", [])
+            
+            # Should fallback to creating new issue
+            assert result["action"] == "create"
+            assert "AI analysis failed" in result["reasoning"]
+            assert result["existing_issue_id"] is None
+            assert "Feature Request:" in result["title"]
+    
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not os.getenv('GOOGLE_API_KEY'), reason="GOOGLE_API_KEY not set") 
+    async def test_multiple_similar_requests_consistency(self, analyzer, mock_existing_issues):
+        """Test that multiple similar requests consistently identify the same existing issue."""
+        
+        similar_requests = [
+            "The agent cannot access web content from URLs shared in tasks",
+            "I need URL summarization functionality for the agent", 
+            "Agent should be able to fetch and process web page content"
+        ]
+        
+        results = []
+        for request in similar_requests:
+            result = await analyzer.analyze_request(request, mock_existing_issues)
+            results.append(result)
+        
+        # All should decide to update the same existing issue
+        for i, result in enumerate(results):
+            assert result["action"] == "update", f"Request {i+1} should update existing issue"
+            assert result["existing_issue_id"] == "existing-123", f"Request {i+1} should reference existing-123"
+    
+    @pytest.mark.asyncio
+    async def test_empty_existing_issues(self, analyzer):
+        """Test behavior with no existing issues."""
+        
+        result = await analyzer.analyze_request("Need web scraping capability", [])
+        
+        # Should create new issue when no existing issues
+        assert result["action"] == "create"
+        assert result["existing_issue_id"] is None
+        assert "title" in result
+        assert "description" in result
+        assert "priority" in result 
