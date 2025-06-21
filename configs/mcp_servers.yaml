@@ -2,3 +2,8 @@ google-workspace:
   description: Google Workspace MCP Server for Gmail and Calendar operations
   enabled: true
   url: http://localhost:8002/mcp
+
+feature-request:
+  description: AI-powered feature request management for Linear
+  enabled: true
+  url: http://localhost:8003/mcp

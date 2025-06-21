@@ -1,0 +1,74 @@
+"""AI-powered feature request analysis using Google Gemini."""
+
+import json
+from typing import Dict, List, Any
+import google.generativeai as genai
+
+
+class FeatureRequestAnalyzer:
+    """AI analyzer for feature requests using Gemini."""
+    
+    def __init__(self, model_name: str = "gemini-1.5-flash"):
+        self.model_name = model_name
+        self.model = None  # Lazy initialization for better testability
+    
+    async def analyze_request(self, request: str, existing_issues: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze a feature request and decide whether to create new or update existing issue."""
+        
+        # Prepare context about existing issues
+        issues_context = ""
+        if existing_issues:
+            issues_context = "Existing issues:\n"
+            for issue in existing_issues[:10]:  # Limit to prevent token overflow
+                issues_context += f"- {issue['title']}: {issue.get('description', '')[:200]}...\n"
+        else:
+            issues_context = "No existing issues found."
+        
+        prompt = f"""
+You are analyzing a feature request to decide whether to create a new Linear issue or update an existing one.
+
+Feature Request: {request}
+
+{issues_context}
+
+Analyze the request and respond with a JSON object containing:
+1. "action": either "create" or "update"
+2. "reasoning": brief explanation of your decision
+3. "title": suggested issue title (max 100 chars)
+4. "description": detailed issue description including problem statement, requirements, and acceptance criteria
+5. "priority": number 1-4 (1=urgent, 2=high, 3=normal, 4=low)
+6. "existing_issue_id": if action is "update", provide the ID of the issue to update (otherwise null)
+
+Guidelines:
+- Create new issue if the request is genuinely new or significantly different
+- Update existing if it's clearly related to an open issue
+- Write clear, actionable descriptions
+- Set appropriate priority based on impact and urgency
+"""
+        
+        try:
+            # Lazy initialization of model for better testability
+            if self.model is None:
+                self.model = genai.GenerativeModel(self.model_name)
+            
+            response = await self.model.generate_content_async(prompt)
+            
+            # Parse the JSON response
+            response_text = response.text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:-3].strip()
+            elif response_text.startswith("```"):
+                response_text = response_text[3:-3].strip()
+            
+            return json.loads(response_text)
+            
+        except Exception as e:
+            # Fallback to creating new issue if AI analysis fails
+            return {
+                "action": "create",
+                "reasoning": f"AI analysis failed ({str(e)}), defaulting to new issue",
+                "title": f"Feature Request: {request[:80]}",
+                "description": f"**Problem**: {request}\n\n**Requirements**: To be defined\n\n**Acceptance Criteria**: To be defined",
+                "priority": 3,
+                "existing_issue_id": None
+            } 
