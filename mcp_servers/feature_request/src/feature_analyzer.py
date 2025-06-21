@@ -19,7 +19,7 @@ class FeatureRequestAnalyzer:
         issues_context = ""
         if existing_issues:
             issues_context = "Existing issues:\n"
-            for issue in existing_issues[:10]:  # Limit to prevent token overflow
+            for issue in existing_issues[:20]:  # Limit to prevent token overflow
                 issues_context += f"ID: {issue['id']}\nTitle: {issue['title']}\nDescription: {issue.get('description', '')[:200]}...\n\n"
         else:
             issues_context = "No existing issues found."
