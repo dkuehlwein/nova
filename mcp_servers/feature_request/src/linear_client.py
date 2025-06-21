@@ -12,7 +12,7 @@ class LinearClient:
         self.api_key = api_key
         self.api_url = api_url
         self.headers = {
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": api_key,  # Linear API wants just the key, no "Bearer" prefix
             "Content-Type": "application/json"
         }
     
@@ -30,7 +30,7 @@ class LinearClient:
                 timeout=30.0
             )
             response.raise_for_status()
-            return await response.json()
+            return response.json()
     
     async def get_open_issues(self) -> List[Dict[str, Any]]:
         """Get all open and in-progress issues for context."""
