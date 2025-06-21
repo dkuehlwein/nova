@@ -1,11 +1,13 @@
 """
 Structured logging configuration for Nova backend.
-Implements consistent JSON logging with request correlation.
+Implements consistent JSON logging with request correlation and optional file rotation.
 """
 
 import logging
+import logging.handlers
 import sys
 import uuid
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import orjson
@@ -18,7 +20,11 @@ from starlette.responses import Response
 def configure_logging(
     service_name: str = "nova-backend",
     log_level: str = "INFO",
-    enable_json: bool = True
+    enable_json: bool = True,
+    enable_file_logging: bool = False,
+    log_file_path: Optional[str] = None,
+    max_file_size: int = 10 * 1024 * 1024,  # 10MB default
+    backup_count: int = 5
 ) -> None:
     """
     Configure structured logging for the Nova backend.
@@ -27,17 +33,50 @@ def configure_logging(
         service_name: Name of the service for log identification
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         enable_json: Whether to use JSON output (True) or console output (False)
+        enable_file_logging: Whether to enable file logging with rotation
+        log_file_path: Path to log file (defaults to ./logs/{service_name}.log)
+        max_file_size: Maximum size in bytes before rotation (default: 10MB)
+        backup_count: Number of backup files to keep (default: 5)
     """
     # Convert string level to logging constant
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
     
+    # Create logs directory if file logging is enabled
+    if enable_file_logging:
+        if log_file_path is None:
+            logs_dir = Path("./logs")
+            logs_dir.mkdir(exist_ok=True)
+            log_file_path = logs_dir / f"{service_name}.log"
+        else:
+            log_file_path = Path(log_file_path)
+            log_file_path.parent.mkdir(parents=True, exist_ok=True)
+    
     # Configure standard library logging
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=numeric_level,
-        force=True  # Override any existing configuration
-    )
+    root_logger = logging.getLogger()
+    root_logger.setLevel(numeric_level)
+    
+    # Clear existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    # Add console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(numeric_level)
+    console_handler.setFormatter(logging.Formatter("%(message)s"))
+    root_logger.addHandler(console_handler)
+    
+    # Add rotating file handler if enabled
+    file_handler = None
+    if enable_file_logging:
+        file_handler = logging.handlers.RotatingFileHandler(
+            filename=str(log_file_path),
+            maxBytes=max_file_size,
+            backupCount=backup_count,
+            encoding='utf-8'
+        )
+        file_handler.setLevel(numeric_level)
+        file_handler.setFormatter(logging.Formatter("%(message)s"))
+        root_logger.addHandler(file_handler)
     
     # Shared processors for both structured and standard logging
     shared_processors = [
@@ -78,6 +117,23 @@ def configure_logging(
     
     # Bind service name globally
     structlog.contextvars.bind_contextvars(service=service_name)
+    
+    # Log configuration info
+    logger = structlog.get_logger("logging")
+    logger.info(
+        "Logging configured",
+        extra={
+            "data": {
+                "service_name": service_name,
+                "log_level": log_level,
+                "json_output": enable_json,
+                "file_logging": enable_file_logging,
+                "log_file": str(log_file_path) if enable_file_logging else None,
+                "max_file_size_mb": max_file_size / (1024 * 1024) if enable_file_logging else None,
+                "backup_count": backup_count if enable_file_logging else None,
+            }
+        }
+    )
 
 
 def get_logger(name: Optional[str] = None) -> structlog.stdlib.BoundLogger:

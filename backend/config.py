@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # Logging Configuration
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = True  # Set to False for human-readable console output during development
+    
+    # File Logging Configuration
+    LOG_FILE_ENABLED: bool = False  # Set to True to enable file logging with rotation
+    LOG_FILE_PATH: Optional[str] = None  # Path to log file (defaults to ./logs/{service_name}.log)
+    LOG_FILE_MAX_SIZE_MB: int = 10  # Maximum size in MB before rotation
+    LOG_FILE_BACKUP_COUNT: int = 5  # Number of backup files to keep
 
     @model_validator(mode="after")
     def compute_urls(self):

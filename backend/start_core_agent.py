@@ -28,7 +28,11 @@ from config import settings
 configure_logging(
     service_name="core-agent",
     log_level=settings.LOG_LEVEL,
-    enable_json=settings.LOG_JSON
+    enable_json=settings.LOG_JSON,
+    enable_file_logging=settings.LOG_FILE_ENABLED,
+    log_file_path=settings.LOG_FILE_PATH,
+    max_file_size=settings.LOG_FILE_MAX_SIZE_MB * 1024 * 1024,  # Convert MB to bytes
+    backup_count=settings.LOG_FILE_BACKUP_COUNT
 )
 
 # Configure LangSmith tracing
