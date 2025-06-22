@@ -86,7 +86,7 @@ async def create_website_event_handler():
                         }
                     }
                 )
-                # Clear the global agent cache (this also clears tools cache internally)  
+                # Clear the chat agent cache - MCP client will fetch fresh tools automatically
                 clear_chat_agent_cache()
                 
                 service_manager.logger.info("Chat agent cache cleared - all chats will use updated MCP tools")

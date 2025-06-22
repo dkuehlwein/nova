@@ -59,7 +59,7 @@ class CoreAgent:
         
         try:
             # Recreate the agent with new prompt and tools
-            self.agent = await create_chat_agent(reload_tools=True)
+            self.agent = await create_chat_agent(use_cache=False)
             
             logger.info("Core Agent reloaded successfully")
             

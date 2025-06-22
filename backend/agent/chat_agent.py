@@ -53,7 +53,7 @@ async def get_all_tools_with_mcp(use_cache=True) -> List[Any]:
     
     # Get MCP tools from external servers (respects enabled/disabled state)
     try:
-        _, mcp_tools = await mcp_manager.get_client_and_tools()
+        mcp_tools = await mcp_manager.get_tools()
         logger.info(f"Loaded {len(mcp_tools)} MCP tools from enabled servers")
     except Exception as e:
         logger.warning(f"Could not fetch MCP tools: {e}")
