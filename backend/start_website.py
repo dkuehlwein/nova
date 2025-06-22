@@ -65,14 +65,10 @@ async def create_website_event_handler():
                         }
                     }
                 )
-                # Clear both the global agent cache AND the tools cache
+                # Clear the global agent cache (this also clears tools cache internally)
                 clear_chat_agent_cache()
                 
-                # Also clear tools cache to ensure all agent instances get updated prompts
-                from agent.chat_agent import clear_tools_cache
-                clear_tools_cache()
-                
-                service_manager.logger.info("Chat agent and tools caches cleared - all chats will use updated prompt")
+                service_manager.logger.info("Chat agent cache cleared - all chats will use updated prompt")
             except Exception as e:
                 service_manager.logger.error(f"Failed to reload chat agent: {e}")
         
@@ -90,14 +86,10 @@ async def create_website_event_handler():
                         }
                     }
                 )
-                # Clear both the global agent cache AND the tools cache
+                # Clear the global agent cache (this also clears tools cache internally)  
                 clear_chat_agent_cache()
                 
-                # Also clear the tools cache so streaming chats get updated tools
-                from agent.chat_agent import clear_tools_cache
-                clear_tools_cache()
-                
-                service_manager.logger.info("Chat agent and tools caches cleared - all chats will use updated MCP tools")
+                service_manager.logger.info("Chat agent cache cleared - all chats will use updated MCP tools")
             except Exception as e:
                 service_manager.logger.error(f"Failed to reload chat agent after MCP toggle: {e}")
     

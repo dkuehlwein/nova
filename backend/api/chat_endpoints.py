@@ -20,7 +20,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
-from agent.chat_agent import create_chat_agent
+from agent.chat_agent import create_chat_agent, clear_chat_agent_cache
 import logging
 
 # System prompt management imports
@@ -41,7 +41,7 @@ from pathlib import Path
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 # Global chat agent instance for streaming endpoints
-_chat_agent = None
+# _chat_agent = None  # REMOVED - now handled by create_chat_agent caching
 
 # Utility functions for content-based backup deduplication
 def get_content_hash(content: str) -> str:
@@ -70,28 +70,7 @@ def should_create_backup(current_content: str, backup_dir: Path) -> bool:
     
     return True  # No duplicate found, create backup
 
-async def get_chat_agent():
-    """Get or create the chat agent instance."""
-    global _chat_agent
-    if _chat_agent is None:
-        logger.info("Creating new chat agent instance")
-        try:
-            # Always reload tools when creating a new agent to get latest tools and prompts
-            _chat_agent = await create_chat_agent(reload_tools=True)
-            logger.info(f"Created chat agent with checkpointer: {type(_chat_agent.checkpointer)}")
-        except Exception as e:
-            logger.error(f"Error creating chat agent: {e}")
-            raise
-    else:
-        logger.debug("Reusing existing chat agent instance")
-    return _chat_agent
-
-
-def clear_chat_agent_cache():
-    """Clear the global chat agent cache to force recreation with new prompt."""
-    global _chat_agent
-    _chat_agent = None
-    logger.info("Chat agent cache cleared - will be recreated with updated prompt on next request")
+# clear_chat_agent_cache is now imported from agent.chat_agent
 
 
 # Models already imported above
@@ -403,13 +382,15 @@ async def stream_chat(request: Request, chat_request: ChatRequest):
         checkpointer = await get_checkpointer_from_app(request)
         logger.debug(f"Checkpointer obtained: {type(checkpointer)}")
         
-        # Create a new chat agent instance with the checkpointer for this request
-        logger.info("Creating chat agent with checkpointer...")
+        # Get chat agent with specific checkpointer (for conversation state)
+        # Note: When using custom checkpointer, we don't cache the agent since each conversation
+        # needs its own checkpointer instance for proper state management
+        logger.info("Getting chat agent with checkpointer...")
         try:
             from agent.chat_agent import create_chat_agent
             chat_agent = await create_chat_agent(checkpointer=checkpointer)
             logger.info(f"Using checkpointer: {type(checkpointer)} (id: {id(checkpointer)})")
-            logger.info("Chat agent created successfully")
+            logger.info("Chat agent ready")
         except Exception as agent_error:
             logger.error(f"Failed to create chat agent: {agent_error}")
             raise HTTPException(status_code=500, detail=f"Failed to create chat agent: {str(agent_error)}")
@@ -537,8 +518,8 @@ async def chat(request: ChatRequest):
         # Create configuration
         config = _create_config(request.thread_id)
         
-        # Get chat agent instance
-        chat_agent = await get_chat_agent()
+        # Get chat agent instance (using cached agent)
+        chat_agent = await create_chat_agent()
         
         # Get response from LangGraph
         result = await chat_agent.ainvoke({"messages": messages}, config=config)
@@ -576,7 +557,7 @@ async def chat_health():
     """
     try:
         # Test if the chat agent can be created and is working
-        chat_agent = await get_chat_agent()
+        chat_agent = await create_chat_agent()
         agent_ready = chat_agent is not None
         
         return HealthResponse(
