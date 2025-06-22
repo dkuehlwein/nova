@@ -338,9 +338,9 @@ class TestAgentPromptIntegration:
             tool_loading_calls.append({"timestamp": asyncio.get_event_loop().time()})
             # Return different tools based on call count (simulating server toggle)
             if len(tool_loading_calls) == 1:
-                return Mock(), ["tool1", "tool2", "tool3"]  # Server enabled
+                return ["tool1", "tool2", "tool3"]  # Server enabled
             else:
-                return Mock(), ["tool1"]  # Server disabled
+                return ["tool1"]  # Server disabled
         
         async def mock_create_chat_agent(reload_tools=False):
             # Always call tool loading to simulate real agent creation behavior
@@ -356,7 +356,7 @@ class TestAgentPromptIntegration:
             if event.type == "mcp_toggled":
                 await mock_create_chat_agent(reload_tools=True)
         
-        with patch('backend.agent.chat_agent.mcp_manager.get_client_and_tools', side_effect=mock_get_client_and_tools):
+        with patch('backend.agent.chat_agent.mcp_manager.get_tools', side_effect=mock_get_client_and_tools):
             with patch('backend.agent.chat_agent.create_chat_agent', side_effect=mock_create_chat_agent):
                 with patch('utils.redis_manager.publish') as mock_publish:
                     

@@ -19,7 +19,7 @@ from typing import List, Any, Optional
 from agent.chat_agent import (
     create_checkpointer, 
     get_all_tools_with_mcp,
-    clear_tools_cache,
+    clear_chat_agent_cache,
     create_chat_agent
 )
 
@@ -63,8 +63,8 @@ class FakeChatModel(BaseChatModel):
 
 @pytest.fixture(autouse=True)
 def clear_cache():
-    """Clear tools cache before each test."""
-    clear_tools_cache()
+    """Clear all caches before each test."""
+    clear_chat_agent_cache()
 
 
 @pytest.fixture
@@ -178,7 +178,7 @@ class TestToolsManagement:
              patch('agent.chat_agent.mcp_manager') as mock_mcp:
             
             mock_get_tools.return_value = sample_tools
-            mock_mcp.get_client_and_tools = AsyncMock(return_value=(None, []))
+            mock_mcp.get_tools = AsyncMock(return_value=[])
             
             # First call - should fetch tools
             tools1 = await get_all_tools_with_mcp()
@@ -191,7 +191,8 @@ class TestToolsManagement:
             
             # Should only call get_all_tools once due to caching
             mock_get_tools.assert_called_once()
-            mock_mcp.get_client_and_tools.assert_called_once()
+            # Should only call MCP get_tools once due to caching  
+            mock_mcp.get_tools.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_get_all_tools_with_mcp_combines_sources(self, sample_tools):
@@ -207,7 +208,7 @@ class TestToolsManagement:
              patch('agent.chat_agent.mcp_manager') as mock_mcp:
             
             mock_get_tools.return_value = sample_tools  # 3 local tools
-            mock_mcp.get_client_and_tools = AsyncMock(return_value=(None, [mcp_search]))  # 1 MCP tool
+            mock_mcp.get_tools = AsyncMock(return_value=[mcp_search])  # 1 MCP tool
             
             tools = await get_all_tools_with_mcp()
             
@@ -218,24 +219,27 @@ class TestToolsManagement:
             assert "get_weather" in tool_names
             assert "mcp_search" in tool_names
     
-    def test_clear_tools_cache(self, sample_tools):
-        """Test tools cache is properly cleared."""
+    def test_clear_chat_agent_cache(self, sample_tools):
+        """Test all caches are properly cleared."""
         with patch('agent.chat_agent.get_all_tools') as mock_get_tools, \
              patch('agent.chat_agent.mcp_manager') as mock_mcp:
             
             mock_get_tools.return_value = sample_tools
-            mock_mcp.get_client_and_tools = AsyncMock(return_value=(None, []))
+            mock_mcp.get_tools = AsyncMock(return_value=[])
             
             # Load tools and verify cache
             import agent.chat_agent
             agent.chat_agent._cached_tools = sample_tools
+            agent.chat_agent._cached_llm = "fake_llm"
             assert agent.chat_agent._cached_tools is not None
+            assert agent.chat_agent._cached_llm is not None
             
             # Clear cache
-            clear_tools_cache()
+            clear_chat_agent_cache()
             
-            # Verify cache is cleared
+            # Verify all caches are cleared
             assert agent.chat_agent._cached_tools is None
+            assert agent.chat_agent._cached_llm is None
     
     @pytest.mark.asyncio
     async def test_get_all_tools_mcp_error_handling(self, sample_tools):
@@ -244,7 +248,7 @@ class TestToolsManagement:
              patch('agent.chat_agent.mcp_manager') as mock_mcp:
             
             mock_get_tools.return_value = sample_tools
-            mock_mcp.get_client_and_tools = AsyncMock(side_effect=Exception("MCP connection failed"))
+            mock_mcp.get_tools = AsyncMock(side_effect=Exception("MCP connection failed"))
             
             tools = await get_all_tools_with_mcp()
             
@@ -266,7 +270,7 @@ class TestChatAgentCreation:
             
             mock_create_llm.return_value = fake_chat_model
             mock_get_tools.return_value = sample_tools
-            mock_mcp.get_client_and_tools = AsyncMock(return_value=(None, []))
+            mock_mcp.get_tools = AsyncMock(return_value=[])
             mock_get_prompt.return_value = "You are Nova, an AI assistant."
             
             agent = await create_chat_agent()
@@ -291,7 +295,7 @@ class TestChatAgentCreation:
             
             mock_create_llm.return_value = fake_chat_model
             mock_get_tools.return_value = sample_tools
-            mock_mcp.get_client_and_tools = AsyncMock(return_value=(None, []))
+            mock_mcp.get_tools = AsyncMock(return_value=[])
             mock_get_prompt.return_value = "You are Nova, an AI assistant."
             
             agent = await create_chat_agent(checkpointer=custom_checkpointer)
@@ -299,8 +303,8 @@ class TestChatAgentCreation:
             assert agent is not None
     
     @pytest.mark.asyncio
-    async def test_create_chat_agent_reload_tools(self, fake_chat_model, sample_tools):
-        """Test agent creation with tools reload."""
+    async def test_create_chat_agent_use_cache_false(self, fake_chat_model, sample_tools):
+        """Test agent creation with use_cache=False."""
         with patch('agent.chat_agent.create_llm') as mock_create_llm, \
              patch('agent.chat_agent.get_all_tools') as mock_get_tools, \
              patch('agent.chat_agent.mcp_manager') as mock_mcp, \
@@ -308,14 +312,14 @@ class TestChatAgentCreation:
             
             mock_create_llm.return_value = fake_chat_model
             mock_get_tools.return_value = sample_tools
-            mock_mcp.get_client_and_tools = AsyncMock(return_value=(None, []))
+            mock_mcp.get_tools = AsyncMock(return_value=[])
             mock_get_prompt.return_value = "You are Nova, an AI assistant."
             
             # Pre-cache some tools
             import agent.chat_agent
             agent.chat_agent._cached_tools = ["old_tool"]
             
-            agent = await create_chat_agent(reload_tools=True)
+            agent = await create_chat_agent(use_cache=False)
             
             # Verify agent created and cache was cleared
             assert agent is not None
@@ -368,7 +372,7 @@ class TestAgentInvocation:
             
             mock_create_llm.return_value = fake_chat_model
             mock_get_tools.return_value = sample_tools
-            mock_mcp.get_client_and_tools = AsyncMock(return_value=(None, []))
+            mock_mcp.get_tools = AsyncMock(return_value=[])
             mock_get_prompt.return_value = "You are Nova, an AI assistant."
             
             agent = await create_chat_agent()

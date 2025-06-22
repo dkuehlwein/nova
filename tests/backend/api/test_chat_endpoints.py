@@ -477,7 +477,8 @@ class TestSystemPromptEndpoints:
         backup_filename = "prompt_20250106_120000.bak"
         
         with patch('api.chat_endpoints.Path') as mock_path_class, \
-             patch('builtins.open', mock_open(read_data="# Restored System Prompt\nYou are Nova, restored.")) as mock_file:
+             patch('builtins.open', mock_open(read_data="# Restored System Prompt\nYou are Nova, restored.")) as mock_file, \
+             patch('api.chat_endpoints.should_create_backup', return_value=True) as mock_should_create_backup:
             
             # Create mock for the main prompt file path
             mock_prompt_path = Mock()

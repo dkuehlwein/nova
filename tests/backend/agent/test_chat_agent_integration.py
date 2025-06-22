@@ -9,7 +9,7 @@ import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.tools import tool
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.memory import InMemorySaver
 from langchain_community.chat_models.fake import FakeMessagesListChatModel
 
 from agent.chat_agent import create_chat_agent, get_all_tools_with_mcp
@@ -51,26 +51,26 @@ class TestChatAgentIntegration:
             mock_agent = MagicMock()
             mock_create_react_agent.return_value = mock_agent
             
-            # Create the agent
-            agent = await create_chat_agent()
+            # Create the agent with use_cache=False to ensure fresh components
+            agent = await create_chat_agent(use_cache=False)
             
             # Verify business logic: agent creation was called with correct parameters
             mock_create_react_agent.assert_called_once()
             call_args = mock_create_react_agent.call_args
             
             # Verify model was passed
-            assert call_args[1]['model'] == mock_llm
+            assert call_args.kwargs['model'] == mock_llm
             
             # Verify tools were passed (should include both local and MCP tools)
-            passed_tools = call_args[1]['tools']
+            passed_tools = call_args.kwargs['tools']
             assert len(passed_tools) == 2  # Our test tools
             tool_names = [tool.name for tool in passed_tools]
             assert "get_test_data" in tool_names
             assert "calculate" in tool_names
             
             # Verify checkpointer was created and passed
-            assert 'checkpointer' in call_args[1]
-            checkpointer = call_args[1]['checkpointer']
+            assert 'checkpointer' in call_args.kwargs
+            checkpointer = call_args.kwargs['checkpointer']
             assert checkpointer is not None
             
             # Verify agent is returned
@@ -121,7 +121,7 @@ class TestChatAgentIntegration:
             
             # Verify tools were combined properly
             call_args = mock_create_react_agent.call_args
-            passed_tools = call_args[1]['tools']
+            passed_tools = call_args.kwargs['tools']
             
             # Should have all 4 tools
             assert len(passed_tools) == 4
@@ -141,40 +141,47 @@ class TestChatAgentIntegration:
     
     @pytest.mark.asyncio
     async def test_checkpointer_integration(self):
-        """Test that checkpointer works with the agent for conversation history."""
+        """Test that checkpointer is properly passed through to the agent."""
         
         @tool
         def remember_fact(fact: str):
             """Remember a fact."""
             return f"I'll remember: {fact}"
         
-        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
+        with patch('agent.chat_agent.get_llm') as mock_get_llm, \
              patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
-             patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt:
+             patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt, \
+             patch('agent.chat_agent.create_react_agent') as mock_create_react_agent:
             
-            # Create a mock LLM that supports tool binding
+            # Setup mocks
             mock_llm = MagicMock()
-            mock_llm.bind_tools.return_value = mock_llm  # Tool binding returns self
-            mock_create_llm.return_value = mock_llm
+            mock_get_llm.return_value = mock_llm
             mock_get_tools_with_mcp.return_value = [remember_fact]
             mock_get_prompt.return_value = "You are Nova, an AI assistant."
             
-            # Create agent with memory checkpointer
-            checkpointer = MemorySaver()
-            agent = await create_chat_agent(checkpointer=checkpointer)
+            mock_agent = MagicMock()
+            mock_create_react_agent.return_value = mock_agent
             
-            # Verify agent was created successfully with checkpointer
+            # Create agent with specific checkpointer
+            custom_checkpointer = InMemorySaver()
+            agent = await create_chat_agent(checkpointer=custom_checkpointer)
+            
+            # Verify agent was created successfully
             assert agent is not None
+            assert agent == mock_agent
             
-            # Verify the agent was created with the correct checkpointer
-            # We can't easily test the actual conversation without a real LLM,
-            # but we can verify the setup is correct
-            mock_create_llm.assert_called_once()
-            mock_get_tools_with_mcp.assert_called_once()
+            # Verify create_react_agent was called with the correct checkpointer
+            mock_create_react_agent.assert_called_once()
+            call_args = mock_create_react_agent.call_args
+            
+            # Check that our custom checkpointer was passed through
+            assert 'checkpointer' in call_args.kwargs
+            assert call_args.kwargs['checkpointer'] is custom_checkpointer
+            assert call_args.kwargs['checkpointer'].__class__.__name__ == 'InMemorySaver'
     
     @pytest.mark.asyncio
     async def test_mcp_tools_integration(self):
-        """Test that MCP tools are properly integrated."""
+        """Test that MCP tools are properly integrated and passed to the agent."""
         
         # Create local tools
         @tool
@@ -188,60 +195,92 @@ class TestChatAgentIntegration:
             """A mock MCP tool."""
             return f"MCP result for: {query}"
         
-        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
+        with patch('agent.chat_agent.get_llm') as mock_get_llm, \
              patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
-             patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt:
+             patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt, \
+             patch('agent.chat_agent.create_react_agent') as mock_create_react_agent:
             
-            # Create a mock LLM that supports tool binding
+            # Setup mocks
             mock_llm = MagicMock()
-            mock_llm.bind_tools.return_value = mock_llm  # Tool binding returns self
-            mock_create_llm.return_value = mock_llm
+            mock_get_llm.return_value = mock_llm
             mock_get_tools_with_mcp.return_value = [local_tool, mcp_tool]
             mock_get_prompt.return_value = "You are Nova, an AI assistant."
+            
+            mock_agent = MagicMock()
+            mock_create_react_agent.return_value = mock_agent
             
             # Create agent
             agent = await create_chat_agent()
             
             # Verify agent was created successfully
             assert agent is not None
+            assert agent == mock_agent
             
-            # Verify the mock was called correctly
-            mock_create_llm.assert_called_once()
-            mock_get_tools_with_mcp.assert_called_once()
+            # Verify create_react_agent was called with the correct tools
+            mock_create_react_agent.assert_called_once()
+            call_args = mock_create_react_agent.call_args
             
-            # Verify tools themselves work
+            # Check that tools were passed through correctly
+            assert 'tools' in call_args.kwargs
+            passed_tools = call_args.kwargs['tools']
+            assert len(passed_tools) == 2
+            
+            # Verify the tools themselves are functional
+            tool_names = [tool.name for tool in passed_tools]
+            assert 'local_tool' in tool_names
+            assert 'mcp_tool' in tool_names
+            
+            # Verify tools work correctly
             assert local_tool.invoke({}) == "Local tool result" 
             assert mcp_tool.invoke({"query": "test"}) == "MCP result for: test"
     
     @pytest.mark.asyncio
     async def test_agent_stream_functionality(self):
-        """Test that agent streaming works properly."""
+        """Test that agent is created with proper components for streaming."""
         
         @tool
         def streaming_tool():
             """A tool for testing streaming."""
             return "Streaming tool executed"
         
-        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
+        with patch('agent.chat_agent.get_llm') as mock_get_llm, \
              patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
-             patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt:
+             patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt, \
+             patch('agent.chat_agent.create_react_agent') as mock_create_react_agent:
             
-            # Create a mock LLM that supports tool binding
+            # Setup mocks
             mock_llm = MagicMock()
-            mock_llm.bind_tools.return_value = mock_llm  # Tool binding returns self
-            mock_create_llm.return_value = mock_llm
+            mock_get_llm.return_value = mock_llm
             mock_get_tools_with_mcp.return_value = [streaming_tool]
             mock_get_prompt.return_value = "You are Nova, an AI assistant."
+            
+            mock_agent = MagicMock()
+            mock_create_react_agent.return_value = mock_agent
             
             # Create agent
             agent = await create_chat_agent()
             
             # Verify agent was created successfully
             assert agent is not None
+            assert agent == mock_agent
             
-            # Verify the mock was called correctly
-            mock_create_llm.assert_called_once()
-            mock_get_tools_with_mcp.assert_called_once()
+            # Verify create_react_agent was called with all necessary components
+            mock_create_react_agent.assert_called_once()
+            call_args = mock_create_react_agent.call_args
             
-            # Verify tools work
+            # Check that all required arguments are present
+            assert 'model' in call_args.kwargs
+            assert 'tools' in call_args.kwargs
+            assert 'prompt' in call_args.kwargs
+            assert 'checkpointer' in call_args.kwargs
+            
+            # Check that the LLM is passed correctly
+            assert call_args.kwargs['model'] == mock_llm
+            
+            # Check that tools are passed correctly
+            passed_tools = call_args.kwargs['tools']
+            assert len(passed_tools) == 1
+            assert passed_tools[0] == streaming_tool
+            
+            # Verify tool functionality
             assert streaming_tool.invoke({}) == "Streaming tool executed" 
