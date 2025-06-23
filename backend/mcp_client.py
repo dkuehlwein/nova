@@ -192,13 +192,6 @@ class MCPClientManager:
         except Exception as e:
             logger.error(f"Error creating MCP client or fetching tools: {e}")
             return []
-    
-
-    
-    async def cleanup(self):
-        """No-op cleanup since we don't cache anything"""
-        logger.debug("MCP client cleanup called (no caching, nothing to clean)")
-
 
 # Global instance for reuse
 mcp_manager = MCPClientManager() 
