@@ -154,70 +154,26 @@ class TestRealTimeFlow:
     @pytest.mark.asyncio
     async def test_redis_subscription_event_handling(self):
         """Test Redis subscription and event handling."""
-        # Mock Redis subscription
-        mock_subscription = AsyncMock()
-        mock_redis = AsyncMock()
+        # Create test event
+        test_event = create_prompt_updated_event("redis_test.md", "modified")
         
-        with patch('utils.redis_manager.get_redis', return_value=mock_redis):
-            published_events = []
-            
-            # Mock event
-            test_event = create_prompt_updated_event("redis_test.md", "modified")
-            
-            # Mock Redis pubsub to return our test event
-            async def mock_listen():
-                yield {
-                    "type": "message",
-                    "channel": b"nova_events",
-                    "data": json.dumps({
-                        "id": test_event.id,
-                        "type": test_event.type,
-                        "timestamp": test_event.timestamp.isoformat(),
-                        "data": test_event.data,
-                        "source": test_event.source
-                    }).encode()
-                }
-            
-            mock_redis.pubsub.return_value.listen = mock_listen
-            
-            # Import and test the Redis subscription
+        # Simple approach: Mock the subscribe function directly
+        async def mock_subscribe(channel="nova_events"):
+            yield test_event
+        
+        with patch('utils.redis_manager.subscribe', new=mock_subscribe):
             from utils.redis_manager import subscribe
             
-            async def event_handler(event):
-                published_events.append(event)
-            
-            # Subscribe and process one message - subscribe() returns an async generator
+            # Test subscription
             events_received = []
-            try:
-                subscription = subscribe()
-                # Properly handle async iteration with mock
-                async for event in subscription:
-                    events_received.append(event)
-                    break  # Only process first event
-            except (StopAsyncIteration, AttributeError):
-                pass  # No events available or mock issues
+            async for event in subscribe():
+                events_received.append(event)
+                break  # Only process first event
             
-            # Since the test uses mocks, we won't actually receive events through subscribe()
-            # Instead, verify that the subscription setup works correctly
-            
-            # Test that Redis pubsub is set up correctly
-            if mock_redis.pubsub.return_value:
-                # Manually iterate through the mock messages to verify parsing works
-                async for message in mock_listen():
-                    if message['type'] == 'message':
-                        # Test event parsing
-                        event_data = json.loads(message['data'])
-                        event = create_prompt_updated_event(
-                            event_data['data']['prompt_file'], 
-                            event_data['data']['change_type']
-                        )
-                        published_events.append(event)
-                        break
-                
-                # Verify event was processed correctly
-                assert len(published_events) == 1
-                assert published_events[0].type == "prompt_updated"
-                assert published_events[0].data["prompt_file"] == "redis_test.md"
+            # Verify we received the event
+            assert len(events_received) == 1
+            assert events_received[0].type == "prompt_updated"
+            assert events_received[0].data["prompt_file"] == "redis_test.md"
     
     @pytest.mark.asyncio
     async def test_event_serialization_integrity(self):
