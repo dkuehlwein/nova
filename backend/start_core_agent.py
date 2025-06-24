@@ -56,8 +56,11 @@ async def lifespan(app: FastAPI):
         # Start prompt watching
         await service_manager.start_prompt_watching()
         
-        # Initialize the core agent
-        core_agent = CoreAgent()
+        # Initialize PostgreSQL pool via ServiceManager
+        await service_manager.init_pg_pool()
+        
+        # Initialize the core agent with the shared pool
+        core_agent = CoreAgent(pg_pool=service_manager.pg_pool)
         await core_agent.initialize()
         
         # Create prompt update handler
@@ -107,6 +110,7 @@ async def lifespan(app: FastAPI):
     # Cleanup resources
     await service_manager.cleanup_mcp()
     await service_manager.cleanup_database()
+    await service_manager.close_pg_pool()
     
     service_manager.logger.info("Nova Core Agent Service shutdown complete")
 

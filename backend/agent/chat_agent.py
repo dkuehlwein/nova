@@ -11,10 +11,8 @@ from typing import Optional, List, Any
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.memory import InMemorySaver
 
 from tools import get_all_tools
-from config import settings
 from .llm import create_llm
 from .prompts import get_nova_system_prompt
 from mcp_client import mcp_manager
@@ -76,53 +74,31 @@ async def get_llm():
     
     return _cached_llm
 
-async def create_checkpointer():
-    """Create checkpointer based on configuration.
+async def create_checkpointer(pg_pool=None):
+    """Create checkpointer - PostgreSQL if pool provided, otherwise MemorySaver.
     
-    Returns checkpointer based on configuration:
-    - If FORCE_MEMORY_CHECKPOINTER is True, always returns MemorySaver
-    - Otherwise, returns PostgreSQL checkpointer if configured
-    - Falls back to MemorySaver if PostgreSQL is not available
+    Args:
+        pg_pool: Optional AsyncConnectionPool instance to use for PostgreSQL checkpointer
+    
+    Returns:
+        AsyncPostgresSaver if pg_pool provided, otherwise MemorySaver
     """
-    # Check if we should force memory checkpointer for development/debugging
-    if settings.FORCE_MEMORY_CHECKPOINTER:
-        logger.info("Forcing InMemorySaver checkpointer (FORCE_MEMORY_CHECKPOINTER=True)")
-        return InMemorySaver()
-    
-    # Try PostgreSQL if DATABASE_URL is configured
-    if settings.DATABASE_URL:
-        try:
-            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-            from psycopg_pool import AsyncConnectionPool
-            
-            logger.info("Creating PostgreSQL checkpointer")
-            
-            # Create connection pool with open=False to avoid deprecated constructor warning
-            pool = AsyncConnectionPool(settings.DATABASE_URL, open=False)
-            await pool.open()
-            
-            checkpointer = AsyncPostgresSaver(pool)
-            
-            # Setup tables if needed
-            await checkpointer.setup()
-            
-            logger.info("PostgreSQL checkpointer created successfully")
-            return checkpointer
-                
-        except Exception as e:
-            logger.error(f"Error creating PostgreSQL checkpointer: {e}")
-            logger.info("Falling back to InMemorySaver")
-            return InMemorySaver()
+    if pg_pool is not None:
+        from utils.service_manager import create_postgres_checkpointer
+        logger.info("Creating PostgreSQL checkpointer with provided pool")
+        return create_postgres_checkpointer(pg_pool)
     else:
-        logger.info("No DATABASE_URL configured, using in-memory checkpointer")
-        return InMemorySaver()
+        from utils.service_manager import create_memory_checkpointer
+        logger.info("Creating MemorySaver checkpointer (no pool provided)")
+        return create_memory_checkpointer()
 
 
-async def create_chat_agent(checkpointer=None, use_cache=True):
+async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True):
     """Create LangGraph chat agent with cached components.
     
     Args:
         checkpointer: Optional checkpointer to use for conversation state
+        pg_pool: Optional AsyncConnectionPool instance for PostgreSQL checkpointer
         use_cache: If True, use cached components; if False, reload everything
     
     Returns:
@@ -133,22 +109,25 @@ async def create_chat_agent(checkpointer=None, use_cache=True):
         - Caches components (tools, LLM) separately from checkpointer
         - Every conversation gets latest tools/prompt when cache is cleared
         - Each conversation can have its own checkpointer for state management
+        - If both checkpointer and pg_pool provided, checkpointer takes precedence
     """
     # Clear component caches if requested
     if not use_cache:
-        global _cached_tools, _cached_llm, _cached_prompt
-        _cached_tools = None
-        _cached_llm = None
-        _cached_prompt = None
-        logger.info("All component caches cleared - will reload everything")
+        clear_chat_agent_cache()
     
-    # Use default checkpointer if none provided
+    # Create checkpointer if none provided
     if checkpointer is None:
-        checkpointer = await create_checkpointer()
+        if pg_pool is not None:
+            # Use provided pool for checkpointer
+            checkpointer = await create_checkpointer(pg_pool=pg_pool)
+        else:
+            # Use default checkpointer creation (no pool or fallback)
+            checkpointer = await create_checkpointer()
     
     logger.info("Creating chat agent", extra={
         "data": {
             "has_custom_checkpointer": checkpointer is not None,
+            "has_pg_pool": pg_pool is not None,
             "use_cache": use_cache,
             "checkpointer_type": type(checkpointer).__name__
         }

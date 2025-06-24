@@ -2,7 +2,19 @@
 Service Manager Utilities
 
 Common utilities for managing Nova services including startup, shutdown,
-and Redis event handling.
+Redis event handling, and PostgreSQL connection pool management.
+
+ServiceManager also provides centralized PostgreSQL connection pool management
+for Nova services following the "one shared pool per service" pattern:
+
+- Each service (chat-agent, core-agent) gets its own ServiceManager instance
+- Each ServiceManager owns a single PostgreSQL connection pool 
+- Connection pools are properly opened during service startup and closed during shutdown
+- Services share the pool across all their LangGraph checkpointers for efficiency
+- Test scenarios fall back to MemorySaver when no pool is available
+
+This eliminates connection pool proliferation and "Event loop is closed" errors
+while providing proper resource management and service isolation.
 """
 
 import asyncio
@@ -19,6 +31,7 @@ class ServiceManager:
     def __init__(self, service_name: str):
         self.service_name = service_name
         self.logger = get_logger(f"{service_name}-startup")
+        self.pg_pool: Optional[Any] = None  # AsyncConnectionPool instance
         
         # Reduce verbosity of third-party libraries
         import logging
@@ -26,6 +39,113 @@ class ServiceManager:
         logging.getLogger("mcp").setLevel(logging.WARNING)
         logging.getLogger("mcp.client").setLevel(logging.WARNING)
         logging.getLogger("mcp.client.streamable_http").setLevel(logging.WARNING)
+    
+    async def init_pg_pool(self):
+        """Initialize PostgreSQL connection pool.
+        
+        Returns:
+            The created pool instance or None if using memory checkpointer
+        """
+        try:
+            from config import settings
+            
+            if settings.FORCE_MEMORY_CHECKPOINTER:
+                self.logger.info("FORCE_MEMORY_CHECKPOINTER is enabled, skipping PostgreSQL pool creation")
+                self.pg_pool = None
+                return None
+            
+            if not settings.DATABASE_URL:
+                self.logger.info("No DATABASE_URL configured, skipping PostgreSQL pool creation")
+                self.pg_pool = None
+                return None
+            
+            try:
+                from psycopg_pool import AsyncConnectionPool
+                from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+                
+                connection_kwargs = {
+                    "autocommit": True,
+                    "prepare_threshold": 0,
+                }
+                
+                self.logger.info("Creating PostgreSQL connection pool", extra={
+                    "data": {
+                        "service": self.service_name,
+                        "database_url_set": bool(settings.DATABASE_URL)
+                    }
+                })
+                
+                # Create pool with open=False to avoid deprecated constructor warning
+                self.pg_pool = AsyncConnectionPool(
+                    conninfo=settings.DATABASE_URL,
+                    max_size=20,
+                    kwargs=connection_kwargs,
+                    open=False
+                )
+                
+                # Open the pool
+                await self.pg_pool.open()
+                
+                # Create temporary checkpointer to ensure tables are set up
+                temp_saver = AsyncPostgresSaver(self.pg_pool)
+                await temp_saver.setup()
+                
+                self.logger.info("PostgreSQL connection pool ready", extra={
+                    "data": {
+                        "service": self.service_name,
+                        "pool_id": id(self.pg_pool),
+                        "max_size": 20
+                    }
+                })
+                
+                return self.pg_pool
+                
+            except ImportError:
+                self.logger.warning("PostgreSQL checkpointer packages not available, skipping pool creation")
+                self.pg_pool = None
+                return None
+            except Exception as e:
+                self.logger.error(f"Failed to create PostgreSQL connection pool: {e}", extra={
+                    "data": {
+                        "service": self.service_name,
+                        "error": str(e)
+                    }
+                })
+                self.pg_pool = None
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error during PostgreSQL pool initialization: {e}", extra={
+                "data": {
+                    "service": self.service_name,
+                    "error": str(e)
+                }
+            })
+            self.pg_pool = None
+            return None
+    
+    async def close_pg_pool(self):
+        """Close PostgreSQL connection pool."""
+        if self.pg_pool is not None:
+            try:
+                self.logger.info("Closing PostgreSQL connection pool", extra={
+                    "data": {
+                        "service": self.service_name,
+                        "pool_id": id(self.pg_pool)
+                    }
+                })
+                await self.pg_pool.close()
+                self.pg_pool = None
+                self.logger.info("PostgreSQL connection pool closed successfully")
+            except Exception as e:
+                self.logger.error(f"Error closing PostgreSQL pool: {e}", extra={
+                    "data": {
+                        "service": self.service_name,
+                        "error": str(e)
+                    }
+                })
+                # Set to None even on error to prevent retry attempts
+                self.pg_pool = None
     
     async def start_prompt_watching(self):
         """Start watching Nova prompt file for changes."""
@@ -144,4 +264,26 @@ async def create_prompt_updated_handler(reload_callback: Callable[[], Any]):
             except Exception as e:
                 logger.error(f"Failed to reload agent: {e}")
     
-    return handle_event 
+    return handle_event
+
+
+def create_memory_checkpointer():
+    """Create a MemorySaver checkpointer instance.
+    
+    Centralized utility to avoid MemorySaver duplication across the codebase.
+    """
+    from langgraph.checkpoint.memory import MemorySaver
+    return MemorySaver()
+
+
+def create_postgres_checkpointer(pg_pool):
+    """Create a PostgreSQL checkpointer from a connection pool.
+    
+    Args:
+        pg_pool: AsyncConnectionPool instance
+        
+    Returns:
+        AsyncPostgresSaver instance
+    """
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+    return AsyncPostgresSaver(pg_pool) 

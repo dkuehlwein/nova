@@ -42,6 +42,11 @@ configure_logging(
 # Global instances
 service_manager = ServiceManager("chat-agent")
 
+# Make service_manager available to other modules
+def get_service_manager():
+    """Get the global service manager instance."""
+    return service_manager
+
 
 async def create_website_event_handler():
     """Create event handler for website service (WebSocket + chat agent reloading)."""
@@ -96,69 +101,7 @@ async def create_website_event_handler():
     return handle_event
 
 
-async def setup_postgresql_pool(app):
-    """Setup PostgreSQL connection pool for chat checkpointer."""
-    try:
-        from config import settings
-        
-        if settings.FORCE_MEMORY_CHECKPOINTER:
-            service_manager.logger.info("FORCE_MEMORY_CHECKPOINTER is enabled, using MemorySaver for chat checkpointer")
-            app.state.pg_pool = None
-            return
-        
-        if not settings.DATABASE_URL:
-            service_manager.logger.info("No DATABASE_URL configured, chat will use MemorySaver")
-            app.state.pg_pool = None
-            return
-        
-        try:
-            from psycopg_pool import AsyncConnectionPool
-            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-            
-            connection_kwargs = {
-                "autocommit": True,
-                "prepare_threshold": 0,
-            }
-            
-            service_manager.logger.info("Setting up PostgreSQL connection pool for chat checkpointer...")
-            pg_pool = AsyncConnectionPool(
-                conninfo=settings.DATABASE_URL,
-                max_size=20,
-                kwargs=connection_kwargs,
-                open=False
-            )
-            
-            await pg_pool.open()
-            
-            # Setup checkpointer tables
-            async with pg_pool.connection() as conn:
-                checkpointer = AsyncPostgresSaver(conn)
-                await checkpointer.setup()
-                service_manager.logger.info("PostgreSQL checkpointer tables set up successfully")
-            
-            app.state.pg_pool = pg_pool
-            service_manager.logger.info("PostgreSQL connection pool ready for chat checkpointer")
-            
-        except ImportError:
-            service_manager.logger.warning("PostgreSQL checkpointer packages not available, chat will use MemorySaver")
-            app.state.pg_pool = None
-        except Exception as e:
-            service_manager.logger.error(f"Failed to setup PostgreSQL connection pool: {e}")
-            app.state.pg_pool = None
-            
-    except Exception as e:
-        service_manager.logger.error(f"Error during PostgreSQL setup: {e}")
-        app.state.pg_pool = None
-
-
-async def cleanup_postgresql_pool(app):
-    """Clean up PostgreSQL connection pool."""
-    if hasattr(app.state, 'pg_pool') and app.state.pg_pool:
-        try:
-            await app.state.pg_pool.close()
-            service_manager.logger.info("PostgreSQL connection pool closed")
-        except Exception as e:
-            service_manager.logger.error(f"Error closing PostgreSQL pool: {e}")
+# PostgreSQL pool management is now handled by ServiceManager
 
 
 @asynccontextmanager
@@ -171,8 +114,8 @@ async def lifespan(app: FastAPI):
         # Start prompt watching
         await service_manager.start_prompt_watching()
         
-        # Setup PostgreSQL pool
-        await setup_postgresql_pool(app)
+        # Initialize PostgreSQL pool via ServiceManager
+        await service_manager.init_pg_pool()
         
         # Create event handler for WebSocket broadcasting and agent reloading
         event_handler = await create_website_event_handler()
@@ -197,7 +140,7 @@ async def lifespan(app: FastAPI):
     
     # Cleanup resources
     await service_manager.cleanup_redis()
-    await cleanup_postgresql_pool(app)
+    await service_manager.close_pg_pool()
     await service_manager.cleanup_database()
     
     service_manager.logger.info("Nova Backend Server shutdown complete")

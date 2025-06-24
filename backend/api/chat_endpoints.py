@@ -283,18 +283,15 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
         return []
 
 
-async def _list_chat_threads(request: Request) -> List[str]:
+async def _list_chat_threads() -> List[str]:
     """List all chat thread IDs from the checkpointer.
-    
-    Args:
-        request: FastAPI request object to access app state
         
     Returns:
         List of thread IDs
     """
     try:
         # Get the appropriate checkpointer from app state
-        checkpointer = await get_checkpointer_from_app(request)
+        checkpointer = await get_checkpointer_from_service_manager()
         
         logger.debug(f"Checkpointer type: {type(checkpointer)}")
         
@@ -352,34 +349,39 @@ async def _list_chat_threads(request: Request) -> List[str]:
         return []
 
 
-async def get_checkpointer_from_app(request: Request):
-    """Get the appropriate checkpointer based on app state."""
+async def get_checkpointer_from_service_manager():
+    """Get the appropriate checkpointer from ServiceManager."""
     try:
-        # Check if we have a PostgreSQL connection pool available
-        if hasattr(request.app.state, 'pg_pool') and request.app.state.pg_pool:
-            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-            logger.debug("Using PostgreSQL checkpointer from app state")
-            return AsyncPostgresSaver(request.app.state.pg_pool)
+        # Import here to avoid circular dependency
+        from start_website import get_service_manager
+        from utils.service_manager import create_postgres_checkpointer, create_memory_checkpointer
+        
+        service_manager = get_service_manager()
+        
+        if service_manager.pg_pool:
+            logger.debug("Using PostgreSQL checkpointer from ServiceManager", extra={
+                "data": {"pool_id": id(service_manager.pg_pool)}
+            })
+            return create_postgres_checkpointer(service_manager.pg_pool)
         else:
-            logger.debug("No PostgreSQL pool available, using MemorySaver")
-            from langgraph.checkpoint.memory import MemorySaver
-            return MemorySaver()
+            logger.debug("No PostgreSQL pool available from ServiceManager, using MemorySaver")
+            return create_memory_checkpointer()
     except Exception as e:
         logger.error(f"Error creating checkpointer: {e}")
-        from langgraph.checkpoint.memory import MemorySaver
-        return MemorySaver()
+        from utils.service_manager import create_memory_checkpointer
+        return create_memory_checkpointer()
 
 
 @router.post("/stream")
-async def stream_chat(request: Request, chat_request: ChatRequest):
+async def stream_chat(chat_request: ChatRequest):
     """Stream chat messages with the assistant."""
     try:
         logger.info(f"Streaming chat for thread_id: {chat_request.thread_id}")
         logger.debug(f"Input messages count: {len(chat_request.messages)}")
         
         # Get the appropriate checkpointer
-        logger.debug("Getting checkpointer from app state...")
-        checkpointer = await get_checkpointer_from_app(request)
+        logger.debug("Getting checkpointer from ServiceManager...")
+        checkpointer = await get_checkpointer_from_service_manager()
         logger.debug(f"Checkpointer obtained: {type(checkpointer)}")
         
         # Get chat agent with specific checkpointer (for conversation state)
@@ -606,7 +608,7 @@ async def get_available_tools():
 # Chat Management Endpoints
 
 @router.get("/conversations", response_model=List[ChatSummary])
-async def list_chats(request: Request, limit: int = 5, offset: int = 0):
+async def list_chats(limit: int = 5, offset: int = 0):
     """
     List chat conversations with pagination support.
     
@@ -618,9 +620,9 @@ async def list_chats(request: Request, limit: int = 5, offset: int = 0):
     """
     try:
         # Get checkpointer from app state
-        checkpointer = await get_checkpointer_from_app(request)
+        checkpointer = await get_checkpointer_from_service_manager()
         
-        thread_ids = await _list_chat_threads(request)
+        thread_ids = await _list_chat_threads()
         chat_summaries = []
         
         for thread_id in thread_ids:
@@ -734,12 +736,12 @@ async def _get_chat_title(thread_id: str, messages: List[ChatMessageDetail]) -> 
 
 
 @router.get("/conversations/{chat_id}", response_model=ChatSummary)
-async def get_chat(request: Request, chat_id: str):
+async def get_chat(chat_id: str):
     """
     Get a specific chat conversation summary.
     """
     try:
-        checkpointer = await get_checkpointer_from_app(request)
+        checkpointer = await get_checkpointer_from_service_manager()
         messages = await _get_chat_history_with_checkpointer(chat_id, checkpointer)
         
         if not messages:
@@ -770,12 +772,12 @@ async def get_chat(request: Request, chat_id: str):
 
 
 @router.get("/conversations/{chat_id}/messages", response_model=List[ChatMessageDetail])
-async def get_chat_messages(request: Request, chat_id: str):
+async def get_chat_messages(chat_id: str):
     """
     Get messages for a specific chat conversation.
     """
     try:
-        checkpointer = await get_checkpointer_from_app(request)
+        checkpointer = await get_checkpointer_from_service_manager()
         messages = await _get_chat_history_with_checkpointer(chat_id, checkpointer)
         return messages
         
@@ -784,13 +786,13 @@ async def get_chat_messages(request: Request, chat_id: str):
 
 
 @router.get("/conversations/{chat_id}/task-data", response_model=TaskChatResponse)
-async def get_task_chat_data(request: Request, chat_id: str):
+async def get_task_chat_data(chat_id: str):
     """
     Get task chat messages with escalation information.
     Specifically for task threads (core_agent_task_*).
     """
     try:
-        checkpointer = await get_checkpointer_from_app(request)
+        checkpointer = await get_checkpointer_from_service_manager()
         messages = await _get_chat_history_with_checkpointer(chat_id, checkpointer)
         
         # Check for escalation info if this is a task thread
