@@ -103,69 +103,46 @@ class TestCheckpointerCreation:
     """Test checkpointer creation with real logic."""
     
     @pytest.mark.asyncio
-    async def test_create_checkpointer_force_memory(self):
-        """Test forced memory checkpointer."""
-        with patch('agent.chat_agent.settings') as mock_settings:
-            mock_settings.FORCE_MEMORY_CHECKPOINTER = True
-            
-            checkpointer = await create_checkpointer()
-            
-            assert isinstance(checkpointer, MemorySaver)
+    async def test_create_checkpointer_no_pool(self):
+        """Test memory checkpointer when no pool provided."""
+        checkpointer = await create_checkpointer()
+        assert isinstance(checkpointer, MemorySaver)
     
     @pytest.mark.asyncio
-    async def test_create_checkpointer_no_database_url(self):
-        """Test memory checkpointer when no database configured."""
-        with patch('agent.chat_agent.settings') as mock_settings:
-            mock_settings.FORCE_MEMORY_CHECKPOINTER = False
-            mock_settings.DATABASE_URL = None
+    async def test_create_checkpointer_with_pool(self):
+        """Test PostgreSQL checkpointer creation with pool."""
+        with patch('utils.service_manager.create_postgres_checkpointer') as mock_create_pg:
             
-            checkpointer = await create_checkpointer()
-            
-            assert isinstance(checkpointer, MemorySaver)
-    
-    @pytest.mark.asyncio 
-    async def test_create_checkpointer_postgres_success(self):
-        """Test PostgreSQL checkpointer creation."""
-        with patch('agent.chat_agent.settings') as mock_settings, \
-             patch('langgraph.checkpoint.postgres.aio.AsyncPostgresSaver') as mock_pg_saver, \
-             patch('psycopg_pool.AsyncConnectionPool') as mock_pool_class:
-            
-            mock_settings.FORCE_MEMORY_CHECKPOINTER = False
-            mock_settings.DATABASE_URL = "postgresql://test:test@localhost/test"
-            
-            # Mock successful pool and checkpointer creation
-            mock_pool = AsyncMock()
-            mock_pool_class.return_value = mock_pool
-            
+            # Mock PostgreSQL checkpointer creation
             mock_checkpointer = AsyncMock()
-            mock_pg_saver.return_value = mock_checkpointer
+            mock_create_pg.return_value = mock_checkpointer
             
-            checkpointer = await create_checkpointer()
+            # Mock pool
+            mock_pool = AsyncMock()
             
-            # Verify pool was created and opened
-            mock_pool_class.assert_called_once_with(mock_settings.DATABASE_URL, open=False)
-            mock_pool.open.assert_called_once()
-            mock_pg_saver.assert_called_once_with(mock_pool)
-            mock_checkpointer.setup.assert_called_once()
+            checkpointer = await create_checkpointer(pg_pool=mock_pool)
             
+            # Verify PostgreSQL checkpointer was created with pool
+            mock_create_pg.assert_called_once_with(mock_pool)
             assert checkpointer == mock_checkpointer
     
     @pytest.mark.asyncio
-    async def test_create_checkpointer_postgres_failure(self):
-        """Test fallback to memory when PostgreSQL fails."""
-        with patch('agent.chat_agent.settings') as mock_settings, \
-             patch('langgraph.checkpoint.postgres.aio.AsyncPostgresSaver') as mock_pg_saver:
+    async def test_create_checkpointer_pool_failure(self):
+        """Test that PostgreSQL creation failures are propagated."""
+        with patch('utils.service_manager.create_postgres_checkpointer') as mock_create_pg:
             
-            mock_settings.FORCE_MEMORY_CHECKPOINTER = False
-            mock_settings.DATABASE_URL = "postgresql://test:test@localhost/test"
+            # Mock PostgreSQL creation failure
+            mock_create_pg.side_effect = Exception("PostgreSQL creation failed")
             
-            # Mock PostgreSQL import failure
-            mock_pg_saver.side_effect = ImportError("PostgreSQL not available")
+            # Mock pool
+            mock_pool = AsyncMock()
             
-            checkpointer = await create_checkpointer()
+            # Should raise the exception since create_checkpointer doesn't handle it
+            with pytest.raises(Exception, match="PostgreSQL creation failed"):
+                await create_checkpointer(pg_pool=mock_pool)
             
-            # Should fallback to MemorySaver
-            assert isinstance(checkpointer, MemorySaver)
+            # Verify PostgreSQL creation was attempted
+            mock_create_pg.assert_called_once_with(mock_pool)
 
 
 class TestToolsManagement:

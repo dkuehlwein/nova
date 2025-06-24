@@ -125,7 +125,7 @@ def mock_dependencies():
     """Mock all external dependencies."""
     with patch('api.chat_endpoints.create_chat_agent') as mock_create_agent, \
          patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools, \
-         patch('api.chat_endpoints.get_checkpointer_from_app') as mock_get_checkpointer, \
+         patch('api.chat_endpoints.get_checkpointer_from_service_manager') as mock_get_checkpointer, \
          patch('api.chat_endpoints.publish') as mock_publish, \
          patch('pathlib.Path') as mock_path_class, \
          patch('builtins.open') as mock_open, \

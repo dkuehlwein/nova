@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from backend.utils.websocket_manager import WebSocketManager
-from backend.utils.prompt_loader import PromptLoader
-from backend.models.events import create_prompt_updated_event, create_mcp_toggled_event
+from utils.websocket_manager import WebSocketManager
+from utils.prompt_loader import PromptLoader
+from models.events import create_prompt_updated_event, create_mcp_toggled_event
 
 
 class TestRealTimeFlow:
@@ -276,15 +276,16 @@ class TestAgentPromptIntegration:
     
     @pytest.mark.asyncio
     async def test_prompt_change_triggers_agent_reload_via_redis(self):
-        """Test that a prompt file change triggers agent reload through Redis events."""
+        """Test that prompt changes trigger agent reload via Redis events."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
-            f.write("Initial Nova system prompt")
+            f.write("Initial prompt content")
             temp_path = Path(f.name)
         
         try:
-            # Mock agent creation to track calls
+            # Track agent creation calls
             agent_creation_calls = []
             
+            # Mock agent creation to track calls
             async def mock_create_chat_agent(reload_tools=False):
                 agent_creation_calls.append({"reload_tools": reload_tools})
                 return Mock()
@@ -292,38 +293,42 @@ class TestAgentPromptIntegration:
             # Mock Redis event subscription
             redis_events = []
             
+            # Mock event handler
             async def mock_event_handler(event):
                 redis_events.append(event)
                 # Simulate agent reloading logic
                 if event.type == "prompt_updated":
                     await mock_create_chat_agent(reload_tools=True)
             
-            with patch('backend.agent.chat_agent.create_chat_agent', side_effect=mock_create_chat_agent):
+            # Patch agent creation to track reload_tools parameter
+            with patch('agent.chat_agent.create_chat_agent', side_effect=mock_create_chat_agent):
                 with patch('utils.redis_manager.publish') as mock_publish:
                     
-                    # Create prompt loader
+                    # Create prompt loader and simulate prompt change
                     loader = PromptLoader(temp_path, debounce_seconds=0.1)
                     
-                    # Initial agent creation
+                    # Initial agent creation (simulate startup)
                     await mock_create_chat_agent(reload_tools=False)
                     
                     # Modify prompt file
                     with open(temp_path, 'w', encoding='utf-8') as f:
-                        f.write("Updated Nova system prompt with new instructions")
+                        f.write("Updated prompt content")
                     
-                    # Trigger reload manually
+                    # Trigger reload and publish event
                     loader._load_prompt()
                     loader._publish_prompt_updated_event()
                     
-                    # Simulate event handling
+                    # Get the event that would be published
                     if mock_publish.call_args:
                         event = mock_publish.call_args[0][0]
+                        
+                        # Simulate the event handler receiving the event
                         await mock_event_handler(event)
                     
-                    # Verify agent was reloaded
+                    # Verify agent was created twice: initial + reload
                     assert len(agent_creation_calls) == 2  # Initial + reload
-                    assert agent_creation_calls[0]["reload_tools"] is False  # Initial
-                    assert agent_creation_calls[1]["reload_tools"] is True   # Reload
+                    assert agent_creation_calls[0]["reload_tools"] is False  # Initial creation
+                    assert agent_creation_calls[1]["reload_tools"] is True   # Reload after prompt change
                     
         finally:
             temp_path.unlink()
@@ -356,8 +361,8 @@ class TestAgentPromptIntegration:
             if event.type == "mcp_toggled":
                 await mock_create_chat_agent(reload_tools=True)
         
-        with patch('backend.agent.chat_agent.mcp_manager.get_tools', side_effect=mock_get_client_and_tools):
-            with patch('backend.agent.chat_agent.create_chat_agent', side_effect=mock_create_chat_agent):
+        with patch('agent.chat_agent.mcp_manager.get_tools', side_effect=mock_get_client_and_tools):
+            with patch('agent.chat_agent.create_chat_agent', side_effect=mock_create_chat_agent):
                 with patch('utils.redis_manager.publish') as mock_publish:
                     
                     # Initial agent creation
