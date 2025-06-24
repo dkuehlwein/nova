@@ -190,8 +190,10 @@ class TestRealTimeFlow:
             events_received = []
             try:
                 subscription = subscribe()
-                event = await subscription.__anext__()
-                events_received.append(event)
+                # Properly handle async iteration with mock
+                async for event in subscription:
+                    events_received.append(event)
+                    break  # Only process first event
             except (StopAsyncIteration, AttributeError):
                 pass  # No events available or mock issues
             

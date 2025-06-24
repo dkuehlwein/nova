@@ -29,7 +29,6 @@ from models.models import Task, TaskStatus, TaskComment, AgentStatus, AgentStatu
 from utils.logging import get_logger
 from utils.service_manager import ServiceManager
 from utils.redis_manager import close_redis
-from agent.chat_agent import clear_chat_agent_cache
 
 logger = get_logger(__name__)
 
@@ -319,9 +318,6 @@ async def test_complete_escalation_workflow():
         
         # Ensure Redis connections are completely closed between tests
         await close_redis()
-        
-        # Clear LLM cache to prevent event loop issues with Google AI client
-        clear_chat_agent_cache()
 
 
 @pytest.mark.asyncio
@@ -426,9 +422,6 @@ async def test_escalation_flow_monitoring():
         
         # Ensure Redis connections are completely closed between tests
         await close_redis()
-        
-        # Clear LLM cache to prevent event loop issues with Google AI client
-        clear_chat_agent_cache()
 
 
 @pytest.mark.asyncio
@@ -553,6 +546,3 @@ async def test_multiple_escalation_cycles():
         
         # Ensure Redis connections are completely closed between tests
         await close_redis()
-        
-        # Clear LLM cache to prevent event loop issues with Google AI client
-        clear_chat_agent_cache()

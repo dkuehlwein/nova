@@ -592,4 +592,9 @@ class CoreAgent:
             except asyncio.TimeoutError:
                 logger.warning("Setting agent to idle timed out during shutdown")
         
+        # Clear chat agent cache to prevent event loop issues with Google AI client
+        from agent.chat_agent import clear_chat_agent_cache
+        clear_chat_agent_cache()
+        logger.info("Cleared chat agent cache during shutdown")
+        
         logger.info("Core Agent shutdown complete") 
