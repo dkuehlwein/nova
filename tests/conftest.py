@@ -28,8 +28,11 @@ if str(BACKEND_PATH) not in sys.path:
 
 from test_cleanup import TestDataCleaner
 
-# Disable LangSmith tracing for tests to avoid noise
+# Disable LangSmith tracing for tests to avoid noise and gRPC connection issues
 os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+os.environ["LANGCHAIN_API_KEY"] = ""
+os.environ["LANGCHAIN_PROJECT"] = ""
 
 
 # Auto-use fixture to properly close database connections
