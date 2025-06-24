@@ -13,17 +13,49 @@ Tests the complete escalation workflow with real LLM:
 
 import pytest
 import asyncio
+import os
 from uuid import uuid4
 from datetime import datetime
 from sqlalchemy import select, text
+
+# Disable LangSmith tracing to prevent gRPC issues
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+os.environ["LANGSMITH_TRACING"] = "false"
 
 from agent.core_agent import CoreAgent
 from agent.chat_agent import create_chat_agent
 from database.database import db_manager
 from models.models import Task, TaskStatus, TaskComment, AgentStatus, AgentStatusEnum
 from utils.logging import get_logger
+from utils.service_manager import ServiceManager
+from utils.redis_manager import close_redis
+from agent.chat_agent import clear_chat_agent_cache
 
 logger = get_logger(__name__)
+
+
+async def create_test_service_manager() -> tuple[ServiceManager, any]:
+    """Create a ServiceManager and PostgreSQL pool for a single test.
+    
+    Returns:
+        tuple: (service_manager, pg_pool) where pg_pool may be None if unavailable
+    """
+    logger.info("Creating ServiceManager for integration test")
+    
+    # Create ServiceManager for test environment
+    service_manager = ServiceManager("core-agent-integration-test")
+    
+    # Initialize PostgreSQL pool
+    pg_pool = await service_manager.init_pg_pool()
+    
+    if pg_pool:
+        logger.info("PostgreSQL pool initialized for integration test", extra={
+            "data": {"pool_id": id(pg_pool)}
+        })
+    else:
+        logger.warning("Using fallback checkpointer (no PostgreSQL pool available)")
+    
+    return service_manager, pg_pool
 
 
 @pytest.mark.asyncio
@@ -31,7 +63,7 @@ logger = get_logger(__name__)
 @pytest.mark.slow
 async def test_complete_escalation_workflow():
     """
-    Test complete escalation workflow with real LLM.
+    Test complete escalation workflow with real LLM using ServiceManager.
     
     This demonstrates the exact escalation flow you wanted:
     - Task asking for favorite food
@@ -42,37 +74,48 @@ async def test_complete_escalation_workflow():
     - Task completion
     """
     
-    # Step 1: Create task that will trigger escalation with real LLM
-    task_data = {
-        "title": "Ask User About Food Preference",
-        "description": "I need you to ask the user what their favorite food is. Since this requires direct user input, you should use the escalate_to_human tool to ask them directly.",
-        "status": TaskStatus.NEW
-    }
-    
-    async with db_manager.get_session() as session:
-        # Create the task
-        task = Task(
-            id=uuid4(),
-            title=task_data["title"],
-            description=task_data["description"],
-            status=task_data["status"],
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
-        session.add(task)
-        await session.commit()
-        await session.refresh(task)
-        task_id = task.id
-        
-        logger.info("Created food preference task", extra={
-            "data": {"task_id": str(task_id), "title": task.title}
-        })
-    
-    # Step 2: Initialize core agent
-    core_agent = CoreAgent()
-    await core_agent.initialize()
+    # Create ServiceManager and pool for this test
+    service_manager, pg_pool = await create_test_service_manager()
     
     try:
+        # Step 1: Create task that will trigger escalation with real LLM
+        task_data = {
+            "title": "Ask User About Food Preference",
+            "description": "I need you to ask the user what their favorite food is. Since this requires direct user input, you should use the escalate_to_human tool to ask them directly.",
+            "status": TaskStatus.NEW
+        }
+        
+        async with db_manager.get_session() as session:
+            # Create the task
+            task = Task(
+                id=uuid4(),
+                title=task_data["title"],
+                description=task_data["description"],
+                status=task_data["status"],
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            session.add(task)
+            await session.commit()
+            await session.refresh(task)
+            task_id = task.id
+            
+            logger.info("Created food preference task", extra={
+                "data": {"task_id": str(task_id), "title": task.title}
+            })
+        
+        # Step 2: Initialize core agent with PostgreSQL pool
+        core_agent = CoreAgent(pg_pool=pg_pool)
+        await core_agent.initialize()
+        
+        logger.info("Core agent initialized with PostgreSQL pool", extra={
+            "data": {
+                "task_id": str(task_id),
+                "pool_id": id(pg_pool) if pg_pool else None,
+                "has_pool": pg_pool is not None
+            }
+        })
+        
         # Verify agent is initialized
         assert core_agent.agent is not None
         assert core_agent.status_id is not None
@@ -99,7 +142,7 @@ async def test_complete_escalation_workflow():
             
             # Check if escalation occurred (task should be in needs review)
             # Note: The exact status depends on how the agent handles escalation
-            assert updated_task.status in [TaskStatus.NEEDS_REVIEW, TaskStatus.IN_PROGRESS]
+            assert updated_task.status in [TaskStatus.NEEDS_REVIEW]
             
             # Check for escalation comment
             result = await session.execute(
@@ -139,8 +182,16 @@ async def test_complete_escalation_workflow():
         config = RunnableConfig(configurable={"thread_id": thread_id})
         
         try:
-            # Get the chat agent to respond to escalation (same as API endpoint)
-            chat_agent = await create_chat_agent()
+            # Get the chat agent to respond to escalation with shared pool
+            chat_agent = await create_chat_agent(pg_pool=pg_pool)
+            
+            logger.info("Created chat agent for escalation response", extra={
+                "data": {
+                    "task_id": str(task_id),
+                    "pool_id": id(pg_pool) if pg_pool else None,
+                    "thread_id": thread_id
+                }
+            })
             
             # Check current state for interrupts
             state = await chat_agent.aget_state(config)
@@ -262,17 +313,29 @@ async def test_complete_escalation_workflow():
             logger.info("Test cleanup completed", extra={
                 "data": {"task_id": str(task_id)}
             })
+        
+        # Clean up ServiceManager and its pool
+        await service_manager.close_pg_pool()
+        
+        # Ensure Redis connections are completely closed between tests
+        await close_redis()
+        
+        # Clear LLM cache to prevent event loop issues with Google AI client
+        clear_chat_agent_cache()
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_escalation_flow_monitoring():
     """
-    Test monitoring capabilities during escalation workflow.
+    Test monitoring capabilities during escalation workflow using ServiceManager.
     
     This verifies that the agent status and task transitions
     are properly tracked during the escalation process.
     """
+    
+    # Create ServiceManager and pool for this test
+    service_manager, pg_pool = await create_test_service_manager()
     
     # Create a simple task
     task_data = {
@@ -295,9 +358,16 @@ async def test_escalation_flow_monitoring():
         await session.refresh(task)
         task_id = task.id
     
-    # Initialize agent
-    core_agent = CoreAgent()
+    # Initialize agent with pool
+    core_agent = CoreAgent(pg_pool=pg_pool)
     await core_agent.initialize()
+    
+    logger.info("Monitoring test using PostgreSQL pool", extra={
+        "data": {
+            "task_id": str(task_id),
+            "pool_id": id(pg_pool) if pg_pool else None
+        }
+    })
     
     try:
         # Check initial agent status
@@ -350,17 +420,29 @@ async def test_escalation_flow_monitoring():
                     {"status_id": str(core_agent.status_id)}
                 )
             await session.commit()
+        
+        # Clean up ServiceManager and its pool
+        await service_manager.close_pg_pool()
+        
+        # Ensure Redis connections are completely closed between tests
+        await close_redis()
+        
+        # Clear LLM cache to prevent event loop issues with Google AI client
+        clear_chat_agent_cache()
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration 
 async def test_multiple_escalation_cycles():
     """
-    Test handling multiple escalation cycles.
+    Test handling multiple escalation cycles using ServiceManager.
     
     This tests the scenario where a task requires multiple
     rounds of user input before completion.
     """
+    
+    # Create ServiceManager and pool for this test
+    service_manager, pg_pool = await create_test_service_manager()
     
     task_data = {
         "title": "Multi-Round Task",
@@ -382,8 +464,16 @@ async def test_multiple_escalation_cycles():
         await session.refresh(task)
         task_id = task.id
     
-    core_agent = CoreAgent()
+    # Initialize agent with pool
+    core_agent = CoreAgent(pg_pool=pg_pool)
     await core_agent.initialize()
+    
+    logger.info("Multi-round escalation test using PostgreSQL pool", extra={
+        "data": {
+            "task_id": str(task_id),
+            "pool_id": id(pg_pool) if pg_pool else None
+        }
+    })
     
     try:
         # Process task multiple times with user input
@@ -456,4 +546,13 @@ async def test_multiple_escalation_cycles():
                     text("DELETE FROM agent_status WHERE id = :status_id"),
                     {"status_id": str(core_agent.status_id)}
                 )
-            await session.commit() 
+            await session.commit()
+        
+        # Clean up ServiceManager and its pool
+        await service_manager.close_pg_pool()
+        
+        # Ensure Redis connections are completely closed between tests
+        await close_redis()
+        
+        # Clear LLM cache to prevent event loop issues with Google AI client
+        clear_chat_agent_cache()
