@@ -357,6 +357,9 @@ async def get_checkpointer_from_service_manager():
         from utils.service_manager import create_postgres_checkpointer, create_memory_checkpointer
         
         service_manager = get_service_manager()
+        # The service manager is not unique and different from the one in the app lifespan.
+        if service_manager.pg_pool is None:
+            await service_manager.init_pg_pool()
         
         if service_manager.pg_pool:
             logger.debug("Using PostgreSQL checkpointer from ServiceManager", extra={

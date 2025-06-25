@@ -18,11 +18,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useOverview as useOverviewQuery, useSystemHealthSummary } from "@/hooks/useNovaQueries";
 import { useNovaWebSocket } from "@/hooks/useNovaWebSocket";
+import { useKanban } from "@/hooks/useKanban";
 
 export default function Navbar() {
   const pathname = usePathname();
   const { data, isLoading: loading, isRefetching: refreshing } = useOverviewQuery();
-  const currentTask = (data?.task_counts?.in_progress || 0) > 0 ? { title: "Task in progress", priority: "high" } : null;
+  const { getCurrentTask } = useKanban();
+  const currentTask = getCurrentTask();
   const { data: healthSummary, isLoading: healthLoading } = useSystemHealthSummary();
   
   // Subscribe to WebSocket events for real-time updates
@@ -165,7 +167,7 @@ export default function Navbar() {
                   {currentTask.title}
                 </span>
                 <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-700 text-xs flex-shrink-0">
-                  {currentTask.priority}
+                  {currentTask.needs_decision ? 'needs review' : 'in progress'}
                 </Badge>
               </div>
             </div>

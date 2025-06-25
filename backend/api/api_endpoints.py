@@ -632,8 +632,12 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
     config = RunnableConfig(configurable={"thread_id": thread_id})
     
     try:
-        # Get agent and check current state
-        agent = await create_chat_agent()
+        # Get the proper checkpointer from service manager (same as chat endpoints)
+        from api.chat_endpoints import get_checkpointer_from_service_manager
+        checkpointer = await get_checkpointer_from_service_manager()
+        
+        # Get agent with the proper checkpointer - same pattern as chat endpoints
+        agent = await create_chat_agent(checkpointer=checkpointer)
         state = await agent.aget_state(config)
         
         # Determine if this is an escalation response or regular message

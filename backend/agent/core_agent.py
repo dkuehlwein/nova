@@ -391,7 +391,7 @@ class CoreAgent:
     async def _create_task_messages(self, task: Task, context: Dict[str, Any]) -> List:
         """Create separate messages for task processing conversation structure."""
         from agent.prompts import TASK_CONTEXT_TEMPLATE, CURRENT_TASK_TEMPLATE
-        from langchain_core.messages import HumanMessage
+        from langchain_core.messages import HumanMessage, AIMessage
         
         # Build context string
         context_str = ""
@@ -439,8 +439,8 @@ class CoreAgent:
         
         # Return separate messages for proper conversation structure
         return [
-            HumanMessage(content=task_context),
-            HumanMessage(content=current_task)
+            HumanMessage(content=current_task),
+            AIMessage(content=task_context)            
         ]
     
     async def _update_context(self, ai_output: str, task: Task, context: Dict[str, Any]):

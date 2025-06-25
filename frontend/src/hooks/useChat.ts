@@ -492,8 +492,7 @@ export function useChat() {
       await apiRequest(API_ENDPOINTS.taskChatMessage(taskId), {
         method: 'POST',
         body: JSON.stringify({
-          content: response,
-          author: 'human'
+          content: response
         }),
       });
 
