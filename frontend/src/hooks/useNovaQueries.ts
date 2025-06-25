@@ -72,8 +72,9 @@ export function useMCPServers() {
     queryFn: async (): Promise<MCPServersData> => {
       return await apiRequest('/api/mcp/')
     },
-    staleTime: 0, // Always refetch for real-time data
-    refetchInterval: 30000, // Backup polling every 30 seconds
+    staleTime: 30000, // 30 seconds - servers don't change that often
+    refetchInterval: 60000, // Poll every minute instead of 30 seconds
+    refetchOnWindowFocus: false, // Don't refetch when switching tabs
     retry: (failureCount, error) => {
       // Don't retry on 4xx errors (client errors)
       if (error instanceof Error && 'status' in error) {
@@ -247,8 +248,9 @@ export function useSystemHealth() {
     queryFn: async (): Promise<SystemHealthData> => {
       return await apiRequest('/api/admin/health')
     },
-    staleTime: 30000, // 30 seconds
-    refetchInterval: 60000, // Refetch every minute
+    staleTime: 60000, // 1 minute - health doesn't change rapidly
+    refetchInterval: 2 * 60 * 1000, // Poll every 2 minutes instead of 1 minute
+    refetchOnWindowFocus: false, // Don't refetch when switching tabs
     retry: 2
   })
 }
@@ -259,8 +261,9 @@ export function useSystemHealthSummary() {
     queryFn: async (): Promise<SystemHealthSummary> => {
       return await apiRequest('/api/system/system-health-summary')
     },
-    staleTime: 0, // Always refetch for real-time navbar updates
-    refetchInterval: 30000, // Backup polling every 30 seconds
+    staleTime: 30000, // 30 seconds for navbar updates
+    refetchInterval: 60000, // Poll every minute instead of 30 seconds
+    refetchOnWindowFocus: false, // Don't refetch when switching tabs
     retry: 2
   })
 }
@@ -328,7 +331,8 @@ export function useSystemPrompt() {
     queryFn: async (): Promise<SystemPromptData> => {
       return await apiRequest('/chat/system-prompt')
     },
-    staleTime: 30000, // 30 seconds - prompt doesn't change often
+    staleTime: 5 * 60 * 1000, // 5 minutes - prompt doesn't change often
+    refetchOnWindowFocus: false, // Don't refetch when switching tabs
     retry: 2
   })
 }
@@ -358,14 +362,16 @@ export function useUpdateSystemPrompt() {
   })
 }
 
-export function useSystemPromptBackups() {
+export function useSystemPromptBackups(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['system-prompt-backups'],
     queryFn: async (): Promise<{ backups: PromptBackup[] }> => {
       return await apiRequest('/chat/system-prompt/backups')
     },
-    staleTime: 60000, // 1 minute - backups don't change often
-    retry: 2
+    staleTime: 5 * 60 * 1000, // 5 minutes - backups don't change often
+    refetchOnWindowFocus: false, // Don't refetch when switching tabs
+    retry: 2,
+    enabled: options?.enabled !== false, // Default to enabled unless explicitly disabled
   })
 }
 

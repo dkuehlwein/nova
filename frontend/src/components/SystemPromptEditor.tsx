@@ -22,7 +22,9 @@ import {
 
 export default function SystemPromptEditor() {
   const { data: promptData, isLoading: promptLoading, error: promptError } = useSystemPrompt();
-  const { data: backupsData } = useSystemPromptBackups();
+  const { data: backupsData, refetch: refetchBackups } = useSystemPromptBackups({
+    enabled: false,
+  });
   const updateMutation = useUpdateSystemPrompt();
   const restoreMutation = useRestorePromptBackup();
   const deleteMutation = useDeletePromptBackup();
@@ -45,6 +47,14 @@ export default function SystemPromptEditor() {
       setHasChanges(content !== promptData.content);
     }
   }, [content, promptData?.content]);
+
+  // Fetch backups when dialog opens
+  const handleBackupsDialogOpen = (open: boolean) => {
+    setShowBackups(open);
+    if (open) {
+      refetchBackups();
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -74,6 +84,7 @@ export default function SystemPromptEditor() {
   const handleDeleteBackup = async (backupFilename: string) => {
     try {
       await deleteMutation.mutateAsync(backupFilename);
+      refetchBackups();
     } catch (error) {
       console.error('Failed to delete backup:', error);
     }
@@ -132,7 +143,7 @@ export default function SystemPromptEditor() {
               Unsaved changes
             </Badge>
           )}
-          <Dialog open={showBackups} onOpenChange={setShowBackups}>
+          <Dialog open={showBackups} onOpenChange={handleBackupsDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm">
                 <Clock className="h-4 w-4 mr-1" />

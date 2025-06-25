@@ -1,18 +1,27 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Settings, CheckCircle, AlertCircle, Clock, Brain, Mail, KanbanSquare, Server, Cpu, Database, FileText, ListChecks, ShieldCheck } from "lucide-react";
+import { CheckCircle, AlertCircle, Clock, Brain, Mail, KanbanSquare, Server, Cpu, Database, FileText, ListChecks, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useMCPServers, useToggleMCPServer, useSystemHealth, useRestartService } from "@/hooks/useNovaQueries";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import SystemPromptEditor from "@/components/SystemPromptEditor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export default function SettingsPage() {
+// Loading component for tabs
+function TabContentLoader({ children }: { children: string }) {
+  return (
+    <div className="flex items-center justify-center h-32">
+      <div className="text-muted-foreground">Loading {children}...</div>
+    </div>
+  );
+}
+
+// MCP Servers tab content - loaded only when tab is active
+function MCPServersTab() {
   const { data: mcpData, isLoading: mcpLoading, error: mcpError } = useMCPServers();
-  const { data: systemHealth, isLoading: systemHealthLoading } = useSystemHealth();
   const toggleMutation = useToggleMCPServer();
   const restartMutation = useRestartService();
   const [restartingService, setRestartingService] = useState<string | null>(null);
@@ -25,7 +34,6 @@ export default function SettingsPage() {
       });
     } catch (error) {
       console.error('Failed to toggle server:', error);
-      // Error is handled by the mutation's onError callback
     }
   };
 
@@ -89,197 +97,273 @@ export default function SettingsPage() {
     }
   };
 
-  if (mcpLoading || systemHealthLoading) {
+  // Show error if failed to load
+  if (mcpError) {
     return (
-      <div className="min-h-screen bg-background">
-        <Navbar />
-        <div className="flex items-center justify-center h-96">
-          <div className="text-muted-foreground">Loading settings...</div>
+      <div className="space-y-4">
+        <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+          <p className="text-sm text-destructive">Failed to load MCP servers</p>
         </div>
       </div>
     );
   }
 
+  // Show loading placeholders if still loading
+  if (mcpLoading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="border border-border rounded-lg p-4 animate-pulse">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-3">
+                <div className="h-5 w-5 bg-muted rounded" />
+                <div>
+                  <div className="h-4 w-20 bg-muted rounded mb-1" />
+                  <div className="h-3 w-32 bg-muted rounded" />
+                </div>
+              </div>
+              <div className="flex items-center space-x-3">
+                <div className="h-4 w-4 bg-muted rounded-full" />
+                <div className="h-6 w-10 bg-muted rounded-full" />
+              </div>
+            </div>
+            <div className="h-4 w-full bg-muted rounded mb-2" />
+            <div className="flex items-center justify-between text-sm">
+              <div className="h-3 w-24 bg-muted rounded" />
+              <div className="h-3 w-32 bg-muted rounded" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-4">
+        {mcpData?.servers?.map((server) => {
+          const ServerIcon = getServerIcon(server.name);
+          const status = getStatusText(server.enabled, server.healthy);
+          const isToggling = toggleMutation.isPending;
+          const isRestarting = restartingService === server.name;
+
+          return (
+            <div key={server.name} className="border border-border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-3">
+                  <ServerIcon className="h-5 w-5 text-primary" />
+                  <div>
+                    <h3 className="font-medium text-foreground">{server.name}</h3>
+                    <p className="text-sm text-muted-foreground">{server.url}</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-2">
+                    {getStatusIcon(status)}
+                    {status !== "operational" && (
+                      <Badge
+                        variant={status === "disabled" ? "outline" : "destructive"}
+                        className={getStatusColor(status)}
+                      >
+                        {status}
+                      </Badge>
+                    )}
+                  </div>
+                  <Switch
+                    checked={server.enabled}
+                    onCheckedChange={() => handleToggleServer(server.name, server.enabled)}
+                    disabled={isToggling}
+                  />
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground mb-2">{server.description}</p>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">
+                  {server.tools_count || 0} tools available
+                </span>
+                <span className="text-muted-foreground">
+                  {server.enabled ? (server.healthy ? `Last check: ${server.last_check || 'Just now'}` : "Health check failed") : "Disabled"}
+                </span>
+              </div>
+              {!server.healthy && server.enabled && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 w-full"
+                  onClick={() => handleRestartServer(server.name)}
+                  disabled={isRestarting}
+                >
+                  {isRestarting ? "Restarting..." : "Restart Server"}
+                </Button>
+              )}
+            </div>
+          );
+        })}
+        {(!mcpData?.servers || mcpData.servers.length === 0) && (
+          <div className="text-center py-8 text-muted-foreground">
+            <Server className="h-8 w-8 mx-auto mb-2" />
+            <p className="text-sm">No MCP servers configured</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// System Status tab content - loaded only when tab is active
+function SystemStatusTab() {
+  const { data: systemHealth, isLoading: systemHealthLoading } = useSystemHealth();
+  const { data: mcpData, isLoading: mcpLoading } = useMCPServers();
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "operational":
+      case "healthy":
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case "degraded":
+        return <Clock className="h-4 w-4 text-yellow-500" />;
+      case "offline":
+      case "unhealthy":
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      default:
+        return <AlertCircle className="h-4 w-4 text-gray-500" />;
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="p-4 border border-border rounded-lg">
+        <div className="flex items-center space-x-2 mb-2">
+          <Cpu className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium text-foreground">Chat Agent</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          {systemHealthLoading ? (
+            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
+          ) : (
+            getStatusIcon(systemHealth?.chat_agent || "operational")
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {systemHealthLoading ? "Loading..." : `Last check: ${systemHealth?.chat_agent_last_check || "Just now"}`}
+        </p>
+      </div>
+
+      <div className="p-4 border border-border rounded-lg">
+        <div className="flex items-center space-x-2 mb-2">
+          <Database className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium text-foreground">Database</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          {systemHealthLoading ? (
+            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
+          ) : (
+            getStatusIcon(systemHealth?.database || "operational")
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {systemHealthLoading ? "Loading..." : `Last check: ${systemHealth?.database_last_check || "Just now"}`}
+        </p>
+      </div>
+
+      <div className="p-4 border border-border rounded-lg">
+        <div className="flex items-center space-x-2 mb-2">
+          <Server className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium text-foreground">MCP Servers</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          {mcpLoading ? (
+            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
+          ) : (
+            getStatusIcon(mcpData?.healthy_servers === mcpData?.enabled_servers ? "operational" : (mcpData?.enabled_servers || 0) > 0 ? "degraded" : "offline")
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {mcpLoading ? "Loading..." : (mcpData ? `${mcpData.healthy_servers}/${mcpData.enabled_servers} healthy` : "Loading...")}
+        </p>
+      </div>
+
+      <div className="p-4 border border-border rounded-lg">
+        <div className="flex items-center space-x-2 mb-2">
+          <Brain className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium text-foreground">Core Agent</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          {systemHealthLoading ? (
+            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
+          ) : (
+            getStatusIcon(systemHealth?.core_agent || "offline")
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {systemHealthLoading ? "Loading..." : `Last check: ${systemHealth?.core_agent_last_check || "Not running"}`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <div className="p-6">
-        <div className="mx-auto max-w-6xl">
-          {/* Header */}
-          <div className="mb-8">
-            <div className="flex items-center space-x-2 mb-2">
-              <Settings className="h-6 w-6 text-primary" />
-              <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-            </div>
-            <p className="text-muted-foreground">
-              Configure Nova AI Assistant and monitor system status
-            </p>
+      <div className="flex h-[calc(100vh-4rem)]">
+        {/* Left Sidebar with Tabs */}
+        <div className="w-64 border-r border-border bg-muted/30">
+          <div className="p-4 border-b border-border">
+            <h1 className="font-semibold text-foreground">Settings</h1>
+            <p className="text-sm text-muted-foreground">Configure Nova</p>
           </div>
-
-          <Tabs defaultValue="system-prompt" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-6">
-              <TabsTrigger value="system-prompt">
-                <FileText className="h-4 w-4 mr-2" /> System Prompt
+          
+          <Tabs defaultValue="system-prompt" orientation="vertical" className="w-full">
+            <TabsList className="w-full h-auto flex-col bg-transparent space-y-1 p-2">
+              <TabsTrigger 
+                value="system-prompt" 
+                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <FileText className="h-4 w-4 mr-2" /> 
+                System Prompt
               </TabsTrigger>
-              <TabsTrigger value="mcp-servers">
-                <ListChecks className="h-4 w-4 mr-2" /> MCP Servers
+              <TabsTrigger 
+                value="mcp-servers" 
+                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <ListChecks className="h-4 w-4 mr-2" /> 
+                MCP Servers
               </TabsTrigger>
-              <TabsTrigger value="system-status">
-                <ShieldCheck className="h-4 w-4 mr-2" /> System Status
+              <TabsTrigger 
+                value="system-status" 
+                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <ShieldCheck className="h-4 w-4 mr-2" /> 
+                System Status
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="system-prompt">
-              <SystemPromptEditor />
-            </TabsContent>
+            {/* Main Content Area */}
+            <div className="fixed inset-y-0 left-64 right-0 top-16">
+              <div className="h-full overflow-y-auto p-6">
+                <TabsContent value="system-prompt" className="mt-0">
+                  <Suspense fallback={<TabContentLoader>System Prompt</TabContentLoader>}>
+                    <SystemPromptEditor />
+                  </Suspense>
+                </TabsContent>
 
-            <TabsContent value="mcp-servers">
-              <div className="bg-card border border-border rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-foreground mb-4">MCP Servers Management</h2>
-                {mcpError && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-red-600">Failed to load MCP servers</p>
+                <TabsContent value="mcp-servers" className="mt-0">
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <h2 className="text-lg font-semibold text-foreground mb-4">MCP Servers Management</h2>
+                    <MCPServersTab />
                   </div>
-                )}
-                <div className="space-y-4">
-                  {mcpData?.servers?.map((server) => {
-                    const ServerIcon = getServerIcon(server.name);
-                    const status = getStatusText(server.enabled, server.healthy);
-                    const isToggling = toggleMutation.isPending;
-                    const isRestarting = restartingService === server.name;
+                </TabsContent>
 
-                    return (
-                      <div key={server.name} className="border border-border rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center space-x-3">
-                            <ServerIcon className="h-5 w-5 text-primary" />
-                            <div>
-                              <h3 className="font-medium text-foreground">{server.name}</h3>
-                              <p className="text-sm text-muted-foreground">{server.url}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-3">
-                            <div className="flex items-center space-x-2">
-                              {getStatusIcon(status)}
-                              {status !== "operational" && (
-                                <Badge
-                                  variant={status === "disabled" ? "outline" : "destructive"}
-                                  className={getStatusColor(status)}
-                                >
-                                  {status}
-                                </Badge>
-                              )}
-                            </div>
-                            <Switch
-                              checked={server.enabled}
-                              onCheckedChange={() => handleToggleServer(server.name, server.enabled)}
-                              disabled={isToggling}
-                            />
-                          </div>
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-2">{server.description}</p>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">
-                            {server.tools_count || 0} tools available
-                          </span>
-                          <span className="text-muted-foreground">
-                            {server.enabled ? (server.healthy ? `Last check: ${server.last_check || 'Just now'}` : "Health check failed") : "Disabled"}
-                          </span>
-                        </div>
-                        {!server.healthy && server.enabled && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="mt-2 w-full"
-                            onClick={() => handleRestartServer(server.name)}
-                            disabled={isRestarting}
-                          >
-                            {isRestarting ? "Restarting..." : "Restart Server"}
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {(!mcpData?.servers || mcpData.servers.length === 0) && !mcpError && (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Server className="h-8 w-8 mx-auto mb-2" />
-                      <p className="text-sm">No MCP servers configured</p>
-                    </div>
-                  )}
-                </div>
+                <TabsContent value="system-status" className="mt-0">
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <h2 className="text-lg font-semibold text-foreground mb-4">System Status Overview</h2>
+                    <SystemStatusTab />
+                  </div>
+                </TabsContent>
               </div>
-            </TabsContent>
-
-            <TabsContent value="system-status">
-              <div className="bg-card border border-border rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-foreground mb-4">System Status Overview</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 border border-border rounded-lg">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <Cpu className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium text-foreground">Chat Agent</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(systemHealth?.chat_agent || "operational")}
-                       <Badge variant={systemHealth?.chat_agent === "healthy" || systemHealth?.chat_agent === "operational" ? "default" : "destructive"} className={getStatusColor(systemHealth?.chat_agent || "operational")}>
-                        {systemHealth?.chat_agent || "operational"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Last check: {systemHealth?.chat_agent_last_check || "Just now"}
-                    </p>
-                  </div>
-
-                  <div className="p-4 border border-border rounded-lg">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <Database className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium text-foreground">Database</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(systemHealth?.database || "operational")}
-                      <Badge variant={systemHealth?.database === "healthy" || systemHealth?.database === "operational" ? "default" : "destructive"} className={getStatusColor(systemHealth?.database || "operational")}>
-                        {systemHealth?.database || "operational"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Last check: {systemHealth?.database_last_check || "Just now"}
-                    </p>
-                  </div>
-
-                  <div className="p-4 border border-border rounded-lg">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <Server className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium text-foreground">MCP Servers</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(mcpData?.healthy_servers === mcpData?.enabled_servers ? "operational" : (mcpData?.enabled_servers || 0) > 0 ? "degraded" : "offline")}
-                      <Badge variant={(mcpData?.healthy_servers === mcpData?.enabled_servers) ? "default" : "destructive"} className={getStatusColor(mcpData?.healthy_servers === mcpData?.enabled_servers ? "operational" : (mcpData?.enabled_servers || 0) > 0 ? "degraded" : "offline")}>
-                        {mcpData?.healthy_servers === mcpData?.enabled_servers ? "operational" : (mcpData?.enabled_servers || 0) > 0 ? "degraded" : "offline"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {mcpData ? `${mcpData.healthy_servers}/${mcpData.enabled_servers} healthy` : "Loading..."}
-                    </p>
-                  </div>
-
-                  <div className="p-4 border border-border rounded-lg">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <Brain className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium text-foreground">Core Agent</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(systemHealth?.core_agent || "offline")}
-                      <Badge variant={systemHealth?.core_agent === "healthy" || systemHealth?.core_agent === "operational" ? "default" : "destructive"} className={getStatusColor(systemHealth?.core_agent || "offline")}>
-                        {systemHealth?.core_agent || "offline"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Last check: {systemHealth?.core_agent_last_check || "Not running"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
+            </div>
           </Tabs>
         </div>
       </div>
