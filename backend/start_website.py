@@ -203,7 +203,7 @@ async def health_check():
             "service": "nova-backend",
             "version": "1.0.0",
             "database": "connected",
-            "chat_checkpointer": "postgresql" if hasattr(app.state, 'pg_pool') and app.state.pg_pool else "memory"
+            "chat_checkpointer": "postgresql" if service_manager.pg_pool else "memory"
         }
     except Exception as e:
         service_manager.logger.error(f"Health check failed: {e}")

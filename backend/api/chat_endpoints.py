@@ -366,6 +366,7 @@ async def get_checkpointer_from_service_manager():
         else:
             logger.debug("No PostgreSQL pool available from ServiceManager, using MemorySaver")
             return create_memory_checkpointer()
+            
     except Exception as e:
         logger.error(f"Error creating checkpointer: {e}")
         from utils.service_manager import create_memory_checkpointer
@@ -802,8 +803,8 @@ async def get_task_chat_data(chat_id: str):
                 from agent.chat_agent import create_chat_agent
                 from langchain_core.runnables import RunnableConfig
                 
-                # Get agent and check current state for interrupts
-                agent = await create_chat_agent()
+                # Get agent with the same checkpointer and check current state for interrupts
+                agent = await create_chat_agent(checkpointer=checkpointer)
                 config = RunnableConfig(configurable={"thread_id": chat_id})
                 state = await agent.aget_state(config)
                 
