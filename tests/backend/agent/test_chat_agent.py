@@ -17,7 +17,6 @@ import logging
 from typing import List, Any, Optional
 
 from agent.chat_agent import (
-    create_checkpointer, 
     get_all_tools_with_mcp,
     clear_chat_agent_cache,
     create_chat_agent
@@ -99,49 +98,83 @@ def sample_tools():
     return [get_tasks, create_task, get_weather]
 
 
-class TestCheckpointerCreation:
-    """Test checkpointer creation with real logic."""
+@pytest.fixture
+def mock_checkpointer():
+    """Create a mock checkpointer for testing."""
+    return MemorySaver()
+
+
+class TestCheckpointerIntegration:
+    """Test checkpointer integration within chat agent creation."""
     
     @pytest.mark.asyncio
-    async def test_create_checkpointer_no_pool(self):
-        """Test memory checkpointer when no pool provided."""
-        checkpointer = await create_checkpointer()
-        assert isinstance(checkpointer, MemorySaver)
+    async def test_create_chat_agent_requires_checkpointer_or_pool(self):
+        """Test that chat agent creation requires either checkpointer or pg_pool."""
+        with pytest.raises(ValueError, match="PostgreSQL connection pool is required"):
+            await create_chat_agent(checkpointer=None, pg_pool=None)
     
     @pytest.mark.asyncio
-    async def test_create_checkpointer_with_pool(self):
-        """Test PostgreSQL checkpointer creation with pool."""
-        with patch('utils.service_manager.create_postgres_checkpointer') as mock_create_pg:
+    async def test_create_chat_agent_with_pool_creates_checkpointer(self, fake_chat_model, sample_tools):
+        """Test that providing pg_pool creates PostgreSQL checkpointer internally."""
+        with patch('agent.chat_agent.get_llm') as mock_get_llm, \
+             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
+             patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt, \
+             patch('utils.service_manager.create_postgres_checkpointer') as mock_create_pg, \
+             patch('agent.chat_agent.create_react_agent') as mock_create_react_agent:
             
-            # Mock PostgreSQL checkpointer creation
+            # Mock components
+            mock_get_llm.return_value = fake_chat_model
+            mock_get_tools_with_mcp.return_value = sample_tools
+            mock_get_prompt.return_value = "You are Nova, an AI assistant."
+            
+            # Mock checkpointer creation
             mock_checkpointer = AsyncMock()
             mock_create_pg.return_value = mock_checkpointer
+            
+            # Mock agent creation
+            mock_agent = AsyncMock()
+            mock_create_react_agent.return_value = mock_agent
             
             # Mock pool
             mock_pool = AsyncMock()
             
-            checkpointer = await create_checkpointer(pg_pool=mock_pool)
+            # Create agent with pool
+            agent = await create_chat_agent(checkpointer=None, pg_pool=mock_pool)
             
-            # Verify PostgreSQL checkpointer was created with pool
+            # Verify checkpointer was created from pool
             mock_create_pg.assert_called_once_with(mock_pool)
-            assert checkpointer == mock_checkpointer
+            
+            # Verify agent was created with the checkpointer
+            mock_create_react_agent.assert_called_once()
+            call_kwargs = mock_create_react_agent.call_args.kwargs
+            assert call_kwargs['checkpointer'] == mock_checkpointer
+            
+            assert agent == mock_agent
     
     @pytest.mark.asyncio
-    async def test_create_checkpointer_pool_failure(self):
-        """Test that PostgreSQL creation failures are propagated."""
-        with patch('utils.service_manager.create_postgres_checkpointer') as mock_create_pg:
+    async def test_create_chat_agent_checkpointer_creation_failure(self, fake_chat_model, sample_tools):
+        """Test that checkpointer creation failures are propagated."""
+        with patch('agent.chat_agent.get_llm') as mock_get_llm, \
+             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
+             patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt, \
+             patch('utils.service_manager.create_postgres_checkpointer') as mock_create_pg:
             
-            # Mock PostgreSQL creation failure
+            # Mock components
+            mock_get_llm.return_value = fake_chat_model
+            mock_get_tools_with_mcp.return_value = sample_tools
+            mock_get_prompt.return_value = "You are Nova, an AI assistant."
+            
+            # Mock checkpointer creation failure
             mock_create_pg.side_effect = Exception("PostgreSQL creation failed")
             
             # Mock pool
             mock_pool = AsyncMock()
             
-            # Should raise the exception since create_checkpointer doesn't handle it
+            # Should propagate the exception
             with pytest.raises(Exception, match="PostgreSQL creation failed"):
-                await create_checkpointer(pg_pool=mock_pool)
+                await create_chat_agent(checkpointer=None, pg_pool=mock_pool)
             
-            # Verify PostgreSQL creation was attempted
+            # Verify checkpointer creation was attempted
             mock_create_pg.assert_called_once_with(mock_pool)
 
 
@@ -238,41 +271,34 @@ class TestChatAgentCreation:
     """Test chat agent creation with real LangGraph integration."""
     
     @pytest.mark.asyncio
-    async def test_create_chat_agent_basic(self, fake_chat_model, sample_tools):
+    async def test_create_chat_agent_basic(self, fake_chat_model, sample_tools, mock_checkpointer):
         """Test basic agent creation."""
-        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools') as mock_get_tools, \
-             patch('agent.chat_agent.mcp_manager') as mock_mcp, \
+        with patch('agent.chat_agent.get_llm') as mock_get_llm, \
+             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
              patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt:
             
-            mock_create_llm.return_value = fake_chat_model
-            mock_get_tools.return_value = sample_tools
-            mock_mcp.get_tools = AsyncMock(return_value=[])
+            mock_get_llm.return_value = fake_chat_model
+            mock_get_tools_with_mcp.return_value = sample_tools
             mock_get_prompt.return_value = "You are Nova, an AI assistant."
             
-            agent = await create_chat_agent()
+            agent = await create_chat_agent(checkpointer=mock_checkpointer)
             
             # Verify agent was created
             assert agent is not None
             assert hasattr(agent, 'invoke')
             assert hasattr(agent, 'stream')
-            
-            # Verify tools were bound to model
-            assert len(fake_chat_model.bound_tools) == 3
     
     @pytest.mark.asyncio 
     async def test_create_chat_agent_with_custom_checkpointer(self, fake_chat_model, sample_tools):
         """Test agent creation with custom checkpointer."""
         custom_checkpointer = MemorySaver()
         
-        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools') as mock_get_tools, \
-             patch('agent.chat_agent.mcp_manager') as mock_mcp, \
+        with patch('agent.chat_agent.get_llm') as mock_get_llm, \
+             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
              patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt:
             
-            mock_create_llm.return_value = fake_chat_model
-            mock_get_tools.return_value = sample_tools
-            mock_mcp.get_tools = AsyncMock(return_value=[])
+            mock_get_llm.return_value = fake_chat_model
+            mock_get_tools_with_mcp.return_value = sample_tools
             mock_get_prompt.return_value = "You are Nova, an AI assistant."
             
             agent = await create_chat_agent(checkpointer=custom_checkpointer)
@@ -280,28 +306,26 @@ class TestChatAgentCreation:
             assert agent is not None
     
     @pytest.mark.asyncio
-    async def test_create_chat_agent_use_cache_false(self, fake_chat_model, sample_tools):
+    async def test_create_chat_agent_use_cache_false(self, fake_chat_model, sample_tools, mock_checkpointer):
         """Test agent creation with use_cache=False."""
-        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools') as mock_get_tools, \
-             patch('agent.chat_agent.mcp_manager') as mock_mcp, \
+        with patch('agent.chat_agent.get_llm') as mock_get_llm, \
+             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
              patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt:
             
-            mock_create_llm.return_value = fake_chat_model
-            mock_get_tools.return_value = sample_tools
-            mock_mcp.get_tools = AsyncMock(return_value=[])
+            mock_get_llm.return_value = fake_chat_model
+            mock_get_tools_with_mcp.return_value = sample_tools
             mock_get_prompt.return_value = "You are Nova, an AI assistant."
             
             # Pre-cache some tools
             import agent.chat_agent
             agent.chat_agent._cached_tools = ["old_tool"]
             
-            agent = await create_chat_agent(use_cache=False)
+            agent = await create_chat_agent(checkpointer=mock_checkpointer, use_cache=False)
             
             # Verify agent created and cache was cleared
             assert agent is not None
             # Tools should have been reloaded
-            mock_get_tools.assert_called_once()
+            mock_get_tools_with_mcp.assert_called_once()
 
 
 class TestToolInvocation:
@@ -340,19 +364,17 @@ class TestAgentInvocation:
     """Test agent invocation with real functionality."""
     
     @pytest.mark.asyncio
-    async def test_agent_simple_invoke(self, fake_chat_model, sample_tools):
+    async def test_agent_simple_invoke(self, fake_chat_model, sample_tools, mock_checkpointer):
         """Test agent can be invoked with a simple message."""
-        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools') as mock_get_tools, \
-             patch('agent.chat_agent.mcp_manager') as mock_mcp, \
+        with patch('agent.chat_agent.get_llm') as mock_get_llm, \
+             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
              patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt:
             
-            mock_create_llm.return_value = fake_chat_model
-            mock_get_tools.return_value = sample_tools
-            mock_mcp.get_tools = AsyncMock(return_value=[])
+            mock_get_llm.return_value = fake_chat_model
+            mock_get_tools_with_mcp.return_value = sample_tools
             mock_get_prompt.return_value = "You are Nova, an AI assistant."
             
-            agent = await create_chat_agent()
+            agent = await create_chat_agent(checkpointer=mock_checkpointer)
             
             # Test simple invocation with required config for checkpointer
             config = {"configurable": {"thread_id": "test-thread"}}

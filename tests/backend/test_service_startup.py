@@ -18,6 +18,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
+@pytest.fixture
+def mock_pg_pool():
+    """Mock PostgreSQL connection pool for tests."""
+    mock_pool = AsyncMock()
+    mock_pool.acquire = AsyncMock()
+    mock_pool.release = AsyncMock()
+    return mock_pool
+
+
 def _make_dummy_server() -> MagicMock:
     """Return a dummy uvicorn server instance with an async serve method."""
     dummy_server = MagicMock(name="DummyUvicornServer")
@@ -106,7 +115,7 @@ class TestPromptIntegration:
         assert "{description}" in CURRENT_TASK_TEMPLATE
 
     @pytest.mark.asyncio
-    async def test_core_agent_creates_expected_task_messages(self):
+    async def test_core_agent_creates_expected_task_messages(self, mock_pg_pool):
         """Test that core agent creates task messages with expected content."""
         # Mock AIMessage so we don't need langchain-core
         with patch("langchain_core.messages.AIMessage") as mock_ai_message:
@@ -133,8 +142,8 @@ class TestPromptIntegration:
 
             context = {"persons": [], "projects": [], "comments": []}
 
-            # Test the private method that creates task messages
-            agent = CoreAgent()
+            # Test the private method that creates task messages with required pg_pool
+            agent = CoreAgent(pg_pool=mock_pg_pool)
             messages = await agent._create_task_messages(task, context)
 
             assert len(messages) == 2

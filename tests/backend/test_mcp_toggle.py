@@ -17,8 +17,8 @@ class TestMCPToggleFix:
     @pytest.mark.asyncio
     async def test_mcp_toggled_event_clears_both_caches(self):
         """Test that MCP toggle events clear agent and tools caches via unified function."""
-        # Mock the unified cache clearing function
-        with patch('api.chat_endpoints.clear_chat_agent_cache') as mock_clear_cache:
+        # Mock the unified cache clearing function at the correct import location
+        with patch('agent.chat_agent.clear_chat_agent_cache') as mock_clear_cache:
             
             # Create event handler
             event_handler = await create_website_event_handler()
@@ -35,7 +35,8 @@ class TestMCPToggleFix:
     @pytest.mark.asyncio 
     async def test_prompt_updated_event_clears_both_caches(self):
         """Test that prompt update events clear agent and tools caches via unified function."""
-        with patch('api.chat_endpoints.clear_chat_agent_cache') as mock_clear_cache:
+        # Mock the unified cache clearing function at the correct import location
+        with patch('agent.chat_agent.clear_chat_agent_cache') as mock_clear_cache:
             
             # Create event handler
             event_handler = await create_website_event_handler()
