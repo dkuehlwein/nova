@@ -246,43 +246,19 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
 
 
 async def _list_chat_threads() -> List[str]:
-    """List all chat thread IDs from the checkpointer.
-        
+    """List all chat thread IDs from the PostgreSQL checkpointer.
+    
     Returns:
-        List of thread IDs
+        List of unique thread IDs from all conversations
     """
     try:
-        # Get the appropriate checkpointer from app state
+        # Get the PostgreSQL checkpointer from app state
         checkpointer = await get_checkpointer_from_service_manager()
         
         logger.debug(f"Checkpointer type: {type(checkpointer)}")
         
-        # For MemorySaver, we need to provide a config parameter
-        from langgraph.checkpoint.memory import MemorySaver
-        
-        if isinstance(checkpointer, MemorySaver):
-            # For MemorySaver, use alist(None) to get ALL checkpoints then extract unique thread_ids
-            thread_ids = []
-            try:
-                checkpoint_count = 0
-                # Use None to get ALL checkpoints, not filtered by thread_id
-                async for checkpoint_tuple in checkpointer.alist(None):
-                    checkpoint_count += 1
-                    if checkpoint_tuple.config and checkpoint_tuple.config.get("configurable", {}).get("thread_id"):
-                        thread_id = checkpoint_tuple.config["configurable"]["thread_id"]
-                        # Only add non-empty thread_ids and avoid duplicates
-                        if thread_id and thread_id not in thread_ids:
-                            thread_ids.append(thread_id)
-                            logger.debug(f"Added unique thread_id: {thread_id}")
-                
-                logger.debug(f"Total checkpoints found: {checkpoint_count}, unique threads: {len(thread_ids)}")
-                
-            except Exception as e:
-                logger.error(f"Error listing threads from MemorySaver: {e}")
-            return thread_ids
-        
         # For PostgreSQL checkpointers, we need to properly handle the async generator
-        elif hasattr(checkpointer, 'alist'):
+        if hasattr(checkpointer, 'alist'):
             thread_ids = []
             try:
                 # For PostgreSQL, get all checkpoints first
@@ -302,8 +278,8 @@ async def _list_chat_threads() -> List[str]:
                 logger.error(f"Error listing threads from PostgreSQL: {e}")
             return thread_ids
         else:
-            # For other checkpointers that can't list threads, return empty
-            logger.debug(f"Checkpointer doesn't support listing threads")
+            # Unsupported checkpointer type
+            logger.error(f"Unsupported checkpointer type: {type(checkpointer)}")
             return []
             
     except Exception as e:
@@ -312,11 +288,11 @@ async def _list_chat_threads() -> List[str]:
 
 
 async def get_checkpointer_from_service_manager():
-    """Get the appropriate checkpointer from ServiceManager."""
+    """Get the PostgreSQL checkpointer from ServiceManager."""
     try:
         # Import here to avoid circular dependency
         from start_website import get_service_manager
-        from utils.service_manager import create_postgres_checkpointer, create_memory_checkpointer
+        from utils.service_manager import create_postgres_checkpointer
         
         service_manager = get_service_manager()
         # The service manager is not unique and different from the one in the app lifespan.
@@ -329,13 +305,12 @@ async def get_checkpointer_from_service_manager():
             })
             return create_postgres_checkpointer(service_manager.pg_pool)
         else:
-            logger.debug("No PostgreSQL pool available from ServiceManager, using MemorySaver")
-            return create_memory_checkpointer()
+            # PostgreSQL is mandatory - raise error if not available
+            raise RuntimeError("PostgreSQL connection pool is required but not available")
             
     except Exception as e:
-        logger.error(f"Error creating checkpointer: {e}")
-        from utils.service_manager import create_memory_checkpointer
-        return create_memory_checkpointer()
+        logger.error(f"Error creating PostgreSQL checkpointer: {e}")
+        raise RuntimeError(f"Failed to create PostgreSQL checkpointer: {str(e)}")
 
 
 @router.post("/stream")

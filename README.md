@@ -32,7 +32,6 @@ Nova is an intelligent kanban-style task management system that integrates with 
    LOG_LEVEL=INFO
    
    # Other optional settings
-   FORCE_MEMORY_CHECKPOINTER=false
    ```
 
 3. **Start Nova Services**
@@ -63,7 +62,7 @@ Nova supports both human-readable console output and structured JSON logging:
 
 ### Database Configuration
 - **Development**: Uses in-memory checkpointer by default
-- **Production**: Set `FORCE_MEMORY_CHECKPOINTER=false` to use PostgreSQL checkpointer
+- **Production**: PostgreSQL checkpointer is required
 
 ## 🛠️ Architecture
 

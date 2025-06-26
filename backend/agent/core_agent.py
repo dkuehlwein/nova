@@ -31,12 +31,12 @@ class CoreAgent:
     following the user's specified logic flow.
     """
     
-    def __init__(self, pg_pool=None):
+    def __init__(self, pg_pool):
         self.agent = None
         self.status_id = None
         self.is_running = False
         self.should_stop = False
-        self.pg_pool = pg_pool  # Optional shared PostgreSQL pool from ServiceManager
+        self.pg_pool = pg_pool  # Required PostgreSQL pool from ServiceManager
         
         # Configuration
         self.check_interval = 30  # seconds
@@ -46,13 +46,9 @@ class CoreAgent:
         """Initialize the core agent."""
         logger.info("Initializing Core Agent...")
         
-        # Create the LangGraph agent using shared pool if available
-        if self.pg_pool:
-            self.agent = await create_chat_agent(pg_pool=self.pg_pool)
-            logger.info("Core Agent using shared PostgreSQL pool from ServiceManager")
-        else:
-            self.agent = await create_chat_agent()
-            logger.info("Core Agent using fallback checkpointer (no shared pool)")
+        # Create the LangGraph agent using the PostgreSQL pool
+        self.agent = await create_chat_agent(pg_pool=self.pg_pool)
+        logger.info("Core Agent using PostgreSQL pool from ServiceManager")
         
         # Initialize or get agent status record
         await self._initialize_status()
@@ -64,13 +60,9 @@ class CoreAgent:
         logger.info("Reloading Core Agent with updated prompt...")
         
         try:
-            # Recreate the agent with new prompt and tools, using shared pool if available
-            if self.pg_pool:
-                self.agent = await create_chat_agent(pg_pool=self.pg_pool, use_cache=False)
-                logger.info("Core Agent reloaded with shared PostgreSQL pool")
-            else:
-                self.agent = await create_chat_agent(use_cache=False)
-                logger.info("Core Agent reloaded with fallback checkpointer")
+            # Recreate the agent with new prompt and tools using the PostgreSQL pool
+            self.agent = await create_chat_agent(pg_pool=self.pg_pool, use_cache=False)
+            logger.info("Core Agent reloaded with PostgreSQL pool")
             
             logger.info("Core Agent reloaded successfully")
             

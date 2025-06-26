@@ -74,42 +74,27 @@ async def get_llm():
     
     return _cached_llm
 
-async def create_checkpointer(pg_pool=None):
-    """Create checkpointer - PostgreSQL if pool provided, otherwise MemorySaver.
-    
-    Args:
-        pg_pool: Optional AsyncConnectionPool instance to use for PostgreSQL checkpointer
-    
-    Returns:
-        AsyncPostgresSaver if pg_pool provided, otherwise MemorySaver
-    """
-    if pg_pool is not None:
-        from utils.service_manager import create_postgres_checkpointer
-        logger.info("Creating PostgreSQL checkpointer with provided pool")
-        return create_postgres_checkpointer(pg_pool)
-    else:
-        from utils.service_manager import create_memory_checkpointer
-        logger.info("Creating MemorySaver checkpointer (no pool provided)")
-        return create_memory_checkpointer()
-
 
 async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True):
     """Create LangGraph chat agent with cached components.
     
     Args:
         checkpointer: Optional checkpointer to use for conversation state
-        pg_pool: Optional AsyncConnectionPool instance for PostgreSQL checkpointer
+        pg_pool: PostgreSQL connection pool (required if no checkpointer provided)
         use_cache: If True, use cached components; if False, reload everything
     
     Returns:
-        LangGraph chat agent with current tools/prompt and specified checkpointer
+        LangGraph chat agent with current tools/prompt and PostgreSQL checkpointer
+        
+    Raises:
+        ValueError: If neither checkpointer nor pg_pool is provided
         
     Notes:
         - Always creates fresh agent instance (no agent instance caching)
         - Caches components (tools, LLM) separately from checkpointer
         - Every conversation gets latest tools/prompt when cache is cleared
         - Each conversation can have its own checkpointer for state management
-        - If both checkpointer and pg_pool provided, checkpointer takes precedence
+        - PostgreSQL checkpointer is required - no MemorySaver fallback
     """
     # Clear component caches if requested
     if not use_cache:
@@ -117,12 +102,11 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True):
     
     # Create checkpointer if none provided
     if checkpointer is None:
-        if pg_pool is not None:
-            # Use provided pool for checkpointer
-            checkpointer = await create_checkpointer(pg_pool=pg_pool)
-        else:
-            # Use default checkpointer creation (no pool or fallback)
-            checkpointer = await create_checkpointer()
+        if pg_pool is None:
+            raise ValueError("PostgreSQL connection pool is required when no checkpointer provided")
+        # Use provided pool for checkpointer
+        from utils.service_manager import create_postgres_checkpointer
+        checkpointer = create_postgres_checkpointer(pg_pool)
     
     logger.info("Creating chat agent", extra={
         "data": {

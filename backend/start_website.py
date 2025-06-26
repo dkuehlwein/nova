@@ -24,6 +24,7 @@ from api.websocket_endpoints import router as websocket_router
 from api.mcp_endpoints import router as mcp_router
 from api.config_endpoints import router as config_router
 from api.system_endpoints import router as system_router
+from api.prompt_endpoints import router as prompt_router
 from utils.service_manager import ServiceManager, create_prompt_updated_handler
 from utils.logging import RequestLoggingMiddleware, configure_logging
 from config import settings
@@ -51,7 +52,7 @@ def get_service_manager():
 async def create_website_event_handler():
     """Create event handler for website service (WebSocket + chat agent reloading)."""
     from utils.websocket_manager import websocket_manager
-    from api.chat_endpoints import clear_chat_agent_cache
+    from agent.chat_agent import clear_chat_agent_cache
     
     async def handle_event(event):
         # Always broadcast to WebSocket clients
@@ -173,6 +174,7 @@ app.include_router(websocket_router)
 app.include_router(mcp_router)
 app.include_router(system_router)
 app.include_router(config_router)
+app.include_router(prompt_router)
 
 
 @app.get("/")

@@ -4,14 +4,14 @@ Service Manager Utilities
 Common utilities for managing Nova services including startup, shutdown,
 Redis event handling, and PostgreSQL connection pool management.
 
-ServiceManager also provides centralized PostgreSQL connection pool management
+ServiceManager provides centralized PostgreSQL connection pool management
 for Nova services following the "one shared pool per service" pattern:
 
 - Each service (chat-agent, core-agent) gets its own ServiceManager instance
 - Each ServiceManager owns a single PostgreSQL connection pool 
 - Connection pools are properly opened during service startup and closed during shutdown
 - Services share the pool across all their LangGraph checkpointers for efficiency
-- Test scenarios fall back to MemorySaver when no pool is available
+- PostgreSQL checkpointer is mandatory - no fallbacks to in-memory storage
 
 This eliminates connection pool proliferation and "Event loop is closed" errors
 while providing proper resource management and service isolation.
@@ -44,20 +44,17 @@ class ServiceManager:
         """Initialize PostgreSQL connection pool.
         
         Returns:
-            The created pool instance or None if using memory checkpointer
+            The created pool instance
+            
+        Raises:
+            ValueError: If DATABASE_URL is not configured
+            RuntimeError: If PostgreSQL packages are not available or connection fails
         """
         try:
             from config import settings
             
-            if settings.FORCE_MEMORY_CHECKPOINTER:
-                self.logger.info("FORCE_MEMORY_CHECKPOINTER is enabled, skipping PostgreSQL pool creation")
-                self.pg_pool = None
-                return None
-            
             if not settings.DATABASE_URL:
-                self.logger.info("No DATABASE_URL configured, skipping PostgreSQL pool creation")
-                self.pg_pool = None
-                return None
+                raise ValueError("DATABASE_URL is required - PostgreSQL checkpointer is mandatory")
             
             try:
                 from psycopg_pool import AsyncConnectionPool
@@ -100,29 +97,31 @@ class ServiceManager:
                 
                 return self.pg_pool
                 
-            except ImportError:
-                self.logger.warning("PostgreSQL checkpointer packages not available, skipping pool creation")
-                self.pg_pool = None
-                return None
+            except ImportError as e:
+                error_msg = f"PostgreSQL checkpointer packages not available: {e}"
+                self.logger.error(error_msg)
+                raise RuntimeError(error_msg)
             except Exception as e:
-                self.logger.error(f"Failed to create PostgreSQL connection pool: {e}", extra={
+                error_msg = f"Failed to create PostgreSQL connection pool: {e}"
+                self.logger.error(error_msg, extra={
                     "data": {
                         "service": self.service_name,
                         "error": str(e)
                     }
                 })
-                self.pg_pool = None
-                return None
+                raise RuntimeError(error_msg)
                 
         except Exception as e:
-            self.logger.error(f"Error during PostgreSQL pool initialization: {e}", extra={
+            if isinstance(e, (ValueError, RuntimeError)):
+                raise  # Re-raise ValueError and RuntimeError as-is
+            error_msg = f"Error during PostgreSQL pool initialization: {e}"
+            self.logger.error(error_msg, extra={
                 "data": {
                     "service": self.service_name,
                     "error": str(e)
                 }
             })
-            self.pg_pool = None
-            return None
+            raise RuntimeError(error_msg)
     
     async def close_pg_pool(self):
         """Close PostgreSQL connection pool."""
@@ -265,15 +264,6 @@ async def create_prompt_updated_handler(reload_callback: Callable[[], Any]):
                 logger.error(f"Failed to reload agent: {e}")
     
     return handle_event
-
-
-def create_memory_checkpointer():
-    """Create a MemorySaver checkpointer instance.
-    
-    Centralized utility to avoid MemorySaver duplication across the codebase.
-    """
-    from langgraph.checkpoint.memory import MemorySaver
-    return MemorySaver()
 
 
 def create_postgres_checkpointer(pg_pool):
