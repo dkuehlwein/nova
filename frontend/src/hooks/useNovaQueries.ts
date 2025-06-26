@@ -329,7 +329,7 @@ export function useSystemPrompt() {
   return useQuery({
     queryKey: ['system-prompt'],
     queryFn: async (): Promise<SystemPromptData> => {
-      return await apiRequest('/chat/system-prompt')
+      return await apiRequest('/system-prompt')
     },
     staleTime: 5 * 60 * 1000, // 5 minutes - prompt doesn't change often
     refetchOnWindowFocus: false, // Don't refetch when switching tabs
@@ -342,7 +342,7 @@ export function useUpdateSystemPrompt() {
   
   return useMutation({
     mutationFn: async (content: string): Promise<SystemPromptData> => {
-      return await apiRequest('/chat/system-prompt', {
+      return await apiRequest('/system-prompt', {
         method: 'PUT',
         body: JSON.stringify({ content }),
         headers: {
@@ -366,7 +366,7 @@ export function useSystemPromptBackups(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['system-prompt-backups'],
     queryFn: async (): Promise<{ backups: PromptBackup[] }> => {
-      return await apiRequest('/chat/system-prompt/backups')
+      return await apiRequest('/system-prompt/backups')
     },
     staleTime: 5 * 60 * 1000, // 5 minutes - backups don't change often
     refetchOnWindowFocus: false, // Don't refetch when switching tabs
@@ -380,7 +380,7 @@ export function useRestorePromptBackup() {
   
   return useMutation({
     mutationFn: async (backupFilename: string): Promise<SystemPromptData> => {
-      return await apiRequest(`/chat/system-prompt/restore/${backupFilename}`, {
+      return await apiRequest(`/system-prompt/restore/${backupFilename}`, {
         method: 'POST'
       })
     },
@@ -401,7 +401,7 @@ export function useDeletePromptBackup() {
   
   return useMutation({
     mutationFn: async (backupFilename: string): Promise<{ message: string }> => {
-      return await apiRequest(`/chat/system-prompt/backups/${backupFilename}`, {
+      return await apiRequest(`/system-prompt/backups/${backupFilename}`, {
         method: 'DELETE'
       })
     },

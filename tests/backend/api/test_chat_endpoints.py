@@ -16,8 +16,7 @@ from uuid import uuid4
 from api.chat_endpoints import router as chat_router
 from models.chat import (
     ChatMessage, ChatRequest, ChatResponse, HealthResponse,
-    ChatSummary, ChatMessageDetail, TaskChatResponse,
-    SystemPromptResponse, SystemPromptUpdateRequest
+    ChatSummary, ChatMessageDetail, TaskChatResponse
 )
 
 
@@ -126,7 +125,6 @@ def mock_dependencies():
     with patch('api.chat_endpoints.create_chat_agent') as mock_create_agent, \
          patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools, \
          patch('api.chat_endpoints.get_checkpointer_from_service_manager') as mock_get_checkpointer, \
-         patch('api.chat_endpoints.publish') as mock_publish, \
          patch('pathlib.Path') as mock_path_class, \
          patch('builtins.open') as mock_open, \
          patch('database.database.db_manager') as mock_db_manager, \
@@ -145,8 +143,7 @@ def mock_dependencies():
         # Mock checkpointer
         mock_get_checkpointer.return_value = MockCheckpointer()
         
-        # Mock Redis publishing
-        mock_publish.return_value = None
+
         
         # Mock Path class and file operations
         def create_mock_path(path_str="test/path"):
@@ -190,7 +187,6 @@ def mock_dependencies():
             'create_agent': mock_create_agent,
             'get_tools': mock_get_tools,
             'get_checkpointer': mock_get_checkpointer,
-            'publish': mock_publish,
             'db_manager': mock_db_manager
         }
 
@@ -394,163 +390,6 @@ class TestChatManagement:
         # pending_escalation can be None or dict
 
 
-class TestSystemPromptEndpoints:
-    """Test system prompt management endpoints."""
-    
-    def test_get_system_prompt(self, client):
-        """Test getting current system prompt."""
-        response = client.get("/chat/system-prompt")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "content" in data
-        assert "file_path" in data
-        assert "last_modified" in data
-        assert "size_bytes" in data
-        assert data["content"] == "# Test System Prompt\nYou are Nova."
-    
-    def test_update_system_prompt(self, client, mock_dependencies):
-        """Test updating system prompt."""
-        new_content = "# Updated System Prompt\nYou are Nova, updated version."
-        
-        update_request = {
-            "content": new_content
-        }
-        
-        response = client.put("/chat/system-prompt", json=update_request)
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert data["content"] == new_content
-        assert "file_path" in data
-        assert "last_modified" in data
-        assert "size_bytes" in data
-        
-        # Verify Redis event was published
-        mock_dependencies['publish'].assert_called_once()
-    
-    def test_list_prompt_backups(self, client):
-        """Test listing prompt backups."""
-        with patch('api.chat_endpoints.Path') as mock_path_class:
-            # Create mock for the main prompt file path
-            mock_prompt_path = Mock()
-            mock_prompt_path.exists.return_value = True
-            
-            # Create mock for the backup directory
-            mock_backup_dir = Mock()
-            mock_backup_dir.exists.return_value = True
-            
-            # Mock backup files
-            mock_backup1 = Mock()
-            mock_backup1.name = "prompt_20250106_120000.bak"
-            mock_backup1.stat.return_value = Mock(st_mtime=datetime.now().timestamp(), st_size=512)
-
-            mock_backup2 = Mock()
-            mock_backup2.name = "prompt_20250106_110000.bak"
-            mock_backup2.stat.return_value = Mock(st_mtime=datetime.now().timestamp(), st_size=256)
-
-            mock_backup_dir.glob.return_value = [mock_backup1, mock_backup2]
-            
-            # Set up the parent / "backups" chain
-            mock_prompt_path.parent = Mock()
-            mock_prompt_path.parent.__truediv__ = Mock(return_value=mock_backup_dir)
-            
-            # Mock the Path constructor to return our mock
-            mock_path_class.return_value = mock_prompt_path
-
-            response = client.get("/chat/system-prompt/backups")
-            assert response.status_code == 200
-
-            data = response.json()
-            assert "backups" in data
-            assert len(data["backups"]) == 2
-            
-            # Verify structure of first backup
-            backup = data["backups"][0]
-            assert "filename" in backup
-            assert "created" in backup
-            assert "size_bytes" in backup
-            assert backup["filename"] in ["prompt_20250106_120000.bak", "prompt_20250106_110000.bak"]
-    
-    def test_restore_prompt_backup(self, client, mock_dependencies):
-        """Test restoring from backup."""
-        backup_filename = "prompt_20250106_120000.bak"
-        
-        with patch('api.chat_endpoints.Path') as mock_path_class, \
-             patch('builtins.open', mock_open(read_data="# Restored System Prompt\nYou are Nova, restored.")) as mock_file, \
-             patch('api.chat_endpoints.should_create_backup', return_value=True) as mock_should_create_backup:
-            
-            # Create mock for the main prompt file path
-            mock_prompt_path = Mock()
-            mock_prompt_path.exists.return_value = True
-            mock_prompt_path.stat.return_value = Mock(st_mtime=datetime.now().timestamp(), st_size=1024)
-            
-            # Create mock for the backup directory
-            mock_backup_dir = Mock()
-            mock_backup_dir.exists.return_value = True
-            mock_backup_dir.mkdir = Mock()
-            
-            # Create mock for the specific backup file
-            mock_backup_file = Mock()
-            mock_backup_file.exists.return_value = True
-            mock_backup_file.name = backup_filename
-            
-            # Set up the path chain: prompt_file.parent / "backups" / backup_filename
-            mock_prompt_path.parent = Mock()
-            mock_prompt_path.parent.__truediv__ = Mock(return_value=mock_backup_dir)
-            mock_backup_dir.__truediv__ = Mock(return_value=mock_backup_file)
-            
-            # Mock the Path constructor to return our mock
-            mock_path_class.return_value = mock_prompt_path
-            
-            response = client.post(f"/chat/system-prompt/restore/{backup_filename}")
-            assert response.status_code == 200
-            
-            data = response.json()
-            assert "content" in data
-            assert "file_path" in data
-            assert data["content"] == "# Restored System Prompt\nYou are Nova, restored."
-            
-            # Verify Redis event was published
-            mock_dependencies['publish'].assert_called_once()
-    
-    def test_restore_invalid_backup(self, client):
-        """Test restoring from invalid backup filename."""
-        invalid_filename = "invalid_backup.txt"
-        
-        response = client.post(f"/chat/system-prompt/restore/{invalid_filename}")
-        # Should get 400 for invalid filename, but endpoint might return 404 in test setup
-        assert response.status_code in [400, 404]
-        
-        if response.status_code == 400:
-            data = response.json()
-            assert "detail" in data
-
-    def test_system_prompt_file_not_found(self, client):
-        """Test system prompt endpoints when file doesn't exist."""
-        # In our test setup with global mocks, the file will appear to exist
-        # This test verifies the endpoint responds properly in test conditions
-        response = client.get("/chat/system-prompt")
-        # With our global mocks, this will return 200, which is acceptable for unit testing
-        assert response.status_code in [200, 404]
-        
-        if response.status_code == 404:
-            data = response.json()
-            assert "detail" in data
-
-
-class TestChatCacheManagement:
-    """Test chat agent cache management."""
-    
-    def test_clear_prompt_cache(self, client):
-        """Test clearing chat agent cache."""
-        response = client.post("/chat/system-prompt/clear-cache")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "message" in data
-        assert "cleared" in data["message"].lower()
-
 
 class TestErrorHandling:
     """Test error handling in chat endpoints."""
@@ -576,14 +415,3 @@ class TestErrorHandling:
         response = client.post("/chat/", json=invalid_request)
         assert response.status_code == 422
     
-    def test_system_prompt_file_not_found(self, client):
-        """Test system prompt endpoints when file doesn't exist."""
-        # In our test setup with global mocks, the file will appear to exist
-        # This test verifies the endpoint responds properly in test conditions
-        response = client.get("/chat/system-prompt")
-        # With our global mocks, this will return 200, which is acceptable for unit testing
-        assert response.status_code in [200, 404]
-        
-        if response.status_code == 404:
-            data = response.json()
-            assert "detail" in data 
