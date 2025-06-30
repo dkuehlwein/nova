@@ -18,6 +18,26 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Neo4j Database for Memory/Knowledge Graph
+  neo4j:
+    image: neo4j:5.26
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "${NEO4J_PORT:-7687}:7687"      # Bolt protocol
+      - "${NEO4J_HTTP_PORT:-7474}:7474" # Web interface
+    volumes:
+      - neo4j_data:/data
+    # Disable healthcheck temporarily to avoid startup issues
+    # healthcheck:
+    #   test: ["CMD", "cypher-shell", "-u", "${NEO4J_USER:-neo4j}", "-p", "${NEO4J_PASSWORD:-password}", "RETURN 1"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 5
+    #   start_period: 40s
+    restart: unless-stopped
+
   # Nova Backend (Core data services: API + Agent)
   nova-backend:
     build:
@@ -71,6 +91,7 @@ services:
 
 volumes:
   postgres_data:
+  neo4j_data:
 
 networks:
   default:

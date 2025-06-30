@@ -25,6 +25,7 @@ from api.mcp_endpoints import router as mcp_router
 from api.config_endpoints import router as config_router
 from api.system_endpoints import router as system_router
 from api.prompt_endpoints import router as prompt_router
+from api.memory_endpoints import router as memory_router
 from utils.service_manager import ServiceManager, create_prompt_updated_handler
 from utils.logging import RequestLoggingMiddleware, configure_logging
 from config import settings
@@ -141,6 +142,7 @@ async def lifespan(app: FastAPI):
     
     # Cleanup resources
     await service_manager.cleanup_redis()
+    await service_manager.cleanup_memory()    # Add memory cleanup
     await service_manager.close_pg_pool()
     await service_manager.cleanup_database()
     
@@ -175,6 +177,7 @@ app.include_router(mcp_router)
 app.include_router(system_router)
 app.include_router(config_router)
 app.include_router(prompt_router)
+app.include_router(memory_router)
 
 
 @app.get("/")

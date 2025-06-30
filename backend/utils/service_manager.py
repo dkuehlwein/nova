@@ -231,6 +231,17 @@ class ServiceManager:
             self.logger.info("Closed Redis connection")
         except Exception as e:
             self.logger.error(f"Error closing Redis connection: {e}")
+    
+    async def cleanup_memory(self):
+        """Clean up memory/Graphiti connections."""
+        try:
+            from memory.graphiti_manager import graphiti_manager
+            await asyncio.wait_for(graphiti_manager.close(), timeout=5.0)
+            self.logger.info("Closed memory/Graphiti connection")
+        except asyncio.TimeoutError:
+            self.logger.warning("Memory cleanup timed out")
+        except Exception as e:
+            self.logger.debug(f"Memory cleanup error (may not be initialized): {e}")
 
 
 async def create_prompt_updated_handler(reload_callback: Callable[[], Any]):

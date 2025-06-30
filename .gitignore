@@ -223,3 +223,8 @@ mcp_servers/gmail/credentials.json
 *.bak
 **/backups/
 mcp_servers/google-workspace/token.json
+
+# Coding assistants in test
+.gemini/
+.serena/
+GEMINI.md

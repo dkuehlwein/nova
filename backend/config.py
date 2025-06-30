@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     # Database Configuration (constructed from PostgreSQL variables)
     DATABASE_URL: Optional[str] = None  # PostgreSQL connection string for checkpointer
     
+    # Neo4j Configuration (for Graphiti Memory)
+    NEO4J_URI: str = "bolt://localhost:7687"
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = "password"
+    NEO4J_DATABASE: str = "neo4j"
+    
+    # Memory Configuration
+    MEMORY_GROUP_ID: str = "nova"
+    MEMORY_SEARCH_LIMIT: int = 10
+    
     # LangSmith Configuration
     LANGCHAIN_TRACING_V2: Optional[str] = "true"
     LANGCHAIN_ENDPOINT: Optional[str] = "https://api.smith.langchain.com"
