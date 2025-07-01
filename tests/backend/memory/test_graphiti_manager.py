@@ -223,7 +223,7 @@ class TestGraphitiClients:
             mock_embedder_cls.assert_called_once()
             config = mock_embedder_cls.call_args[1]["config"]
             assert config.api_key == "test_api_key"
-            assert config.model == "models/text-embedding-004"
+            assert config.embedding_model == "models/text-embedding-004"
 
     @pytest.mark.asyncio
     async def test_create_graphiti_embedder_missing_api_key(self):

@@ -24,7 +24,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from database.database import db_manager
 from models.models import (
-    Task, TaskComment, Person, Project, Artifact,
+    Task, TaskComment, Artifact,
     TaskStatus
 )
 from utils.redis_manager import publish
@@ -33,7 +33,7 @@ from models.events import create_task_updated_event
 
 # === Import Domain-Specific Pydantic Models ===
 from models.tasks import TaskCreate, TaskUpdate, TaskCommentCreate, TaskResponse
-from models.entities import PersonCreate, PersonResponse, ProjectCreate, ProjectResponse, ArtifactCreate, ArtifactResponse
+from models.entities import ArtifactCreate, ArtifactResponse
 from models.admin import ActivityItem, OverviewStats
 from models.chat import TaskChatMessageCreate
 
@@ -158,7 +158,7 @@ async def get_pending_decisions():
     async with db_manager.get_session() as session:
         result = await session.execute(
             select(Task)
-            .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
+            .options(selectinload(Task.comments))
             .where(Task.status == TaskStatus.NEEDS_REVIEW)
             .order_by(Task.updated_at.desc())
         )
@@ -179,8 +179,8 @@ async def get_pending_decisions():
                 tags=task.tags or [],
                 needs_decision=True,
                 decision_type="task_review",
-                persons=[p.name for p in task.persons],
-                projects=[p.name for p in task.projects],
+                persons=task.person_emails or [],
+                projects=task.project_names or [],
                 comments_count=len(task.comments)
             ))
         
@@ -198,8 +198,6 @@ async def get_tasks(
     """Get tasks with optional filtering."""
     async with db_manager.get_session() as session:
         query = select(Task).options(
-            selectinload(Task.persons),
-            selectinload(Task.projects),
             selectinload(Task.comments)
         )
         
@@ -229,8 +227,8 @@ async def get_tasks(
                 tags=task.tags or [],
                 needs_decision=needs_decision,
                 decision_type="task_review" if needs_decision else None,
-                persons=[p.name for p in task.persons],
-                projects=[p.name for p in task.projects],
+                persons=task.person_emails or [],
+                projects=task.project_names or [],
                 comments_count=len(task.comments)
             ))
         
@@ -243,7 +241,7 @@ async def get_tasks_by_status():
     async with db_manager.get_session() as session:
         result = await session.execute(
             select(Task)
-            .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
+            .options(selectinload(Task.comments))
             .order_by(Task.updated_at.desc())
         )
         tasks = result.scalars().all()
@@ -268,8 +266,8 @@ async def get_tasks_by_status():
                 tags=task.tags or [],
                 needs_decision=needs_decision,
                 decision_type="task_review" if needs_decision else None,
-                persons=[p.name for p in task.persons],
-                projects=[p.name for p in task.projects],
+                persons=task.person_emails or [],
+                projects=task.project_names or [],
                 comments_count=len(task.comments)
             )
             
@@ -282,38 +280,18 @@ async def get_tasks_by_status():
 async def create_task(task_data: TaskCreate):
     """Create a new task."""
     async with db_manager.get_session() as session:
-        # Create task
+        # Create task with memory-based relationships
         task = Task(
             title=task_data.title,
             description=task_data.description,
             status=task_data.status,
             due_date=task_data.due_date,
-            tags=task_data.tags
+            tags=task_data.tags,
+            person_emails=task_data.person_emails,
+            project_names=task_data.project_names
         )
         
         session.add(task)
-        await session.flush()  # Get the task ID
-        
-        # Add person relationships
-        persons_list = []
-        if task_data.person_ids:
-            persons_result = await session.execute(
-                select(Person).where(Person.id.in_(task_data.person_ids))
-            )
-            persons = persons_result.scalars().all()
-            task.persons.extend(persons)
-            persons_list = [p.name for p in persons]
-        
-        # Add project relationships
-        projects_list = []
-        if task_data.project_ids:
-            projects_result = await session.execute(
-                select(Project).where(Project.id.in_(task_data.project_ids))
-            )
-            projects = projects_result.scalars().all()
-            task.projects.extend(projects)
-            projects_list = [p.name for p in projects]
-        
         await session.commit()
         
         # Publish WebSocket event for real-time updates
@@ -339,8 +317,8 @@ async def create_task(task_data: TaskCreate):
             completed_at=task.completed_at,
             tags=task.tags or [],
             needs_decision=task.status == TaskStatus.NEEDS_REVIEW,
-            persons=persons_list,
-            projects=projects_list,
+            persons=task.person_emails or [],
+            projects=task.project_names or [],
             comments_count=0
         )
 
@@ -351,7 +329,7 @@ async def get_task(task_id: UUID):
     async with db_manager.get_session() as session:
         result = await session.execute(
             select(Task)
-            .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
+            .options(selectinload(Task.comments))
             .where(Task.id == task_id)
         )
         task = result.scalar_one_or_none()
@@ -371,8 +349,8 @@ async def get_task(task_id: UUID):
             completed_at=task.completed_at,
             tags=task.tags or [],
             needs_decision=task.status == TaskStatus.NEEDS_REVIEW,
-            persons=[p.name for p in task.persons],
-            projects=[p.name for p in task.projects],
+            persons=task.person_emails or [],
+            projects=task.project_names or [],
             comments_count=len(task.comments)
         )
 
@@ -383,7 +361,7 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
     async with db_manager.get_session() as session:
         result = await session.execute(
             select(Task)
-            .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
+            .options(selectinload(Task.comments))
             .where(Task.id == task_id)
         )
         task = result.scalar_one_or_none()
@@ -449,8 +427,8 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
             completed_at=task.completed_at,
             tags=task.tags or [],
             needs_decision=task.status == TaskStatus.NEEDS_REVIEW,
-            persons=[p.name for p in task.persons],
-            projects=[p.name for p in task.projects],
+            persons=task.person_emails or [],
+            projects=task.project_names or [],
             comments_count=len(task.comments)
         )
 
@@ -703,75 +681,29 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
         raise HTTPException(status_code=500, detail=f"Failed to post message: {str(e)}")
 
 
+
+
 # === Entity Management Endpoints ===
+# NOTE: Person/Project management now handled by memory system
+# These endpoints are deprecated in favor of memory-based operations
 
-@router.get("/api/persons", response_model=List[PersonResponse])
-async def get_persons():
-    """Get all persons."""
-    async with db_manager.get_session() as session:
-        result = await session.execute(select(Person).order_by(Person.name))
-        persons = result.scalars().all()
-        return [PersonResponse.model_validate(person) for person in persons]
+# @router.get("/api/persons", response_model=List[PersonResponse])
+# async def get_persons():
+#     '''Get all persons - DEPRECATED: Use memory search instead'''
+#     pass
 
+# @router.post("/api/persons", response_model=PersonResponse) 
+# async def create_person(person_data: PersonCreate):
+#     '''Create a new person - DEPRECATED: Use memory add instead'''
+#     pass
 
-@router.post("/api/persons", response_model=PersonResponse)
-async def create_person(person_data: PersonCreate):
-    """Create a new person."""
-    async with db_manager.get_session() as session:
-        person = Person(**person_data.model_dump())
-        session.add(person)
-        await session.commit()
-        await session.refresh(person)
-        return PersonResponse.model_validate(person)
+# @router.get("/api/projects", response_model=List[ProjectResponse])
+# async def get_projects():
+#     '''Get all projects - DEPRECATED: Use memory search instead'''
+#     pass
 
+# @router.post("/api/projects", response_model=ProjectResponse)
+# async def create_project(project_data: ProjectCreate):
+#     '''Create a new project - DEPRECATED: Use memory add instead'''
+#     pass
 
-@router.get("/api/projects", response_model=List[ProjectResponse])
-async def get_projects():
-    """Get all projects."""
-    async with db_manager.get_session() as session:
-        result = await session.execute(select(Project).order_by(Project.name))
-        projects = result.scalars().all()
-        return [ProjectResponse.model_validate(project) for project in projects]
-
-
-@router.post("/api/projects", response_model=ProjectResponse)
-async def create_project(project_data: ProjectCreate):
-    """Create a new project."""
-    async with db_manager.get_session() as session:
-        project = Project(**project_data.model_dump())
-        session.add(project)
-        await session.commit()
-        await session.refresh(project)
-        return ProjectResponse.model_validate(project)
-
-
-@router.get("/api/artifacts", response_model=List[ArtifactResponse])
-async def get_artifacts():
-    """Get all artifacts."""
-    async with db_manager.get_session() as session:
-        result = await session.execute(select(Artifact).order_by(Artifact.created_at.desc()))
-        artifacts = result.scalars().all()
-        return [ArtifactResponse.model_validate(artifact) for artifact in artifacts]
-
-
-@router.post("/api/artifacts", response_model=ArtifactResponse)
-async def create_artifact(artifact_data: ArtifactCreate):
-    """Create a new artifact."""
-    async with db_manager.get_session() as session:
-        artifact = Artifact(**artifact_data.model_dump())
-        session.add(artifact)
-        await session.commit()
-        await session.refresh(artifact)
-        return ArtifactResponse.model_validate(artifact)
-
-
-# === Health Check ===
-
-@router.get("/api/health")
-async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "service": "nova-kanban-mcp",
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    } 

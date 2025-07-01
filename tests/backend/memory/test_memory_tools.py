@@ -114,7 +114,7 @@ class TestMemoryTools:
         
         # Check search tool
         search_tool = next(tool for tool in tools if tool.name == "search_memory")
-        assert "Search the knowledge graph" in search_tool.description
+        assert "Search your memory" in search_tool.description
         
         # Check add tool
         add_tool = next(tool for tool in tools if tool.name == "add_memory")
