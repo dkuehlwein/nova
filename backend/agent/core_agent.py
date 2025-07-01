@@ -173,7 +173,7 @@ class CoreAgent:
             # First, try USER_INPUT_RECEIVED tasks (oldest first)
             result = await session.execute(
                 select(Task)
-                .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
+                .options(selectinload(Task.comments))
                 .where(Task.status == TaskStatus.USER_INPUT_RECEIVED)
                 .order_by(Task.updated_at.asc())
                 .limit(1)
@@ -187,7 +187,7 @@ class CoreAgent:
             # Then, try NEW tasks (oldest first)
             result = await session.execute(
                 select(Task)
-                .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
+                .options(selectinload(Task.comments))
                 .where(Task.status == TaskStatus.NEW)
                 .order_by(Task.updated_at.asc())
                 .limit(1)
@@ -339,9 +339,34 @@ class CoreAgent:
         logger.debug(f"Moved task {task.id} ({task.title}) to IN_PROGRESS")
     
     async def _get_context(self, task: Task) -> Dict[str, Any]:
-        """Get context for the task (placeholder implementation)."""
-        # For now, return basic task context
-        # TODO: Implement OpenMemory integration later
+        """Get context for the task using memory search."""
+        from memory.memory_functions import search_memory, MemorySearchError
+        
+        # Build search query from task information
+        search_parts = [task.title]
+        if task.description:
+            search_parts.append(task.description)
+        
+        # Add recent comments to search context
+        if task.comments:
+            recent_comments = [comment.content for comment in task.comments[-3:]]  # Last 3 comments
+            search_parts.extend(recent_comments)
+        
+        search_query = " ".join(search_parts)
+        
+        # Search memory for relevant context
+        memory_context = []
+        try:
+            memory_result = await search_memory(search_query)
+            if memory_result["success"] and memory_result["results"]:
+                memory_context = [result["fact"] for result in memory_result["results"]]
+                logger.debug(f"Found {len(memory_context)} memory facts for task {task.id}")
+            else:
+                logger.debug(f"No memory context found for task {task.id}")
+        except MemorySearchError as e:
+            logger.warning(f"Memory search failed for task {task.id}: {e}")
+        except Exception as e:
+            logger.warning(f"Unexpected error during memory search for task {task.id}: {e}")
         
         context = {
             "task": {
@@ -352,22 +377,7 @@ class CoreAgent:
                 "created_at": task.created_at.isoformat(),
                 "tags": task.tags
             },
-            "persons": [
-                {
-                    "name": person.name,
-                    "email": person.email,
-                    "role": person.role
-                }
-                for person in task.persons
-            ],
-            "projects": [
-                {
-                    "name": project.name,
-                    "client": project.client,
-                    "summary": project.summary
-                }
-                for project in task.projects
-            ],
+            "memory_context": memory_context,
             "comments": [
                 {
                     "content": comment.content,
@@ -388,17 +398,10 @@ class CoreAgent:
         # Build context string
         context_str = ""
         
-        if context["persons"]:
-            context_str += "\n**People involved:**\n"
-            for person in context["persons"]:
-                context_str += f"- {person['name']} ({person['email']}) - {person.get('role', 'No role specified')}\n"
-        
-        if context["projects"]:
-            context_str += "\n**Projects:**\n"
-            for project in context["projects"]:
-                context_str += f"- {project['name']} for {project['client']}\n"
-                if project.get('summary'):
-                    context_str += f"  Summary: {project['summary']}\n"
+        if context["memory_context"]:
+            context_str += "\n**Relevant Context from Memory:**\n"
+            for fact in context["memory_context"]:
+                context_str += f"- {fact}\n"
         
         if context["comments"]:
             context_str += "\n**Previous comments:**\n"
@@ -406,8 +409,12 @@ class CoreAgent:
                 context_str += f"- {comment['author']} ({comment['created_at']}): {comment['content']}\n"
         
         # Format data for the templates
-        assigned_people = ", ".join([p['name'] for p in context["persons"]]) if context["persons"] else "None"
-        projects = ", ".join([p['name'] for p in context["projects"]]) if context["projects"] else "None"
+        memory_context_str = ""
+        if context["memory_context"]:
+            memory_context_str = "\n".join([f"- {fact}" for fact in context["memory_context"]])
+        else:
+            memory_context_str = "No relevant memory found"
+        
         recent_comments = context_str if context_str else "No recent activity"
         
         # Create the task context section
@@ -417,8 +424,7 @@ class CoreAgent:
             priority="Not set",  # Priority field doesn't exist in Task model
             created_at=task.created_at.strftime('%Y-%m-%d %H:%M'),
             updated_at=task.updated_at.strftime('%Y-%m-%d %H:%M'),
-            assigned_people=assigned_people,
-            projects=projects,
+            memory_context=memory_context_str,
             context=context_str if context_str else "No additional context",
             recent_comments=recent_comments
         )
@@ -552,7 +558,7 @@ class CoreAgent:
         async with db_manager.get_session() as session:
             result = await session.execute(
                 select(Task)
-                .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
+                .options(selectinload(Task.comments))
                 .where(Task.id == task_uuid)
             )
             task = result.scalar_one_or_none()

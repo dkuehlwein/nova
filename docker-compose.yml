@@ -69,10 +69,10 @@ services:
       timeout: 10s
       retries: 3
 
-  # Gmail MCP Server
-  gmail-mcp:
+  # Google-workspace MCP Server
+  google-workspace:
     build:
-      context: ./mcp_servers/gmail
+      context: ./mcp_servers/google-workspace
       dockerfile: Dockerfile
     ports:
       - "8002:8000"
@@ -80,8 +80,8 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
     volumes:
-      - ./mcp_servers/gmail/token.json:/app/token.json
-      - ./mcp_servers/gmail/credentials.json:/app/credentials.json:ro
+      - ./mcp_servers/google-workspace/token.json:/app/token.json
+      - ./mcp_servers/google-workspace/credentials.json:/app/credentials.json:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -95,4 +95,4 @@ volumes:
 
 networks:
   default:
-    name: mcp-network 
+    name: nova-network 

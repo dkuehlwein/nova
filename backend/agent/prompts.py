@@ -20,8 +20,8 @@ TASK_CONTEXT_TEMPLATE = """**Task Context:**
 **Created:** {created_at}
 **Updated:** {updated_at}
 
-**Assigned People:** {assigned_people}
-**Projects:** {projects}
+**Memory Context:**
+{memory_context}
 
 **Additional Context:**
 {context}

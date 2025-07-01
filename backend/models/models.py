@@ -97,14 +97,12 @@ class Chat(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
+    # Optional project name for memory-based lookup
+    project_name: Mapped[Optional[str]] = mapped_column(String(255))
+    
     # Relationships
     messages: Mapped[List["ChatMessage"]] = relationship("ChatMessage", back_populates="chat", cascade="all, delete-orphan")
-    # persons: removed - use memory system
     tasks: Mapped[List["Task"]] = relationship("Task", back_populates="chat")
-    
-    # Optional project relationship (should be one, but may be multiple)
-    project_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey('projects.id'))
-    project: Mapped[Optional["Project"]] = relationship("Project", back_populates="chats")
 
 
 class ChatMessage(Base):

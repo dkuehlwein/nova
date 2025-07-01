@@ -321,37 +321,31 @@ def get_task_tools() -> List[StructuredTool]:
         StructuredTool.from_function(
             func=create_task_tool,
             name="create_task",
-            description="Create a new task with optional person emails and project names",
             coroutine=create_task_tool
         ),
         StructuredTool.from_function(
             func=update_task_tool,
             name="update_task", 
-            description="Update an existing task (status, description, person emails, project names, etc.)",
             coroutine=update_task_tool
         ),
         StructuredTool.from_function(
             func=get_tasks_tool,
             name="get_tasks",
-            description="Get tasks with optional filtering by status, person email, or project name",
             coroutine=get_tasks_tool
         ),
         StructuredTool.from_function(
             func=get_task_by_id_tool,
             name="get_task_by_id",
-            description="Get detailed information about a specific task by ID",
             coroutine=get_task_by_id_tool
         ),
         StructuredTool.from_function(
             func=add_task_comment_tool,
             name="add_task_comment",
-            description="Add a comment to a task and optionally update its status",
             coroutine=add_task_comment_tool
         ),
         StructuredTool.from_function(
             func=get_pending_decisions_tool,
             name="get_pending_decisions",
-            description="Get all tasks that need user review/decisions",
             coroutine=get_pending_decisions_tool
         ),
     ] 

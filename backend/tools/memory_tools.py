@@ -64,12 +64,12 @@ def get_memory_tools() -> List[StructuredTool]:
     return [
         StructuredTool.from_function(
             func=search_memory_tool,
-            name="search_memory"
-            # Note: Description automatically comes from function docstring!
+            name="search_memory",
+            coroutine=search_memory_tool
         ),
         StructuredTool.from_function(
             func=add_memory_tool,
-            name="add_memory"
-            # Note: Description automatically comes from function docstring!
+            name="add_memory",
+            coroutine=add_memory_tool
         )
     ] 

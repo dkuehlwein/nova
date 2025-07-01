@@ -118,7 +118,7 @@ class TestMemoryTools:
         
         # Check add tool
         add_tool = next(tool for tool in tools if tool.name == "add_memory")
-        assert "Store important information" in add_tool.description
+        assert "store important facts" in add_tool.description
 
 
 if __name__ == "__main__":

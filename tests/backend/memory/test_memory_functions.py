@@ -31,12 +31,12 @@ class TestSearchMemory:
         with patch('memory.memory_functions.graphiti_manager') as mock_manager, \
              patch('memory.memory_functions.settings') as mock_settings:
             
-            mock_settings.memory_search_limit = 10
-            mock_settings.memory_group_id = "test_group"
+            mock_settings.MEMORY_SEARCH_LIMIT = 10
+            mock_settings.MEMORY_GROUP_ID = "test_group"
             
             mock_client = AsyncMock()
             mock_client.search.return_value = [mock_edge_result]
-            mock_manager.get_client.return_value = mock_client
+            mock_manager.get_client = AsyncMock(return_value=mock_client)
             
             from memory.memory_functions import search_memory
             
@@ -98,11 +98,11 @@ class TestAddMemory:
              patch('memory.memory_functions.settings') as mock_settings, \
              patch('memory.memory_functions.NOVA_ENTITY_TYPES') as mock_types:
             
-            mock_settings.memory_group_id = "test_group"
+            mock_settings.MEMORY_GROUP_ID = "test_group"
             
             mock_client = AsyncMock()
             mock_client.add_episode.return_value = mock_add_result
-            mock_manager.get_client.return_value = mock_client
+            mock_manager.get_client = AsyncMock(return_value=mock_client)
             
             from memory.memory_functions import add_memory
             
