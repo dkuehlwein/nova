@@ -21,8 +21,8 @@ class TaskCreate(BaseModel):
     status: TaskStatus = Field(TaskStatus.NEW, description="Initial task status")
     due_date: Optional[datetime] = Field(None, description="Task due date")
     tags: List[str] = Field(default_factory=list, description="Task tags")
-    person_ids: List[UUID] = Field(default_factory=list, description="Assigned person IDs")
-    project_ids: List[UUID] = Field(default_factory=list, description="Associated project IDs")
+    person_emails: List[str] = Field(default_factory=list, description="Assigned person email addresses")
+    project_names: List[str] = Field(default_factory=list, description="Associated project names")
 
 
 class TaskUpdate(BaseModel):
@@ -33,6 +33,8 @@ class TaskUpdate(BaseModel):
     summary: Optional[str] = Field(None, description="Task summary")
     due_date: Optional[datetime] = Field(None, description="Updated due date")
     tags: Optional[List[str]] = Field(None, description="Updated tags")
+    person_emails: Optional[List[str]] = Field(None, description="Updated person email addresses")
+    project_names: Optional[List[str]] = Field(None, description="Updated project names")
     completed_at: Optional[datetime] = Field(None, description="Task completion timestamp")
 
 

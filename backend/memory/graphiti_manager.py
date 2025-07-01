@@ -53,7 +53,7 @@ def create_graphiti_embedder() -> GeminiEmbedder:
         raise ValueError("GOOGLE_API_KEY environment variable is required")
     
     config = GeminiEmbedderConfig(
-        model="models/text-embedding-004",  # Google's latest embedding model
+        embedding_model="models/text-embedding-004",  # Google's latest embedding model
         api_key=api_key
     )
     return GeminiEmbedder(config=config)

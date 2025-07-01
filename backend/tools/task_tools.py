@@ -1,7 +1,8 @@
 """
 Task management LangChain tools.
 
-Refactored to use API endpoint functions to avoid code duplication.
+Updated to use memory-based person/project references instead of database foreign keys.
+Tasks store email/name strings and use memory for context lookup.
 """
 
 import json
@@ -14,12 +15,31 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from database.database import db_manager
-from models.models import Task, TaskComment, Person, Project
+from models.models import Task, TaskComment
 from models.models import TaskStatus
 from utils.redis_manager import publish
 from models.events import create_task_updated_event
-from .helpers import find_person_by_email, find_project_by_name, format_task_for_agent
 from api.api_endpoints import create_task as api_create_task, update_task as api_update_task, TaskCreate, TaskUpdate
+
+
+def format_task_for_agent(task: Task, comments_count: int = 0) -> dict:
+    """Format task for agent consumption with person emails and project names."""
+    return {
+        "id": str(task.id),
+        "title": task.title,
+        "description": task.description,
+        "summary": task.summary,
+        "status": task.status.value,
+        "created_at": task.created_at.isoformat(),
+        "updated_at": task.updated_at.isoformat(),
+        "due_date": task.due_date.isoformat() if task.due_date else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        "tags": task.tags,
+        "person_emails": task.person_emails or [],  # List of email strings
+        "project_names": task.project_names or [],  # List of project name strings
+        "comments_count": comments_count,
+        "task_metadata": task.task_metadata
+    }
 
 
 async def create_task_tool(
@@ -30,7 +50,7 @@ async def create_task_tool(
     person_emails: List[str] = None,
     project_names: List[str] = None
 ) -> str:
-    """Create a new task with optional relationships."""
+    """Create a new task with optional person/project references."""
     try:
         # Parse due date
         due_date_obj = None
@@ -40,42 +60,22 @@ async def create_task_tool(
             except ValueError:
                 pass
         
-        # Get person and project IDs (keep this logic since it's specific to email/name lookup)
-        person_ids = []
-        project_ids = []
-        
-        if person_emails:
-            async with db_manager.get_session() as session:
-                for email in person_emails:
-                    person = await find_person_by_email(session, email)
-                    if person:
-                        person_ids.append(person.id)
-        
-        if project_names:
-            async with db_manager.get_session() as session:
-                for name in project_names:
-                    project = await find_project_by_name(session, name)
-                    if project:
-                        project_ids.append(project.id)
-        
-        # Use the API endpoint function
+        # Use the API endpoint function with string-based relationships
         task_data = TaskCreate(
             title=title,
             description=description,
             due_date=due_date_obj,
             tags=tags or [],
-            person_ids=person_ids,
-            project_ids=project_ids
+            person_emails=person_emails or [],
+            project_names=project_names or []
         )
         
         result = await api_create_task(task_data)
         
-        # Fetch the actual Task object to use format_task_for_agent
+        # Fetch the actual Task object for formatting
         async with db_manager.get_session() as session:
             task_result = await session.execute(
-                select(Task)
-                .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
-                .where(Task.id == result.id)
+                select(Task).where(Task.id == result.id)
             )
             task = task_result.scalar_one()
             
@@ -84,7 +84,7 @@ async def create_task_tool(
                 select(func.count(TaskComment.id)).where(TaskComment.task_id == task.id)
             )
             
-            formatted_task = await format_task_for_agent(task, comments_count or 0)
+            formatted_task = format_task_for_agent(task, comments_count or 0)
         
         return f"Task created successfully: {json.dumps(formatted_task, indent=2)}"
         
@@ -99,7 +99,9 @@ async def update_task_tool(
     summary: str = None,
     status: str = None,
     due_date: str = None,
-    tags: List[str] = None
+    tags: List[str] = None,
+    person_emails: List[str] = None,
+    project_names: List[str] = None
 ) -> str:
     """Update an existing task."""
     try:
@@ -119,6 +121,10 @@ async def update_task_tool(
             update_data["summary"] = summary
         if tags is not None:
             update_data["tags"] = tags
+        if person_emails is not None:
+            update_data["person_emails"] = person_emails
+        if project_names is not None:
+            update_data["project_names"] = project_names
             
         # Handle status conversion
         if status:
@@ -159,12 +165,10 @@ async def update_task_tool(
             # Don't fail the operation if event publishing fails
             print(f"Warning: Failed to publish task update event: {e}")
         
-        # Fetch the actual Task object to use format_task_for_agent
+        # Fetch the actual Task object for formatting
         async with db_manager.get_session() as session:
             task_result = await session.execute(
-                select(Task)
-                .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
-                .where(Task.id == result.id)
+                select(Task).where(Task.id == result.id)
             )
             task = task_result.scalar_one()
             
@@ -173,7 +177,7 @@ async def update_task_tool(
                 select(func.count(TaskComment.id)).where(TaskComment.task_id == task.id)
             )
             
-            formatted_task = await format_task_for_agent(task, comments_count or 0)
+            formatted_task = format_task_for_agent(task, comments_count or 0)
         
         return f"Task updated successfully: {json.dumps(formatted_task, indent=2)}"
         
@@ -189,11 +193,7 @@ async def get_tasks_tool(
 ) -> str:
     """Get tasks with optional filtering."""
     async with db_manager.get_session() as session:
-        query = select(Task).options(
-            selectinload(Task.persons),
-            selectinload(Task.projects),
-            selectinload(Task.comments)
-        )
+        query = select(Task)
         
         # Apply filters
         if status:
@@ -203,21 +203,13 @@ async def get_tasks_tool(
             except ValueError:
                 return f"Error: Invalid status '{status}'. Valid options: {[s.value for s in TaskStatus]}"
         
-        # Filter by person email
+        # Filter by person email (using JSON contains)
         if person_email:
-            person = await find_person_by_email(session, person_email)
-            if person:
-                query = query.join(Task.persons).where(Person.id == person.id)
-            else:
-                return f"Warning: Person with email '{person_email}' not found. Showing all tasks."
+            query = query.where(Task.person_emails.contains([person_email]))
         
-        # Filter by project name
+        # Filter by project name (using JSON contains)
         if project_name:
-            project = await find_project_by_name(session, project_name)
-            if project:
-                query = query.join(Task.projects).where(Project.id == project.id)
-            else:
-                return f"Warning: Project with name '{project_name}' not found. Showing all tasks."
+            query = query.where(Task.project_names.contains([project_name]))
         
         query = query.order_by(Task.updated_at.desc()).limit(limit)
         
@@ -230,7 +222,7 @@ async def get_tasks_tool(
             comments_count = await session.scalar(
                 select(func.count(TaskComment.id)).where(TaskComment.task_id == task.id)
             )
-            formatted_tasks.append(await format_task_for_agent(task, comments_count or 0))
+            formatted_tasks.append(format_task_for_agent(task, comments_count or 0))
         
         return f"Found {len(formatted_tasks)} tasks: {json.dumps(formatted_tasks, indent=2)}"
 
@@ -245,7 +237,7 @@ async def get_task_by_id_tool(task_id: str) -> str:
         
         result = await session.execute(
             select(Task)
-            .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
+            .options(selectinload(Task.comments))
             .where(Task.id == uuid_task_id)
         )
         task = result.scalar_one_or_none()
@@ -263,7 +255,7 @@ async def get_task_by_id_tool(task_id: str) -> str:
                 "created_at": comment.created_at.isoformat()
             })
         
-        formatted_task = await format_task_for_agent(task, len(comments))
+        formatted_task = format_task_for_agent(task, len(comments))
         formatted_task["comments"] = comments
         
         return f"Task details: {json.dumps(formatted_task, indent=2)}"
@@ -306,7 +298,7 @@ async def get_pending_decisions_tool() -> str:
     async with db_manager.get_session() as session:
         result = await session.execute(
             select(Task)
-            .options(selectinload(Task.persons), selectinload(Task.projects), selectinload(Task.comments))
+            .options(selectinload(Task.comments))
             .where(Task.status == TaskStatus.NEEDS_REVIEW)
             .order_by(Task.updated_at.desc())
         )
@@ -318,7 +310,7 @@ async def get_pending_decisions_tool() -> str:
             comments_count = await session.scalar(
                 select(func.count(TaskComment.id)).where(TaskComment.task_id == task.id)
             )
-            formatted_tasks.append(await format_task_for_agent(task, comments_count or 0))
+            formatted_tasks.append(format_task_for_agent(task, comments_count or 0))
         
         return f"Found {len(formatted_tasks)} tasks needing decisions: {json.dumps(formatted_tasks, indent=2)}"
 
@@ -329,19 +321,19 @@ def get_task_tools() -> List[StructuredTool]:
         StructuredTool.from_function(
             func=create_task_tool,
             name="create_task",
-            description="Create a new task with optional person and project relationships",
+            description="Create a new task with optional person emails and project names",
             coroutine=create_task_tool
         ),
         StructuredTool.from_function(
             func=update_task_tool,
             name="update_task", 
-            description="Update an existing task (status, description, etc.)",
+            description="Update an existing task (status, description, person emails, project names, etc.)",
             coroutine=update_task_tool
         ),
         StructuredTool.from_function(
             func=get_tasks_tool,
             name="get_tasks",
-            description="Get tasks with optional filtering by status, person, or project",
+            description="Get tasks with optional filtering by status, person email, or project name",
             coroutine=get_tasks_tool
         ),
         StructuredTool.from_function(

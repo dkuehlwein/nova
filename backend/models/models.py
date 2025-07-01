@@ -34,21 +34,6 @@ class TaskStatus(str, Enum):
     FAILED = "failed"
 
 
-# Association tables for many-to-many relationships
-task_person_association = Table(
-    'task_person',
-    Base.metadata,
-    Column('task_id', PGUUID(as_uuid=True), ForeignKey('tasks.id')),
-    Column('person_id', PGUUID(as_uuid=True), ForeignKey('persons.id'))
-)
-
-task_project_association = Table(
-    'task_project',
-    Base.metadata,
-    Column('task_id', PGUUID(as_uuid=True), ForeignKey('tasks.id')),
-    Column('project_id', PGUUID(as_uuid=True), ForeignKey('projects.id'))
-)
-
 task_artifact_association = Table(
     'task_artifact',
     Base.metadata,
@@ -56,24 +41,9 @@ task_artifact_association = Table(
     Column('artifact_id', PGUUID(as_uuid=True), ForeignKey('artifacts.id'))
 )
 
-person_project_association = Table(
-    'person_project',
-    Base.metadata,
-    Column('person_id', PGUUID(as_uuid=True), ForeignKey('persons.id')),
-    Column('project_id', PGUUID(as_uuid=True), ForeignKey('projects.id')),
-    Column('role', String(100))  # Role in the project
-)
-
-chat_person_association = Table(
-    'chat_person',
-    Base.metadata,
-    Column('chat_id', PGUUID(as_uuid=True), ForeignKey('chats.id')),
-    Column('person_id', PGUUID(as_uuid=True), ForeignKey('persons.id'))
-)
-
 
 class Task(Base):
-    """Task model based on high-level outline."""
+    """Task model updated for memory-based person/project references."""
     __tablename__ = 'tasks'
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -88,14 +58,14 @@ class Task(Base):
     due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     
-    # JSON fields for flexibility
+    # JSON fields for flexibility and memory-based relationships
     tags: Mapped[List[str]] = mapped_column(JSONB, default=list)
     task_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    person_emails: Mapped[List[str]] = mapped_column(JSONB, default=list)  # Email strings for memory lookup
+    project_names: Mapped[List[str]] = mapped_column(JSONB, default=list)  # Project name strings for memory lookup
     
     # Relationships
     comments: Mapped[List["TaskComment"]] = relationship("TaskComment", back_populates="task", cascade="all, delete-orphan")
-    persons: Mapped[List["Person"]] = relationship("Person", secondary=task_person_association, back_populates="tasks")
-    projects: Mapped[List["Project"]] = relationship("Project", secondary=task_project_association, back_populates="tasks")
     artifacts: Mapped[List["Artifact"]] = relationship("Artifact", secondary=task_artifact_association, back_populates="tasks")
     
     # Optional chat relationship
@@ -116,47 +86,6 @@ class TaskComment(Base):
     task: Mapped["Task"] = relationship("Task", back_populates="comments")
 
 
-class Person(Base):
-    """Person model based on high-level outline."""
-    __tablename__ = 'persons'
-
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    role: Mapped[Optional[str]] = mapped_column(String(255))  # e.g., "Sales lead for public sector"
-    description: Mapped[Optional[str]] = mapped_column(Text)
-    current_focus: Mapped[Optional[str]] = mapped_column(Text)
-    
-    # Metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
-    # Relationships
-    tasks: Mapped[List["Task"]] = relationship("Task", secondary=task_person_association, back_populates="persons")
-    projects: Mapped[List["Project"]] = relationship("Project", secondary=person_project_association, back_populates="persons")
-    chats: Mapped[List["Chat"]] = relationship("Chat", secondary=chat_person_association, back_populates="persons")
-
-
-class Project(Base):
-    """Project model based on high-level outline."""
-    __tablename__ = 'projects'
-
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    client: Mapped[str] = mapped_column(String(255), nullable=False)
-    booking_code: Mapped[Optional[str]] = mapped_column(String(100))
-    summary: Mapped[Optional[str]] = mapped_column(Text)
-    
-    # Metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
-    # Relationships
-    tasks: Mapped[List["Task"]] = relationship("Task", secondary=task_project_association, back_populates="projects")
-    persons: Mapped[List["Person"]] = relationship("Person", secondary=person_project_association, back_populates="projects")
-    chats: Mapped[List["Chat"]] = relationship("Chat", back_populates="project")
-
-
 class Chat(Base):
     """Chat model based on high-level outline."""
     __tablename__ = 'chats'
@@ -170,7 +99,7 @@ class Chat(Base):
     
     # Relationships
     messages: Mapped[List["ChatMessage"]] = relationship("ChatMessage", back_populates="chat", cascade="all, delete-orphan")
-    persons: Mapped[List["Person"]] = relationship("Person", secondary=chat_person_association, back_populates="chats")
+    # persons: removed - use memory system
     tasks: Mapped[List["Task"]] = relationship("Task", back_populates="chat")
     
     # Optional project relationship (should be one, but may be multiple)
