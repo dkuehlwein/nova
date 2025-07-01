@@ -76,8 +76,8 @@ def mock_task():
     task.status = TaskStatus.NEW  # This already has .value = "new"
     task.created_at = datetime.utcnow()
     task.updated_at = datetime.utcnow()
-    task.persons = []
-    task.projects = []
+    task.person_emails = []
+    task.project_names = []
     task.comments = []
     task.tags = []  # Add tags attribute
     return task
@@ -390,7 +390,7 @@ class TestCoreAgentTaskProcessing:
              patch.object(CoreAgent, '_create_task_messages') as mock_create_msgs, \
              patch.object(CoreAgent, '_update_context') as mock_update_context:
             
-            mock_get_context.return_value = {"persons": [], "projects": [], "comments": []}
+            mock_get_context.return_value = {"memory_context": [], "comments": []}
             mock_create_msgs.return_value = [Mock(content="test message")]
             
             agent = CoreAgent(mock_pg_pool)
@@ -529,7 +529,7 @@ class TestCoreAgentEscalationFlow:
              patch.object(CoreAgent, '_create_task_messages') as mock_create_msgs, \
              patch.object(CoreAgent, '_handle_human_escalation') as mock_escalation:
             
-            mock_get_context.return_value = {"persons": [], "projects": [], "comments": []}
+            mock_get_context.return_value = {"memory_context": [], "comments": []}
             mock_create_msgs.return_value = [Mock(content="test message")]
             
             agent = CoreAgent(mock_pg_pool)

@@ -202,8 +202,8 @@ class TestTaskEndpoints:
             assert "id" in task
             assert "title" in task
             assert "status" in task
-            assert "persons" in task
-            assert "projects" in task
+            assert "persons" in task  # API still returns this key for backward compatibility
+            assert "projects" in task  # API still returns this key for backward compatibility
     
     @patch('backend.api.api_endpoints.db_manager.get_session')
     def test_get_tasks_by_status(self, mock_get_session, client, mock_session):
@@ -238,8 +238,8 @@ class TestTaskEndpoints:
             "description": "This is a test task",
             "status": "new",
             "tags": ["urgent", "backend"],
-            "person_ids": [],
-            "project_ids": []
+            "person_emails": [],
+            "project_names": []
         }
         
         # Create a proper mock task that simulates database flush behavior

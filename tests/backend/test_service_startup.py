@@ -140,7 +140,7 @@ class TestPromptIntegration:
             task.created_at = datetime.utcnow()
             task.updated_at = datetime.utcnow()
 
-            context = {"persons": [], "projects": [], "comments": []}
+            context = {"memory_context": [], "comments": []}
 
             # Test the private method that creates task messages with required pg_pool
             agent = CoreAgent(pg_pool=mock_pg_pool)

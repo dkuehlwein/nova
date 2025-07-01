@@ -140,11 +140,8 @@ async def auto_cleanup_core_agent_data():
         # Order matters for foreign key constraints - clean child tables first
         cleanup_queries = [
             "DELETE FROM task_comments WHERE author = 'core_agent' OR content LIKE '%Test%'",
-            "DELETE FROM task_person WHERE task_id IN (SELECT id FROM tasks WHERE title LIKE '%Test%')",
-            "DELETE FROM task_project WHERE task_id IN (SELECT id FROM tasks WHERE title LIKE '%Test%')",
             "DELETE FROM tasks WHERE title LIKE '%Test%'",
-            "DELETE FROM persons WHERE email LIKE '%test%'",
-            "DELETE FROM projects WHERE name LIKE '%Test%'",
+            # Note: persons/projects are now memory-based, no database tables to clean
             # Note: agent_status is preserved - needed for core agent to function
         ]
         
