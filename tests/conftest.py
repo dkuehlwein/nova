@@ -141,6 +141,7 @@ async def auto_cleanup_core_agent_data():
         cleanup_queries = [
             "DELETE FROM task_comments WHERE author = 'core_agent' OR content LIKE '%Test%'",
             "DELETE FROM tasks WHERE title LIKE '%Test%'",
+            "DELETE FROM processed_emails WHERE email_id LIKE '%test%'",  # Clean up test emails
             # Note: persons/projects are now memory-based, no database tables to clean
             # Note: agent_status is preserved - needed for core agent to function
         ]
