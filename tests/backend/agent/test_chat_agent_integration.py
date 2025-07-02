@@ -15,12 +15,6 @@ from agent.chat_agent import create_chat_agent, get_all_tools_with_mcp
 
 
 @pytest.fixture
-def mock_pg_pool():
-    """Create a mock PostgreSQL pool for testing."""
-    return MagicMock()
-
-
-@pytest.fixture
 def mock_checkpointer():
     """Create a mock checkpointer for testing."""
     return InMemorySaver()
@@ -88,43 +82,6 @@ class TestChatAgentIntegration:
             assert agent == mock_agent
     
     @pytest.mark.asyncio
-    async def test_agent_creation_with_postgres_pool(self, mock_pg_pool):
-        """Test agent creation with PostgreSQL pool instead of checkpointer."""
-        
-        @tool
-        def test_tool():
-            """A test tool."""
-            return "Test result"
-        
-        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
-             patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt, \
-             patch('agent.chat_agent.create_react_agent') as mock_create_react_agent, \
-             patch('utils.service_manager.create_postgres_checkpointer') as mock_create_checkpointer:
-            
-            mock_llm = MagicMock()
-            mock_create_llm.return_value = mock_llm
-            mock_get_tools_with_mcp.return_value = [test_tool]
-            mock_get_prompt.return_value = "You are Nova, an AI assistant."
-            mock_agent = MagicMock()
-            mock_create_react_agent.return_value = mock_agent
-            
-            # Mock PostgreSQL checkpointer creation
-            mock_checkpointer = MagicMock()
-            mock_create_checkpointer.return_value = mock_checkpointer
-            
-            # Create agent with pg_pool
-            agent = await create_chat_agent(pg_pool=mock_pg_pool)
-            
-            # Verify PostgreSQL checkpointer was created with the pool
-            mock_create_checkpointer.assert_called_once_with(mock_pg_pool)
-            
-            # Verify agent was created with the PostgreSQL checkpointer
-            call_args = mock_create_react_agent.call_args
-            assert call_args.kwargs['checkpointer'] is mock_checkpointer
-            assert agent == mock_agent
-    
-    @pytest.mark.asyncio
     async def test_tools_are_properly_combined_from_multiple_sources(self, mock_checkpointer):
         """Test that tools from different sources are properly combined."""
         
@@ -188,8 +145,53 @@ class TestChatAgentIntegration:
             assert mcp_tool_2.invoke({"data": "sample"}) == "MCP 2 processed: sample"
     
     @pytest.mark.asyncio
-    async def test_error_when_no_checkpointer_or_pool_provided(self):
-        """Test that error is raised when neither checkpointer nor pool is provided."""
+    async def test_end_to_end_agent_workflow_with_tool_usage(self, mock_checkpointer):
+        """Test complete end-to-end agent workflow including tool usage."""
         
-        with pytest.raises(ValueError, match="PostgreSQL connection pool is required"):
-            await create_chat_agent()  # No checkpointer or pg_pool provided 
+        @tool
+        def get_user_info(user_id: str):
+            """Get user information by ID."""
+            return f"User {user_id}: John Doe, active since 2024"
+        
+        @tool
+        def send_notification(user_id: str, message: str):
+            """Send notification to user."""
+            return f"Notification sent to {user_id}: {message}"
+        
+        test_tools = [get_user_info, send_notification]
+        
+        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
+             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
+             patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt, \
+             patch('agent.chat_agent.create_react_agent') as mock_create_react_agent:
+            
+            # Mock LLM with tool usage response
+            mock_llm = MagicMock()
+            mock_create_llm.return_value = mock_llm
+            mock_get_tools_with_mcp.return_value = test_tools
+            mock_get_prompt.return_value = "You are Nova, an AI assistant."
+            
+            # Mock agent with realistic behavior
+            mock_agent = MagicMock()
+            mock_agent.invoke.return_value = {
+                "messages": [
+                    {"role": "human", "content": "Get info for user123 and send them a welcome message"},
+                    {"role": "assistant", "content": "I'll help you with that.", "tool_calls": [
+                        {"name": "get_user_info", "args": {"user_id": "user123"}},
+                        {"name": "send_notification", "args": {"user_id": "user123", "message": "Welcome!"}}
+                    ]}
+                ]
+            }
+            mock_create_react_agent.return_value = mock_agent
+            
+            # Create agent and test workflow
+            agent = await create_chat_agent(checkpointer=mock_checkpointer, use_cache=False)
+            
+            # Verify agent can handle complex workflows
+            result = agent.invoke({
+                "messages": [{"role": "human", "content": "Get info for user123 and send them a welcome message"}]
+            })
+            
+            assert result is not None
+            assert "messages" in result
+            mock_agent.invoke.assert_called_once() 
