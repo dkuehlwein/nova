@@ -5,6 +5,7 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -18,8 +19,9 @@ COPY . .
 RUN uv venv
 RUN uv pip install -e .
 
-# Expose port
+# Expose ports
+EXPOSE 8000
 EXPOSE 8001
 
-# Run the server
-CMD ["uv", "run", "python", "main.py"] 
+# Default command (can be overridden in docker-compose)
+CMD ["uv", "run", "python", "start_website.py"] 
