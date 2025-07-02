@@ -76,6 +76,10 @@ async def test_complete_escalation_workflow():
     # Create ServiceManager and pool for this test
     service_manager, pg_pool = await create_test_service_manager()
     
+    # Initialize variables that need cleanup
+    core_agent = None
+    task_id = None
+    
     try:
         # Step 1: Create task that will trigger escalation with real LLM
         task_data = {
@@ -283,35 +287,37 @@ async def test_complete_escalation_workflow():
             })
     
     finally:
-        # Cleanup: shutdown agent
-        await core_agent.shutdown()
+        # Cleanup: shutdown agent if it was created
+        if core_agent is not None:
+            await core_agent.shutdown()
         
-        # Cleanup: remove test task and related data
-        async with db_manager.get_session() as session:
-            # Delete comments first (foreign key constraint)
-            await session.execute(
-                text("DELETE FROM task_comments WHERE task_id = :task_id"),
-                {"task_id": str(task_id)}
-            )
-            
-            # Delete task
-            await session.execute(
-                text("DELETE FROM tasks WHERE id = :task_id"), 
-                {"task_id": str(task_id)}
-            )
-            
-            # Clean up agent status
-            if core_agent.status_id:
+        # Cleanup: remove test task and related data if task was created
+        if task_id is not None:
+            async with db_manager.get_session() as session:
+                # Delete comments first (foreign key constraint)
                 await session.execute(
-                    text("DELETE FROM agent_status WHERE id = :status_id"),
-                    {"status_id": str(core_agent.status_id)}
+                    text("DELETE FROM task_comments WHERE task_id = :task_id"),
+                    {"task_id": str(task_id)}
                 )
-            
-            await session.commit()
-            
-            logger.info("Test cleanup completed", extra={
-                "data": {"task_id": str(task_id)}
-            })
+                
+                # Delete task
+                await session.execute(
+                    text("DELETE FROM tasks WHERE id = :task_id"), 
+                    {"task_id": str(task_id)}
+                )
+                
+                # Clean up agent status
+                if core_agent is not None and core_agent.status_id:
+                    await session.execute(
+                        text("DELETE FROM agent_status WHERE id = :status_id"),
+                        {"status_id": str(core_agent.status_id)}
+                    )
+                
+                await session.commit()
+                
+                logger.info("Test cleanup completed", extra={
+                    "data": {"task_id": str(task_id)}
+                })
         
         # Clean up ServiceManager and its pool
         await service_manager.close_pg_pool()
@@ -332,6 +338,10 @@ async def test_escalation_flow_monitoring():
     
     # Create ServiceManager and pool for this test
     service_manager, pg_pool = await create_test_service_manager()
+    
+    # Initialize variables that need cleanup
+    core_agent = None
+    task_id = None
     
     # Create a simple task
     task_data = {
@@ -399,23 +409,25 @@ async def test_escalation_flow_monitoring():
     
     finally:
         # Cleanup
-        await core_agent.shutdown()
+        if core_agent is not None:
+            await core_agent.shutdown()
         
-        async with db_manager.get_session() as session:
-            await session.execute(
-                text("DELETE FROM task_comments WHERE task_id = :task_id"),
-                {"task_id": str(task_id)}
-            )
-            await session.execute(
-                text("DELETE FROM tasks WHERE id = :task_id"),
-                {"task_id": str(task_id)}
-            )
-            if core_agent.status_id:
+        if task_id is not None:
+            async with db_manager.get_session() as session:
                 await session.execute(
-                    text("DELETE FROM agent_status WHERE id = :status_id"), 
-                    {"status_id": str(core_agent.status_id)}
+                    text("DELETE FROM task_comments WHERE task_id = :task_id"),
+                    {"task_id": str(task_id)}
                 )
-            await session.commit()
+                await session.execute(
+                    text("DELETE FROM tasks WHERE id = :task_id"),
+                    {"task_id": str(task_id)}
+                )
+                if core_agent is not None and core_agent.status_id:
+                    await session.execute(
+                        text("DELETE FROM agent_status WHERE id = :status_id"), 
+                        {"status_id": str(core_agent.status_id)}
+                    )
+                await session.commit()
         
         # Clean up ServiceManager and its pool
         await service_manager.close_pg_pool()
@@ -436,6 +448,10 @@ async def test_multiple_escalation_cycles():
     
     # Create ServiceManager and pool for this test
     service_manager, pg_pool = await create_test_service_manager()
+    
+    # Initialize variables that need cleanup
+    core_agent = None
+    task_id = None
     
     task_data = {
         "title": "Multi-Round Task",
@@ -523,23 +539,25 @@ async def test_multiple_escalation_cycles():
     
     finally:
         # Cleanup
-        await core_agent.shutdown()
+        if core_agent is not None:
+            await core_agent.shutdown()
         
-        async with db_manager.get_session() as session:
-            await session.execute(
-                text("DELETE FROM task_comments WHERE task_id = :task_id"),
-                {"task_id": str(task_id)}
-            )
-            await session.execute(
-                text("DELETE FROM tasks WHERE id = :task_id"),
-                {"task_id": str(task_id)}
-            )
-            if core_agent.status_id:
+        if task_id is not None:
+            async with db_manager.get_session() as session:
                 await session.execute(
-                    text("DELETE FROM agent_status WHERE id = :status_id"),
-                    {"status_id": str(core_agent.status_id)}
+                    text("DELETE FROM task_comments WHERE task_id = :task_id"),
+                    {"task_id": str(task_id)}
                 )
-            await session.commit()
+                await session.execute(
+                    text("DELETE FROM tasks WHERE id = :task_id"),
+                    {"task_id": str(task_id)}
+                )
+                if core_agent is not None and core_agent.status_id:
+                    await session.execute(
+                        text("DELETE FROM agent_status WHERE id = :status_id"),
+                        {"status_id": str(core_agent.status_id)}
+                    )
+                await session.commit()
         
         # Clean up ServiceManager and its pool
         await service_manager.close_pg_pool()
