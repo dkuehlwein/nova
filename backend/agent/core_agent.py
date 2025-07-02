@@ -395,29 +395,24 @@ class CoreAgent:
         from agent.prompts import TASK_CONTEXT_TEMPLATE, CURRENT_TASK_TEMPLATE
         from langchain_core.messages import HumanMessage, AIMessage
         
-        # Build context string
-        context_str = ""
-        
-        if context["memory_context"]:
-            context_str += "\n**Relevant Context from Memory:**\n"
-            for fact in context["memory_context"]:
-                context_str += f"- {fact}\n"
-        
-        if context["comments"]:
-            context_str += "\n**Previous comments:**\n"
-            for comment in context["comments"]:
-                context_str += f"- {comment['author']} ({comment['created_at']}): {comment['content']}\n"
-        
-        # Format data for the templates
+        # Format memory context (only for Memory Context section)
         memory_context_str = ""
         if context["memory_context"]:
             memory_context_str = "\n".join([f"- {fact}" for fact in context["memory_context"]])
         else:
             memory_context_str = "No relevant memory found"
         
-        recent_comments = context_str if context_str else "No recent activity"
+        # Format recent comments (actual task comments only)
+        recent_comments_str = ""
+        if context["comments"]:
+            recent_comments_str = "\n".join([
+                f"- {comment['author']} ({comment['created_at']}): {comment['content']}" 
+                for comment in context["comments"]
+            ])
+        else:
+            recent_comments_str = "No recent comments"
         
-        # Create the task context section
+        # Create the task context section with proper separation
         task_context = TASK_CONTEXT_TEMPLATE.format(
             task_id=str(task.id),
             status=task.status.value,
@@ -425,8 +420,7 @@ class CoreAgent:
             created_at=task.created_at.strftime('%Y-%m-%d %H:%M'),
             updated_at=task.updated_at.strftime('%Y-%m-%d %H:%M'),
             memory_context=memory_context_str,
-            context=context_str if context_str else "No additional context",
-            recent_comments=recent_comments
+            recent_comments=recent_comments_str  # Only actual task comments
         )
         
         # Create the current task section

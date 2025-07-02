@@ -23,9 +23,6 @@ TASK_CONTEXT_TEMPLATE = """**Task Context:**
 **Memory Context:**
 {memory_context}
 
-**Additional Context:**
-{context}
-
 **Recent Comments:**
 {recent_comments}"""
 
