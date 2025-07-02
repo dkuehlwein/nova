@@ -3,10 +3,10 @@
 Comprehensive Test Data Cleanup Script for Nova
 
 This script cleans up all test data from both:
-1. Nova's business tables (tasks, persons, projects, comments, etc.)
+1. Nova's business tables (tasks, comments, chats, etc.)
 2. LangGraph checkpointer tables (used by chat and core agent)
 
-It can be run manually or as part of test automation.
+Updated for Nova's current schema with memory-based person/project management.
 """
 
 import asyncio
@@ -34,13 +34,16 @@ class TestDataCleaner:
         print("🔍 Checking existing test data...")
         
         async with db_manager.get_session() as session:
-            # Check Nova business data
+            # Check Nova business data (updated for current schema)
             queries = [
                 ("Tasks with 'Test' in title", "SELECT COUNT(*) FROM tasks WHERE title LIKE '%Test%'"),
-                ("Persons with test emails", "SELECT COUNT(*) FROM persons WHERE email LIKE '%test%'"),
-                ("Projects with 'Test' in name", "SELECT COUNT(*) FROM projects WHERE name LIKE '%Test%'"),
+                ("All tasks", "SELECT COUNT(*) FROM tasks"),
                 ("Task comments from core_agent", "SELECT COUNT(*) FROM task_comments WHERE author = 'core_agent'"),
+                ("All task comments", "SELECT COUNT(*) FROM task_comments"),
                 ("Agent status records", "SELECT COUNT(*) FROM agent_status"),
+                ("Chat conversations", "SELECT COUNT(*) FROM chats"),
+                ("Chat messages", "SELECT COUNT(*) FROM chat_messages"),
+                ("Artifacts", "SELECT COUNT(*) FROM artifacts"),
             ]
             
             # Check LangGraph checkpointer data
@@ -71,7 +74,7 @@ class TestDataCleaner:
                     print(f"  {description}: Error - {e}")
     
     async def cleanup_nova_business_data(self) -> None:
-        """Clean up Nova's business data tables"""
+        """Clean up Nova's business data tables (updated for current schema)"""
         print("\n🧹 Cleaning Nova business data...")
         
         # Order matters for foreign key constraints - clean child tables first
@@ -79,14 +82,16 @@ class TestDataCleaner:
             # Comments first (references tasks)
             ("task_comments", "DELETE FROM task_comments WHERE author = 'core_agent' OR content LIKE '%Test%'"),
             
-            # Many-to-many relationships (correct table names)
-            ("task_person", "DELETE FROM task_person WHERE task_id IN (SELECT id FROM tasks WHERE title LIKE '%Test%')"),
-            ("task_project", "DELETE FROM task_project WHERE task_id IN (SELECT id FROM tasks WHERE title LIKE '%Test%')"),
+            # Chat messages (references chats)
+            ("chat_messages", "DELETE FROM chat_messages WHERE content LIKE '%Test%' OR content LIKE '%test%'"),
+            
+            # Task-artifact associations (many-to-many table)
+            ("task_artifact", "DELETE FROM task_artifact WHERE task_id IN (SELECT id FROM tasks WHERE title LIKE '%Test%')"),
             
             # Main business entities (after removing foreign key references)
-            ("tasks", "DELETE FROM tasks WHERE title LIKE '%Test%'"),
-            ("persons", "DELETE FROM persons WHERE email LIKE '%test%'"),
-            ("projects", "DELETE FROM projects WHERE name LIKE '%Test%'"),
+            ("tasks", "DELETE FROM tasks WHERE title LIKE '%Test%' OR title LIKE '%test%' OR description LIKE '%Test%' OR description LIKE '%test%'"),
+            ("chats", "DELETE FROM chats WHERE title LIKE '%Test%' OR title LIKE '%test%'"),
+            ("artifacts", "DELETE FROM artifacts WHERE title LIKE '%Test%' OR title LIKE '%test%' OR summary LIKE '%Test%' OR summary LIKE '%test%'"),
             
             # Note: agent_status is preserved - it's needed for core agent to function
         ]
@@ -196,6 +201,42 @@ class TestDataCleaner:
             
             await session.commit()
     
+    async def cleanup_all_tasks(self) -> None:
+        """Clean up ALL tasks (for complete reset)"""
+        print("\n🗑️ COMPLETE CLEANUP: Removing ALL tasks and related data...")
+        
+        # This is for when the kanban board is full and we want a complete reset
+        cleanup_queries = [
+            # Remove all child records first
+            ("all_task_comments", "DELETE FROM task_comments"),
+            ("all_chat_messages", "DELETE FROM chat_messages"),
+            ("all_task_artifacts", "DELETE FROM task_artifact"),
+            
+            # Remove main entities
+            ("all_tasks", "DELETE FROM tasks"),
+            ("all_chats", "DELETE FROM chats"),
+            ("all_artifacts", "DELETE FROM artifacts"),
+            
+            # Clean up checkpointer data
+            ("all_checkpoint_writes", "DELETE FROM checkpoint_writes"),
+            ("all_checkpoints", "DELETE FROM checkpoints"),
+            ("all_checkpoint_blobs", "DELETE FROM checkpoint_blobs"),
+        ]
+        
+        for table_name, query in cleanup_queries:
+            async with db_manager.get_session() as session:
+                try:
+                    result = await session.execute(text(query))
+                    rows_affected = result.rowcount
+                    await session.commit()
+                    print(f"  ✅ {table_name}: {rows_affected} rows deleted")
+                    self.cleaned_tables.append(table_name)
+                except Exception as e:
+                    await session.rollback()
+                    error_msg = f"❌ {table_name}: {e}"
+                    print(f"  {error_msg}")
+                    self.errors.append(error_msg)
+    
     async def show_remaining_data(self) -> None:
         """Show what data remains after cleanup"""
         print("\n📊 Remaining data after cleanup:")
@@ -218,7 +259,7 @@ class TestDataCleaner:
                 print(f"   • {error}")
         
         if not self.errors:
-            print("\n🎉 All test data cleaned successfully!")
+            print(f"\n🎉 Cleanup completed successfully!")
         else:
             print(f"\n⚠️  Cleanup completed with {len(self.errors)} warnings/errors")
 
@@ -230,43 +271,48 @@ async def main():
     
     cleaner = TestDataCleaner()
     
-    try:
-        # Step 1: Check existing data
-        await cleaner.check_existing_test_data()
-        
-        # Step 2: Clean Nova business data
+    # Check current data
+    await cleaner.check_existing_test_data()
+    
+    # Ask user what type of cleanup to perform
+    print("\n" + "="*60)
+    print("🔧 CLEANUP OPTIONS:")
+    print("1. Clean test data only (recommended)")
+    print("2. Clean ALL data (complete reset - WARNING: removes everything!)")
+    print("3. Clean core agent data only")
+    print("4. Just show current data (no cleanup)")
+    
+    choice = input("\nEnter your choice (1-4): ").strip()
+    
+    if choice == "1":
+        # Standard test cleanup
         await cleaner.cleanup_nova_business_data()
-        
-        # Step 3: Clean core agent specific data
         await cleaner.cleanup_core_agent_data()
-        
-        # Step 4: Clean LangGraph checkpointer data
         await cleaner.cleanup_langgraph_data()
-        
-        # Step 5: Clean specific core agent thread data (for any remaining patterns)
         await cleaner.cleanup_thread_specific_data()
-        
-        # Step 6: Show remaining data
+    elif choice == "2":
+        # Complete reset (dangerous!)
+        confirm = input("⚠️  This will delete ALL data! Type 'YES' to confirm: ").strip()
+        if confirm == "YES":
+            await cleaner.cleanup_all_tasks()
+        else:
+            print("❌ Cleanup cancelled.")
+            return
+    elif choice == "3":
+        # Core agent only
+        await cleaner.cleanup_core_agent_data()
+    elif choice == "4":
+        # Just show data
+        print("📊 Current data shown above.")
+    else:
+        print("❌ Invalid choice. Exiting.")
+        return
+    
+    # Show results
+    if choice in ["1", "2", "3"]:
         await cleaner.show_remaining_data()
-        
-        # Step 6: Print summary
         cleaner.print_summary()
-        
-    except Exception as e:
-        print(f"\n💥 Fatal error during cleanup: {e}")
-        return 1
-    
-    finally:
-        # Clean up database connections
-        try:
-            if hasattr(db_manager, 'engine') and db_manager.engine:
-                await db_manager.engine.dispose()
-        except Exception as e:
-            print(f"Warning: Error disposing database engine: {e}")
-    
-    return 0
 
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
-    sys.exit(exit_code) 
+    asyncio.run(main()) 
