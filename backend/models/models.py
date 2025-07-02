@@ -149,6 +149,28 @@ class Artifact(Base):
     tasks: Mapped[List["Task"]] = relationship("Task", secondary=task_artifact_association, back_populates="artifacts")
 
 
+class ProcessedEmail(Base):
+    """Model to track processed emails for deduplication."""
+    __tablename__ = 'processed_emails'
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    
+    # Email identifiers
+    email_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    thread_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    
+    # Email metadata for debugging/auditing
+    subject: Mapped[str] = mapped_column(String(1000), nullable=False)
+    sender: Mapped[str] = mapped_column(String(500), nullable=False)
+    
+    # Processing information
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    task_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey('tasks.id'))
+    
+    # Relationship to created task (optional, task might be deleted later)
+    task: Mapped[Optional["Task"]] = relationship("Task")
+
+
 class AgentStatusEnum(str, Enum):
     """Core agent status enumeration."""
     IDLE = "idle"

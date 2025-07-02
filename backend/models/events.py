@@ -4,10 +4,10 @@ Defines consistent event types and WebSocket message formats.
 """
 
 from datetime import datetime
-from typing import Any, Dict, Literal
+from typing import Any, Dict, Literal, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class NovaEvent(BaseModel):
@@ -172,4 +172,7 @@ def create_config_validated_event(
             errors=errors or []
         ).model_dump(),
         source=source
-    ) 
+    )
+
+
+ 

@@ -1,0 +1,198 @@
+"""
+Celery application configuration for Nova email processing with dynamic scheduling.
+"""
+import os
+from celery import Celery
+from celery.signals import worker_ready, worker_shutdown
+from config import settings
+
+# Create Celery instance
+celery_app = Celery(
+    "nova",
+    broker=settings.CELERY_BROKER_URL,
+    backend=settings.CELERY_RESULT_BACKEND,
+    include=["tasks.email_tasks"]
+)
+
+# Celery configuration
+celery_app.conf.update(
+    # Task routing
+    task_routes={
+        "tasks.email_tasks.fetch_emails": {"queue": "email"},
+        "tasks.email_tasks.process_single_email": {"queue": "email"},
+        "tasks.email_tasks.replay_failed_email_task": {"queue": "email"},
+    },
+    
+    # Task serialization
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="UTC",
+    enable_utc=True,
+    
+    # Task execution
+    task_always_eager=False,
+    task_eager_propagates=True,
+    
+    # Worker configuration
+    worker_prefetch_multiplier=1,
+    task_acks_late=True,
+    worker_max_tasks_per_child=1000,
+    
+    # Result backend
+    result_expires=3600,  # 1 hour
+    
+    # Beat schedule (will be configured dynamically)
+    beat_schedule={},
+    beat_schedule_filename="celerybeat-schedule",
+    
+    # Enhanced retry configuration
+    task_default_retry_delay=60,  # 1 minute
+    task_max_retries=3,
+    task_retry_backoff=True,
+    task_retry_backoff_max=300,  # 5 minutes
+    task_retry_jitter=True,
+    
+    # Dead letter queue configuration
+    task_reject_on_worker_lost=True,
+    task_acks_on_failure_or_timeout=True,
+    
+    # Logging
+    worker_log_format="[%(asctime)s: %(levelname)s/%(processName)s] %(message)s",
+    worker_task_log_format="[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s",
+    
+    # Monitoring
+    worker_send_task_events=True,
+    task_send_sent_event=True,
+)
+
+def update_beat_schedule():
+    """
+    Update Celery Beat schedule based on current configuration.
+    
+    This function can be called to dynamically update the email polling schedule
+    without restarting Celery Beat.
+    """
+    try:
+        # Use static settings for MVP
+        if settings.EMAIL_ENABLED:
+            schedule_interval = settings.EMAIL_POLL_INTERVAL  # Already in seconds
+            
+            celery_app.conf.beat_schedule = {
+                "fetch-emails": {
+                    "task": "tasks.email_tasks.fetch_emails",
+                    "schedule": schedule_interval,
+                    "options": {"queue": "email"},
+                },
+            }
+            
+            print(f"Updated email fetch schedule: every {schedule_interval} seconds")
+            
+        else:
+            # Disable email processing
+            celery_app.conf.beat_schedule = {}
+            print("Email processing disabled - cleared beat schedule")
+            
+    except Exception as e:
+        # Fallback to default schedule if config loading fails
+        print(f"Config loading failed, using default schedule: {e}")
+        celery_app.conf.beat_schedule = {
+            "fetch-emails": {
+                "task": "tasks.email_tasks.fetch_emails",
+                "schedule": 300.0,  # 5 minutes default
+                "options": {"queue": "email"},
+            },
+        }
+
+# Signal handlers for worker lifecycle
+@worker_ready.connect
+def worker_ready_handler(sender=None, **kwargs):
+    """Handle worker ready signal."""
+    print("Celery worker ready - updating beat schedule")
+    update_beat_schedule()
+
+@worker_shutdown.connect
+def worker_shutdown_handler(sender=None, **kwargs):
+    """Handle worker shutdown signal."""
+    print("Celery worker shutting down")
+
+# Custom task for dynamic schedule updates
+@celery_app.task(name="celery.update_beat_schedule")
+def update_beat_schedule_task():
+    """
+    Task to update beat schedule dynamically.
+    
+    This can be called from the API to update email polling settings
+    without restarting Celery Beat.
+    """
+    try:
+        update_beat_schedule()
+        
+        # Send signal to beat scheduler to reload
+        from celery import current_app
+        current_app.control.broadcast('pool_restart', arguments={'reload': True})
+        
+        return {"status": "success", "message": "Beat schedule updated"}
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# Task for dead letter queue monitoring
+@celery_app.task(name="celery.monitor_dead_letter_queue")
+def monitor_dead_letter_queue():
+    """
+    Monitor and report on dead letter queue status.
+    
+    This task can be scheduled to run periodically to check for
+    failed tasks that need attention.
+    """
+    try:
+        from utils.redis_manager import get_redis_client
+        import asyncio
+        
+        async def _check_failed_tasks():
+            # Get failed task count from Redis
+            redis_client = get_redis_client()
+            
+            # Check for failed tasks in the last 24 hours
+            failed_tasks_key = "nova:email:failed_tasks:24h"
+            failed_count = await redis_client.scard(failed_tasks_key)
+            
+            # Check pending tasks in email queue
+            inspect = celery_app.control.inspect()
+            active_tasks = inspect.active()
+            scheduled_tasks = inspect.scheduled()
+            
+            email_queue_count = 0
+            if active_tasks:
+                for worker, tasks in active_tasks.items():
+                    email_queue_count += len([t for t in tasks if 'email' in t.get('delivery_info', {}).get('routing_key', '')])
+            
+            return {
+                "failed_tasks_24h": failed_count,
+                "email_queue_pending": email_queue_count,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        
+        from datetime import datetime
+        result = asyncio.run(_check_failed_tasks())
+        
+        # Log monitoring results
+        from utils.logging import get_logger
+        logger = get_logger(__name__)
+        
+        logger.info(
+            "Dead letter queue monitoring check",
+            extra={"data": result}
+        )
+        
+        return result
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# Initialize beat schedule on import
+update_beat_schedule()
+
+if __name__ == "__main__":
+    celery_app.start() 

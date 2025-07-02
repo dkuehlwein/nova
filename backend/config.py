@@ -62,6 +62,14 @@ class Settings(BaseSettings):
     LOG_FILE_MAX_SIZE_MB: int = 10  # Maximum size in MB before rotation
     LOG_FILE_BACKUP_COUNT: int = 5  # Number of backup files to keep
 
+    # Email Integration Configuration
+    EMAIL_ENABLED: bool = False  # Master toggle for email processing
+    EMAIL_CREATE_TASKS: bool = True  # Whether to create tasks from emails
+    EMAIL_MAX_PER_FETCH: int = 10  # Maximum emails to process per batch
+    EMAIL_LABEL_FILTER: str = "INBOX"  # Email label to filter emails
+    EMAIL_POLL_INTERVAL: int = 300  # Email polling interval in seconds (5 minutes)
+    EMAIL_MCP_SERVER: str = "google-workspace"  # MCP server name for email operations
+
     @model_validator(mode="after")
     def compute_urls(self):
         """Compute DATABASE_URL if not explicitly provided"""
