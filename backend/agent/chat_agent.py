@@ -134,6 +134,45 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True):
     return agent
 
 
+async def get_memory_context_message(user_message: str) -> Optional[dict]:
+    """
+    Get memory context for new user-initiated conversations.
+    
+    Returns memory context as a dict with content and metadata for the frontend,
+    or None if no relevant memory found.
+    
+    Args:
+        user_message: The user's actual message to search for relevant context
+    """
+    try:
+        from memory.memory_functions import search_memory, MemorySearchError
+        
+        # Search for context relevant to the user's actual message
+        memory_result = await search_memory(user_message, limit=5)
+        
+        if memory_result["success"] and memory_result["results"]:
+            memory_facts = [result["fact"] for result in memory_result["results"]]
+            memory_context = "\n".join([f"- {fact}" for fact in memory_facts])
+            
+            # Format for frontend SystemMessage component
+            return {
+                "content": "Context from Memory",  # Main content (title)
+                "metadata": {
+                    "is_collapsible": True,
+                    "collapsible_content": memory_context,
+                    "type": "memory_context", 
+                    "title": "Context from Memory"
+                }
+            }
+        else:
+            logger.debug("No memory context found for new conversation")
+            return None
+            
+    except (MemorySearchError, Exception) as e:
+        logger.warning(f"Failed to search memory for new conversation: {e}")
+        return None
+
+
 def clear_chat_agent_cache():
     """Clear all component caches to force reload with updated tools/prompts."""
     global _cached_tools, _cached_llm, _cached_prompt

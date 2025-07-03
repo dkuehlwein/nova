@@ -352,6 +352,31 @@ async def stream_chat(chat_request: ChatRequest):
             logger.error(f"Failed to convert messages: {convert_error}")
             raise HTTPException(status_code=500, detail=f"Failed to convert messages: {str(convert_error)}")
         
+        # For new user-initiated conversations (exactly 1 message), add memory context
+        if len(chat_request.messages) == 1:
+            logger.info("New user-initiated conversation - checking for memory context")
+            try:
+                from agent.chat_agent import get_memory_context_message
+                
+                # Use the user's message for context search
+                user_message = chat_request.messages[0].content
+                memory_data = await get_memory_context_message(user_message)
+                
+                if memory_data:
+                    # Create AIMessage with proper metadata for frontend
+                    memory_message = AIMessage(
+                        content=memory_data["content"],
+                        additional_kwargs={"metadata": memory_data["metadata"]}
+                    )
+                    # Append the memory context message
+                    messages.append(memory_message)
+                    logger.info("Added memory context message to new conversation")
+                else:
+                    logger.debug("No memory context available for new conversation")
+                    
+            except Exception as memory_error:
+                logger.warning(f"Failed to add memory context: {memory_error}")
+        
         logger.debug(f"Starting stream for thread_id: {chat_request.thread_id} with {len(messages)} messages")
         
         async def generate_response():
@@ -461,8 +486,34 @@ async def chat(request: ChatRequest):
         # Create configuration
         config = _create_config(request.thread_id)
         
-        # Get chat agent instance (using cached agent)
-        chat_agent = await create_chat_agent()
+        # For new user-initiated conversations (exactly 1 message), add memory context
+        if len(request.messages) == 1:
+            logger.info("New user-initiated conversation - checking for memory context")
+            try:
+                from agent.chat_agent import get_memory_context_message
+                
+                # Use the user's message for context search
+                user_message = request.messages[0].content
+                memory_data = await get_memory_context_message(user_message)
+                
+                if memory_data:
+                    # Create AIMessage with proper metadata for frontend
+                    memory_message = AIMessage(
+                        content=memory_data["content"],
+                        additional_kwargs={"metadata": memory_data["metadata"]}
+                    )
+                    # Append the memory context message
+                    messages.append(memory_message)
+                    logger.info("Added memory context message to new non-streaming conversation")
+                else:
+                    logger.debug("No memory context available for new conversation")
+                    
+            except Exception as memory_error:
+                logger.warning(f"Failed to add memory context: {memory_error}")
+        
+        # Get standard chat agent instance
+        checkpointer = await get_checkpointer_from_service_manager()
+        chat_agent = await create_chat_agent(checkpointer=checkpointer)
         
         # Get response from LangGraph
         result = await chat_agent.ainvoke({"messages": messages}, config=config)

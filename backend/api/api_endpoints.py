@@ -403,6 +403,10 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
         await session.commit()
         await session.refresh(task)
         
+        # Update memory when task is completed
+        if task_data.status == TaskStatus.DONE and old_status != TaskStatus.DONE:
+            await add_task_completion_to_memory(session, task.id)
+        
         # Publish WebSocket event for real-time updates
         try:
             status_changed = task_data.status and old_status != task.status
@@ -431,6 +435,48 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
             projects=task.project_names or [],
             comments_count=len(task.comments)
         )
+
+
+async def add_task_completion_to_memory(session, task_id: UUID):
+    """Add completed task information to memory with full context."""
+    try:
+        from memory.memory_functions import add_memory
+        from sqlalchemy.orm import selectinload
+        
+        # Get task with all comments to include the complete work done
+        full_task_result = await session.execute(
+            select(Task)
+            .options(selectinload(Task.comments))
+            .where(Task.id == task_id)
+        )
+        full_task = full_task_result.scalar_one()
+        
+        # Create comprehensive memory entry for completed task
+        memory_text = f"Completed task: {full_task.title}"
+        
+        # Include full description
+        if full_task.description:
+            memory_text += f". Description: {full_task.description}"
+        
+        # Include ALL comments to capture the complete work and resolution
+        if full_task.comments:
+            # Include all comments (both user and core_agent) for complete context
+            all_comments = [
+                f"{comment.author}: {comment.content}"
+                for comment in full_task.comments
+            ]
+            if all_comments:
+                comments_text = ". Complete work log: " + " | ".join(all_comments)
+                memory_text += comments_text
+        
+        memory_result = await add_memory(memory_text)
+        if memory_result["success"]:
+            logging.info(f"Added comprehensive memory for completed task {task_id}: {full_task.title}")
+        else:
+            logging.warning(f"Failed to add memory for completed task {task_id}: {memory_result.get('message', 'Unknown error')}")
+            
+    except Exception as memory_error:
+        logging.warning(f"Failed to update memory for completed task {task_id}: {memory_error}")
 
 
 async def cleanup_task_chat_data(task_id: str):
