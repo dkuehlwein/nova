@@ -154,12 +154,14 @@ async def get_memory_context_message(user_message: str) -> Optional[dict]:
             memory_facts = [result["fact"] for result in memory_result["results"]]
             memory_context = "\n".join([f"- {fact}" for fact in memory_facts])
             
-            # Format for frontend SystemMessage component
+            logger.info(f"Found {len(memory_facts)} memory facts for query '{user_message}': {memory_facts[:2]}...")
+            
+            # Format for frontend SystemMessage component - put the actual memory content as main content
+            # The frontend will use this as collapsible content when metadata.is_collapsible is true
             return {
-                "content": "Context from Memory",  # Main content (title)
+                "content": memory_context,  # The actual memory facts
                 "metadata": {
                     "is_collapsible": True,
-                    "collapsible_content": memory_context,
                     "type": "memory_context", 
                     "title": "Context from Memory"
                 }

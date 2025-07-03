@@ -319,8 +319,6 @@ class CoreAgent:
             if messages:
                 ai_response = messages[-1].content if hasattr(messages[-1], 'content') else str(messages[-1])
                 logger.info(f"AI response for task {task.id} ({task.title}): {ai_response[:200]}...")
-                # Update context (placeholder for now)
-                await self._update_context(ai_response, task, context)
                 
                 logger.info(f"Successfully processed task {task.id} ({task.title})")
             else:
@@ -412,15 +410,15 @@ class CoreAgent:
         else:
             recent_comments_str = "No recent comments"
         
-        # Create the task context section with proper separation
-        task_context = TASK_CONTEXT_TEMPLATE.format(
+        # Create task context using template (clean content without header - metadata provides title)
+        task_context_content = TASK_CONTEXT_TEMPLATE.format(
             task_id=str(task.id),
             status=task.status.value,
             priority="Not set",  # Priority field doesn't exist in Task model
             created_at=task.created_at.strftime('%Y-%m-%d %H:%M'),
             updated_at=task.updated_at.strftime('%Y-%m-%d %H:%M'),
             memory_context=memory_context_str,
-            recent_comments=recent_comments_str  # Only actual task comments
+            recent_comments=recent_comments_str
         )
         
         # Create the current task section
@@ -429,17 +427,21 @@ class CoreAgent:
             description=task.description or "No description"
         )
         
-        # Return separate messages for proper conversation structure
+        # Return separate messages with proper metadata for task context
         return [
             HumanMessage(content=current_task),
-            AIMessage(content=task_context)            
+            AIMessage(
+                content=task_context_content,
+                additional_kwargs={
+                    "metadata": {
+                        "type": "task_context",
+                        "is_collapsible": True,
+                        "title": "Task Context"
+                    }
+                }
+            )
         ]
     
-    async def _update_context(self, ai_output: str, task: Task, context: Dict[str, Any]):
-        """Update context based on AI output (placeholder implementation)."""
-        # For now, do nothing
-        # TODO: Implement OpenMemory updates later
-        logger.debug(f"Context update placeholder for task {task.id} ({task.title})")
     
     async def _handle_human_escalation(self, task: Task, interrupts):
         """Handle human escalation interrupts."""

@@ -11,10 +11,8 @@ from utils.prompt_loader import load_nova_system_prompt
 # Now loaded from markdown file with hot-reload support
 NOVA_SYSTEM_PROMPT = load_nova_system_prompt()
 
-# Task Context Template - Metadata about the task (only for core agent)
-TASK_CONTEXT_TEMPLATE = """**Task Context:**
-
-**Task ID:** {task_id}
+# Task Context Template - Clean content without header (metadata provides title)
+TASK_CONTEXT_TEMPLATE = """**Task ID:** {task_id}
 **Status:** {status}
 **Priority:** {priority}
 **Created:** {created_at}

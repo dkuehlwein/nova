@@ -68,6 +68,19 @@ export function SystemMessage({
           icon: FileText,
           label: title || "Task Context"
         };
+      case "memory_context":
+        return {
+          bgColor: "bg-amber-50",
+          borderColor: "border-amber-200",
+          iconBg: "bg-amber-500",
+          textColor: "text-amber-800",
+          labelColor: "text-amber-900",
+          timestampColor: "text-amber-600",
+          buttonColor: "text-amber-600 hover:text-amber-800",
+          borderAccent: "border-amber-200",
+          icon: FileText,
+          label: title || "Context from Memory"
+        };
       default:
         return {
           bgColor: "bg-gray-50",
@@ -93,6 +106,8 @@ export function SystemMessage({
         return isExpanded ? 'Hide guidelines' : 'Show guidelines & capabilities';
       case "task_context":
         return isExpanded ? 'Hide context' : 'Show task details';
+      case "memory_context":
+        return isExpanded ? 'Hide context' : 'Show memory details';
       default:
         return isExpanded ? 'Hide details' : 'Show details';
     }

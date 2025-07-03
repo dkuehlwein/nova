@@ -208,19 +208,17 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                 
                 # Only include AI messages that have actual content
                 if ai_content and ai_content not in ['', 'null', 'None']:
-                    # Detect task context and current task messages for metadata
+                    # Check for explicit metadata (consistent approach for all context types)
                     metadata = None
-                    if thread_id.startswith("core_agent_task_"):
-                        if "**Task Context:**" in ai_content:
-                            metadata = {
-                                "type": "task_context",
-                                "is_collapsible": True,
-                                "title": "Task Context"
-                            }
-                        elif "**Current Task:**" in ai_content:
-                            metadata = {
-                                "type": "task_introduction"
-                            }
+                    if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs.get('metadata'):
+                        # Always preserve existing metadata (memory_context, task_context, etc.)
+                        metadata = msg.additional_kwargs['metadata']
+                        logger.debug(f"Found message with explicit metadata type: {metadata.get('type', 'unknown')}")
+                    elif thread_id.startswith("core_agent_task_") and "**Current Task:**" in ai_content:
+                        # Only detect current task introduction (no metadata)
+                        metadata = {
+                            "type": "task_introduction"
+                        }
                     
                     chat_messages.append(ChatMessageDetail(
                         id=f"{thread_id}-msg-{i}",
