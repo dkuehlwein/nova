@@ -319,8 +319,6 @@ class CoreAgent:
             if messages:
                 ai_response = messages[-1].content if hasattr(messages[-1], 'content') else str(messages[-1])
                 logger.info(f"AI response for task {task.id} ({task.title}): {ai_response[:200]}...")
-                
-                logger.info(f"Successfully processed task {task.id} ({task.title})")
             else:
                 raise Exception("No response from AI agent")
                 

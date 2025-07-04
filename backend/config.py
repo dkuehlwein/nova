@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Any, Dict, List
 from pydantic import SecretStr
 
-from utils.config_loader import load_mcp_yaml
+from utils.config_registry import get_config
 
 
 class Settings(BaseSettings):
@@ -85,7 +85,7 @@ class Settings(BaseSettings):
         servers = []
         
         try:
-            mcp_config = load_mcp_yaml()
+            mcp_config = get_config("mcp_servers")
             
             for server_name, server_config in mcp_config.items():
                 # Only include enabled servers

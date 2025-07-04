@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from mcp_client import mcp_manager
-from utils.config_loader import load_mcp_yaml, save_mcp_yaml
+from utils.config_registry import get_config, save_config
 from utils.logging import get_logger, log_config_change
 from utils.redis_manager import publish
 from models.events import create_mcp_toggled_event
@@ -34,7 +34,7 @@ async def get_mcp_servers():
     """
     try:
         # Load all servers from YAML (enabled and disabled)
-        mcp_config = load_mcp_yaml()
+        mcp_config = get_config("mcp_servers")
         
         if not mcp_config:
             return MCPServersResponse(
@@ -127,7 +127,7 @@ async def toggle_mcp_server(server_name: str, request: MCPToggleRequest):
     """
     try:
         # Load current configuration
-        mcp_config = load_mcp_yaml()
+        mcp_config = get_config("mcp_servers")
         
         if server_name not in mcp_config:
             raise HTTPException(
@@ -148,9 +148,7 @@ async def toggle_mcp_server(server_name: str, request: MCPToggleRequest):
         mcp_config[server_name]["enabled"] = request.enabled
         
         # Save configuration with validation
-        from utils.config_loader import get_mcp_config_loader
-        config_loader = get_mcp_config_loader()
-        config_loader.save_config(mcp_config)
+        save_config("mcp_servers", mcp_config)
         
         # Log the configuration change
         log_config_change(

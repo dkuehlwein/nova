@@ -1,14 +1,20 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { CheckCircle, AlertCircle, Clock, Brain, Mail, KanbanSquare, Server, Cpu, Database, FileText, ListChecks, ShieldCheck } from "lucide-react";
+import { CheckCircle, AlertCircle, Clock, Brain, Mail, KanbanSquare, Server, Cpu, Database, FileText, ListChecks, ShieldCheck, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+
 import { useMCPServers, useToggleMCPServer, useSystemHealth, useRestartService } from "@/hooks/useNovaQueries";
 import { useState, Suspense } from "react";
+import React from "react";
 import SystemPromptEditor from "@/components/SystemPromptEditor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { apiRequest } from "@/lib/api";
 
 // Loading component for tabs
 function TabContentLoader({ children }: { children: string }) {
@@ -303,6 +309,140 @@ function SystemStatusTab() {
   );
 }
 
+// User Settings tab content
+function UserSettingsTab() {
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const COMMON_TIMEZONES = [
+    'UTC',
+    'America/New_York',
+    'America/Los_Angeles',
+    'Europe/London',
+    'Europe/Paris',
+    'Asia/Tokyo',
+    'Asia/Shanghai',
+    'Australia/Sydney',
+  ];
+
+  // Load user profile on component mount
+  React.useEffect(() => {
+    fetchUserProfile();
+  }, []);
+
+  const fetchUserProfile = async () => {
+    try {
+      const data = await apiRequest('/api/config/user-profile');
+      setProfile(data);
+    } catch (error) {
+      console.error('Failed to load user profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!profile) return;
+    
+    setSaving(true);
+    try {
+      await apiRequest('/api/config/user-profile', {
+        method: 'PUT',
+        body: JSON.stringify(profile),
+      });
+      console.log('User profile updated successfully');
+    } catch (error) {
+      console.error('Failed to update user profile:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="space-y-2">
+            <div className="h-4 w-20 bg-muted rounded animate-pulse" />
+            <div className="h-10 w-full bg-muted rounded animate-pulse" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <User className="h-8 w-8 mx-auto mb-2" />
+        <p className="text-sm">Failed to load user profile</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="full_name">Full Name</Label>
+          <Input
+            id="full_name"
+            value={profile.full_name || ''}
+            onChange={(e) => setProfile({...profile, full_name: e.target.value})}
+            placeholder="Enter your full name"
+          />
+        </div>
+        
+        <div className="space-y-2">
+          <Label htmlFor="email">Email Address</Label>
+          <Input
+            id="email"
+            type="email"
+            value={profile.email || ''}
+            onChange={(e) => setProfile({...profile, email: e.target.value})}
+            placeholder="Enter your email address"
+          />
+        </div>
+        
+        <div className="space-y-2">
+          <Label htmlFor="timezone">Timezone</Label>
+          <select
+            id="timezone"
+            value={profile.timezone || 'UTC'}
+            onChange={(e) => setProfile({...profile, timezone: e.target.value})}
+            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {COMMON_TIMEZONES.map((tz) => (
+              <option key={tz} value={tz}>
+                {tz}
+              </option>
+            ))}
+          </select>
+        </div>
+        
+        <div className="space-y-2">
+          <Label htmlFor="notes">Additional Notes</Label>
+          <Textarea
+            id="notes"
+            value={profile.notes || ''}
+            onChange={(e) => setProfile({...profile, notes: e.target.value})}
+            placeholder="Add any additional context you'd like Nova to know about you..."
+            rows={6}
+          />
+          <p className="text-xs text-muted-foreground">
+            This information helps Nova provide more personalized responses.
+          </p>
+        </div>
+        
+        <Button onClick={handleSave} disabled={saving} className="w-full">
+          {saving ? 'Saving...' : 'Save Changes'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-background">
@@ -338,6 +478,13 @@ export default function SettingsPage() {
                 <ShieldCheck className="h-4 w-4 mr-2" /> 
                 System Status
               </TabsTrigger>
+              <TabsTrigger 
+                value="user-profile" 
+                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <User className="h-4 w-4 mr-2" /> 
+                User Profile
+              </TabsTrigger>
             </TabsList>
 
             {/* Main Content Area */}
@@ -360,6 +507,15 @@ export default function SettingsPage() {
                   <div className="bg-card border border-border rounded-lg p-6">
                     <h2 className="text-lg font-semibold text-foreground mb-4">System Status Overview</h2>
                     <SystemStatusTab />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="user-profile" className="mt-0">
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <h2 className="text-lg font-semibold text-foreground mb-4">User Profile</h2>
+                    <Suspense fallback={<TabContentLoader>User Profile</TabContentLoader>}>
+                      <UserSettingsTab />
+                    </Suspense>
                   </div>
                 </TabsContent>
               </div>
