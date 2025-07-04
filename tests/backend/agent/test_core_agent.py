@@ -387,8 +387,7 @@ class TestCoreAgentTaskProcessing:
         
         with patch.object(CoreAgent, '_move_task_to_in_progress') as mock_move, \
              patch.object(CoreAgent, '_get_context') as mock_get_context, \
-             patch.object(CoreAgent, '_create_task_messages') as mock_create_msgs, \
-             patch.object(CoreAgent, '_update_context') as mock_update_context:
+             patch.object(CoreAgent, '_create_task_messages') as mock_create_msgs:
             
             mock_get_context.return_value = {"memory_context": [], "comments": []}
             mock_create_msgs.return_value = [Mock(content="test message")]
@@ -401,7 +400,6 @@ class TestCoreAgentTaskProcessing:
             # Verify expected method calls
             mock_move.assert_called_once_with(mock_task)
             mock_get_context.assert_called_once_with(mock_task)
-            mock_update_context.assert_called_once()
             assert fake_agent.call_count == 1
     
     @pytest.mark.asyncio

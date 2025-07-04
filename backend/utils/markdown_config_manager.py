@@ -104,23 +104,12 @@ class MarkdownConfigManager(BaseConfigManager[str]):
             if len(data) > 50000:  # 50KB
                 warnings.append(f"Large configuration file ({len(data)} characters)")
             
-            # Check for potential template variables
-            template_vars = []
-            for line_num, line in enumerate(lines, 1):
-                if '$' in line:
-                    # Find template variables like $variable_name
-                    import re
-                    matches = re.findall(r'\$([a-zA-Z_][a-zA-Z0-9_]*)', line)
-                    for match in matches:
-                        template_vars.append(f"${match} (line {line_num})")
-            
-            if template_vars:
-                details['template_variables'] = template_vars
-                details['template_variable_count'] = len(template_vars)
-            
-            # Check for common markdown issues
-            if '{{' in data and '}}' in data:
-                warnings.append("Found old-style template syntax {{}} - consider using $ syntax")
+            # Check for template variables (simple count)
+            if '{' in data and '}' in data:
+                # Let Python's formatter handle validation - we just note that templates exist
+                details['has_template_variables'] = True
+            else:
+                details['has_template_variables'] = False
             
             # Check for extremely long lines
             long_lines = [i+1 for i, line in enumerate(lines) if len(line) > 200]
@@ -161,16 +150,13 @@ class MarkdownConfigManager(BaseConfigManager[str]):
     def get_processed_config(self, **template_vars) -> str:
         """
         Get configuration with template variables substituted.
-        Uses Python's string.Template for safe substitution.
+        Uses Python's f-string format for substitution.
         """
-        from string import Template
-        
         try:
             content = self.get_config()
             
             if template_vars:
-                template = Template(content)
-                content = template.safe_substitute(**template_vars)
+                content = content.format(**template_vars)
             
             return content
             
@@ -189,9 +175,19 @@ class MarkdownConfigManager(BaseConfigManager[str]):
             return self.get_config()
     
     def get_template_variables(self) -> list[str]:
-        """Get list of template variables found in the configuration."""
-        import re
+        """
+        Get list of template variables found in the configuration.
+        Uses Python's string.Formatter to parse variables properly.
+        """
+        from string import Formatter
         
-        content = self.get_config()
-        matches = re.findall(r'\$([a-zA-Z_][a-zA-Z0-9_]*)', content)
-        return list(set(matches))  # Remove duplicates 
+        try:
+            content = self.get_config()
+            formatter = Formatter()
+            # Parse returns (literal_text, field_name, format_spec, conversion)
+            field_names = [field_name for literal_text, field_name, format_spec, conversion 
+                          in formatter.parse(content) if field_name is not None]
+            return list(set(field_names))  # Remove duplicates
+        except Exception:
+            # If parsing fails, return empty list
+            return [] 
