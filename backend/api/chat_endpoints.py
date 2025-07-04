@@ -56,6 +56,30 @@ def _create_config(thread_id: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
+async def _is_first_turn(thread_id: str, checkpointer) -> bool:
+    """Check if this is the first turn in a conversation by querying the checkpointer.
+    
+    Args:
+        thread_id: The conversation thread ID
+        checkpointer: The checkpointer instance to query
+        
+    Returns:
+        True if this is the first turn (no previous messages), False otherwise
+    """
+    config = _create_config(thread_id)
+    try:
+        state = await checkpointer.aget(config)
+        if not state:
+            return True  # No checkpoint yet - first turn
+        
+        messages = state.get("channel_values", {}).get("messages", [])
+        return len(messages) == 0  # Checkpoint exists but no messages yet
+        
+    except Exception as e:
+        logger.warning(f"Could not inspect checkpoints for {thread_id}: {e}")
+        return False  # Be safe - treat as not-first to avoid memory search on errors
+
+
 async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> List[ChatMessageDetail]:
     """Get chat history from a specific checkpointer.
     
@@ -323,10 +347,12 @@ async def stream_chat(chat_request: ChatRequest):
         # Create config
         config = _create_config(chat_request.thread_id)
         
-        # Get memory context for new conversations (shared logic for both endpoints)
+        # Get memory context for first turn only (check actual conversation state)
         memory_context_message = None
-        if len(chat_request.messages) == 1:
-            logger.info("New user-initiated conversation - searching memory for context")
+        is_first_turn = await _is_first_turn(chat_request.thread_id, checkpointer)
+        
+        if is_first_turn:
+            logger.info("First turn in conversation - searching memory for context")
             try:
                 from memory.memory_functions import search_memory, MemorySearchError
                 
@@ -350,10 +376,12 @@ async def stream_chat(chat_request: ChatRequest):
                         }
                     }
                 else:
-                    logger.debug("No memory context found for new conversation")
+                    logger.debug("No memory context found for first turn")
                     
             except Exception as memory_error:
                 logger.warning(f"Failed to search memory for context: {memory_error}")
+        else:
+            logger.debug("Not first turn - skipping memory context search")
         
         # Convert Pydantic models to LangChain messages
         logger.debug("Converting messages...")
@@ -484,11 +512,9 @@ async def stream_chat(chat_request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"Chat streaming error: {str(e)}")
 
 
+""" DEBUG - This endpoint is NOT used
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """
-    Non-streaming chat endpoint for simple interactions.
-    """
     try:
         # Convert Pydantic models to LangChain messages
         messages = _convert_messages_to_langchain(request.messages)
@@ -563,7 +589,7 @@ async def chat(request: ChatRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
-
+"""
 
 @router.get("/health", response_model=HealthResponse)
 async def chat_health():
