@@ -7,7 +7,7 @@ A modern LangGraph chat agent that integrates with Nova's tools following curren
 from __future__ import annotations
 
 import logging
-from typing import Optional, List, Any
+from typing import List, Any
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import create_react_agent
@@ -132,47 +132,6 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True):
     
     logger.info(f"Created chat agent with {len(tools)} tools and {type(checkpointer).__name__} checkpointer")
     return agent
-
-
-async def get_memory_context_message(user_message: str) -> Optional[dict]:
-    """
-    Get memory context for new user-initiated conversations.
-    
-    Returns memory context as a dict with content and metadata for the frontend,
-    or None if no relevant memory found.
-    
-    Args:
-        user_message: The user's actual message to search for relevant context
-    """
-    try:
-        from memory.memory_functions import search_memory, MemorySearchError
-        
-        # Search for context relevant to the user's actual message
-        memory_result = await search_memory(user_message, limit=5)
-        
-        if memory_result["success"] and memory_result["results"]:
-            memory_facts = [result["fact"] for result in memory_result["results"]]
-            memory_context = "\n".join([f"- {fact}" for fact in memory_facts])
-            
-            logger.info(f"Found {len(memory_facts)} memory facts for query '{user_message}': {memory_facts[:2]}...")
-            
-            # Format for frontend SystemMessage component - put the actual memory content as main content
-            # The frontend will use this as collapsible content when metadata.is_collapsible is true
-            return {
-                "content": memory_context,  # The actual memory facts
-                "metadata": {
-                    "is_collapsible": True,
-                    "type": "memory_context", 
-                    "title": "Context from Memory"
-                }
-            }
-        else:
-            logger.debug("No memory context found for new conversation")
-            return None
-            
-    except (MemorySearchError, Exception) as e:
-        logger.warning(f"Failed to search memory for new conversation: {e}")
-        return None
 
 
 def clear_chat_agent_cache():

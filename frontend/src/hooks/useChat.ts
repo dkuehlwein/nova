@@ -40,6 +40,11 @@ interface StreamMessageData {
   role: string;
   content: string;
   timestamp?: string;
+  metadata?: {
+    type?: string;
+    is_collapsible?: boolean;
+    title?: string;
+  };
 }
 
 interface StreamToolData {
@@ -173,12 +178,7 @@ export function useChat() {
     try {
       if (useStreaming) {
         // Use streaming endpoint
-        const assistantMessageId = addMessage({
-          role: 'assistant',
-          content: '',
-          isStreaming: true,
-        });
-
+        let assistantMessageId: string | null = null;
         let assistantContent = '';
         let assistantTimestamp: string | null = null;
 
@@ -232,23 +232,45 @@ export function useChat() {
                     case 'message':
                       const messageData = event.data as StreamMessageData;
                       if (messageData.role === 'assistant') {
-                        // Store timestamp from the first message
-                        if (messageData.timestamp && !assistantTimestamp) {
-                          assistantTimestamp = messageData.timestamp;
-                        }
-                        
-                        // Accumulate content instead of overwriting
-                        if (assistantContent && messageData.content) {
-                          // Add separator between responses for readability
-                          assistantContent += '\n\n' + messageData.content;
+                        // Check if this is a memory context message
+                        if (messageData.metadata?.type === 'memory_context') {
+                          // Create a separate memory context message immediately
+                          addMessage({
+                            role: 'assistant',
+                            content: messageData.content,
+                            metadata: messageData.metadata,
+                          });
                         } else {
-                          assistantContent = messageData.content;
+                          // Handle regular assistant messages
+                          // Store timestamp from the first message
+                          if (messageData.timestamp && !assistantTimestamp) {
+                            assistantTimestamp = messageData.timestamp;
+                          }
+                          
+                          // Create assistant message on first content (after memory context)
+                          if (!assistantMessageId) {
+                            assistantMessageId = addMessage({
+                              role: 'assistant',
+                              content: '',
+                              isStreaming: true,
+                            });
+                          }
+                          
+                          // Accumulate content instead of overwriting
+                          if (assistantContent && messageData.content) {
+                            // Add separator between responses for readability
+                            assistantContent += '\n\n' + messageData.content;
+                          } else {
+                            assistantContent = messageData.content;
+                          }
+                          if (assistantMessageId) {
+                            updateMessage(assistantMessageId, {
+                              content: assistantContent,
+                              isStreaming: true,
+                              timestamp: assistantTimestamp || new Date().toISOString(),
+                            });
+                          }
                         }
-                        updateMessage(assistantMessageId, {
-                          content: assistantContent,
-                          isStreaming: true,
-                          timestamp: assistantTimestamp || new Date().toISOString(),
-                        });
                       }
                       break;
 
@@ -276,21 +298,25 @@ export function useChat() {
                       break;
 
                     case 'complete':
-                      updateMessage(assistantMessageId, {
-                        content: assistantContent,
-                        isStreaming: false,
-                        timestamp: assistantTimestamp || new Date().toISOString(),
-                      });
+                      if (assistantMessageId) {
+                        updateMessage(assistantMessageId, {
+                          content: assistantContent,
+                          isStreaming: false,
+                          timestamp: assistantTimestamp || new Date().toISOString(),
+                        });
+                      }
                       break;
 
                     case 'error':
                       const errorData = event.data as StreamErrorData;
                       setState(prev => ({ ...prev, error: errorData.error }));
-                      updateMessage(assistantMessageId, {
-                        content: assistantContent || 'Error occurred while processing your message.',
-                        isStreaming: false,
-                        timestamp: assistantTimestamp || new Date().toISOString(),
-                      });
+                      if (assistantMessageId) {
+                        updateMessage(assistantMessageId, {
+                          content: assistantContent || 'Error occurred while processing your message.',
+                          isStreaming: false,
+                          timestamp: assistantTimestamp || new Date().toISOString(),
+                        });
+                      }
                       break;
                   }
                 } catch (parseError) {

@@ -5,37 +5,25 @@ FastAPI endpoints for LangGraph agent compatible with agent-chat-ui patterns.
 """
 
 import json
-import logging
 import uuid
 from typing import Any, Dict, List, Optional
 from datetime import datetime
-from uuid import UUID
-import asyncio
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_core.runnables import RunnableConfig
-from langgraph.types import Command
 
-from agent.chat_agent import create_chat_agent, clear_chat_agent_cache
-import logging
+from langchain_core.messages import HumanMessage, AIMessage
 
+
+from agent.chat_agent import create_chat_agent
 from models.chat import (
     ChatMessage, ChatRequest, ChatResponse, HealthResponse, ChatSummary, 
-    ChatMessageDetail, TaskChatResponse, TaskChatMessageCreate
+    ChatMessageDetail, TaskChatResponse
 )
-from models.tasks import TaskResponse
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
-from database.database import db_manager
-
 router = APIRouter(prefix="/chat", tags=["chat"])
-
-# Global chat agent instance for streaming endpoints
-# _chat_agent = None  # REMOVED - now handled by create_chat_agent caching
 
 
 def _convert_messages_to_langchain(messages: List[ChatMessage]) -> List:
@@ -316,12 +304,9 @@ async def stream_chat(chat_request: ChatRequest):
     """Stream chat messages with the assistant."""
     try:
         logger.info(f"Streaming chat for thread_id: {chat_request.thread_id}")
-        logger.debug(f"Input messages count: {len(chat_request.messages)}")
         
         # Get the appropriate checkpointer
-        logger.debug("Getting checkpointer from ServiceManager...")
         checkpointer = await get_checkpointer_from_service_manager()
-        logger.debug(f"Checkpointer obtained: {type(checkpointer)}")
         
         # Get chat agent with specific checkpointer (for conversation state)
         # Note: When using custom checkpointer, we don't cache the agent since each conversation
@@ -330,50 +315,63 @@ async def stream_chat(chat_request: ChatRequest):
         try:
             from agent.chat_agent import create_chat_agent
             chat_agent = await create_chat_agent(checkpointer=checkpointer)
-            logger.info(f"Using checkpointer: {type(checkpointer)} (id: {id(checkpointer)})")
-            logger.info("Chat agent ready")
+            logger.info(f"Chat agent ready. Using checkpointer: {type(checkpointer)} (id: {id(checkpointer)})")
         except Exception as agent_error:
             logger.error(f"Failed to create chat agent: {agent_error}")
             raise HTTPException(status_code=500, detail=f"Failed to create chat agent: {str(agent_error)}")
         
         # Create config
-        logger.debug("Creating config...")
         config = _create_config(chat_request.thread_id)
-        logger.debug(f"Config created: {config}")
+        
+        # Get memory context for new conversations (shared logic for both endpoints)
+        memory_context_message = None
+        if len(chat_request.messages) == 1:
+            logger.info("New user-initiated conversation - searching memory for context")
+            try:
+                from memory.memory_functions import search_memory, MemorySearchError
+                
+                # Use the user's message for context search
+                user_message = chat_request.messages[0].content
+                memory_result = await search_memory(user_message, limit=5)
+                
+                if memory_result["success"] and memory_result["results"]:
+                    memory_facts = [result["fact"] for result in memory_result["results"]]
+                    memory_context = "\n".join([f"- {fact}" for fact in memory_facts])
+                    
+                    logger.info(f"Found {len(memory_facts)} memory facts for context")
+                    
+                    # Store context for streaming (will be yielded first)
+                    memory_context_message = {
+                        "content": memory_context,
+                        "metadata": {
+                            "is_collapsible": True,
+                            "type": "memory_context", 
+                            "title": "Context from Memory"
+                        }
+                    }
+                else:
+                    logger.debug("No memory context found for new conversation")
+                    
+            except Exception as memory_error:
+                logger.warning(f"Failed to search memory for context: {memory_error}")
         
         # Convert Pydantic models to LangChain messages
         logger.debug("Converting messages...")
         try:
             messages = _convert_messages_to_langchain(chat_request.messages)
+            
+            # Add memory context to LangChain messages if found
+            if memory_context_message:
+                memory_ai_message = AIMessage(
+                    content=memory_context_message["content"],
+                    additional_kwargs={"metadata": memory_context_message["metadata"]}
+                )
+                messages.append(memory_ai_message)
+            
             logger.debug(f"Converted {len(messages)} messages to LangChain format")
         except Exception as convert_error:
             logger.error(f"Failed to convert messages: {convert_error}")
             raise HTTPException(status_code=500, detail=f"Failed to convert messages: {str(convert_error)}")
-        
-        # For new user-initiated conversations (exactly 1 message), add memory context
-        if len(chat_request.messages) == 1:
-            logger.info("New user-initiated conversation - checking for memory context")
-            try:
-                from agent.chat_agent import get_memory_context_message
-                
-                # Use the user's message for context search
-                user_message = chat_request.messages[0].content
-                memory_data = await get_memory_context_message(user_message)
-                
-                if memory_data:
-                    # Create AIMessage with proper metadata for frontend
-                    memory_message = AIMessage(
-                        content=memory_data["content"],
-                        additional_kwargs={"metadata": memory_data["metadata"]}
-                    )
-                    # Append the memory context message
-                    messages.append(memory_message)
-                    logger.info("Added memory context message to new conversation")
-                else:
-                    logger.debug("No memory context available for new conversation")
-                    
-            except Exception as memory_error:
-                logger.warning(f"Failed to add memory context: {memory_error}")
         
         logger.debug(f"Starting stream for thread_id: {chat_request.thread_id} with {len(messages)} messages")
         
@@ -382,6 +380,20 @@ async def stream_chat(chat_request: ChatRequest):
             stream_count = 0
             
             try:
+                # Yield memory context first if available (immediate display)
+                if memory_context_message:
+                    timestamp = datetime.now().isoformat()
+                    memory_event = {
+                        "type": "message",
+                        "data": {
+                            "role": "assistant", 
+                            "content": memory_context_message["content"],
+                            "timestamp": timestamp,
+                            "metadata": memory_context_message["metadata"]
+                        }
+                    }
+                    yield f"data: {json.dumps(memory_event)}\n\n"
+                    logger.debug("Memory context yielded in streaming response")
                 async for chunk in chat_agent.astream(
                     {"messages": messages},
                     config=config,
@@ -484,30 +496,41 @@ async def chat(request: ChatRequest):
         # Create configuration
         config = _create_config(request.thread_id)
         
-        # For new user-initiated conversations (exactly 1 message), add memory context
+        # Get memory context for new conversations (shared logic for both endpoints)
+        memory_context_message = None
         if len(request.messages) == 1:
-            logger.info("New user-initiated conversation - checking for memory context")
+            logger.info("New user-initiated conversation - searching memory for context")
             try:
-                from agent.chat_agent import get_memory_context_message
+                from memory.memory_functions import search_memory, MemorySearchError
                 
                 # Use the user's message for context search
                 user_message = request.messages[0].content
-                memory_data = await get_memory_context_message(user_message)
+                memory_result = await search_memory(user_message, limit=5)
                 
-                if memory_data:
+                if memory_result["success"] and memory_result["results"]:
+                    memory_facts = [result["fact"] for result in memory_result["results"]]
+                    memory_context = "\n".join([f"- {fact}" for fact in memory_facts])
+                    
+                    logger.info(f"Found {len(memory_facts)} memory facts for context")
+                    
                     # Create AIMessage with proper metadata for frontend
-                    memory_message = AIMessage(
-                        content=memory_data["content"],
-                        additional_kwargs={"metadata": memory_data["metadata"]}
+                    memory_context_message = AIMessage(
+                        content=memory_context,
+                        additional_kwargs={"metadata": {
+                            "is_collapsible": True,
+                            "type": "memory_context", 
+                            "title": "Context from Memory"
+                        }}
                     )
-                    # Append the memory context message
-                    messages.append(memory_message)
-                    logger.info("Added memory context message to new non-streaming conversation")
                 else:
-                    logger.debug("No memory context available for new conversation")
+                    logger.debug("No memory context found for new conversation")
                     
             except Exception as memory_error:
-                logger.warning(f"Failed to add memory context: {memory_error}")
+                logger.warning(f"Failed to search memory for context: {memory_error}")
+        
+        # Add memory context to messages if found
+        if memory_context_message:
+            messages.append(memory_context_message)
         
         # Get standard chat agent instance
         checkpointer = await get_checkpointer_from_service_manager()

@@ -32,7 +32,7 @@ def create_llm(config: Optional[RunnableConfig] = None) -> ChatGoogleGenerativeA
     # Get configuration values with defaults
     configuration = config.get("configurable", {}) if config else {}
     model_name = configuration.get("model_name", settings.GOOGLE_MODEL_NAME or "gemini-2.5-flash-preview-04-17")
-    temperature = configuration.get("temperature", 0.7)
+    temperature = configuration.get("temperature", 0.1)
     
     return ChatGoogleGenerativeAI(
         model=model_name,
