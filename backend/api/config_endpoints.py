@@ -2,7 +2,7 @@
 Configuration Management API Endpoints
 
 Provides REST API for validating configurations and managing backups.
-Implements work package B9 from the settings realization roadmap.
+Implements unified configuration management system.
 """
 
 from typing import List, Dict, Any
@@ -10,11 +10,12 @@ from typing import List, Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from utils.config_loader import get_mcp_config_loader
+from utils.config_registry import config_registry
 from utils.logging import get_logger, log_config_change
 from utils.redis_manager import publish
 from models.config import ConfigValidationResult, ConfigBackupInfo
 from models.events import create_config_validated_event
+from models.user_profile import UserProfile, UserProfileUpdate
 
 logger = get_logger("config-api")
 router = APIRouter(prefix="/api/config", tags=["Configuration"])
@@ -32,8 +33,8 @@ async def validate_configuration(request: ConfigValidateRequest):
     and returns detailed feedback about any issues found.
     """
     try:
-        config_loader = get_mcp_config_loader()
-        validation_result = config_loader.validate_config(request.config)
+        config_manager = config_registry.get_manager("mcp_servers")
+        validation_result = config_manager.validate_config(request.config)
         
         # Publish validation event
         event = create_config_validated_event(
@@ -87,8 +88,8 @@ async def validate_current_configuration():
     detailed feedback about any issues found.
     """
     try:
-        config_loader = get_mcp_config_loader()
-        validation_result = config_loader.validate_config()
+        config_manager = config_registry.get_manager("mcp_servers")
+        validation_result = config_manager.validate_config()
         
         message = "Current configuration is valid" if validation_result.valid else "Current configuration has validation errors"
         if validation_result.warnings:
@@ -120,8 +121,8 @@ async def list_configuration_backups():
     sorted by timestamp (newest first).
     """
     try:
-        config_loader = get_mcp_config_loader()
-        backups = config_loader.list_backups()
+        config_manager = config_registry.get_manager("mcp_servers")
+        backups = config_manager.list_backups()
         
         logger.info(
             f"Listed configuration backups",
@@ -151,8 +152,8 @@ async def create_configuration_backup(description: str = "Manual backup"):
     configuration for later restoration.
     """
     try:
-        config_loader = get_mcp_config_loader()
-        backup_info = config_loader.create_backup(description)
+        config_manager = config_registry.get_manager("mcp_servers")
+        backup_info = config_manager.create_backup(description)
         
         # Log backup creation
         log_config_change(
@@ -189,53 +190,123 @@ async def restore_configuration_backup(backup_id: str):
     Creates an automatic backup of the current configuration before restoring.
     """
     try:
-        config_loader = get_mcp_config_loader()
+        config_manager = config_registry.get_manager("mcp_servers")
         
         # Attempt to restore
-        success = config_loader.restore_backup(backup_id)
+        success = config_manager.restore_backup(backup_id)
         
         if not success:
             raise HTTPException(
                 status_code=404,
-                detail=f"Backup '{backup_id}' not found or invalid"
+                detail=f"Backup {backup_id} not found"
             )
         
-        # Log restoration
+        # Log successful restore
         log_config_change(
             operation="config_backup_restored",
             config_type="mcp_servers",
             details={
                 "backup_id": backup_id,
-                "user_action": True
+                "restored_at": backup_id  # backup_id contains timestamp
             },
             logger=logger
         )
         
-        # Publish configuration change event
-        validation_result = config_loader.validate_config()
-        event = create_config_validated_event(
-            config_type="mcp_servers",
-            valid=validation_result.valid,
-            errors=validation_result.errors,
-            source="config-restore"
-        )
-        await publish(event)
-        
         return {
+            "message": f"Configuration restored from backup {backup_id}",
             "backup_id": backup_id,
-            "status": "success",
-            "message": f"Configuration restored from backup '{backup_id}'"
+            "status": "success"
         }
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(
-            f"Failed to restore configuration backup: {backup_id}",
+            "Failed to restore configuration backup",
             exc_info=True,
             extra={"data": {"error": str(e), "backup_id": backup_id}}
         )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to restore backup: {str(e)}"
+        )
+
+
+# User Profile Endpoints
+@router.get("/user-profile", response_model=UserProfile)
+async def get_user_profile():
+    """
+    Get the current user profile configuration.
+    
+    Returns the user's profile information including name, email, timezone, and notes.
+    """
+    try:
+        config_manager = config_registry.get_manager("user_profile")
+        profile = config_manager.get_config()
+        
+        logger.info("User profile retrieved successfully")
+        return profile
+        
+    except Exception as e:
+        logger.error(
+            "Failed to retrieve user profile",
+            exc_info=True,
+            extra={"data": {"error": str(e)}}
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve user profile: {str(e)}"
+        )
+
+
+@router.put("/user-profile", response_model=UserProfile)
+async def update_user_profile(update: UserProfileUpdate):
+    """
+    Update the user profile configuration.
+    
+    Updates the user's profile information and publishes a profile update event.
+    """
+    try:
+        config_manager = config_registry.get_manager("user_profile")
+        current_profile = config_manager.get_config()
+        
+        # Apply updates
+        updated_profile = current_profile.model_copy(update=update.model_dump(exclude_unset=True))
+        
+        # Save the updated profile
+        config_manager.save_config(updated_profile)
+        
+        # Publish standardized config updated event
+        event = create_config_validated_event(
+            config_type="user_profile",
+            valid=True,
+            errors=[],
+            source="config-api"
+        )
+        await publish(event)
+        
+        # Log profile update
+        log_config_change(
+            operation="user_profile_updated",
+            config_type="user_profile",
+            details={
+                "full_name": updated_profile.full_name,
+                "email": updated_profile.email,
+                "timezone": updated_profile.timezone,
+                "notes_length": len(updated_profile.notes or "")
+            },
+            logger=logger
+        )
+        
+        return updated_profile
+        
+    except Exception as e:
+        logger.error(
+            "Failed to update user profile",
+            exc_info=True,
+            extra={"data": {"error": str(e)}}
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update user profile: {str(e)}"
         ) 

@@ -113,8 +113,11 @@ async def lifespan(app: FastAPI):
     service_manager.logger.info("Starting Nova Backend Server...")
     
     try:
-        # Start prompt watching
-        await service_manager.start_prompt_watching()
+        # Initialize unified configuration system
+        from utils.config_registry import initialize_configs, start_config_watchers
+        service_manager.logger.info("Initializing unified configuration system...")
+        initialize_configs()
+        start_config_watchers()
         
         # Initialize PostgreSQL pool via ServiceManager
         await service_manager.init_pg_pool()
@@ -137,7 +140,8 @@ async def lifespan(app: FastAPI):
     service_manager.logger.info("Shutting down Nova Backend Server...")
     
     # Stop services
-    await service_manager.stop_prompt_watching()
+    from utils.config_registry import stop_config_watchers
+    stop_config_watchers()
     await service_manager.stop_redis_bridge(app)
     
     # Cleanup resources

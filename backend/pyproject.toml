@@ -37,6 +37,7 @@ dependencies = [
     "zep-python>=2.0.2",
     "celery[redis]>=5.3.0",
     "flower>=2.0.1",
+    "email-validator>=2.2.0",
 ]
 requires-python = ">=3.13"
 

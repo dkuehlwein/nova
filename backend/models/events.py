@@ -22,7 +22,8 @@ class NovaEvent(BaseModel):
         "task_updated",
         "system_health",
         "config_validated",
-        "config_changed"
+        "config_changed",
+        "user_profile_updated"
     ]
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     data: Dict[str, Any]
@@ -86,6 +87,14 @@ class ConfigValidatedEventData(BaseModel):
     config_type: str
     valid: bool
     errors: list[str] = []
+
+
+class UserProfileUpdatedEventData(BaseModel):
+    """Data structure for user profile update events."""
+    full_name: str
+    email: str
+    timezone: str
+    notes: Optional[str] = None
 
 
 # Helper functions for creating typed events
@@ -170,6 +179,26 @@ def create_config_validated_event(
             config_type=config_type,
             valid=valid,
             errors=errors or []
+        ).model_dump(),
+        source=source
+    )
+
+
+def create_user_profile_updated_event(
+    full_name: str,
+    email: str,
+    timezone: str,
+    notes: Optional[str] = None,
+    source: str = "settings-service"
+) -> NovaEvent:
+    """Create a typed user profile update event."""
+    return NovaEvent(
+        type="user_profile_updated",
+        data=UserProfileUpdatedEventData(
+            full_name=full_name,
+            email=email,
+            timezone=timezone,
+            notes=notes
         ).model_dump(),
         source=source
     )

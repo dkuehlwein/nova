@@ -146,23 +146,7 @@ class ServiceManager:
                 # Set to None even on error to prevent retry attempts
                 self.pg_pool = None
     
-    async def start_prompt_watching(self):
-        """Start watching Nova prompt file for changes."""
-        try:
-            from utils.prompt_loader import start_nova_prompt_watching
-            start_nova_prompt_watching()
-            self.logger.info("Started watching Nova system prompt file for changes")
-        except Exception as e:
-            self.logger.error(f"Failed to start prompt watching: {e}")
-    
-    async def stop_prompt_watching(self):
-        """Stop watching Nova prompt file."""
-        try:
-            from utils.prompt_loader import stop_nova_prompt_watching
-            stop_nova_prompt_watching()
-            self.logger.info("Stopped watching Nova system prompt file")
-        except Exception as e:
-            self.logger.error(f"Error stopping prompt watching: {e}")
+
     
     async def start_redis_bridge(self, app, event_handler: Callable[[Any], Any]):
         """Start Redis event bridge with custom event handler.

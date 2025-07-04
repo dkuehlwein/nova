@@ -228,3 +228,7 @@ mcp_servers/google-workspace/token.json
 .gemini/
 .serena/
 GEMINI.md
+
+# User Profile Configuration (contains PII)
+configs/user_profile.yaml
+configs/user_profile.yaml.backup
