@@ -8,6 +8,8 @@ interface ToolCall {
   tool: string;
   args: Record<string, unknown>;
   timestamp: string;
+  result?: string;  // Tool result content
+  tool_call_id?: string;  // Link to tool call
 }
 
 interface MarkdownMessageProps {
@@ -31,7 +33,7 @@ function parseContentWithToolCalls(content: string) {
     // Add text before the tool call
     if (match.index > lastIndex) {
       const textBefore = content.slice(lastIndex, match.index);
-      if (textBefore.trim()) {
+      if (textBefore && textBefore.trim()) {
         parts.push({ type: 'text', content: textBefore });
       }
     }
@@ -50,7 +52,7 @@ function parseContentWithToolCalls(content: string) {
   // Add remaining text
   if (lastIndex < content.length) {
     const remainingText = content.slice(lastIndex);
-    if (remainingText.trim()) {
+    if (remainingText && remainingText.trim()) {
       parts.push({ type: 'text', content: remainingText });
     }
   }
@@ -59,10 +61,12 @@ function parseContentWithToolCalls(content: string) {
 }
 
 export function MarkdownMessage({ content, className = "", toolCalls }: MarkdownMessageProps) {
-  const parts = parseContentWithToolCalls(content);
+  // Prioritize toolCalls prop over content parsing for better reliability
+  const hasStreamingToolCalls = toolCalls && toolCalls.length > 0;
+  const parts = hasStreamingToolCalls ? [] : parseContentWithToolCalls(content);
 
   // If no tool calls found in content and no toolCalls prop, render normally
-  if ((parts.length <= 1 && parts[0]?.type === 'text') && !toolCalls?.length) {
+  if (!hasStreamingToolCalls && (parts.length <= 1 && parts[0]?.type === 'text')) {
     return (
       <div className={`prose prose-sm max-w-none dark:prose-invert ${className}`}>
         <ReactMarkdown
@@ -125,17 +129,76 @@ export function MarkdownMessage({ content, className = "", toolCalls }: Markdown
   // Render mixed content with tool calls
   return (
     <div className={`prose prose-sm max-w-none dark:prose-invert ${className}`}>
-      {/* Render streaming tool calls first (from props) */}
-      {toolCalls?.map((toolCall, index) => (
+      {/* Render streaming tool calls first (from props) - modern approach */}
+      {hasStreamingToolCalls && toolCalls?.map((toolCall, index) => (
         <CollapsibleToolCall
-          key={`streaming-tool-${index}`}
+          key={`streaming-tool-${toolCall.tool_call_id || index}`}
           toolName={toolCall.tool}
           args={JSON.stringify(toolCall.args, null, 2)}
+          result={toolCall.result}
+          tool_call_id={toolCall.tool_call_id}
         />
       ))}
       
-      {/* Then render content parts (for legacy format compatibility) */}
-      {parts.map((part, index) => {
+      {/* Always render remaining content */}
+      <div>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            // Custom styling for different elements
+            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+            
+            // Style code blocks
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            code: ({ children, inline }: any) => {
+              if (inline) {
+                return (
+                  <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono">
+                    {children}
+                  </code>
+                );
+              }
+              return (
+                <code className="block p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border text-sm font-mono overflow-x-auto whitespace-pre-wrap">
+                  {children}
+                </code>
+              );
+            },
+            
+            // Style pre blocks
+            pre: ({ children }) => (
+              <pre className="bg-gray-50 dark:bg-gray-900 rounded-lg border p-3 overflow-x-auto">
+                {children}
+              </pre>
+            ),
+            
+            // Style headings
+            h1: ({ children }) => <h1 className="text-lg font-semibold mb-2">{children}</h1>,
+            h2: ({ children }) => <h2 className="text-base font-semibold mb-2">{children}</h2>,
+            h3: ({ children }) => <h3 className="text-sm font-semibold mb-1">{children}</h3>,
+            
+            // Style strong/bold text
+            strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+            
+            // Style lists
+            ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+            ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+            li: ({ children }) => <li className="text-sm">{children}</li>,
+            
+            // Style blockquotes
+            blockquote: ({ children }) => (
+              <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic my-2">
+                {children}
+              </blockquote>
+            ),
+          }}
+        >
+          {hasStreamingToolCalls ? content : (parts.length > 0 ? parts.find(p => p.type === 'text')?.content || content : content)}
+        </ReactMarkdown>
+      </div>
+      
+      {/* Legacy format compatibility when no streaming tool calls */}
+      {!hasStreamingToolCalls && parts.map((part, index) => {
         if (part.type === 'tool' && part.toolName && part.args) {
           return (
             <CollapsibleToolCall
@@ -144,53 +207,8 @@ export function MarkdownMessage({ content, className = "", toolCalls }: Markdown
               args={part.args}
             />
           );
-        } else {
-          return (
-            <div key={index}>
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  // Same component styling as above
-                  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  code: ({ children, inline }: any) => {
-                    if (inline) {
-                      return (
-                        <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono">
-                          {children}
-                        </code>
-                      );
-                    }
-                    return (
-                      <code className="block p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border text-sm font-mono overflow-x-auto whitespace-pre-wrap">
-                        {children}
-                      </code>
-                    );
-                  },
-                  pre: ({ children }) => (
-                    <pre className="bg-gray-50 dark:bg-gray-900 rounded-lg border p-3 overflow-x-auto">
-                      {children}
-                    </pre>
-                  ),
-                  h1: ({ children }) => <h1 className="text-lg font-semibold mb-2">{children}</h1>,
-                  h2: ({ children }) => <h2 className="text-base font-semibold mb-2">{children}</h2>,
-                  h3: ({ children }) => <h3 className="text-sm font-semibold mb-1">{children}</h3>,
-                  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                  ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
-                  ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-                  li: ({ children }) => <li className="text-sm">{children}</li>,
-                  blockquote: ({ children }) => (
-                    <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic my-2">
-                      {children}
-                    </blockquote>
-                  ),
-                }}
-              >
-                {part.content}
-              </ReactMarkdown>
-            </div>
-          );
         }
+        return null; // Text content already handled above
       })}
     </div>
   );

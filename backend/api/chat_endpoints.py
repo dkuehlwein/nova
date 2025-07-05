@@ -12,7 +12,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
 
 from agent.chat_agent import create_chat_agent
@@ -165,6 +165,19 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                 return message_to_timestamp[msg.id]
             return fallback_timestamp        
 
+        # First pass: collect all tool results by tool_call_id
+        tool_results = {}  # tool_call_id -> tool result content
+        for msg in messages:
+            if isinstance(msg, ToolMessage):
+                if hasattr(msg, 'tool_call_id') and msg.tool_call_id:
+                    tool_results[msg.tool_call_id] = {
+                        'content': str(msg.content),
+                        'name': getattr(msg, 'name', 'unknown'),
+                        'tool_call_id': msg.tool_call_id
+                    }
+        
+        logger.debug(f"Collected {len(tool_results)} tool results")
+        
         # Process the actual conversation messages from LangGraph
         for i, msg in enumerate(messages):
             # Process each message type
@@ -195,19 +208,23 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                     if not ai_content or ai_content in ['', 'null', 'None']:
                         ai_content = ""
                     
-                    # Add detailed tool call indicators
+                    # Add detailed tool call indicators with results
                     for tool_call in tool_calls:
                         tool_name = tool_call.get('name', 'unknown') if isinstance(tool_call, dict) else getattr(tool_call, 'name', 'unknown')
                         tool_args = tool_call.get('args', {}) if isinstance(tool_call, dict) else getattr(tool_call, 'args', {})
+                        tool_call_id = tool_call.get('id') if isinstance(tool_call, dict) else getattr(tool_call, 'id', None)
                         
                         # Format tool call with arguments
                         tool_display = f"🔧 **Using tool: {tool_name}**"
                         if tool_args:
-                            # Truncate long arguments for display
                             args_str = str(tool_args)
-                            if len(args_str) > 200:
-                                args_str = args_str[:200] + "..."
                             tool_display += f"\n```json\n{args_str}\n```"
+                        
+                        # Add tool result if available
+                        if tool_call_id and tool_call_id in tool_results:
+                            result = tool_results[tool_call_id]
+                            result_content = result['content']
+                            tool_display += f"\n\n**Result:**\n```\n{result_content}\n```"
                         
                         if ai_content:
                             ai_content += f"\n\n{tool_display}"
@@ -463,10 +480,29 @@ async def stream_chat(chat_request: ChatRequest):
                                             "data": {
                                                 "tool": tool_call["name"],
                                                 "args": tool_call.get("args", {}),
+                                                "tool_call_id": tool_call.get("id"),
                                                 "timestamp": timestamp
                                             }
                                         }
                                         yield f"data: {json.dumps(tool_event)}\n\n"
+                                
+                                # Handle tool results
+                                elif isinstance(message, ToolMessage):
+                                    logger.debug(f"Streaming tool result: {message.name}")
+                                    
+                                    # Generate timestamp for this tool result
+                                    timestamp = datetime.now().isoformat()
+                                    
+                                    tool_result_event = {
+                                        "type": "tool_result",
+                                        "data": {
+                                            "tool": getattr(message, 'name', 'unknown'),
+                                            "result": str(message.content),
+                                            "tool_call_id": getattr(message, 'tool_call_id', None),
+                                            "timestamp": timestamp
+                                        }
+                                    }
+                                    yield f"data: {json.dumps(tool_result_event)}\n\n"
                 
                 logger.info(f"Finished streaming for thread_id: {chat_request.thread_id} after {stream_count} chunks")
                 

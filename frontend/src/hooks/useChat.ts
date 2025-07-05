@@ -5,6 +5,8 @@ export interface ToolCall {
   tool: string;
   args: Record<string, unknown>;
   timestamp: string;
+  result?: string;
+  tool_call_id?: string;
 }
 
 export interface ChatMessage {
@@ -50,13 +52,15 @@ interface StreamMessageData {
 interface StreamToolData {
   tool: string;
   args?: Record<string, unknown>;
-  result?: unknown;
+  result?: string;
+  tool_call_id?: string;
   timestamp?: string;
 }
 
 interface StreamErrorData {
   error: string;
   details?: string;
+  tool_call_id?: string;
 }
 
 export interface StreamEvent {
@@ -289,8 +293,32 @@ export function useChat() {
                                     tool: toolData.tool,
                                     args: toolData.args || {},
                                     timestamp: toolData.timestamp || new Date().toISOString(),
+                                    tool_call_id: toolData.tool_call_id,
                                   }
                                 ]
+                              }
+                            : msg
+                        ),
+                      }));
+                      break;
+
+                    case 'tool_result':
+                      const resultData = event.data as StreamToolData;
+                      // Find and update the matching tool call with its result
+                      setState(prev => ({
+                        ...prev,
+                        messages: prev.messages.map(msg => 
+                          msg.id === assistantMessageId 
+                            ? {
+                                ...msg,
+                                toolCalls: (msg.toolCalls || []).map(toolCall =>
+                                  toolCall.tool_call_id === resultData.tool_call_id
+                                    ? {
+                                        ...toolCall,
+                                        result: resultData.result,
+                                      }
+                                    : toolCall
+                                )
                               }
                             : msg
                         ),
@@ -309,13 +337,37 @@ export function useChat() {
 
                     case 'error':
                       const errorData = event.data as StreamErrorData;
-                      setState(prev => ({ ...prev, error: errorData.error }));
-                      if (assistantMessageId) {
-                        updateMessage(assistantMessageId, {
-                          content: assistantContent || 'Error occurred while processing your message.',
-                          isStreaming: false,
-                          timestamp: assistantTimestamp || new Date().toISOString(),
-                        });
+                      // Check if this is a tool-specific error
+                      if ('tool_call_id' in errorData && errorData.tool_call_id) {
+                        // Update specific tool call with error
+                        setState(prev => ({
+                          ...prev,
+                          messages: prev.messages.map(msg => 
+                            msg.id === assistantMessageId 
+                              ? {
+                                  ...msg,
+                                  toolCalls: (msg.toolCalls || []).map(toolCall =>
+                                    toolCall.tool_call_id === (errorData as unknown as {tool_call_id: string}).tool_call_id
+                                      ? {
+                                          ...toolCall,
+                                          result: `Error: ${errorData.error}`,
+                                        }
+                                      : toolCall
+                                  )
+                                }
+                              : msg
+                          ),
+                        }));
+                      } else {
+                        // General error
+                        setState(prev => ({ ...prev, error: errorData.error }));
+                        if (assistantMessageId) {
+                          updateMessage(assistantMessageId, {
+                            content: assistantContent || 'Error occurred while processing your message.',
+                            isStreaming: false,
+                            timestamp: assistantTimestamp || new Date().toISOString(),
+                          });
+                        }
                       }
                       break;
                   }
