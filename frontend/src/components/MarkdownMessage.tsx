@@ -26,7 +26,7 @@ function parseContentWithToolCalls(content: string) {
   if (typeof content !== 'string') {
     console.warn('parseContentWithToolCalls received non-string content:', content);
     // If it's an array, join it; otherwise convert to string
-    content = Array.isArray(content) ? content.join('\n\n') : String(content);
+    content = Array.isArray(content) ? (content as any[]).join('\n\n') : String(content);
   }
 
   const parts: Array<{ type: 'text' | 'tool'; content: string; toolName?: string; args?: string }> = [];

@@ -182,7 +182,9 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
         for i, msg in enumerate(messages):
             # Process each message type
             logger.debug(f"Processing message {i}: {type(msg).__name__}")
-            message_timestamp = get_message_timestamp(msg, checkpoint_timestamp)            
+            message_timestamp = get_message_timestamp(msg, checkpoint_timestamp)
+            
+            
             if isinstance(msg, HumanMessage):
                 chat_messages.append(ChatMessageDetail(
                     id=f"{thread_id}-msg-{i}",
@@ -238,7 +240,6 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                         metadata = {
                             "type": "task_introduction"
                         }
-                    
                     chat_messages.append(ChatMessageDetail(
                         id=f"{thread_id}-msg-{i}",
                         sender="assistant",
@@ -355,14 +356,14 @@ async def stream_chat(chat_request: ChatRequest):
         # Create config
         config = _create_config(chat_request.thread_id)
         
-        # Get memory context for first turn only (check actual conversation state)
-        memory_context_message = None
+        # Inject memory search tool call on first turn
+        memory_tool_messages = []
         is_first_turn = await _is_first_turn(chat_request.thread_id, checkpointer)
         
         if is_first_turn:
-            logger.info("First turn in conversation - searching memory for context")
+            logger.error("TESTING: First turn in conversation - injecting memory search tool call")
             try:
-                from memory.memory_functions import search_memory, MemorySearchError
+                from memory.memory_functions import search_memory
                 
                 # Use the user's message for context search
                 user_message = chat_request.messages[0].content
@@ -370,66 +371,106 @@ async def stream_chat(chat_request: ChatRequest):
                 
                 if memory_result["success"] and memory_result["results"]:
                     memory_facts = [result["fact"] for result in memory_result["results"]]
-                    memory_context = "\n".join([f"- {fact}" for fact in memory_facts])
+                    tool_result = f"Found {len(memory_facts)} relevant memories:\n" + "\n".join([f"- {fact}" for fact in memory_facts])
                     
-                    logger.info(f"Found {len(memory_facts)} memory facts for context")
-                    
-                    # Store context for streaming (will be yielded first)
-                    memory_context_message = {
-                        "content": memory_context,
-                        "metadata": {
-                            "is_collapsible": True,
-                            "type": "memory_context", 
-                            "title": "Context from Memory"
-                        }
-                    }
+                    logger.info(f"Found {len(memory_facts)} memory facts for tool injection")
                 else:
+                    tool_result = "No relevant memories found for your query."
                     logger.debug("No memory context found for first turn")
-                    
+                
+                # Create tool call message (AI calling the tool) 
+                ai_tool_call = AIMessage(
+                    content="",
+                    tool_calls=[{
+                        "name": "search_memory",
+                        "args": {"query": user_message},
+                        "id": "memory_search_auto",
+                        "type": "tool_call"
+                    }]
+                )
+                
+                # Create tool result message
+                tool_result_message = ToolMessage(
+                    content=tool_result,
+                    tool_call_id="memory_search_auto"
+                )
+                
+                # These will be injected after message conversion
+                memory_tool_messages = [ai_tool_call, tool_result_message]
+                
             except Exception as memory_error:
-                logger.warning(f"Failed to search memory for context: {memory_error}")
+                logger.warning(f"Failed to search memory for tool injection: {memory_error}")
+                memory_tool_messages = []
         else:
-            logger.debug("Not first turn - skipping memory context search")
+            logger.debug("Not first turn - skipping memory search tool injection")
+            memory_tool_messages = []
         
         # Convert Pydantic models to LangChain messages
         logger.debug("Converting messages...")
         try:
             messages = _convert_messages_to_langchain(chat_request.messages)
             
-            # Add memory context to LangChain messages if found
-            if memory_context_message:
-                memory_ai_message = AIMessage(
-                    content=memory_context_message["content"],
-                    additional_kwargs={"metadata": memory_context_message["metadata"]}
-                )
-                messages.append(memory_ai_message)
+            # Inject memory tool messages if this is first turn
+            if memory_tool_messages:
+                # Add memory tool messages AFTER the user message
+                # This ensures they become part of the conversation history
+                messages.extend(memory_tool_messages)  # Add memory tool call and result
+                
+                logger.info(f"Injected {len(memory_tool_messages)} memory tool messages")
+                for i, msg in enumerate(memory_tool_messages):
+                    logger.info(f"Memory tool message {i}: {type(msg).__name__} - {getattr(msg, 'tool_calls', 'no tool_calls')} - {msg.content[:100] if hasattr(msg, 'content') else 'no content'}")
             
             logger.debug(f"Converted {len(messages)} messages to LangChain format")
+            logger.info(f"Final message list has {len(messages)} messages:")
+            for i, msg in enumerate(messages):
+                logger.info(f"Message {i}: {type(msg).__name__} - {getattr(msg, 'tool_calls', 'no tool_calls')} - {msg.content[:50] if hasattr(msg, 'content') else 'no content'}...")
         except Exception as convert_error:
             logger.error(f"Failed to convert messages: {convert_error}")
             raise HTTPException(status_code=500, detail=f"Failed to convert messages: {str(convert_error)}")
         
         logger.debug(f"Starting stream for thread_id: {chat_request.thread_id} with {len(messages)} messages")
         
+        
         async def generate_response():
             """Generate SSE (Server-Sent Events) response stream."""
-            stream_count = 0
-            
-            try:
-                # Yield memory context first if available (immediate display)
-                if memory_context_message:
-                    timestamp = datetime.now().isoformat()
-                    memory_event = {
-                        "type": "message",
+            # Yield memory tool calls first if they exist (for immediate display)
+            if memory_tool_messages and len(memory_tool_messages) >= 2:
+                timestamp = datetime.now().isoformat()
+                
+                # Get the AI message with tool calls (first message)
+                ai_msg = memory_tool_messages[0]
+                if hasattr(ai_msg, 'tool_calls') and ai_msg.tool_calls:
+                    for tool_call in ai_msg.tool_calls:
+                        tool_event = {
+                            "type": "tool_call",
+                            "data": {
+                                "tool": tool_call["name"],
+                                "args": tool_call.get("args", {}),
+                                "tool_call_id": tool_call.get("id"),
+                                "timestamp": timestamp
+                            }
+                        }
+                        yield f"data: {json.dumps(tool_event)}\n\n"
+                        logger.info(f"Yielded memory tool call: {tool_call['name']}")
+                
+                # Get the tool result message (second message)
+                tool_result_msg = memory_tool_messages[1]
+                if hasattr(tool_result_msg, 'tool_call_id'):
+                    tool_result_event = {
+                        "type": "tool_result",
                         "data": {
-                            "role": "assistant", 
-                            "content": memory_context_message["content"],
-                            "timestamp": timestamp,
-                            "metadata": memory_context_message["metadata"]
+                            "tool": "search_memory",
+                            "result": str(tool_result_msg.content),
+                            "tool_call_id": tool_result_msg.tool_call_id,
+                            "timestamp": timestamp
                         }
                     }
-                    yield f"data: {json.dumps(memory_event)}\n\n"
-                    logger.debug("Memory context yielded in streaming response")
+                    yield f"data: {json.dumps(tool_result_event)}\n\n"
+                    logger.info("Yielded memory tool result")
+            
+            # Now process the agent stream
+            stream_count = 0
+            try:
                 async for chunk in chat_agent.astream(
                     {"messages": messages},
                     config=config,
@@ -449,11 +490,20 @@ async def stream_chat(chat_request: ChatRequest):
                                     timestamp = datetime.now().isoformat()
                                     
                                     # Send message content as it streams
+                                    # Defensive check: ensure content is a string
+                                    content = message.content
+                                    if not isinstance(content, str):
+                                        logger.warning(f"Non-string content from LLM: {type(content)} - {content}")
+                                        if isinstance(content, list):
+                                            content = '\n\n'.join(str(item) for item in content)
+                                        else:
+                                            content = str(content)
+                                    
                                     event = {
                                         "type": "message",
                                         "data": {
                                             "role": "assistant",
-                                            "content": message.content,
+                                            "content": content,
                                             "timestamp": timestamp,
                                             "node": node_name
                                         }

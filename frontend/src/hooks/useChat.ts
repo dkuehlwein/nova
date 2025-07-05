@@ -239,58 +239,62 @@ export function useChat() {
                     case 'message':
                       const messageData = event.data as StreamMessageData;
                       if (messageData.role === 'assistant') {
-                        // Check if this is a memory context message
-                        if (messageData.metadata?.type === 'memory_context') {
-                          // Create a separate memory context message immediately
-                          addMessage({
+                        // Handle assistant messages (memory context now comes via tool calls)
+                        // Store timestamp from the first message
+                        if (messageData.timestamp && !assistantTimestamp) {
+                          assistantTimestamp = messageData.timestamp;
+                        }
+                        
+                        // Create assistant message on first content
+                        if (!assistantMessageId) {
+                          assistantMessageId = addMessage({
                             role: 'assistant',
-                            content: messageData.content,
-                            metadata: messageData.metadata,
+                            content: '',
+                            isStreaming: true,
                           });
+                        }
+                        
+                        // Defensive check: ensure messageData.content is a string
+                        let contentToAdd = messageData.content;
+                        if (typeof contentToAdd !== 'string') {
+                          console.warn('Received non-string content in streaming:', contentToAdd);
+                          contentToAdd = Array.isArray(contentToAdd) ? (contentToAdd as any[]).join('\n\n') : String(contentToAdd);
+                        }
+                        
+                        // Accumulate content instead of overwriting
+                        if (assistantContent && contentToAdd) {
+                          // Add separator between responses for readability
+                          assistantContent += '\n\n' + contentToAdd;
                         } else {
-                          // Handle regular assistant messages
-                          // Store timestamp from the first message
-                          if (messageData.timestamp && !assistantTimestamp) {
-                            assistantTimestamp = messageData.timestamp;
-                          }
-                          
-                          // Create assistant message on first content (after memory context)
-                          if (!assistantMessageId) {
-                            assistantMessageId = addMessage({
-                              role: 'assistant',
-                              content: '',
-                              isStreaming: true,
-                            });
-                          }
-                          
-                          // Defensive check: ensure messageData.content is a string
-                          let contentToAdd = messageData.content;
-                          if (typeof contentToAdd !== 'string') {
-                            console.warn('Received non-string content in streaming:', contentToAdd);
-                            contentToAdd = Array.isArray(contentToAdd) ? (contentToAdd as any[]).join('\n\n') : String(contentToAdd);
-                          }
-                          
-                          // Accumulate content instead of overwriting
-                          if (assistantContent && contentToAdd) {
-                            // Add separator between responses for readability
-                            assistantContent += '\n\n' + contentToAdd;
-                          } else {
-                            assistantContent = contentToAdd;
-                          }
-                          if (assistantMessageId) {
-                            updateMessage(assistantMessageId, {
-                              content: assistantContent,
-                              isStreaming: true,
-                              timestamp: assistantTimestamp || new Date().toISOString(),
-                            });
-                          }
+                          assistantContent = contentToAdd;
+                        }
+                        if (assistantMessageId) {
+                          updateMessage(assistantMessageId, {
+                            content: assistantContent,
+                            isStreaming: true,
+                            timestamp: assistantTimestamp || new Date().toISOString(),
+                          });
                         }
                       }
                       break;
 
                     case 'tool_call':
                       const toolData = event.data as StreamToolData;
-                      // Add tool call to the current assistant message
+                      
+                      // Create assistant message if it doesn't exist yet (handles tool calls before content)
+                      if (!assistantMessageId) {
+                        assistantMessageId = addMessage({
+                          role: 'assistant',
+                          content: '',
+                          isStreaming: true,
+                        });
+                        // Store timestamp from first tool call if not set
+                        if (toolData.timestamp && !assistantTimestamp) {
+                          assistantTimestamp = toolData.timestamp;
+                        }
+                      }
+                      
+                      // Add tool call to the assistant message
                       setState(prev => ({
                         ...prev,
                         messages: prev.messages.map(msg => 
@@ -315,24 +319,26 @@ export function useChat() {
                     case 'tool_result':
                       const resultData = event.data as StreamToolData;
                       // Find and update the matching tool call with its result
-                      setState(prev => ({
-                        ...prev,
-                        messages: prev.messages.map(msg => 
-                          msg.id === assistantMessageId 
-                            ? {
-                                ...msg,
-                                toolCalls: (msg.toolCalls || []).map(toolCall =>
-                                  toolCall.tool_call_id === resultData.tool_call_id
-                                    ? {
-                                        ...toolCall,
-                                        result: resultData.result,
-                                      }
-                                    : toolCall
-                                )
-                              }
-                            : msg
-                        ),
-                      }));
+                      if (assistantMessageId) {
+                        setState(prev => ({
+                          ...prev,
+                          messages: prev.messages.map(msg => 
+                            msg.id === assistantMessageId 
+                              ? {
+                                  ...msg,
+                                  toolCalls: (msg.toolCalls || []).map(toolCall =>
+                                    toolCall.tool_call_id === resultData.tool_call_id
+                                      ? {
+                                          ...toolCall,
+                                          result: resultData.result,
+                                        }
+                                      : toolCall
+                                  )
+                                }
+                              : msg
+                          ),
+                        }));
+                      }
                       break;
 
                     case 'complete':

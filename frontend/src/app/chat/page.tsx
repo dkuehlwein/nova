@@ -322,7 +322,7 @@ function ChatPage() {
 
     // Handle assistant messages with special metadata (like task context) using SystemMessage component
     if (msg.role === "assistant" && msg.metadata?.is_collapsible) {
-      // For both task_context and memory_context, use clean metadata approach
+      // For task_context messages, use clean metadata approach
       // Title from metadata, content goes in collapsible section
       return (
         <SystemMessage
@@ -377,8 +377,8 @@ function ChatPage() {
               </div>
               
               <div className="text-sm break-words min-h-[1.25rem]">
-                {msg.content ? (
-                  <MarkdownMessage content={msg.content} toolCalls={msg.toolCalls} />
+                {msg.content || msg.toolCalls ? (
+                  <MarkdownMessage content={msg.content || ''} toolCalls={msg.toolCalls} />
                 ) : (msg.isStreaming ? (
                   <span className="opacity-60">Thinking...</span>
                 ) : '')}
