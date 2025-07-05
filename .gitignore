@@ -67,8 +67,10 @@ docker-compose.override.yml
 .env.*
 !/.env.example
 
-# Tasks data/cache directories
-tasks/
+# Tasks data/cache directories (excluding source code directories)
+/tasks/
+**/tasks/data/
+**/tasks/cache/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
