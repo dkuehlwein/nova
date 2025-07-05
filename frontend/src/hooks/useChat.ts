@@ -263,12 +263,19 @@ export function useChat() {
                             });
                           }
                           
+                          // Defensive check: ensure messageData.content is a string
+                          let contentToAdd = messageData.content;
+                          if (typeof contentToAdd !== 'string') {
+                            console.warn('Received non-string content in streaming:', contentToAdd);
+                            contentToAdd = Array.isArray(contentToAdd) ? (contentToAdd as any[]).join('\n\n') : String(contentToAdd);
+                          }
+                          
                           // Accumulate content instead of overwriting
-                          if (assistantContent && messageData.content) {
+                          if (assistantContent && contentToAdd) {
                             // Add separator between responses for readability
-                            assistantContent += '\n\n' + messageData.content;
+                            assistantContent += '\n\n' + contentToAdd;
                           } else {
-                            assistantContent = messageData.content;
+                            assistantContent = contentToAdd;
                           }
                           if (assistantMessageId) {
                             updateMessage(assistantMessageId, {

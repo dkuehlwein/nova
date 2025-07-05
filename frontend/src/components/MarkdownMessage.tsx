@@ -22,6 +22,13 @@ interface MarkdownMessageProps {
 const TOOL_CALL_PATTERN = /🔧 \*\*Using tool: ([^*]+)\*\*\n```json\n([\s\S]*?)\n```/g;
 
 function parseContentWithToolCalls(content: string) {
+  // Defensive check: ensure content is a string
+  if (typeof content !== 'string') {
+    console.warn('parseContentWithToolCalls received non-string content:', content);
+    // If it's an array, join it; otherwise convert to string
+    content = Array.isArray(content) ? content.join('\n\n') : String(content);
+  }
+
   const parts: Array<{ type: 'text' | 'tool'; content: string; toolName?: string; args?: string }> = [];
   let lastIndex = 0;
   let match;
@@ -61,6 +68,13 @@ function parseContentWithToolCalls(content: string) {
 }
 
 export function MarkdownMessage({ content, className = "", toolCalls }: MarkdownMessageProps) {
+  // Defensive check: ensure content is a string
+  if (typeof content !== 'string') {
+    console.warn('MarkdownMessage received non-string content:', content);
+    // If it's an array, join it; otherwise convert to string
+    content = Array.isArray(content) ? content.join('\n\n') : String(content);
+  }
+
   // Prioritize toolCalls prop over content parsing for better reliability
   const hasStreamingToolCalls = toolCalls && toolCalls.length > 0;
   const parts = hasStreamingToolCalls ? [] : parseContentWithToolCalls(content);
