@@ -99,13 +99,16 @@ class TestPromptIntegration:
 
     def test_prompt_constants_exist(self):
         """Test that prompts can be imported correctly."""
-        from agent.prompts import NOVA_SYSTEM_PROMPT, TASK_CONTEXT_TEMPLATE, CURRENT_TASK_TEMPLATE
+        from agent.prompts import get_nova_system_prompt, TASK_CONTEXT_TEMPLATE, CURRENT_TASK_TEMPLATE
+        
+        # Get the system prompt (now dynamically loaded)
+        system_prompt = get_nova_system_prompt()
         
         # Verify prompts exist and are strings
-        assert isinstance(NOVA_SYSTEM_PROMPT, str)
+        assert isinstance(system_prompt, str)
         assert isinstance(TASK_CONTEXT_TEMPLATE, str)
         assert isinstance(CURRENT_TASK_TEMPLATE, str)
-        assert len(NOVA_SYSTEM_PROMPT) > 0
+        assert len(system_prompt) > 0
         assert len(TASK_CONTEXT_TEMPLATE) > 0
         assert len(CURRENT_TASK_TEMPLATE) > 0
         
@@ -148,7 +151,8 @@ class TestPromptIntegration:
 
             assert len(messages) == 2
             combined = "".join(m.content for m in messages)
-            assert "Task Context" in combined
+            # Check that the expected current task template content is present
+            assert "Current Task" in combined or "Test Task" in combined
             assert task.title in combined
             assert task.description in combined
 

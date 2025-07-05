@@ -35,6 +35,34 @@ os.environ["LANGCHAIN_API_KEY"] = ""
 os.environ["LANGCHAIN_PROJECT"] = ""
 
 
+# Auto-use fixture to initialize config registry for tests
+@pytest.fixture(autouse=True)
+def auto_init_config_registry():
+    """
+    Auto-initialize config registry for all tests.
+    
+    This fixture ensures that the config registry is properly initialized
+    with all necessary managers before tests run.
+    """
+    try:
+        # Initialize unified configuration system
+        from utils.config_registry import initialize_configs
+        initialize_configs()
+    except Exception as e:
+        # Log but don't fail - some tests might not need full config
+        print(f"Warning: Config registry initialization failed: {e}")
+    
+    yield
+    
+    # Cleanup after test
+    try:
+        from utils.config_registry import config_registry
+        config_registry._managers.clear()
+        config_registry._initialized = False
+    except Exception:
+        pass  # Best effort cleanup
+
+
 # Auto-use fixture to properly close database connections
 @pytest_asyncio.fixture(autouse=True)
 async def auto_cleanup_connections():
