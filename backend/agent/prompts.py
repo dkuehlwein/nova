@@ -4,7 +4,6 @@ Agent Prompts
 Centralized location for all Nova agent prompts.
 """
 
-from pathlib import Path
 from utils.prompt_loader import load_nova_system_prompt
 
 # System Prompt - Universal guidelines and capabilities (same for chat and core agent)
@@ -32,9 +31,22 @@ CURRENT_TASK_TEMPLATE = """**Current Task:**
 {description}"""
 
 # Function to get the current system prompt (for dynamic reloading)
-def get_nova_system_prompt() -> str:
-    """Get the current Nova system prompt with live reload support."""
+def get_nova_system_prompt(use_cache: bool = True) -> str:
+    """Get the current Nova system prompt with live reload support.
+    
+    Args:
+        use_cache: If True, use cached prompt; if False, reload from file
+    """
     global NOVA_SYSTEM_PROMPT
+    
+    if not use_cache:
+        NOVA_SYSTEM_PROMPT = None
+    
     if NOVA_SYSTEM_PROMPT is None:
         NOVA_SYSTEM_PROMPT = load_nova_system_prompt()
     return NOVA_SYSTEM_PROMPT
+
+def clear_system_prompt_cache():
+    """Clear the cached system prompt to force reload on next access."""
+    global NOVA_SYSTEM_PROMPT
+    NOVA_SYSTEM_PROMPT = None

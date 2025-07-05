@@ -122,6 +122,8 @@ export function useChat() {
           content: string;
           created_at: string;
           needs_decision: boolean;
+          metadata?: {type?: string; is_collapsible?: boolean; title?: string};
+          tool_calls?: ToolCall[];
         }[]>(API_ENDPOINTS.chatMessages(chatId));
 
         // Convert backend messages to frontend format
@@ -131,7 +133,8 @@ export function useChat() {
           content: msg.content,
           timestamp: msg.created_at,
           isStreaming: false,
-          metadata: (msg as {metadata?: {type?: string; is_collapsible?: boolean; title?: string}}).metadata || undefined,
+          metadata: msg.metadata || undefined,
+          toolCalls: msg.tool_calls || undefined,
         }));
 
         // Set the messages
@@ -515,6 +518,7 @@ export function useChat() {
             is_collapsible?: boolean;
             title?: string;
           };
+          tool_calls?: ToolCall[];
         }>;
         pending_escalation?: {
           question: string;
@@ -530,7 +534,8 @@ export function useChat() {
         content: msg.content,
         timestamp: msg.created_at,
         isStreaming: false,
-        metadata: (msg as {metadata?: {type?: string; is_collapsible?: boolean; title?: string}}).metadata || undefined,
+        metadata: msg.metadata || undefined,
+        toolCalls: msg.tool_calls || undefined,
       }));
 
       // Use escalation data from the endpoint

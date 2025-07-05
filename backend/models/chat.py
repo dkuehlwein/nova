@@ -53,6 +53,7 @@ class ChatMessageDetail(BaseModel):
     created_at: str = Field(..., description="Message creation timestamp")
     needs_decision: bool = Field(False, description="Whether message needs user decision")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
+    tool_calls: Optional[List[Dict[str, Any]]] = Field(None, description="Tool calls associated with this message")
 
 
 class TaskChatResponse(BaseModel):

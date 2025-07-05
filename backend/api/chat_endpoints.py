@@ -193,50 +193,40 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                 ))
                 logger.debug(f"Included user message: '{str(msg.content)[:50]}...' with timestamp: {message_timestamp}")
             elif isinstance(msg, AIMessage):
-                # For AI messages, reconstruct the complete content including tool calls
+                # For AI messages, keep content and tool calls separate (consistent with streaming)
                 ai_content = str(msg.content).strip()
                 
                 # Check if this AI message has tool calls
                 has_tool_calls = hasattr(msg, 'tool_calls') and bool(getattr(msg, 'tool_calls', None))
                 
+                # Prepare tool calls data for frontend (same format as streaming)
+                message_tool_calls = []
                 if has_tool_calls:
-                    # Get the tool calls to include in the message
                     tool_calls = getattr(msg, 'tool_calls', [])
                     logger.debug(f"AI message has {len(tool_calls)} tool calls")
                     
-                    # If the AI message has no content but has tool calls, start with empty content
-                    if not ai_content or ai_content in ['', 'null', 'None']:
-                        ai_content = ""
-                    
-                    # Add detailed tool call indicators with results
                     for tool_call in tool_calls:
                         tool_name = tool_call.get('name', 'unknown') if isinstance(tool_call, dict) else getattr(tool_call, 'name', 'unknown')
                         tool_args = tool_call.get('args', {}) if isinstance(tool_call, dict) else getattr(tool_call, 'args', {})
                         tool_call_id = tool_call.get('id') if isinstance(tool_call, dict) else getattr(tool_call, 'id', None)
                         
-                        # Format tool call with arguments
-                        tool_display = f"🔧 **Using tool: {tool_name}**"
-                        if tool_args:
-                            args_str = str(tool_args)
-                            tool_display += f"\n```json\n{args_str}\n```"
+                        # Create tool call object matching streaming format
+                        tool_call_obj = {
+                            'tool': tool_name,
+                            'args': tool_args,
+                            'timestamp': message_timestamp,
+                            'tool_call_id': tool_call_id
+                        }
                         
-                        # Add tool result if available
+                        # Add result if available
                         if tool_call_id and tool_call_id in tool_results:
                             result = tool_results[tool_call_id]
-                            result_content = result['content']
-                            tool_display += f"\n\n**Result:**\n```\n{result_content}\n```"
+                            tool_call_obj['result'] = result['content']
                         
-                        if ai_content:
-                            ai_content += f"\n\n{tool_display}"
-                        else:
-                            ai_content = tool_display
-                    
-                    # Don't look ahead for subsequent AI messages - let them be processed separately
-                    # This prevents combining tool call messages with their responses, which was causing duplication
-                    logger.debug(f"AI message with {len(tool_calls)} tool calls will be processed as standalone message")
+                        message_tool_calls.append(tool_call_obj)
                 
-                # Only include AI messages that have actual content
-                if ai_content and ai_content not in ['', 'null', 'None']:
+                # Include AI messages with content OR tool calls (consistent with streaming)
+                if (ai_content and ai_content not in ['', 'null', 'None']) or message_tool_calls:
                     # Check for explicit metadata (consistent approach for all context types)
                     metadata = None
                     if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs.get('metadata'):
@@ -252,14 +242,15 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                     chat_messages.append(ChatMessageDetail(
                         id=f"{thread_id}-msg-{i}",
                         sender="assistant",
-                        content=ai_content,
+                        content=ai_content or "",  # Allow empty content if there are tool calls
                         created_at=message_timestamp,
                         needs_decision=False,
-                        metadata=metadata
+                        metadata=metadata,
+                        tool_calls=message_tool_calls if message_tool_calls else None
                     ))
-                    logger.debug(f"Included AI message with reconstructed content: '{ai_content[:100]}...' with timestamp: {message_timestamp}")
+                    logger.debug(f"Included AI message with content: '{ai_content[:100] if ai_content else 'empty'}...' and {len(message_tool_calls)} tool calls with timestamp: {message_timestamp}")
                 else:
-                    logger.debug(f"Skipped AI message with no content after reconstruction")
+                    logger.debug(f"Skipped AI message with no content and no tool calls")
             else:
                 # Skip other message types (ToolMessage, SystemMessage, etc.)
                 logger.debug(f"Skipped message type: {type(msg).__name__}")

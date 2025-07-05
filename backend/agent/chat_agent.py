@@ -25,7 +25,6 @@ _cached_tools: Optional[List[Any]] = None
 
 # Cache for agent components (separate from checkpointer)
 _cached_llm = None
-_cached_prompt = None
 
 
 async def get_all_tools_with_mcp(use_cache=True) -> List[Any]:
@@ -64,9 +63,17 @@ async def get_all_tools_with_mcp(use_cache=True) -> List[Any]:
     return _cached_tools
 
 
-async def get_llm():
-    """Get cached LLM or create new one if not cached."""
+async def get_llm(use_cache=True):
+    """Get cached LLM or create new one if not cached.
+    
+    Args:
+        use_cache: If True, use cached LLM; if False, reload LLM
+    """
     global _cached_llm
+    
+    if not use_cache:
+        _cached_llm = None
+        logger.info("LLM cache cleared for reload")
     
     if _cached_llm is None:
         _cached_llm = create_llm()
@@ -118,9 +125,9 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True):
     })
     
     # Get cached or fresh components
-    llm = await get_llm()
+    llm = await get_llm(use_cache=use_cache)
     tools = await get_all_tools_with_mcp(use_cache=use_cache)
-    system_prompt = get_nova_system_prompt()
+    system_prompt = get_nova_system_prompt(use_cache=use_cache)
 
     # Always create fresh agent instance with current components + checkpointer
     agent = create_react_agent(
@@ -136,9 +143,13 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True):
 
 def clear_chat_agent_cache():
     """Clear all component caches to force reload with updated tools/prompts."""
-    global _cached_tools, _cached_llm, _cached_prompt
+    global _cached_tools, _cached_llm
     _cached_tools = None
     _cached_llm = None
-    _cached_prompt = None
+    
+    # Also clear the system prompt cache
+    from .prompts import clear_system_prompt_cache
+    clear_system_prompt_cache()
+    
     logger.info("All component caches cleared - next agent creation will reload everything")
 
