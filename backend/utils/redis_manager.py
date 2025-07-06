@@ -25,11 +25,13 @@ async def get_redis() -> Redis:
     
     if _redis_client is None:
         try:
-            # Connect to local Redis instance
-            _redis_client = redis.Redis(
-                host='localhost',
-                port=6379,
-                db=0,
+            # Get Redis URL from configuration
+            from config import settings
+            redis_url = settings.REDIS_URL
+            
+            # Connect to Redis instance using URL
+            _redis_client = redis.Redis.from_url(
+                redis_url,
                 decode_responses=True,
                 health_check_interval=30,
                 socket_keepalive=True,
@@ -45,9 +47,7 @@ async def get_redis() -> Redis:
                 "Connected to Redis successfully",
                 extra={
                     "data": {
-                        "host": "localhost",
-                        "port": 6379,
-                        "db": 0
+                        "redis_url": redis_url
                     }
                 }
             )
@@ -58,8 +58,7 @@ async def get_redis() -> Redis:
                 extra={
                     "data": {
                         "error": str(e),
-                        "host": "localhost",
-                        "port": 6379
+                        "redis_url": redis_url
                     }
                 }
             )
