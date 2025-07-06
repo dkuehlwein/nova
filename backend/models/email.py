@@ -3,6 +3,7 @@ Email-related Pydantic models for Nova.
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from uuid import uuid4
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -139,6 +140,14 @@ class EmailProcessingEvent(BaseModel):
     
     model_config = ConfigDict(from_attributes=True)
     
-    event_type: str = Field(description="Type of event")
+    id: str = Field(default_factory=lambda: str(uuid4()), description="Unique event ID")
+    type: str = Field(description="Type of event")
     data: Dict[str, Any] = Field(description="Event data")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Event timestamp") 
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Event timestamp")
+    source: str = Field(default="email_processor", description="Event source")
+    
+    def __init__(self, event_type: str = None, **kwargs):
+        # Support both 'type' and 'event_type' parameters
+        if event_type is not None:
+            kwargs['type'] = event_type
+        super().__init__(**kwargs) 

@@ -8,13 +8,14 @@ WORKDIR /app
 RUN pip install uv
 
 # Copy dependency files
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 
 # Install dependencies
 RUN uv pip install --system -e .
 
 # Copy source code
 COPY main.py ./
+COPY src ./src
 
 # Create non-root user
 RUN useradd -m -u 1001 mcp-user && chown -R mcp-user:mcp-user /app

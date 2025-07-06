@@ -11,6 +11,8 @@ class Settings(BaseSettings):
         env_file="../.env", env_file_encoding="utf-8", extra="ignore"
     )
 
+    # Redis Configuration (for Celery and caching)
+    REDIS_URL: str = "redis://localhost:6379"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     
@@ -63,7 +65,7 @@ class Settings(BaseSettings):
     LOG_FILE_BACKUP_COUNT: int = 5  # Number of backup files to keep
 
     # Email Integration Configuration
-    EMAIL_ENABLED: bool = False  # Master toggle for email processing
+    EMAIL_ENABLED: bool = True  # Master toggle for email processing
     EMAIL_CREATE_TASKS: bool = True  # Whether to create tasks from emails
     EMAIL_MAX_PER_FETCH: int = 10  # Maximum emails to process per batch
     EMAIL_LABEL_FILTER: str = "INBOX"  # Email label to filter emails
@@ -72,10 +74,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def compute_urls(self):
-        """Compute DATABASE_URL if not explicitly provided"""
+        """Compute DATABASE_URL and Celery URLs if not explicitly provided"""
         # Construct DATABASE_URL from PostgreSQL components if not explicitly set
         if not self.DATABASE_URL:
             self.DATABASE_URL = f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        
+        # Construct Celery URLs from REDIS_URL (already loaded from environment by pydantic-settings)
+        self.CELERY_BROKER_URL = f"{self.REDIS_URL}/0"
+        self.CELERY_RESULT_BACKEND = f"{self.REDIS_URL}/1"
         
         return self
 
