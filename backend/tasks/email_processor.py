@@ -30,7 +30,7 @@ class EmailProcessor:
             all_tools = await mcp_manager.get_tools()
             
             # Import email interface configuration
-            from config.email_interface import EMAIL_TOOL_INTERFACE
+            from email_config.email_interface import EMAIL_TOOL_INTERFACE
             
             self.mcp_tools = {}
             tool_mapping = {}
@@ -62,7 +62,7 @@ class EmailProcessor:
         concrete_tool_name = getattr(tool, 'name', tool_name)
         
         # Map parameters based on concrete tool name
-        from config.email_interface import EMAIL_TOOL_PARAMETERS
+        from email_config.email_interface import EMAIL_TOOL_PARAMETERS
         parameter_mapping = EMAIL_TOOL_PARAMETERS.get(concrete_tool_name, {})
         
         # Apply parameter mapping
