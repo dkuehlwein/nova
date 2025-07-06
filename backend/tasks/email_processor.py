@@ -24,23 +24,29 @@ class EmailProcessor:
         self.mcp_tools = None
     
     async def _get_email_tools(self) -> Dict[str, Any]:
-        """Get email-related MCP tools."""
+        """Get email-related MCP tools using configurable interface mapping."""
         if self.mcp_tools is None:
             # Get all available MCP tools
             all_tools = await mcp_manager.get_tools()
             
-            # Filter to email-related tools (tools that contain email operations)
-            email_tool_names = ["list_messages", "get_message", "list_labels"]
-            self.mcp_tools = {}
+            # Import email interface configuration
+            from config.email_interface import EMAIL_TOOL_INTERFACE
             
+            self.mcp_tools = {}
+            tool_mapping = {}
+            
+            # Map available tools to our interface
             for tool in all_tools:
                 tool_name = getattr(tool, 'name', '')
-                if tool_name in email_tool_names:
-                    self.mcp_tools[tool_name] = tool
+                for interface_name, possible_names in EMAIL_TOOL_INTERFACE.items():
+                    if tool_name in possible_names:
+                        self.mcp_tools[interface_name] = tool
+                        tool_mapping[interface_name] = tool_name
+                        break
             
             logger.info(
-                f"Found {len(self.mcp_tools)} email tools: {list(self.mcp_tools.keys())}",
-                extra={"data": {"available_tools": list(self.mcp_tools.keys())}}
+                f"Found {len(self.mcp_tools)} email tools: {tool_mapping}",
+                extra={"data": {"interface_mapping": tool_mapping}}
             )
         
         return self.mcp_tools
@@ -53,10 +59,21 @@ class EmailProcessor:
             raise ValueError(f"Email tool '{tool_name}' not available. Available tools: {list(tools.keys())}")
         
         tool = tools[tool_name]
+        concrete_tool_name = getattr(tool, 'name', tool_name)
+        
+        # Map parameters based on concrete tool name
+        from config.email_interface import EMAIL_TOOL_PARAMETERS
+        parameter_mapping = EMAIL_TOOL_PARAMETERS.get(concrete_tool_name, {})
+        
+        # Apply parameter mapping
+        mapped_kwargs = {}
+        for param_key, param_value in kwargs.items():
+            mapped_key = parameter_mapping.get(param_key, param_key)
+            mapped_kwargs[mapped_key] = param_value
         
         try:
-            # Call the tool with the provided arguments
-            result = await tool.arun(**kwargs)
+            # Call the tool with the mapped arguments
+            result = await tool.arun(**mapped_kwargs)
             
             # Parse the result if it's a string (some MCP tools return JSON strings)
             if isinstance(result, str):
@@ -71,8 +88,8 @@ class EmailProcessor:
             
         except Exception as e:
             logger.error(
-                f"Failed to call email tool {tool_name}",
-                extra={"data": {"tool": tool_name, "error": str(e), "kwargs": kwargs}}
+                f"Failed to call email tool {tool_name} (concrete: {concrete_tool_name})",
+                extra={"data": {"interface_tool": tool_name, "concrete_tool": concrete_tool_name, "error": str(e), "kwargs": mapped_kwargs}}
             )
             raise
     
@@ -96,7 +113,7 @@ class EmailProcessor:
                     logger.error("No email tools available from MCP servers")
                     return []
                 
-                # Quick health check by calling list_labels
+                # Quick health check by calling list_labels interface
                 if "list_labels" in tools:
                     await self._call_email_tool("list_labels")
                     logger.debug("Email API health check passed")
@@ -119,10 +136,9 @@ class EmailProcessor:
                 }}
             )
             
-            # Call email list_messages tool via MCP
+            # Call email list_emails interface via MCP
             result = await self._call_email_tool(
-                "list_messages",
-                query=f"label:{settings.EMAIL_LABEL_FILTER}",
+                "list_emails",
                 max_results=settings.EMAIL_MAX_PER_FETCH
             )
             
@@ -155,7 +171,7 @@ class EmailProcessor:
                     
                     # Get full message details
                     message_result = await self._call_email_tool(
-                        "get_message",
+                        "get_email",
                         message_id=message_id
                     )
                     

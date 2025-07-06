@@ -47,8 +47,8 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='Feature Request MCP Server')
-    parser.add_argument('--host', default='127.0.0.1', help='Host to bind the server to')
-    parser.add_argument('--port', type=int, default=8003, help='Port to bind the server to')
+    parser.add_argument('--host', default=os.getenv('HOST', '127.0.0.1'), help='Host to bind the server to')
+    parser.add_argument('--port', type=int, default=int(os.getenv('PORT', '8003')), help='Port to bind the server to')
     
     args = parser.parse_args()
     

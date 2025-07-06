@@ -1,3 +1,4 @@
+import os
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Any, Dict, List
@@ -85,9 +86,37 @@ class Settings(BaseSettings):
         
         return self
 
+    def _is_running_in_docker(self) -> bool:
+        """Detect if running inside Docker container."""
+        try:
+            # Check if we're in the Docker environment by looking for specific indicators
+            return (
+                # Check if we're in the /app directory (Docker working directory)
+                os.getcwd().startswith('/app') or
+                # Check for Docker-specific environment variables
+                os.path.exists('/.dockerenv') or
+                # Check if running as the expected Docker user
+                os.getenv('USER') == 'root'
+            )
+        except:
+            return False
+
+    def _adapt_mcp_url_for_environment(self, url: str) -> str:
+        """Adapt MCP server URL based on runtime environment."""
+        if self._is_running_in_docker():
+            # In Docker: use internal network names
+            return url
+        else:
+            # In WSL/host: convert Docker internal URLs to localhost
+            url_mappings = {
+                "http://nova-google-workspace-1:8000/mcp": "http://localhost:8002/mcp",
+                "http://nova-feature-request-1:8000/mcp": "http://localhost:8003/mcp"
+            }
+            return url_mappings.get(url, url)
+
     @property
     def MCP_SERVERS(self) -> List[Dict[str, Any]]:
-        """List of enabled MCP servers from YAML configuration"""
+        """List of enabled MCP servers from YAML configuration with environment-aware URLs"""
         servers = []
         
         try:
@@ -96,9 +125,12 @@ class Settings(BaseSettings):
             for server_name, server_config in mcp_config.items():
                 # Only include enabled servers
                 if server_config.get("enabled", True):
+                    original_url = server_config["url"]
+                    adapted_url = self._adapt_mcp_url_for_environment(original_url)
+                    
                     servers.append({
                         "name": server_name,
-                        "url": server_config["url"],
+                        "url": adapted_url,
                         "description": server_config.get("description", f"{server_name} MCP Server")
                     })
         

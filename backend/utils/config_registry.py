@@ -51,7 +51,7 @@ class ConfigRegistry:
         """Get configuration by name."""
         manager = self.get_manager(config_name)
         if manager is None:
-            raise ValueError(f"Configuration manager not found: {config_name}")
+            raise ValueError(f"Configuration manager not found: {config_name}. Available configs: {list(self._managers.keys())}")
         return manager.get_config()
     
     def save_config(self, config_name: str, config: Any) -> None:
@@ -241,15 +241,15 @@ class ConfigRegistry:
             from models.user_profile import UserProfile
             
             # Base paths
-            base_path = Path(__file__).parent.parent
-            configs_path = base_path.parent / "configs"
+            base_path = Path(__file__).parent.parent  # /app
+            configs_path = base_path / "configs"  # /app/configs (mounted volume)
             prompts_path = base_path / "agent" / "prompts"
             
             # 1. MCP Servers Configuration
+            # Use the existing YAML file
             mcp_manager = DictConfigManager(
                 config_path=configs_path / "mcp_servers.yaml",
-                config_name="mcp_servers",
-                default_config={}
+                config_name="mcp_servers"
             )
             self.register("mcp_servers", mcp_manager)
             

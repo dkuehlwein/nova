@@ -108,7 +108,18 @@ def update_beat_schedule():
 @worker_ready.connect
 def worker_ready_handler(sender=None, **kwargs):
     """Handle worker ready signal."""
-    print("Celery worker ready - updating beat schedule")
+    print("Celery worker ready - initializing configs and updating beat schedule")
+    
+    # Initialize unified configuration system (following start_website.py pattern)
+    try:
+        from utils.config_registry import initialize_configs
+        print("Initializing unified configuration system...")
+        initialize_configs()
+        print("Configuration managers initialized successfully")
+    except Exception as e:
+        print(f"Failed to initialize configurations: {e}")
+        # Don't raise - let worker continue with default settings
+    
     update_beat_schedule()
 
 @worker_shutdown.connect

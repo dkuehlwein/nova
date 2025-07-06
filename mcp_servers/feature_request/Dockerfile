@@ -27,14 +27,14 @@ ENV LINEAR_API_URL="https://api.linear.app/graphql"
 ENV GOOGLE_API_KEY=""
 ENV GOOGLE_MODEL_NAME="gemini-1.5-flash"
 ENV HOST="0.0.0.0"
-ENV PORT="8003"
+ENV PORT="8000"
 
 # Expose port
-EXPOSE 8003
+EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8003/tools/list || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/tools/list || exit 1
 
 # Run the server
 CMD ["python", "main.py"] 
