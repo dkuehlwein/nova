@@ -245,6 +245,10 @@ async def main():
         log_config=None  # Use our custom logging
     )
     server = uvicorn.Server(config)
+    
+    # Log server startup using our structured logging
+    service_manager.logger.info("Starting uvicorn server", extra={"data": {"host": "0.0.0.0", "port": 8001}})
+    
     await server.serve()
 
 
