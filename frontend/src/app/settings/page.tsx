@@ -309,9 +309,9 @@ function SystemStatusTab() {
   );
 }
 
-// User Settings tab content
+// User Settings tab content  
 function UserSettingsTab() {
-  const [profile, setProfile] = useState<any>(null);
+  const [settings, setSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -326,34 +326,42 @@ function UserSettingsTab() {
     'Australia/Sydney',
   ];
 
-  // Load user profile on component mount
+  // Load user settings on component mount
   React.useEffect(() => {
-    fetchUserProfile();
+    fetchUserSettings();
   }, []);
 
-  const fetchUserProfile = async () => {
+  const fetchUserSettings = async () => {
     try {
-      const data = await apiRequest('/api/config/user-profile');
-      setProfile(data);
+      const data = await apiRequest('/api/user-settings/');
+      setSettings(data);
     } catch (error) {
-      console.error('Failed to load user profile:', error);
+      console.error('Failed to load user settings:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSave = async () => {
-    if (!profile) return;
+    if (!settings) return;
     
     setSaving(true);
     try {
-      await apiRequest('/api/config/user-profile', {
-        method: 'PUT',
-        body: JSON.stringify(profile),
+      await apiRequest('/api/user-settings/', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          full_name: settings.full_name,
+          email: settings.email,
+          timezone: settings.timezone,
+          notes: settings.notes,
+          email_polling_enabled: settings.email_polling_enabled,
+          email_polling_interval: settings.email_polling_interval,
+          agent_polling_interval: settings.agent_polling_interval
+        }),
       });
-      console.log('User profile updated successfully');
+      console.log('User settings updated successfully');
     } catch (error) {
-      console.error('Failed to update user profile:', error);
+      console.error('Failed to update user settings:', error);
     } finally {
       setSaving(false);
     }
@@ -372,67 +380,127 @@ function UserSettingsTab() {
     );
   }
 
-  if (!profile) {
+  if (!settings) {
     return (
       <div className="text-center py-8 text-muted-foreground">
         <User className="h-8 w-8 mx-auto mb-2" />
-        <p className="text-sm">Failed to load user profile</p>
+        <p className="text-sm">Failed to load user settings</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="full_name">Full Name</Label>
-          <Input
-            id="full_name"
-            value={profile.full_name || ''}
-            onChange={(e) => setProfile({...profile, full_name: e.target.value})}
-            placeholder="Enter your full name"
-          />
+      <div className="space-y-6">
+        {/* User Profile Section */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium text-foreground">Profile Information</h3>
+          
+          <div className="space-y-2">
+            <Label htmlFor="full_name">Full Name</Label>
+            <Input
+              id="full_name"
+              value={settings.full_name || ''}
+              onChange={(e) => setSettings({...settings, full_name: e.target.value})}
+              placeholder="Enter your full name"
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="email">Email Address</Label>
+            <Input
+              id="email"
+              type="email"
+              value={settings.email || ''}
+              onChange={(e) => setSettings({...settings, email: e.target.value})}
+              placeholder="Enter your email address"
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="timezone">Timezone</Label>
+            <select
+              id="timezone"
+              value={settings.timezone || 'UTC'}
+              onChange={(e) => setSettings({...settings, timezone: e.target.value})}
+              className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {COMMON_TIMEZONES.map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="notes">Additional Notes</Label>
+            <Textarea
+              id="notes"
+              value={settings.notes || ''}
+              onChange={(e) => setSettings({...settings, notes: e.target.value})}
+              placeholder="Add any additional context you'd like Nova to know about you..."
+              rows={6}
+            />
+            <p className="text-xs text-muted-foreground">
+              This information helps Nova provide more personalized responses.
+            </p>
+          </div>
         </div>
-        
-        <div className="space-y-2">
-          <Label htmlFor="email">Email Address</Label>
-          <Input
-            id="email"
-            type="email"
-            value={profile.email || ''}
-            onChange={(e) => setProfile({...profile, email: e.target.value})}
-            placeholder="Enter your email address"
-          />
+
+        {/* Email Integration Section */}
+        <div className="space-y-4 border-t border-border pt-6">
+          <h3 className="text-lg font-medium text-foreground">Email Integration</h3>
+          
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Email Polling</Label>
+              <p className="text-sm text-muted-foreground">
+                Automatically check for new emails to create tasks
+              </p>
+            </div>
+            <Switch
+              checked={settings.email_polling_enabled || false}
+              onCheckedChange={(checked) => setSettings({...settings, email_polling_enabled: checked})}
+            />
+          </div>
+          
+          {settings.email_polling_enabled && (
+            <div className="space-y-2">
+              <Label htmlFor="email_polling_interval">Polling Interval (seconds)</Label>
+              <Input
+                id="email_polling_interval"
+                type="number"
+                min="60"
+                max="3600"
+                value={settings.email_polling_interval || 300}
+                onChange={(e) => setSettings({...settings, email_polling_interval: parseInt(e.target.value)})}
+              />
+              <p className="text-xs text-muted-foreground">
+                How often to check for new emails (minimum 60 seconds)
+              </p>
+            </div>
+          )}
         </div>
-        
-        <div className="space-y-2">
-          <Label htmlFor="timezone">Timezone</Label>
-          <select
-            id="timezone"
-            value={profile.timezone || 'UTC'}
-            onChange={(e) => setProfile({...profile, timezone: e.target.value})}
-            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {COMMON_TIMEZONES.map((tz) => (
-              <option key={tz} value={tz}>
-                {tz}
-              </option>
-            ))}
-          </select>
-        </div>
-        
-        <div className="space-y-2">
-          <Label htmlFor="notes">Additional Notes</Label>
-          <Textarea
-            id="notes"
-            value={profile.notes || ''}
-            onChange={(e) => setProfile({...profile, notes: e.target.value})}
-            placeholder="Add any additional context you'd like Nova to know about you..."
-            rows={6}
-          />
-          <p className="text-xs text-muted-foreground">
-            This information helps Nova provide more personalized responses.
-          </p>
+
+        {/* Agent Settings Section */}
+        <div className="space-y-4 border-t border-border pt-6">
+          <h3 className="text-lg font-medium text-foreground">Agent Settings</h3>
+          
+          <div className="space-y-2">
+            <Label htmlFor="agent_polling_interval">Agent Polling Interval (seconds)</Label>
+            <Input
+              id="agent_polling_interval"
+              type="number"
+              min="10"
+              max="300"
+              value={settings.agent_polling_interval || 30}
+              onChange={(e) => setSettings({...settings, agent_polling_interval: parseInt(e.target.value)})}
+            />
+            <p className="text-xs text-muted-foreground">
+              How often the core agent checks for new tasks (minimum 10 seconds)
+            </p>
+          </div>
         </div>
         
         <Button onClick={handleSave} disabled={saving} className="w-full">
@@ -483,7 +551,7 @@ export default function SettingsPage() {
                 className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <User className="h-4 w-4 mr-2" /> 
-                User Profile
+                User Settings
               </TabsTrigger>
             </TabsList>
 
@@ -512,8 +580,8 @@ export default function SettingsPage() {
 
                 <TabsContent value="user-profile" className="mt-0">
                   <div className="bg-card border border-border rounded-lg p-6">
-                    <h2 className="text-lg font-semibold text-foreground mb-4">User Profile</h2>
-                    <Suspense fallback={<TabContentLoader>User Profile</TabContentLoader>}>
+                    <h2 className="text-lg font-semibold text-foreground mb-4">User Settings</h2>
+                    <Suspense fallback={<TabContentLoader>User Settings</TabContentLoader>}>
                       <UserSettingsTab />
                     </Suspense>
                   </div>

@@ -281,8 +281,10 @@ async def validate_api_key(request: dict):
                 import google.generativeai as genai
                 genai.configure(api_key=api_key)
                 
-                # Simple test request
-                model = genai.GenerativeModel('gemini-pro')
+                # Simple test request - use model from config
+                from config import settings
+                model_name = "gemini-2.5-flash-lite-preview-06-17" # TODO
+                model = genai.GenerativeModel(model_name)
                 response = model.generate_content("Hello")
                 
                 result = {
