@@ -127,7 +127,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True):
     # Get cached or fresh components
     llm = await get_llm(use_cache=use_cache)
     tools = await get_all_tools_with_mcp(use_cache=use_cache)
-    system_prompt = get_nova_system_prompt(use_cache=use_cache)
+    system_prompt = await get_nova_system_prompt(use_cache=use_cache)
 
     # Always create fresh agent instance with current components + checkpointer
     agent = create_react_agent(

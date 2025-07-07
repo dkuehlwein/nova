@@ -117,8 +117,8 @@ class Settings(BaseSettings):
         else:
             # In WSL/host: convert Docker internal URLs to localhost
             url_mappings = {
-                "http://nova-google-workspace-1:8000/mcp": "http://localhost:8002/mcp",
-                "http://nova-feature-request-1:8000/mcp": "http://localhost:8003/mcp"
+                "http://google-workspace:8000/mcp/": "http://localhost:8002/mcp/",
+                "http://feature-request:8000/mcp/": "http://localhost:8003/mcp/",
             }
             return url_mappings.get(url, url)
 
@@ -128,6 +128,13 @@ class Settings(BaseSettings):
         servers = []
         
         try:
+            # Check if config registry is initialized first
+            from utils.config_registry import config_registry
+            if not config_registry._initialized:
+                # Config registry not initialized yet - return empty list
+                # This happens during early import phase before lifespan startup
+                return servers
+            
             mcp_config = get_config("mcp_servers")
             
             for server_name, server_config in mcp_config.items():
