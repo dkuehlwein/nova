@@ -243,7 +243,7 @@ class TestConfigEndpoints:
     
     @patch('backend.api.config_endpoints.publish')
     @patch('backend.api.config_endpoints.config_registry.get_manager')
-    def test_restore_configuration_backup_success(self, mock_get_loader, mock_publish, client):
+    def test_restore_configuration_backup_success(self, mock_get_manager, mock_publish, client):
         """Test POST /api/config/restore/{backup_id} successful restoration."""
         from backend.models.config import ConfigValidationResult
         
@@ -295,7 +295,7 @@ class TestConfigEndpoints:
     
     @patch('backend.api.config_endpoints.publish')
     @patch('backend.api.config_endpoints.config_registry.get_manager')
-    def test_validate_configuration_with_warnings(self, mock_get_loader, mock_publish, client):
+    def test_validate_configuration_with_warnings(self, mock_get_manager, mock_publish, client):
         """Test validation with warnings but no errors."""
         from backend.models.config import ConfigValidationResult
         

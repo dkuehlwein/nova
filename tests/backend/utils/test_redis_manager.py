@@ -34,9 +34,9 @@ class TestRedisManager:
     @pytest.mark.asyncio
     async def test_get_redis_successful_connection(self):
         """Test successful Redis connection."""
-        with patch('redis.asyncio.Redis') as mock_redis_class:
+        with patch('backend.utils.redis_manager.redis.Redis.from_url') as mock_from_url:
             mock_client = AsyncMock()
-            mock_redis_class.return_value = mock_client
+            mock_from_url.return_value = mock_client
             # Make ping return a coroutine that resolves to True
             mock_client.ping = AsyncMock(return_value=True)
             
@@ -60,9 +60,9 @@ class TestRedisManager:
     @pytest.mark.asyncio
     async def test_get_redis_singleton_behavior(self):
         """Test that get_redis returns the same instance."""
-        with patch('redis.asyncio.Redis') as mock_redis_class:
+        with patch('backend.utils.redis_manager.redis.Redis.from_url') as mock_from_url:
             mock_client = AsyncMock()
-            mock_redis_class.return_value = mock_client
+            mock_from_url.return_value = mock_client
             # Make ping return a coroutine that resolves to True
             mock_client.ping = AsyncMock(return_value=True)
             
@@ -71,7 +71,7 @@ class TestRedisManager:
             
             assert client1 is client2
             # Should only create one Redis instance
-            mock_redis_class.assert_called_once()
+            mock_from_url.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_publish_successful(self):
