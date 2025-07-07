@@ -241,8 +241,16 @@ class ConfigRegistry:
             from models.user_profile import UserProfile
             
             # Base paths
-            base_path = Path(__file__).parent.parent  # /app
-            configs_path = base_path / "configs"  # /app/configs (mounted volume)
+            base_path = Path(__file__).parent.parent  # backend/
+            
+            # Detect environment and adapt paths
+            if str(base_path.resolve()).startswith('/app'):
+                # Docker: /app is the working directory
+                configs_path = Path("/app/configs")  # Mounted volume at /app/configs
+            else:
+                # Local development: resolve relative to the actual backend directory
+                configs_path = base_path.parent / "configs"  # ../configs
+            
             prompts_path = base_path / "agent" / "prompts"
             
             # 1. MCP Servers Configuration
