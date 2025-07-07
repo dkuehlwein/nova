@@ -206,49 +206,6 @@ async def get_system_status():
         raise HTTPException(status_code=500, detail="Failed to get system status")
 
 
-@router.post("/migrate-user-profile")
-async def migrate_user_profile_from_yaml(session: AsyncSession = Depends(get_db_session)):
-    """
-    One-time migration: Move user profile data from YAML to database.
-    """
-    try:
-        from utils.config_registry import get_config
-        
-        # Check if settings already exist
-        result = await session.execute(select(UserSettings).limit(1))
-        existing_settings = result.scalar_one_or_none()
-        
-        if existing_settings and existing_settings.full_name:
-            return {"status": "skipped", "message": "User profile already exists in database"}
-        
-        # Try to load from YAML
-        try:
-            user_profile = get_config("user_profile")
-            
-            # Create or update settings with YAML data
-            if not existing_settings:
-                settings = UserSettings()
-                session.add(settings)
-            else:
-                settings = existing_settings
-            
-            settings.full_name = user_profile.full_name
-            settings.email = user_profile.email
-            settings.timezone = user_profile.timezone
-            settings.notes = user_profile.notes
-            
-            await session.commit()
-            
-            logger.info("User profile migrated from YAML to database")
-            return {"status": "success", "message": "User profile migrated from YAML"}
-            
-        except Exception as yaml_error:
-            logger.warning(f"Could not load user profile from YAML: {yaml_error}")
-            return {"status": "skipped", "message": "No user profile YAML found to migrate"}
-            
-    except Exception as e:
-        logger.error("Failed to migrate user profile", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to migrate user profile")
 
 
 @router.post("/validate-api-key")

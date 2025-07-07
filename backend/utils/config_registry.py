@@ -264,23 +264,9 @@ class ConfigRegistry:
                 default_config=None  # File should exist, no default needed
             )
             self.register("mcp_servers", mcp_manager)
+
             
-            # 2. User Profile Configuration
-            default_profile = UserProfile(
-                full_name="Nova User",
-                email="user@example.com",
-                timezone="UTC",
-                notes="Add your personal context here."
-            )
-            user_profile_manager = YamlConfigManager(
-                config_path=configs_path / "user_profile.yaml",
-                config_name="user_profile",
-                config_model=UserProfile,
-                default_config=default_profile
-            )
-            self.register("user_profile", user_profile_manager)
-            
-            # 3. System Prompt Configuration
+            # 2. System Prompt Configuration
             system_prompt_manager = MarkdownConfigManager(
                 config_path=prompts_path / "NOVA_SYSTEM_PROMPT.md",
                 config_name="system_prompt",

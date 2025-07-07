@@ -106,13 +106,8 @@ export default function OnboardingPage() {
         return;
       }
       
-      // Try to migrate existing user profile
+      // Load existing user settings if any
       try {
-        await apiRequest('/api/user-settings/migrate-user-profile', {
-          method: 'POST'
-        });
-        
-        // Load migrated data
         const settings = await apiRequest('/api/user-settings/');
         setUserSettings({
           full_name: settings.full_name || '',
@@ -121,7 +116,7 @@ export default function OnboardingPage() {
           notes: settings.notes || ''
         });
       } catch (error) {
-        console.log('No existing profile to migrate:', error);
+        console.log('No existing settings found:', error);
       }
       
       setLoading(false);
