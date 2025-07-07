@@ -3,6 +3,7 @@
 Database initialization script for Nova Kanban.
 
 This script creates all tables and populates them with sample data for development.
+Updated to work with the current system architecture including graphiti memory.
 """
 
 import asyncio
@@ -15,7 +16,7 @@ from models.models import Task, TaskStatus, Chat, Artifact, AgentStatus, AgentSt
 from models.user_settings import UserSettings
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -30,8 +31,12 @@ async def init_database():
         await add_sample_data()
         logger.info("✅ Sample data added successfully")
         
+        logger.info("✅ Database initialization completed successfully")
+        
     except Exception as e:
         logger.error(f"❌ Database initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
         raise
     finally:
         await db_manager.close()
@@ -44,71 +49,57 @@ async def add_sample_data():
         # Create sample tasks with memory-based person/project references
         tasks = [
             Task(
-                id=uuid4(),
                 title="Complete Backend API",
                 description="Implement all REST endpoints for the kanban board",
                 status=TaskStatus.DONE,
-                created_at=datetime.now(timezone.utc),
                 tags=["backend", "api"],
                 person_emails=["daniel@nova.dev"],
                 project_names=["Nova Kanban System"]
             ),
             Task(
-                id=uuid4(),
-                title="Fix Database Integration",
+                title="Fix Database Integration", 
                 description="Resolve database connection and table creation issues",
                 status=TaskStatus.IN_PROGRESS,
-                created_at=datetime.now(timezone.utc),
                 tags=["database", "integration"],
                 person_emails=["daniel@nova.dev"],
                 project_names=["Nova Kanban System"]
             ),
             Task(
-                id=uuid4(),
                 title="Implement Frontend UI",
                 description="Build React components for the kanban board interface",
                 status=TaskStatus.NEEDS_REVIEW,
-                created_at=datetime.now(timezone.utc),
                 tags=["frontend", "ui"],
                 person_emails=["daniel@nova.dev"],
                 project_names=["Nova Kanban System"]
             ),
             Task(
-                id=uuid4(),
                 title="Set Up Testing Framework",
                 description="Configure pytest and write unit tests for all components",
                 status=TaskStatus.NEW,
-                created_at=datetime.now(timezone.utc),
                 tags=["testing", "quality"],
                 person_emails=["daniel@nova.dev"],
                 project_names=["Nova Kanban System"]
             ),
             Task(
-                id=uuid4(),
                 title="Document API Endpoints",
                 description="Create comprehensive API documentation using FastAPI docs",
                 status=TaskStatus.NEW,
-                created_at=datetime.now(timezone.utc),
                 tags=["documentation", "api"],
                 person_emails=["daniel@nova.dev"],
                 project_names=["Nova Kanban System"]
             ),
             Task(
-                id=uuid4(),
                 title="User Authentication",
                 description="Implement user login and session management",
                 status=TaskStatus.USER_INPUT_RECEIVED,
-                created_at=datetime.now(timezone.utc),
                 tags=["auth", "security"],
                 person_emails=["daniel@nova.dev"],
                 project_names=["Nova Kanban System"]
             ),
             Task(
-                id=uuid4(),
                 title="Deploy to Production",
                 description="Set up production environment and deployment pipeline",
                 status=TaskStatus.WAITING,
-                created_at=datetime.now(timezone.utc),
                 tags=["deployment", "production"],
                 person_emails=["daniel@nova.dev"],
                 project_names=["Nova Kanban System"]
@@ -121,14 +112,28 @@ async def add_sample_data():
         
         # Create initial agent status record
         agent_status = AgentStatus(
-            id=uuid4(),
-            status=AgentStatusEnum.IDLE,
-            created_at=datetime.now(timezone.utc)
+            status=AgentStatusEnum.IDLE
         )
         
         session.add(agent_status)
         await session.commit()
         logger.info("Added initial agent status record")
+        
+        # Create default user settings if they don't exist
+        from sqlalchemy import select
+        result = await session.execute(select(UserSettings).limit(1))
+        existing_settings = result.scalar_one_or_none()
+        
+        if not existing_settings:
+            user_settings = UserSettings(
+                full_name="Nova User",
+                email="user@nova.dev",
+                timezone="UTC",
+                notes="Default user settings created during database initialization"
+            )
+            session.add(user_settings)
+            await session.commit()
+            logger.info("Added default user settings")
 
 
 if __name__ == "__main__":

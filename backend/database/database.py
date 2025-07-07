@@ -18,8 +18,8 @@ class DatabaseManager:
     
     def __init__(self, database_url: str = None):
         if database_url is None:
-            # Use the settings instance which handles environment detection
-            database_url = settings.DATABASE_URL
+            # Use the SQLAlchemy-specific URL with +asyncpg driver
+            database_url = settings.SQLALCHEMY_DATABASE_URL
         
         self.engine = create_async_engine(
             database_url,

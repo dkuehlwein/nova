@@ -29,7 +29,8 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     
     # Database Configuration (constructed from PostgreSQL variables)
-    DATABASE_URL: Optional[str] = None  # PostgreSQL connection string for checkpointer
+    DATABASE_URL: Optional[str] = None  # PostgreSQL connection string for LangChain checkpointer (no driver)
+    SQLALCHEMY_DATABASE_URL: Optional[str] = None  # PostgreSQL connection string for SQLAlchemy (+asyncpg)
     
     # Neo4j Configuration (for Graphiti Memory)
     NEO4J_URI: str = "bolt://localhost:7687"
@@ -76,11 +77,16 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def compute_urls(self):
         """Compute DATABASE_URL and Celery URLs if not explicitly provided"""
-        # Construct DATABASE_URL from PostgreSQL components if not explicitly set
+        # Auto-detect host based on environment (localhost for local, postgres for Docker)
+        host = "postgres" if self._is_running_in_docker() else "localhost"
+        
+        # Construct DATABASE_URL for LangChain checkpointer (no driver)
         if not self.DATABASE_URL:
-            # Auto-detect host based on environment (localhost for local, postgres for Docker)
-            host = "postgres" if self._is_running_in_docker() else "localhost"
-            self.DATABASE_URL = f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{host}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            self.DATABASE_URL = f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{host}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        
+        # Construct SQLALCHEMY_DATABASE_URL for SQLAlchemy (+asyncpg driver)
+        if not self.SQLALCHEMY_DATABASE_URL:
+            self.SQLALCHEMY_DATABASE_URL = f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{host}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         
         # Construct Celery URLs from REDIS_URL (already loaded from environment by pydantic-settings)
         self.CELERY_BROKER_URL = f"{self.REDIS_URL}/0"

@@ -4,6 +4,7 @@ import "./globals.css";
 import ApiInitializer from "../components/ApiInitializer";
 import { NovaQueryClientProvider } from '../components/QueryClientProvider';
 import { NovaWebSocketProvider } from '../components/NovaWebSocketProvider';
+import OnboardingGuard from '../components/OnboardingGuard';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,7 +34,9 @@ export default function RootLayout({
         <NovaQueryClientProvider>
           <NovaWebSocketProvider debug={process.env.NODE_ENV === 'development'}>
             <ApiInitializer />
-            {children}
+            <OnboardingGuard>
+              {children}
+            </OnboardingGuard>
           </NovaWebSocketProvider>
         </NovaQueryClientProvider>
       </body>

@@ -249,3 +249,196 @@ async def migrate_user_profile_from_yaml(session: AsyncSession = Depends(get_db_
     except Exception as e:
         logger.error("Failed to migrate user profile", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to migrate user profile")
+
+
+@router.post("/validate-api-key")
+async def validate_api_key(request: dict):
+    """
+    Validate an API key by making a test call to the service.
+    Only validates - does not store the key.
+    """
+    try:
+        key_type = request.get("key_type")
+        api_key = request.get("api_key")
+        
+        logger.info(
+            "API key validation request",
+            extra={
+                "data": {
+                    "key_type": key_type,
+                    "api_key_length": len(api_key) if api_key else 0,
+                    "has_api_key": bool(api_key)
+                }
+            }
+        )
+        
+        if not key_type or not api_key:
+            raise HTTPException(status_code=400, detail="key_type and api_key are required")
+        
+        if key_type == "google_api_key":
+            # Validate Google API key by making a simple AI request
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=api_key)
+                
+                # Simple test request
+                model = genai.GenerativeModel('gemini-pro')
+                response = model.generate_content("Hello")
+                
+                result = {
+                    "valid": True,
+                    "message": "Google API key is valid",
+                    "service": "google"
+                }
+                logger.info("Google API key validation successful", extra={"data": result})
+                return result
+            except Exception as e:
+                result = {
+                    "valid": False,
+                    "message": f"Google API key validation failed: {str(e)}",
+                    "service": "google"
+                }
+                logger.warning("Google API key validation failed", extra={"data": {"error": str(e), "result": result}})
+                return result
+                
+        elif key_type == "langsmith_api_key":
+            # Validate LangSmith API key
+            try:
+                import requests
+                
+                # Test LangSmith API
+                response = requests.get(
+                    "https://api.smith.langchain.com/sessions",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    params={"limit": 1},
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    result = {
+                        "valid": True,
+                        "message": "LangSmith API key is valid",
+                        "service": "langsmith"
+                    }
+                    logger.info("LangSmith API key validation successful", extra={"data": result})
+                    return result
+                else:
+                    result = {
+                        "valid": False,
+                        "message": f"LangSmith API key validation failed: {response.status_code}",
+                        "service": "langsmith"
+                    }
+                    logger.warning("LangSmith API key validation failed", extra={"data": {"status_code": response.status_code, "result": result}})
+                    return result
+            except Exception as e:
+                result = {
+                    "valid": False,
+                    "message": f"LangSmith API key validation failed: {str(e)}",
+                    "service": "langsmith"
+                }
+                logger.warning("LangSmith API key validation exception", extra={"data": {"error": str(e), "result": result}})
+                return result
+        
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown key_type: {key_type}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to validate API key", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to validate API key")
+
+
+@router.post("/save-api-keys")
+async def save_api_keys(request: dict):
+    """
+    Save validated API keys to .env file (Tier 2 configuration).
+    Only saves keys that have been previously validated.
+    """
+    try:
+        import os
+        from pathlib import Path
+        
+        api_keys = request.get("api_keys", {})
+        if not api_keys:
+            raise HTTPException(status_code=400, detail="No API keys provided")
+        
+        # Path to .env file (look in parent directory and current directory)
+        env_paths = [
+            Path(__file__).parent.parent.parent / ".env",  # /home/daniel/nova/.env
+            Path(__file__).parent.parent / ".env"  # /home/daniel/nova/backend/.env
+        ]
+        
+        env_file = None
+        for path in env_paths:
+            if path.exists():
+                env_file = path
+                break
+        
+        if not env_file:
+            # Create .env in root directory
+            env_file = env_paths[0]
+            env_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Read existing .env content
+        env_content = ""
+        if env_file.exists():
+            env_content = env_file.read_text()
+        
+        # Update or add API keys
+        env_lines = env_content.strip().split('\n') if env_content.strip() else []
+        
+        # Key mappings
+        key_mappings = {
+            "google_api_key": "GOOGLE_API_KEY",
+            "langsmith_api_key": "LANGCHAIN_API_KEY"
+        }
+        
+        updated_keys = []
+        for key_type, api_key in api_keys.items():
+            if not api_key or not api_key.strip():
+                continue
+                
+            env_var_name = key_mappings.get(key_type)
+            if not env_var_name:
+                continue
+            
+            # Find and update existing line or add new one
+            updated = False
+            for i, line in enumerate(env_lines):
+                if line.startswith(f"{env_var_name}="):
+                    env_lines[i] = f'{env_var_name}="{api_key}"'
+                    updated = True
+                    break
+            
+            if not updated:
+                env_lines.append(f'{env_var_name}="{api_key}"')
+            
+            updated_keys.append(env_var_name)
+        
+        # Write updated content back to .env
+        if updated_keys:
+            env_file.write_text('\n'.join(env_lines) + '\n')
+            
+            logger.info(
+                "API keys saved to .env file",
+                extra={
+                    "data": {
+                        "env_file": str(env_file),
+                        "updated_keys": updated_keys
+                    }
+                }
+            )
+        
+        return {
+            "status": "success",
+            "message": f"Saved {len(updated_keys)} API keys to .env file",
+            "updated_keys": updated_keys,
+            "env_file": str(env_file)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to save API keys", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to save API keys: {str(e)}")
