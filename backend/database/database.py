@@ -6,14 +6,11 @@ import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from models.models import Base
-
-# Load environment variables
-load_dotenv()
+from config import settings
 
 
 class DatabaseManager:
@@ -21,10 +18,8 @@ class DatabaseManager:
     
     def __init__(self, database_url: str = None):
         if database_url is None:
-            database_url = os.getenv(
-                "DATABASE_URL", 
-                "postgresql+asyncpg://nova:nova_dev_password@localhost:5432/nova_kanban"
-            )
+            # Use the settings instance which handles environment detection
+            database_url = settings.DATABASE_URL
         
         self.engine = create_async_engine(
             database_url,

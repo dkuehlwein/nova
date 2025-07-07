@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from database.database import db_manager
 from models.models import Task, TaskStatus, Chat, Artifact, AgentStatus, AgentStatusEnum
+from models.user_settings import UserSettings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

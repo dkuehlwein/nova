@@ -78,7 +78,9 @@ class Settings(BaseSettings):
         """Compute DATABASE_URL and Celery URLs if not explicitly provided"""
         # Construct DATABASE_URL from PostgreSQL components if not explicitly set
         if not self.DATABASE_URL:
-            self.DATABASE_URL = f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            # Auto-detect host based on environment (localhost for local, postgres for Docker)
+            host = "postgres" if self._is_running_in_docker() else "localhost"
+            self.DATABASE_URL = f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{host}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         
         # Construct Celery URLs from REDIS_URL (already loaded from environment by pydantic-settings)
         self.CELERY_BROKER_URL = f"{self.REDIS_URL}/0"

@@ -22,10 +22,11 @@ from api.api_endpoints import router as api_router
 from api.chat_endpoints import router as chat_router
 from api.websocket_endpoints import router as websocket_router
 from api.mcp_endpoints import router as mcp_router
-from api.config_endpoints import router as config_router
+from api.config_endpoints import router as file_config_router
 from api.system_endpoints import router as system_router
 from api.prompt_endpoints import router as prompt_router
 from api.memory_endpoints import router as memory_router
+from api.settings_endpoints import router as user_settings_router
 from utils.service_manager import ServiceManager, create_prompt_updated_handler
 from utils.logging import RequestLoggingMiddleware, configure_logging
 from config import settings
@@ -179,9 +180,10 @@ app.include_router(chat_router)
 app.include_router(websocket_router)
 app.include_router(mcp_router)
 app.include_router(system_router)
-app.include_router(config_router)
+app.include_router(file_config_router)
 app.include_router(prompt_router)
 app.include_router(memory_router)
+app.include_router(user_settings_router)
 
 
 @app.get("/")

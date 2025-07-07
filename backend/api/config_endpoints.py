@@ -1,8 +1,8 @@
 """
-Configuration Management API Endpoints
+File Configuration Management API Endpoints
 
-Provides REST API for validating configurations and managing backups.
-Implements unified configuration management system.
+Provides REST API for file-based configurations (MCP servers, user profile YAML).
+Handles validation, backups, and restoration of YAML configuration files.
 """
 
 from typing import List, Dict, Any
@@ -18,7 +18,7 @@ from models.events import create_config_validated_event
 from models.user_profile import UserProfile, UserProfileUpdate
 
 logger = get_logger("config-api")
-router = APIRouter(prefix="/api/config", tags=["Configuration"])
+router = APIRouter(prefix="/api/config", tags=["file-configuration"])
 
 # Import domain-specific models
 from models.config import ConfigValidateRequest, ConfigValidateResponse, ConfigRestoreRequest

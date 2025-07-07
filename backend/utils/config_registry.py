@@ -256,11 +256,12 @@ class ConfigRegistry:
             # 1. MCP Servers Configuration
             # Use proper Pydantic validation with YamlConfigManager
             from models.config import MCPServersConfig
+            
             mcp_manager = YamlConfigManager(
                 config_path=configs_path / "mcp_servers.yaml",
                 config_name="mcp_servers",
                 config_model=MCPServersConfig,
-                default_config=MCPServersConfig({})
+                default_config=None  # File should exist, no default needed
             )
             self.register("mcp_servers", mcp_manager)
             
