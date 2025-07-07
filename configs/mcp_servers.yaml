@@ -1,8 +1,8 @@
 feature-request:
   description: AI-powered feature request management for Linear
   enabled: true
-  url: http://feature-request:8000/mcp/
+  url: http://nova-feature-request-1:8000/mcp/
 google-workspace:
   description: Google Workspace MCP Server for Gmail and Calendar operations
   enabled: true
-  url: http://google-workspace:8000/mcp/
+  url: http://nova-google-workspace-1:8000/mcp/

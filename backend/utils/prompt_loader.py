@@ -30,9 +30,9 @@ async def load_nova_system_prompt() -> str:
     
     # Get user profile from database
     async with db_manager.get_session() as session:
-        user_settings = await session.scalar(
-            session.select(UserSettings).limit(1)
-        )
+        from sqlalchemy import select
+        result = await session.execute(select(UserSettings).limit(1))
+        user_settings = result.scalar_one_or_none()
     
     # Use defaults if no user settings found
     if user_settings is None:

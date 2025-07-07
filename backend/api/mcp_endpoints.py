@@ -47,11 +47,17 @@ async def get_mcp_servers():
         servers = []
         health_check_tasks = []
         
+        # Import settings to get environment-adapted URLs
+        from config import settings
+        
         # Prepare server info and health check tasks
         for server_name, server_config in mcp_config.items():
+            # Use environment-adapted URL from settings
+            adapted_url = settings._adapt_mcp_url_for_environment(server_config.url)
+            
             server_info = {
                 "name": server_name,
-                "url": server_config.url,
+                "url": adapted_url,
                 "description": server_config.description,
                 "enabled": server_config.enabled
             }
