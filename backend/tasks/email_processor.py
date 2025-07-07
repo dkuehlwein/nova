@@ -73,7 +73,7 @@ class EmailProcessor:
         
         try:
             # Call the tool with the mapped arguments
-            result = await tool.arun(**mapped_kwargs)
+            result = await tool.arun(mapped_kwargs)
             
             # Parse the result if it's a string (some MCP tools return JSON strings)
             if isinstance(result, str):
@@ -137,10 +137,8 @@ class EmailProcessor:
             )
             
             # Call email list_emails interface via MCP
-            result = await self._call_email_tool(
-                "list_emails",
-                max_results=settings.EMAIL_MAX_PER_FETCH
-            )
+            # Note: get_unread_emails tool doesn't accept parameters
+            result = await self._call_email_tool("list_emails")
             
             if not result or "messages" not in result:
                 logger.info("No messages found or invalid response from email API")

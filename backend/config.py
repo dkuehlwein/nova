@@ -137,9 +137,14 @@ class Settings(BaseSettings):
             # Check if config registry is initialized first
             from utils.config_registry import config_registry
             if not config_registry._initialized:
-                # Config registry not initialized yet - return empty list
-                # This happens during early import phase before lifespan startup
-                return servers
+                # Try to initialize config in worker process
+                try:
+                    from utils.config_registry import initialize_configs
+                    initialize_configs()
+                except Exception:
+                    # Config registry not initialized yet - return empty list
+                    # This happens during early import phase before lifespan startup
+                    return servers
             
             mcp_config = get_config("mcp_servers")
             
