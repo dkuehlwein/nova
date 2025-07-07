@@ -164,6 +164,13 @@ class YamlConfigManager(BaseConfigManager[YamlConfigType]):
                     # Model-specific validation can be added here
                     if hasattr(instance, 'model_fields'):
                         details['field_count'] = len(instance.model_fields)
+                    
+                    # MCP-specific validation details
+                    if self.config_name == "mcp_servers" and hasattr(instance, 'root'):
+                        servers = instance.root
+                        details['server_count'] = len(servers)
+                        enabled_servers = sum(1 for server in servers.values() if getattr(server, 'enabled', True))
+                        details['enabled_count'] = enabled_servers
                         
                 except ValidationError as e:
                     for error in e.errors():

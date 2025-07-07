@@ -14,17 +14,28 @@ from pydantic import BaseModel, field_validator, HttpUrl, Field, RootModel
 class MCPServerConfig(BaseModel):
     """MCP Server configuration with validation."""
     
-    url: HttpUrl = Field(..., description="MCP server URL endpoint")
-    health_url: Optional[HttpUrl] = Field(None, description="Optional health check endpoint URL (uses MCP tools/list if not provided)") 
+    url: str = Field(..., description="MCP server URL endpoint")
+    health_url: Optional[str] = Field(None, description="Optional health check endpoint URL (uses MCP tools/list if not provided)") 
     description: str = Field(..., min_length=1, max_length=500, description="Server description")
     enabled: bool = Field(default=True, description="Whether server is enabled")
+    
+    @field_validator('url')
+    @classmethod
+    def url_must_be_valid(cls, v):
+        """Ensure URL is valid format."""
+        if not v.startswith(('http://', 'https://')):
+            raise ValueError('URL must start with http:// or https://')
+        return v
     
     @field_validator('health_url')
     @classmethod
     def health_url_must_be_valid(cls, v):
         """Ensure health URL is a valid endpoint if provided."""
-        if v is not None and not str(v).endswith(('/health', '/status', '/ping')):
-            raise ValueError('Health URL should end with /health, /status, or /ping')
+        if v is not None:
+            if not v.startswith(('http://', 'https://')):
+                raise ValueError('Health URL must start with http:// or https://')
+            if not str(v).endswith(('/health', '/status', '/ping')):
+                raise ValueError('Health URL should end with /health, /status, or /ping')
         return v
     
     @field_validator('description')

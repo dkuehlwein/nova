@@ -36,6 +36,11 @@ async def validate_configuration(request: ConfigValidateRequest):
         config_manager = config_registry.get_manager("mcp_servers")
         validation_result = config_manager.validate_config(request.config)
         
+        # Extract details for logging and response
+        details = getattr(validation_result, 'details', {})
+        server_count = details.get("server_count", details.get("key_count", 0))
+        enabled_count = details.get("enabled_count", 0)
+        
         # Publish validation event
         event = create_config_validated_event(
             config_type="mcp_servers",
@@ -53,7 +58,7 @@ async def validate_configuration(request: ConfigValidateRequest):
                 "valid": validation_result.valid,
                 "error_count": len(validation_result.errors),
                 "warning_count": len(validation_result.warnings),
-                "server_count": validation_result.details.get("server_count", validation_result.details.get("key_count", 0))
+                "server_count": server_count
             },
             logger=logger
         )
@@ -62,15 +67,12 @@ async def validate_configuration(request: ConfigValidateRequest):
         if validation_result.warnings:
             message += f" with {len(validation_result.warnings)} warnings"
         
-        # Convert ValidationResult to ConfigValidationResult for API response
-        # For MCP servers, map key_count to server_count since DictConfigManager counts keys
-        server_count = validation_result.details.get("server_count", validation_result.details.get("key_count", 0))
         config_validation_result = ConfigValidationResult(
             valid=validation_result.valid,
             errors=validation_result.errors,
             warnings=validation_result.warnings,
             server_count=server_count,
-            enabled_count=validation_result.details.get("enabled_count", server_count)  # Default to all servers enabled
+            enabled_count=enabled_count
         )
         
         return {
@@ -107,14 +109,17 @@ async def validate_current_configuration():
             message += f" with {len(validation_result.warnings)} warnings"
         
         # Convert ValidationResult to ConfigValidationResult for API response
-        # For MCP servers, map key_count to server_count since DictConfigManager counts keys
-        server_count = validation_result.details.get("server_count", validation_result.details.get("key_count", 0))
+        # For MCP servers with YamlConfigManager, extract server counts from validated config
+        details = getattr(validation_result, 'details', {})
+        server_count = details.get("server_count", details.get("key_count", 0))
+        enabled_count = details.get("enabled_count", 0)
+        
         config_validation_result = ConfigValidationResult(
             valid=validation_result.valid,
             errors=validation_result.errors,
             warnings=validation_result.warnings,
             server_count=server_count,
-            enabled_count=validation_result.details.get("enabled_count", server_count)  # Default to all servers enabled
+            enabled_count=enabled_count
         )
         
         return {

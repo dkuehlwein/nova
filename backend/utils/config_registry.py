@@ -246,10 +246,13 @@ class ConfigRegistry:
             prompts_path = base_path / "agent" / "prompts"
             
             # 1. MCP Servers Configuration
-            # Use the existing YAML file
-            mcp_manager = DictConfigManager(
+            # Use proper Pydantic validation with YamlConfigManager
+            from models.config import MCPServersConfig
+            mcp_manager = YamlConfigManager(
                 config_path=configs_path / "mcp_servers.yaml",
-                config_name="mcp_servers"
+                config_name="mcp_servers",
+                config_model=MCPServersConfig,
+                default_config=MCPServersConfig({})
             )
             self.register("mcp_servers", mcp_manager)
             
