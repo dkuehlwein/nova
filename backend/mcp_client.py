@@ -26,8 +26,7 @@ class MCPClientManager:
             server_config = {
                 server_name: {
                     "url": server_info["url"],
-                    "transport": "streamable_http",
-                    "description": server_info["description"]
+                    "transport": "streamable_http"
                 }
             }
             
@@ -173,8 +172,7 @@ class MCPClientManager:
             server_name = server_info.get("name", "unknown")
             server_config[server_name] = {
                 "url": server_info["url"],
-                "transport": "streamable_http",
-                "description": server_info["description"]
+                "transport": "streamable_http"
             }
         
         # Create MultiServerMCPClient with functional servers

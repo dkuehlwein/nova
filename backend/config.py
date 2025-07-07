@@ -117,11 +117,14 @@ class Settings(BaseSettings):
         else:
             # In WSL/host: convert Docker internal URLs to localhost
             url_mappings = {
-                "http://google-workspace:8000/mcp/": "http://localhost:8002/mcp/",
-                "http://feature-request:8000/mcp/": "http://localhost:8003/mcp/",
+                "http://google-workspace:8000/mcp": "http://localhost:8002/mcp",
+                "http://feature-request:8000/mcp": "http://localhost:8003/mcp",
                 # Full container names from Docker Compose
-                "http://nova-google-workspace-1:8000/mcp/": "http://localhost:8002/mcp/",
-                "http://nova-feature-request-1:8000/mcp/": "http://localhost:8003/mcp/"
+                "http://nova-google-workspace-1:8000/mcp": "http://localhost:8002/mcp",
+                "http://nova-feature-request-1:8000/mcp": "http://localhost:8003/mcp",
+                # With trailing slash (for backward compatibility)
+                "http://nova-google-workspace-1:8000/mcp/": "http://localhost:8002/mcp",
+                "http://nova-feature-request-1:8000/mcp/": "http://localhost:8003/mcp"
             }
             return url_mappings.get(url, url)
 
@@ -142,14 +145,14 @@ class Settings(BaseSettings):
             
             for server_name, server_config in mcp_config.items():
                 # Only include enabled servers
-                if server_config.get("enabled", True):
-                    original_url = server_config["url"]
+                if getattr(server_config, 'enabled', True):
+                    original_url = server_config.url
                     adapted_url = self._adapt_mcp_url_for_environment(original_url)
                     
                     servers.append({
                         "name": server_name,
                         "url": adapted_url,
-                        "description": server_config.get("description", f"{server_name} MCP Server")
+                        "description": getattr(server_config, 'description', f"{server_name} MCP Server")
                     })
         
         except Exception as e:
