@@ -9,7 +9,7 @@ from utils.config_registry import get_config
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file="../.env", env_file_encoding="utf-8", extra="ignore"
+        env_file=[".env", "../.env"], env_file_encoding="utf-8", extra="ignore"
     )
 
     # Redis Configuration (for Celery and caching)
