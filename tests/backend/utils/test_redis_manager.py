@@ -37,7 +37,8 @@ class TestRedisManager:
         with patch('redis.asyncio.Redis') as mock_redis_class:
             mock_client = AsyncMock()
             mock_redis_class.return_value = mock_client
-            mock_client.ping.return_value = True
+            # Make ping return a coroutine that resolves to True
+            mock_client.ping = AsyncMock(return_value=True)
             
             client = await get_redis()
             
@@ -62,7 +63,8 @@ class TestRedisManager:
         with patch('redis.asyncio.Redis') as mock_redis_class:
             mock_client = AsyncMock()
             mock_redis_class.return_value = mock_client
-            mock_client.ping.return_value = True
+            # Make ping return a coroutine that resolves to True
+            mock_client.ping = AsyncMock(return_value=True)
             
             client1 = await get_redis()
             client2 = await get_redis()

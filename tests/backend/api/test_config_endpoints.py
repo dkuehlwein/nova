@@ -158,8 +158,8 @@ class TestConfigEndpoints:
         assert data["validation_result"]["valid"] is False
         assert any("duplicate" in error.lower() for error in data["validation_result"]["errors"])
     
-    @patch('backend.api.config_endpoints.get_mcp_config_loader')
-    def test_validate_current_configuration(self, mock_get_loader, client):
+    @patch('backend.api.config_endpoints.config_registry.get_manager')
+    def test_validate_current_configuration(self, mock_get_manager, client):
         """Test GET /api/config/validate for current configuration."""
         from backend.models.config import ConfigValidationResult
         
@@ -172,7 +172,7 @@ class TestConfigEndpoints:
             enabled_count=0
         )
         mock_loader.validate_config.return_value = mock_validation_result
-        mock_get_loader.return_value = mock_loader
+        mock_get_manager.return_value = mock_loader
         
         response = client.get("/api/config/validate")
         
@@ -185,8 +185,8 @@ class TestConfigEndpoints:
         
         mock_loader.validate_config.assert_called_once_with()
     
-    @patch('backend.api.config_endpoints.get_mcp_config_loader')
-    def test_list_configuration_backups(self, mock_get_loader, client):
+    @patch('backend.api.config_endpoints.config_registry.get_manager')
+    def test_list_configuration_backups(self, mock_get_manager, client):
         """Test GET /api/config/backups."""
         mock_loader = MagicMock()
         mock_backups = [
@@ -203,7 +203,7 @@ class TestConfigEndpoints:
             )
         ]
         mock_loader.list_backups.return_value = mock_backups
-        mock_get_loader.return_value = mock_loader
+        mock_get_manager.return_value = mock_loader
         
         response = client.get("/api/config/backups")
         
@@ -217,8 +217,8 @@ class TestConfigEndpoints:
         
         mock_loader.list_backups.assert_called_once()
     
-    @patch('backend.api.config_endpoints.get_mcp_config_loader')
-    def test_create_configuration_backup(self, mock_get_loader, client):
+    @patch('backend.api.config_endpoints.config_registry.get_manager')
+    def test_create_configuration_backup(self, mock_get_manager, client):
         """Test POST /api/config/backups."""
         mock_loader = MagicMock()
         mock_backup_info = ConfigBackupInfo(
@@ -228,7 +228,7 @@ class TestConfigEndpoints:
             description="Test backup"
         )
         mock_loader.create_backup.return_value = mock_backup_info
-        mock_get_loader.return_value = mock_loader
+        mock_get_manager.return_value = mock_loader
         
         response = client.post("/api/config/backups?description=Test backup")
         
@@ -242,7 +242,7 @@ class TestConfigEndpoints:
         mock_loader.create_backup.assert_called_once_with("Test backup")
     
     @patch('backend.api.config_endpoints.publish')
-    @patch('backend.api.config_endpoints.get_mcp_config_loader')
+    @patch('backend.api.config_endpoints.config_registry.get_manager')
     def test_restore_configuration_backup_success(self, mock_get_loader, mock_publish, client):
         """Test POST /api/config/restore/{backup_id} successful restoration."""
         from backend.models.config import ConfigValidationResult
@@ -257,7 +257,7 @@ class TestConfigEndpoints:
             enabled_count=1
         )
         mock_loader.validate_config.return_value = mock_validation_result
-        mock_get_loader.return_value = mock_loader
+        mock_get_manager.return_value = mock_loader
         
         # Mock the async publish function to avoid Redis issues
         mock_publish.return_value = None
@@ -275,12 +275,12 @@ class TestConfigEndpoints:
         mock_loader.restore_backup.assert_called_once_with(backup_id)
         mock_loader.validate_config.assert_called_once()
     
-    @patch('backend.api.config_endpoints.get_mcp_config_loader')
-    def test_restore_configuration_backup_not_found(self, mock_get_loader, client):
+    @patch('backend.api.config_endpoints.config_registry.get_manager')
+    def test_restore_configuration_backup_not_found(self, mock_get_manager, client):
         """Test POST /api/config/restore/{backup_id} with non-existent backup."""
         mock_loader = MagicMock()
         mock_loader.restore_backup.return_value = False
-        mock_get_loader.return_value = mock_loader
+        mock_get_manager.return_value = mock_loader
         
         backup_id = "nonexistent_backup"
         response = client.post(f"/api/config/restore/{backup_id}")
@@ -294,7 +294,7 @@ class TestConfigEndpoints:
         mock_loader.restore_backup.assert_called_once_with(backup_id)
     
     @patch('backend.api.config_endpoints.publish')
-    @patch('backend.api.config_endpoints.get_mcp_config_loader')
+    @patch('backend.api.config_endpoints.config_registry.get_manager')
     def test_validate_configuration_with_warnings(self, mock_get_loader, mock_publish, client):
         """Test validation with warnings but no errors."""
         from backend.models.config import ConfigValidationResult
@@ -315,7 +315,7 @@ class TestConfigEndpoints:
             enabled_count=0
         )
         mock_loader.validate_config.return_value = mock_validation_result
-        mock_get_loader.return_value = mock_loader
+        mock_get_manager.return_value = mock_loader
         
         # Mock the async publish function to avoid Redis issues
         mock_publish.return_value = None
@@ -337,12 +337,12 @@ class TestConfigEndpoints:
         assert response.status_code == 422  # Pydantic validation error
     
     @patch('backend.api.config_endpoints.publish')
-    @patch('backend.api.config_endpoints.get_mcp_config_loader')
-    def test_validate_configuration_internal_error(self, mock_get_loader, mock_publish, client):
+    @patch('backend.api.config_endpoints.config_registry.get_manager')
+    def test_validate_configuration_internal_error(self, mock_get_manager, mock_publish, client):
         """Test validation with internal server error."""
         mock_loader = MagicMock()
         mock_loader.validate_config.side_effect = Exception("Internal error")
-        mock_get_loader.return_value = mock_loader
+        mock_get_manager.return_value = mock_loader
         
         # Mock the async publish function to avoid Redis issues
         mock_publish.return_value = None

@@ -28,11 +28,11 @@ def client(app):
 class TestMCPEndpoints:
     """Test MCP management endpoints."""
     
-    @patch('backend.api.mcp_endpoints.load_mcp_yaml')
+    @patch('backend.api.mcp_endpoints.get_config')
     @patch('backend.api.mcp_endpoints.mcp_manager.check_server_health_and_get_tools_count')
-    def test_get_mcp_servers_empty_config(self, mock_health_check, mock_load_yaml, client):
+    def test_get_mcp_servers_empty_config(self, mock_health_check, mock_get_config, client):
         """Test GET /api/mcp with empty configuration."""
-        mock_load_yaml.return_value = {}
+        mock_get_config.return_value = {}
         
         response = client.get("/api/mcp/")
         
@@ -43,11 +43,11 @@ class TestMCPEndpoints:
         assert data["healthy_servers"] == 0
         assert data["enabled_servers"] == 0
     
-    @patch('backend.api.mcp_endpoints.load_mcp_yaml')
+    @patch('backend.api.mcp_endpoints.get_config')
     @patch('backend.api.mcp_endpoints.mcp_manager.check_server_health_and_get_tools_count')
-    async def test_get_mcp_servers_with_config(self, mock_health_check, mock_load_yaml, client):
+    async def test_get_mcp_servers_with_config(self, mock_health_check, mock_get_config, client):
         """Test GET /api/mcp with server configuration."""
-        mock_load_yaml.return_value = {
+        mock_get_config.return_value = {
             "gmail": {
                 "url": "http://localhost:8002/mcp",
                 "description": "Gmail MCP Server",
@@ -85,12 +85,12 @@ class TestMCPEndpoints:
         assert servers["disabled_server"]["healthy"] is False
         assert servers["disabled_server"]["tools_count"] is None  # Disabled servers have no tools count
     
-    @patch('backend.api.mcp_endpoints.load_mcp_yaml')
-    @patch('utils.config_loader.get_mcp_config_loader')
+    @patch('backend.api.mcp_endpoints.get_config')
+    @patch('backend.api.mcp_endpoints.save_config')
     @patch('backend.api.mcp_endpoints.publish')
-    def test_toggle_mcp_server_enable(self, mock_publish, mock_get_loader, mock_load_yaml, client):
+    def test_toggle_mcp_server_enable(self, mock_publish, mock_save_config, mock_get_config, client):
         """Test PUT /api/mcp/{name}/toggle to enable server."""
-        mock_load_yaml.return_value = {
+        mock_get_config.return_value = {
             "gmail": {
                 "url": "http://localhost:8002/mcp",
                 "description": "Gmail MCP Server",
@@ -98,9 +98,8 @@ class TestMCPEndpoints:
             }
         }
         
-        # Mock the config loader
-        mock_loader = MagicMock()
-        mock_get_loader.return_value = mock_loader
+        # Mock the save config function
+        mock_save_config.return_value = None
         
         response = client.put("/api/mcp/gmail/toggle", json={"enabled": True})
         
@@ -111,18 +110,21 @@ class TestMCPEndpoints:
         assert data["enabled"] is True
         assert "enabled" in data["message"]
         
-        # Verify config was saved through the loader
-        mock_loader.save_config.assert_called_once()
-        saved_config = mock_loader.save_config.call_args[0][0]
+        # Verify config was saved
+        mock_save_config.assert_called_once()
+        # Check that save_config was called with the correct arguments
+        call_args = mock_save_config.call_args
+        assert call_args[0][0] == "mcp_servers"  # config type
+        saved_config = call_args[0][1]  # config data
         assert saved_config["gmail"]["enabled"] is True
         
         # Verify event was published
         mock_publish.assert_called_once()
     
-    @patch('backend.api.mcp_endpoints.load_mcp_yaml')
-    def test_toggle_mcp_server_not_found(self, mock_load_yaml, client):
+    @patch('backend.api.mcp_endpoints.get_config')
+    def test_toggle_mcp_server_not_found(self, mock_get_config, client):
         """Test PUT /api/mcp/{name}/toggle with non-existent server."""
-        mock_load_yaml.return_value = {
+        mock_get_config.return_value = {
             "gmail": {
                 "url": "http://localhost:8002/mcp",
                 "description": "Gmail MCP Server",
@@ -135,10 +137,10 @@ class TestMCPEndpoints:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
     
-    @patch('backend.api.mcp_endpoints.load_mcp_yaml')
-    def test_toggle_mcp_server_no_change(self, mock_load_yaml, client):
+    @patch('backend.api.mcp_endpoints.get_config')
+    def test_toggle_mcp_server_no_change(self, mock_get_config, client):
         """Test PUT /api/mcp/{name}/toggle when status is already set."""
-        mock_load_yaml.return_value = {
+        mock_get_config.return_value = {
             "gmail": {
                 "url": "http://localhost:8002/mcp",
                 "description": "Gmail MCP Server",

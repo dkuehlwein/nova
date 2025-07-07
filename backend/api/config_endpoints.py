@@ -53,7 +53,7 @@ async def validate_configuration(request: ConfigValidateRequest):
                 "valid": validation_result.valid,
                 "error_count": len(validation_result.errors),
                 "warning_count": len(validation_result.warnings),
-                "server_count": validation_result.server_count
+                "server_count": validation_result.details.get("server_count", validation_result.details.get("key_count", 0))
             },
             logger=logger
         )
@@ -62,8 +62,19 @@ async def validate_configuration(request: ConfigValidateRequest):
         if validation_result.warnings:
             message += f" with {len(validation_result.warnings)} warnings"
         
+        # Convert ValidationResult to ConfigValidationResult for API response
+        # For MCP servers, map key_count to server_count since DictConfigManager counts keys
+        server_count = validation_result.details.get("server_count", validation_result.details.get("key_count", 0))
+        config_validation_result = ConfigValidationResult(
+            valid=validation_result.valid,
+            errors=validation_result.errors,
+            warnings=validation_result.warnings,
+            server_count=server_count,
+            enabled_count=validation_result.details.get("enabled_count", server_count)  # Default to all servers enabled
+        )
+        
         return {
-            "validation_result": validation_result.model_dump(),
+            "validation_result": config_validation_result.model_dump(),
             "message": message
         }
         
@@ -95,8 +106,19 @@ async def validate_current_configuration():
         if validation_result.warnings:
             message += f" with {len(validation_result.warnings)} warnings"
         
+        # Convert ValidationResult to ConfigValidationResult for API response
+        # For MCP servers, map key_count to server_count since DictConfigManager counts keys
+        server_count = validation_result.details.get("server_count", validation_result.details.get("key_count", 0))
+        config_validation_result = ConfigValidationResult(
+            valid=validation_result.valid,
+            errors=validation_result.errors,
+            warnings=validation_result.warnings,
+            server_count=server_count,
+            enabled_count=validation_result.details.get("enabled_count", server_count)  # Default to all servers enabled
+        )
+        
         return {
-            "validation_result": validation_result.model_dump(),
+            "validation_result": config_validation_result.model_dump(),
             "message": message
         }
         
