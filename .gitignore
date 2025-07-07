@@ -225,6 +225,7 @@ mcp_servers/gmail/credentials.json
 *.bak
 **/backups/
 mcp_servers/google-workspace/token.json
+mcp_servers/google-workspace/credentials.json
 
 # Coding assistants in test
 .gemini/

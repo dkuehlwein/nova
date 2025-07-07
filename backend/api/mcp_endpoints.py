@@ -51,9 +51,9 @@ async def get_mcp_servers():
         for server_name, server_config in mcp_config.items():
             server_info = {
                 "name": server_name,
-                "url": server_config["url"],
-                "description": server_config.get("description", f"{server_name} MCP Server"),
-                "enabled": server_config.get("enabled", True)
+                "url": server_config.url,
+                "description": server_config.description,
+                "enabled": server_config.enabled
             }
             
             servers.append(server_info)

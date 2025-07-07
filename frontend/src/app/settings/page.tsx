@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { CheckCircle, AlertCircle, Clock, Brain, Mail, KanbanSquare, Server, Cpu, Database, FileText, ListChecks, ShieldCheck, User } from "lucide-react";
+import { CheckCircle, AlertCircle, Clock, Brain, Mail, KanbanSquare, Server, Cpu, Database, FileText, ListChecks, ShieldCheck, User, Key, Cog } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -353,10 +353,7 @@ function UserSettingsTab() {
           full_name: settings.full_name,
           email: settings.email,
           timezone: settings.timezone,
-          notes: settings.notes,
-          email_polling_enabled: settings.email_polling_enabled,
-          email_polling_interval: settings.email_polling_interval,
-          agent_polling_interval: settings.agent_polling_interval
+          notes: settings.notes
         }),
       });
       console.log('User settings updated successfully');
@@ -448,8 +445,209 @@ function UserSettingsTab() {
           </div>
         </div>
 
-        {/* Email Integration Section */}
+        
+        <Button onClick={handleSave} disabled={saving} className="w-full">
+          {saving ? 'Saving...' : 'Save Changes'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// API Keys and Model Settings tab content
+function APIKeysTab() {
+  const [systemStatus, setSystemStatus] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    fetchSystemStatus();
+  }, []);
+
+  const fetchSystemStatus = async () => {
+    try {
+      const data = await apiRequest('/api/user-settings/system-status');
+      setSystemStatus(data);
+    } catch (error) {
+      console.error('Failed to load system status:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="space-y-2">
+            <div className="h-4 w-20 bg-muted rounded animate-pulse" />
+            <div className="h-10 w-full bg-muted rounded animate-pulse" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6">
+        {/* API Keys Section */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium text-foreground">API Keys</h3>
+          <p className="text-sm text-muted-foreground">
+            Manage your API keys for external services. These are stored securely and never shared.
+          </p>
+          
+          <div className="space-y-4 border border-muted rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Google API Key</p>
+                <p className="text-sm text-muted-foreground">For Gmail, Calendar, and AI features</p>
+              </div>
+              <Badge variant={systemStatus?.api_keys_configured?.google ? "default" : "secondary"}>
+                {systemStatus?.api_keys_configured?.google ? "Configured" : "Not configured"}
+              </Badge>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">LangSmith API Key</p>
+                <p className="text-sm text-muted-foreground">For AI debugging and monitoring (optional)</p>
+              </div>
+              <Badge variant={systemStatus?.api_keys_configured?.langsmith ? "default" : "secondary"}>
+                {systemStatus?.api_keys_configured?.langsmith ? "Configured" : "Not configured"}
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        {/* Model Configuration Section */}
         <div className="space-y-4 border-t border-border pt-6">
+          <h3 className="text-lg font-medium text-foreground">AI Model Configuration</h3>
+          <p className="text-sm text-muted-foreground">
+            Configure which AI models Nova uses for different tasks.
+          </p>
+          
+          <div className="space-y-4 border border-muted rounded-lg p-4">
+            <div className="space-y-2">
+              <Label>Current Google Model</Label>
+              <div className="flex items-center justify-between">
+                <code className="text-sm bg-muted px-2 py-1 rounded">
+                  gemini-2.5-flash-preview-04-17
+                </code>
+                <Badge variant="outline">Active</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Model used for chat responses and task generation
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Environment Settings Section */}
+        <div className="space-y-4 border-t border-border pt-6">
+          <h3 className="text-lg font-medium text-foreground">Environment Settings</h3>
+          <p className="text-sm text-muted-foreground">
+            Current system environment and configuration details.
+          </p>
+          
+          <div className="space-y-3 border border-muted rounded-lg p-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">Environment</span>
+              <Badge variant="outline">{systemStatus?.environment || "unknown"}</Badge>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">Log Level</span>
+              <Badge variant="outline">{systemStatus?.log_level || "INFO"}</Badge>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">Email Processing</span>
+              <Badge variant={systemStatus?.email_enabled ? "default" : "secondary"}>
+                {systemStatus?.email_enabled ? "Enabled" : "Disabled"}
+              </Badge>
+            </div>
+          </div>
+        </div>
+        
+        <div className="text-sm text-muted-foreground p-4 bg-muted/50 rounded-lg">
+          <p className="font-medium mb-2">Note:</p>
+          <p>API keys and model configuration are currently managed through environment variables. 
+          Direct editing capabilities will be available in a future update.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Agent and Email Settings tab content
+function AgentSettingsTab() {
+  const [settings, setSettings] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Load user settings on component mount
+  React.useEffect(() => {
+    fetchUserSettings();
+  }, []);
+
+  const fetchUserSettings = async () => {
+    try {
+      const data = await apiRequest('/api/user-settings/');
+      setSettings(data);
+    } catch (error) {
+      console.error('Failed to load user settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!settings) return;
+    
+    setSaving(true);
+    try {
+      await apiRequest('/api/user-settings/', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          email_polling_enabled: settings.email_polling_enabled,
+          email_polling_interval: settings.email_polling_interval,
+          agent_polling_interval: settings.agent_polling_interval
+        }),
+      });
+      console.log('Agent settings updated successfully');
+    } catch (error) {
+      console.error('Failed to update agent settings:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="space-y-2">
+            <div className="h-4 w-20 bg-muted rounded animate-pulse" />
+            <div className="h-10 w-full bg-muted rounded animate-pulse" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (!settings) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <Cog className="h-8 w-8 mx-auto mb-2" />
+        <p className="text-sm">Failed to load agent settings</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6">
+        {/* Email Integration Section */}
+        <div className="space-y-4">
           <h3 className="text-lg font-medium text-foreground">Email Integration</h3>
           
           <div className="flex items-center justify-between">
@@ -520,11 +718,18 @@ export default function SettingsPage() {
         <div className="w-64 border-r border-border bg-muted/30">
           <div className="p-4 border-b border-border">
             <h1 className="font-semibold text-foreground">Settings</h1>
-            <p className="text-sm text-muted-foreground">Configure Nova</p>
+            <p className="text-sm text-muted-foreground">Manage your preferences</p>
           </div>
           
-          <Tabs defaultValue="system-prompt" orientation="vertical" className="w-full">
+          <Tabs defaultValue="user-profile" orientation="vertical" className="w-full">
             <TabsList className="w-full h-auto flex-col bg-transparent space-y-1 p-2">
+              <TabsTrigger 
+                value="user-profile" 
+                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <User className="h-4 w-4 mr-2" /> 
+                Personal Settings
+              </TabsTrigger>
               <TabsTrigger 
                 value="system-prompt" 
                 className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -540,18 +745,25 @@ export default function SettingsPage() {
                 MCP Servers
               </TabsTrigger>
               <TabsTrigger 
+                value="api-keys" 
+                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <Key className="h-4 w-4 mr-2" /> 
+                API Keys & Models
+              </TabsTrigger>
+              <TabsTrigger 
+                value="agent-settings" 
+                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <Cog className="h-4 w-4 mr-2" /> 
+                Agent & Email
+              </TabsTrigger>
+              <TabsTrigger 
                 value="system-status" 
                 className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <ShieldCheck className="h-4 w-4 mr-2" /> 
                 System Status
-              </TabsTrigger>
-              <TabsTrigger 
-                value="user-profile" 
-                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
-              >
-                <User className="h-4 w-4 mr-2" /> 
-                User Settings
               </TabsTrigger>
             </TabsList>
 
@@ -580,9 +792,27 @@ export default function SettingsPage() {
 
                 <TabsContent value="user-profile" className="mt-0">
                   <div className="bg-card border border-border rounded-lg p-6">
-                    <h2 className="text-lg font-semibold text-foreground mb-4">User Settings</h2>
-                    <Suspense fallback={<TabContentLoader>User Settings</TabContentLoader>}>
+                    <h2 className="text-lg font-semibold text-foreground mb-4">Personal Settings</h2>
+                    <Suspense fallback={<TabContentLoader>Personal Settings</TabContentLoader>}>
                       <UserSettingsTab />
+                    </Suspense>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="api-keys" className="mt-0">
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <h2 className="text-lg font-semibold text-foreground mb-4">API Keys & Models</h2>
+                    <Suspense fallback={<TabContentLoader>API Keys & Models</TabContentLoader>}>
+                      <APIKeysTab />
+                    </Suspense>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="agent-settings" className="mt-0">
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <h2 className="text-lg font-semibold text-foreground mb-4">Agent & Email Settings</h2>
+                    <Suspense fallback={<TabContentLoader>Agent Settings</TabContentLoader>}>
+                      <AgentSettingsTab />
                     </Suspense>
                   </div>
                 </TabsContent>
