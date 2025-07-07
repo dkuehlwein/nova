@@ -224,30 +224,6 @@ class TestChatHealthAndTools:
 class TestChatEndpoints:
     """Test chat conversation endpoints."""
     
-    def test_non_streaming_chat(self, client):
-        """Test non-streaming chat endpoint."""
-        chat_request = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Hello, introduce yourself"
-                }
-            ],
-            "stream": False
-        }
-        
-        response = client.post("/chat/", json=chat_request)
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "message" in data
-        assert "thread_id" in data
-        
-        message = data["message"]
-        assert message["role"] == "assistant"
-        assert isinstance(message["content"], str)
-        assert len(message["content"]) > 0
-        assert "timestamp" in message
     
     def test_streaming_chat(self, client):
         """Test streaming chat endpoint."""
@@ -269,46 +245,7 @@ class TestChatEndpoints:
         content = response.content.decode()
         assert len(content) > 0
     
-    def test_chat_with_thread_id(self, client):
-        """Test chat with specific thread ID."""
-        thread_id = "test-thread-123"
-        chat_request = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Remember my name is TestUser"
-                }
-            ],
-            "thread_id": thread_id,
-            "stream": False
-        }
-        
-        response = client.post("/chat/", json=chat_request)
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert data["thread_id"] == thread_id
     
-    def test_chat_validation_errors(self, client):
-        """Test chat endpoint validation."""
-        # Test with invalid messages format
-        invalid_request = {
-            "messages": "should be a list",
-            "stream": False
-        }
-        
-        response = client.post("/chat/", json=invalid_request)
-        assert response.status_code == 422  # Validation error
-        
-        # Test with empty messages
-        empty_request = {
-            "messages": [],
-            "stream": False
-        }
-        
-        response = client.post("/chat/", json=empty_request)
-        # Should handle gracefully (either accept or validate)
-        assert response.status_code in [200, 422]
 
 
 class TestChatManagement:
@@ -400,18 +337,4 @@ class TestErrorHandling:
         # Should handle gracefully - either 404 or empty response
         assert response.status_code in [200, 404]
     
-    def test_malformed_chat_request(self, client):
-        """Test malformed chat requests."""
-        # Test with completely invalid JSON structure
-        response = client.post("/chat/", json={"invalid": "structure"})
-        assert response.status_code == 422
-        
-        # Test with invalid message structure
-        invalid_request = {
-            "messages": [
-                {"invalid_field": "should be role and content"}
-            ]
-        }
-        response = client.post("/chat/", json=invalid_request)
-        assert response.status_code == 422
     
