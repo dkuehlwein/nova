@@ -45,20 +45,28 @@ class TestMCPEndpoints:
     
     @patch('backend.api.mcp_endpoints.get_config')
     @patch('backend.api.mcp_endpoints.mcp_manager.check_server_health_and_get_tools_count')
-    async def test_get_mcp_servers_with_config(self, mock_health_check, mock_get_config, client):
+    @patch('config.settings')
+    async def test_get_mcp_servers_with_config(self, mock_settings, mock_health_check, mock_get_config, client):
         """Test GET /api/mcp with server configuration."""
-        mock_get_config.return_value = {
-            "gmail": {
-                "url": "http://localhost:8002/mcp",
-                "description": "Gmail MCP Server",
-                "enabled": True
-            },
-            "disabled_server": {
-                "url": "http://localhost:8003/mcp",
-                "description": "Disabled Server",
-                "enabled": False
-            }
+        from backend.models.config import MCPServerConfig
+        
+        # Mock the config with proper MCPServerConfig objects
+        mock_config = {
+            "gmail": MCPServerConfig(
+                url="http://localhost:8002/mcp",
+                description="Gmail MCP Server",
+                enabled=True
+            ),
+            "disabled_server": MCPServerConfig(
+                url="http://localhost:8003/mcp", 
+                description="Disabled Server",
+                enabled=False
+            )
         }
+        mock_get_config.return_value = mock_config
+        
+        # Mock settings URL adaptation
+        mock_settings._adapt_mcp_url_for_environment.side_effect = lambda url: url
         
         # Mock health check to return (healthy, tools_count) tuple for enabled servers
         mock_health_check.return_value = (True, 14)  # Google Workspace has 14 tools
@@ -90,12 +98,14 @@ class TestMCPEndpoints:
     @patch('backend.api.mcp_endpoints.publish')
     def test_toggle_mcp_server_enable(self, mock_publish, mock_save_config, mock_get_config, client):
         """Test PUT /api/mcp/{name}/toggle to enable server."""
+        from backend.models.config import MCPServerConfig
+        
         mock_get_config.return_value = {
-            "gmail": {
-                "url": "http://localhost:8002/mcp",
-                "description": "Gmail MCP Server",
-                "enabled": False  # Currently disabled
-            }
+            "gmail": MCPServerConfig(
+                url="http://localhost:8002/mcp",
+                description="Gmail MCP Server",
+                enabled=False  # Currently disabled
+            )
         }
         
         # Mock the save config function
@@ -116,7 +126,7 @@ class TestMCPEndpoints:
         call_args = mock_save_config.call_args
         assert call_args[0][0] == "mcp_servers"  # config type
         saved_config = call_args[0][1]  # config data
-        assert saved_config["gmail"]["enabled"] is True
+        assert saved_config["gmail"].enabled is True
         
         # Verify event was published
         mock_publish.assert_called_once()
@@ -124,12 +134,14 @@ class TestMCPEndpoints:
     @patch('backend.api.mcp_endpoints.get_config')
     def test_toggle_mcp_server_not_found(self, mock_get_config, client):
         """Test PUT /api/mcp/{name}/toggle with non-existent server."""
+        from backend.models.config import MCPServerConfig
+        
         mock_get_config.return_value = {
-            "gmail": {
-                "url": "http://localhost:8002/mcp",
-                "description": "Gmail MCP Server",
-                "enabled": True
-            }
+            "gmail": MCPServerConfig(
+                url="http://localhost:8002/mcp",
+                description="Gmail MCP Server",
+                enabled=True
+            )
         }
         
         response = client.put("/api/mcp/nonexistent/toggle", json={"enabled": False})
@@ -140,12 +152,14 @@ class TestMCPEndpoints:
     @patch('backend.api.mcp_endpoints.get_config')
     def test_toggle_mcp_server_no_change(self, mock_get_config, client):
         """Test PUT /api/mcp/{name}/toggle when status is already set."""
+        from backend.models.config import MCPServerConfig
+        
         mock_get_config.return_value = {
-            "gmail": {
-                "url": "http://localhost:8002/mcp",
-                "description": "Gmail MCP Server",
-                "enabled": True  # Already enabled
-            }
+            "gmail": MCPServerConfig(
+                url="http://localhost:8002/mcp",
+                description="Gmail MCP Server",
+                enabled=True  # Already enabled
+            )
         }
         
         response = client.put("/api/mcp/gmail/toggle", json={"enabled": True})

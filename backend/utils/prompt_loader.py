@@ -57,18 +57,13 @@ async def load_nova_system_prompt() -> str:
         logger.warning(f"Invalid timezone '{user_timezone}', using UTC")
         current_time_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     
-    # Create user notes section
-    user_notes_section = ""
-    if user_notes:
-        user_notes_section = f"\n\n**Additional User Context:**\n{user_notes}"
-    
     # Use the unified system's template processing - will raise if template is invalid
     prompt = prompt_manager.get_processed_config(
         user_full_name=user_full_name,
         user_email=user_email,
         user_timezone=user_timezone,
         current_time_user_tz=current_time_str,
-        user_notes_section=user_notes_section
+        user_notes_section=user_notes
     )
     
     return prompt 

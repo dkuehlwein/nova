@@ -97,12 +97,13 @@ class TestCoreServiceStartup:
 class TestPromptIntegration:
     """Test that key prompt constants are importable and used by core agent."""
 
-    def test_prompt_constants_exist(self):
+    @pytest.mark.asyncio
+    async def test_prompt_constants_exist(self):
         """Test that prompts can be imported correctly."""
         from agent.prompts import get_nova_system_prompt, TASK_CONTEXT_TEMPLATE, CURRENT_TASK_TEMPLATE
         
-        # Get the system prompt (now dynamically loaded)
-        system_prompt = get_nova_system_prompt()
+        # Get the system prompt (now dynamically loaded and async)
+        system_prompt = await get_nova_system_prompt()
         
         # Verify prompts exist and are strings
         assert isinstance(system_prompt, str)

@@ -142,7 +142,7 @@ async def toggle_mcp_server(server_name: str, request: MCPToggleRequest):
             )
         
         # Check if status is actually changing
-        current_status = mcp_config[server_name].get("enabled", True)
+        current_status = mcp_config[server_name].enabled
         if current_status == request.enabled:
             return MCPToggleResponse(
                 server_name=server_name,
@@ -150,8 +150,9 @@ async def toggle_mcp_server(server_name: str, request: MCPToggleRequest):
                 message=f"Server '{server_name}' is already {'enabled' if request.enabled else 'disabled'}"
             )
         
-        # Update configuration
-        mcp_config[server_name]["enabled"] = request.enabled
+        # Update configuration by creating a new model instance
+        updated_config = mcp_config[server_name].model_copy(update={"enabled": request.enabled})
+        mcp_config[server_name] = updated_config
         
         # Save configuration with validation
         save_config("mcp_servers", mcp_config)

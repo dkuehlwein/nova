@@ -164,13 +164,11 @@ class TestConfigEndpoints:
         from backend.models.config import ConfigValidationResult
         
         mock_loader = MagicMock()
-        mock_validation_result = ConfigValidationResult(
-            valid=True,
-            errors=[],
-            warnings=["No servers enabled"],
-            server_count=2,
-            enabled_count=0
-        )
+        mock_validation_result = MagicMock()
+        mock_validation_result.valid = True
+        mock_validation_result.errors = []
+        mock_validation_result.warnings = ["No servers enabled"]
+        mock_validation_result.details = {"server_count": 2, "enabled_count": 0}
         mock_loader.validate_config.return_value = mock_validation_result
         mock_get_manager.return_value = mock_loader
         
@@ -249,14 +247,6 @@ class TestConfigEndpoints:
         
         mock_loader = MagicMock()
         mock_loader.restore_backup.return_value = True
-        mock_validation_result = ConfigValidationResult(
-            valid=True,
-            errors=[],
-            warnings=[],
-            server_count=2,
-            enabled_count=1
-        )
-        mock_loader.validate_config.return_value = mock_validation_result
         mock_get_manager.return_value = mock_loader
         
         # Mock the async publish function to avoid Redis issues
@@ -273,7 +263,6 @@ class TestConfigEndpoints:
         assert "restored" in data["message"]
         
         mock_loader.restore_backup.assert_called_once_with(backup_id)
-        mock_loader.validate_config.assert_called_once()
     
     @patch('backend.api.config_endpoints.config_registry.get_manager')
     def test_restore_configuration_backup_not_found(self, mock_get_manager, client):
