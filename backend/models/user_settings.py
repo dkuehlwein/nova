@@ -56,6 +56,10 @@ class UserSettings(Base):
     agent_polling_interval: Mapped[int] = mapped_column(Integer, default=30)  # seconds
     agent_error_retry_interval: Mapped[int] = mapped_column(Integer, default=60)  # seconds
     
+    # Memory Settings
+    memory_search_limit: Mapped[int] = mapped_column(Integer, default=10)  # max results
+    memory_token_limit: Mapped[int] = mapped_column(Integer, default=32000)  # max tokens for LLM
+    
     # MCP Server Preferences (which servers are enabled/disabled)
     mcp_server_preferences: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
 
@@ -94,6 +98,10 @@ class UserSettingsModel(BaseModel):
     agent_polling_interval: int = 30
     agent_error_retry_interval: int = 60
     
+    # Memory Settings
+    memory_search_limit: int = 10
+    memory_token_limit: int = 32000
+    
     # MCP Server Preferences
     mcp_server_preferences: Dict[str, Any] = Field(default_factory=dict)
 
@@ -128,6 +136,10 @@ class UserSettingsUpdateModel(BaseModel):
     # Agent Settings
     agent_polling_interval: Optional[int] = None
     agent_error_retry_interval: Optional[int] = None
+    
+    # Memory Settings
+    memory_search_limit: Optional[int] = None
+    memory_token_limit: Optional[int] = None
     
     # MCP Server Preferences
     mcp_server_preferences: Optional[Dict[str, Any]] = None

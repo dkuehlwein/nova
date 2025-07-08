@@ -610,7 +610,9 @@ function AgentSettingsTab() {
         body: JSON.stringify({
           email_polling_enabled: settings.email_polling_enabled,
           email_polling_interval: settings.email_polling_interval,
-          agent_polling_interval: settings.agent_polling_interval
+          agent_polling_interval: settings.agent_polling_interval,
+          memory_search_limit: settings.memory_search_limit,
+          memory_token_limit: settings.memory_token_limit
         }),
       });
       console.log('Agent settings updated successfully');
@@ -697,6 +699,42 @@ function AgentSettingsTab() {
             />
             <p className="text-xs text-muted-foreground">
               How often the core agent checks for new tasks (minimum 10 seconds)
+            </p>
+          </div>
+        </div>
+
+        {/* Memory Settings Section */}
+        <div className="space-y-4 border-t border-border pt-6">
+          <h3 className="text-lg font-medium text-foreground">Memory Settings</h3>
+          
+          <div className="space-y-2">
+            <Label htmlFor="memory_search_limit">Memory Search Limit</Label>
+            <Input
+              id="memory_search_limit"
+              type="number"
+              min="1"
+              max="100"
+              value={settings.memory_search_limit || 10}
+              onChange={(e) => setSettings({...settings, memory_search_limit: parseInt(e.target.value)})}
+            />
+            <p className="text-xs text-muted-foreground">
+              Maximum number of memory results to return in searches
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="memory_token_limit">Memory Token Limit</Label>
+            <Input
+              id="memory_token_limit"
+              type="number"
+              min="1000"
+              max="100000"
+              step="1000"
+              value={settings.memory_token_limit || 32000}
+              onChange={(e) => setSettings({...settings, memory_token_limit: parseInt(e.target.value)})}
+            />
+            <p className="text-xs text-muted-foreground">
+              Maximum tokens for memory processing (higher values allow more comprehensive analysis)
             </p>
           </div>
         </div>
@@ -810,7 +848,7 @@ export default function SettingsPage() {
 
                 <TabsContent value="agent-settings" className="mt-0">
                   <div className="bg-card border border-border rounded-lg p-6">
-                    <h2 className="text-lg font-semibold text-foreground mb-4">Agent & Email Settings</h2>
+                    <h2 className="text-lg font-semibold text-foreground mb-4">Agent, Email & Memory Settings</h2>
                     <Suspense fallback={<TabContentLoader>Agent Settings</TabContentLoader>}>
                       <AgentSettingsTab />
                     </Suspense>

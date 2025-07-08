@@ -22,7 +22,7 @@ async def search_memory(query: str, limit: int = None, group_id: str = None) -> 
     
     Args:
         query: Natural language search query
-        limit: Maximum results to return (default from settings)
+        limit: Maximum results to return (default from user settings)
         group_id: Memory partition (default from settings)
         
     Returns:
@@ -34,7 +34,21 @@ async def search_memory(query: str, limit: int = None, group_id: str = None) -> 
     try:
         client = await graphiti_manager.get_client()
         
-        search_limit = limit or settings.MEMORY_SEARCH_LIMIT
+        # Get user settings for memory search limit
+        if limit is None:
+            from database.database import db_manager
+            from models.user_settings import UserSettings
+            from sqlalchemy import select
+            
+            try:
+                async with db_manager.get_session() as session:
+                    result = await session.execute(select(UserSettings).limit(1))
+                    user_settings = result.scalar_one_or_none()
+                    limit = user_settings.memory_search_limit if user_settings else settings.MEMORY_SEARCH_LIMIT
+            except Exception:
+                limit = settings.MEMORY_SEARCH_LIMIT
+        
+        search_limit = limit
         search_group_id = group_id or settings.MEMORY_GROUP_ID
         
         results = await client.search(
@@ -97,9 +111,14 @@ async def add_memory(
         add_group_id = group_id or settings.MEMORY_GROUP_ID
         add_reference_time = reference_time or datetime.now(timezone.utc)
         
+        # Sanitize content to prevent API issues
+        sanitized_content = content.strip()
+        if len(sanitized_content) > 100000:  # Limit content length
+            sanitized_content = sanitized_content[:100000] + "... [truncated]"
+        
         result = await client.add_episode(
             name=f"Memory: {source_description}",
-            episode_body=content,
+            episode_body=sanitized_content,
             source_description=source_description,
             reference_time=add_reference_time,
             group_id=add_group_id,
@@ -128,8 +147,26 @@ async def add_memory(
         }
         
     except Exception as e:
-        logger.error(f"Failed to add memory content '{content[:100]}...': {str(e)}")
-        raise MemoryAddError(f"Failed to add memory: {str(e)}")
+        error_msg = str(e)
+        
+        # Handle specific Gemini API errors more gracefully
+        if "Failed to parse structured response" in error_msg:
+            logger.warning(f"Gemini API structured response failed for content: '{content[:100]}...'. "
+                          f"This might be due to content filtering or API limits. Error: {error_msg}")
+            
+            # Return a partial success response rather than failing completely
+            return {
+                "success": False,
+                "error": "memory_api_failure",
+                "message": "Memory addition failed due to API parsing error",
+                "episode_uuid": None,
+                "nodes_created": 0,
+                "edges_created": 0,
+                "entities": []
+            }
+        
+        logger.error(f"Failed to add memory content '{content[:100]}...': {error_msg}")
+        raise MemoryAddError(f"Failed to add memory: {error_msg}")
 
 
 async def get_recent_episodes(limit: int = 10, group_id: str = None) -> Dict[str, Any]:

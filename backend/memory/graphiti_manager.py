@@ -32,11 +32,42 @@ def create_graphiti_llm() -> GeminiClient:
     # Use the same model name logic as Nova's create_llm()
     model_name = settings.GOOGLE_MODEL_NAME or "gemini-2.0-flash-exp"
     
+    # Get user settings for memory token limit
+    max_tokens = 32000  # Default fallback
+    try:
+        import asyncio
+        from database.database import db_manager
+        from models.user_settings import UserSettings
+        from sqlalchemy import select
+        
+        async def get_token_limit():
+            try:
+                async with db_manager.get_session() as session:
+                    result = await session.execute(select(UserSettings).limit(1))
+                    user_settings = result.scalar_one_or_none()
+                    return user_settings.memory_token_limit if user_settings else 32000
+            except Exception:
+                return 32000
+        
+        # If we're in an async context, try to get the user setting
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're in an async context but can't await, use default
+                max_tokens = 32000
+            else:
+                max_tokens = asyncio.run(get_token_limit())
+        except RuntimeError:
+            # No event loop, use default
+            max_tokens = 32000
+    except Exception:
+        max_tokens = 32000
+    
     config = LLMConfig(
         model=model_name,
         api_key=api_key,
         temperature=0.1,  # Lower temperature for factual memory vs Nova's 0.7 default
-        max_tokens=8192   # Higher token limit for context gathering
+        max_tokens=max_tokens   # User-configurable token limit
     )
     return GeminiClient(config=config)
 
@@ -87,11 +118,13 @@ class GraphitiManager:
                     store_raw_episode_content=True,
                 )
                 
-                # Build indices on first connection
+                # Build indices only once per manager instance
+                # Note: Graphiti uses IF NOT EXISTS, so Neo4j will handle duplicates gracefully
                 if not self._initialized:
+                    logger.info("Building Graphiti indices and constraints...")
                     await self._client.build_indices_and_constraints()
-                    self._initialized = True
                     logger.info("Graphiti client initialized with Neo4j indices")
+                    self._initialized = True
                 
             except Exception as e:
                 logger.error(f"Failed to initialize Graphiti client: {e}")
