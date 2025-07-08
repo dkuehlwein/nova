@@ -7,7 +7,7 @@ from celery import current_task
 from celery.exceptions import Retry
 from celery_app import celery_app
 from utils.logging import get_logger
-from tasks.email_processor import EmailProcessor
+from email_processing import EmailProcessor
 from utils.redis_manager import publish
 from models.email import EmailProcessingEvent
 

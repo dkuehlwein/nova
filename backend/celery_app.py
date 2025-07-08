@@ -14,6 +14,7 @@ celery_app = Celery(
     include=["tasks.email_tasks"]
 )
 
+
 # Celery configuration
 celery_app.conf.update(
     # Task routing
@@ -33,6 +34,8 @@ celery_app.conf.update(
     # Task execution
     task_always_eager=False,
     task_eager_propagates=True,
+    task_store_eager_result=True,
+    
     
     # Worker configuration
     worker_prefetch_multiplier=1,
