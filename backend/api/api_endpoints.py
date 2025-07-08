@@ -564,12 +564,35 @@ async def delete_task(task_id: UUID):
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
         
-        # Delete the task from database first
-        await session.delete(task)
-        await session.commit()
+        # Handle foreign key references first
+        try:
+            # Set task_id to NULL in processed_emails (don't delete - we don't want to reprocess emails)
+            await session.execute(
+                text("UPDATE processed_emails SET task_id = NULL WHERE task_id = :task_id"),
+                {"task_id": task_id}
+            )
+            
+            # Delete task comments (if any)
+            await session.execute(
+                text("DELETE FROM task_comments WHERE task_id = :task_id"), 
+                {"task_id": task_id}
+            )
+            
+            # Now delete the task
+            await session.delete(task)
+            await session.commit()
+            
+        except Exception as e:
+            await session.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to delete task: {str(e)}")
         
         # Clean up associated chat data
-        await cleanup_task_chat_data(str(task_id))
+        try:
+            await cleanup_task_chat_data(str(task_id))
+        except Exception as e:
+            # Log but don't fail the deletion if chat cleanup fails
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to cleanup chat data for task {task_id}: {e}")
         
         return {"message": "Task and associated chat data deleted successfully"}
 
