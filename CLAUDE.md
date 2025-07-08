@@ -114,6 +114,7 @@ backend/
 - **Integration tests**: `tests/integration/test_*.py`
 - **Run from backend dir**: `uv run pytest ../tests`
 - **Async support**: All tests use pytest-asyncio
+- **End2End tests**: Rebuild the docker images before running the tests. Changes only propagate after rebuilding!
 
 ### Configuration Management
 - **Environment variables**: Defined in `config.py` (never access directly)
