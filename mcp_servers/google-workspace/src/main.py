@@ -181,7 +181,7 @@ if __name__ == "__main__":
 
     @mcp.tool()
     async def read_email_content(email_id: str) -> Dict[str, str]:
-        """Retrieves the full content of a specific email and marks it as read."""
+        """Retrieves the full content of a specific email. AUTOMATICALLY marks the email as read - no need to call mark_email_as_read separately."""
         return await workspace_service.gmail_tools.read_email(email_id)
 
     @mcp.tool()

@@ -138,15 +138,24 @@ class EmailTaskCreator:
         # Format date in user's timezone for better UX
         formatted_date = self._format_date_for_user(metadata.date, user_settings.timezone)
         
+        # Include both the generated Nova email ID and original Gmail message ID
         description_parts = [
-            f"**From:** {metadata.sender}",
-            f"**To:** {metadata.recipient}",
-            f"**Date:** {formatted_date}",
-            f"**Email ID:** {metadata.email_id}",
+            f"**From:** {metadata.sender}\n",
+            f"**To:** {metadata.recipient}\n",
+            f"**Date:** {formatted_date}\n",
+            f"**Email ID:** {metadata.email_id}\n",
         ]
         
+        # If we have the original Gmail message ID, include it for agent tools
+        original_gmail_id = normalized_email.get("id")
+        if original_gmail_id and original_gmail_id != metadata.email_id:
+            description_parts.append(f"**Gmail Message ID:** {original_gmail_id}\n")
+        elif original_gmail_id:
+            # If they're the same, the agent should use the Email ID field
+            description_parts.append(f"**Gmail Message ID:** {original_gmail_id}\n")
+        
         if metadata.has_attachments:
-            description_parts.append("**Attachments:** Yes")
+            description_parts.append("**Attachments:** Yes\n")
         
         description_parts.extend([
             "",

@@ -101,6 +101,7 @@ class GmailTools:
                         break
             else:
                 body = mime_message.get_payload(decode=True).decode(mime_message.get_content_charset() or 'utf-8')
+            email_metadata['id'] = email_id  # Preserve original Gmail message ID
             email_metadata['content'] = body
             email_metadata['subject'] = decode_mime_header(mime_message.get('subject', ''))
             email_metadata['from'] = decode_mime_header(mime_message.get('from', '')) # decode from

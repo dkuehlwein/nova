@@ -119,17 +119,40 @@ async def update_user_settings(
         await session.commit()
         await session.refresh(settings)
         
-        # If email-related settings were updated, trigger beat schedule update
-        email_fields = {"email_polling_enabled", "email_polling_interval"}
+        # If email-related settings were updated, publish Redis event and trigger beat schedule update
+        email_fields = {
+            "email_polling_enabled", "email_polling_interval", "email_label_filter", 
+            "email_max_per_fetch", "email_create_tasks"
+        }
         if any(field in update_data for field in email_fields):
             try:
-                # Import here to avoid circular import
+                # Publish Redis event for real-time updates
+                from models.events import create_email_settings_updated_event
+                from utils.redis_manager import get_redis
+                
+                email_event = create_email_settings_updated_event(
+                    enabled=settings.email_polling_enabled,
+                    polling_interval_minutes=settings.email_polling_interval,
+                    email_label_filter=settings.email_label_filter,
+                    max_emails_per_fetch=settings.email_max_per_fetch,
+                    create_tasks_from_emails=settings.email_create_tasks,
+                    source="settings-api"
+                )
+                
+                redis_client = get_redis()
+                await redis_client.publish(email_event)
+                
+                logger.info(
+                    "Published email settings update event",
+                    extra={"data": {"event_id": email_event.id, "updated_fields": list(update_data.keys())}}
+                )
+                
+                # Also trigger traditional Celery Beat schedule update as fallback
                 from celery_app import update_beat_schedule_task
-                # Trigger async update of Celery Beat schedule
                 update_beat_schedule_task.delay()
-                logger.info("Triggered Celery Beat schedule update due to email settings change")
+                
             except Exception as e:
-                logger.warning(f"Failed to trigger beat schedule update: {e}")
+                logger.warning(f"Failed to publish email settings event or trigger beat schedule update: {e}")
         
         logger.info(
             "User settings updated",

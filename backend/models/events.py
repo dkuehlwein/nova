@@ -24,7 +24,8 @@ class NovaEvent(BaseModel):
         "config_validated",
         "config_changed",
         "user_profile_updated",
-        "email_processing_completed"
+        "email_processing_completed",
+        "email_settings_updated"
     ]
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     data: Dict[str, Any]
@@ -96,6 +97,15 @@ class UserProfileUpdatedEventData(BaseModel):
     email: str
     timezone: str
     notes: Optional[str] = None
+
+
+class EmailSettingsUpdatedEventData(BaseModel):
+    """Data structure for email settings update events."""
+    enabled: bool
+    polling_interval_minutes: int
+    email_label_filter: str
+    max_emails_per_fetch: int
+    create_tasks_from_emails: bool
 
 
 # Helper functions for creating typed events
@@ -200,6 +210,28 @@ def create_user_profile_updated_event(
             email=email,
             timezone=timezone,
             notes=notes
+        ).model_dump(),
+        source=source
+    )
+
+
+def create_email_settings_updated_event(
+    enabled: bool,
+    polling_interval_minutes: int,
+    email_label_filter: str,
+    max_emails_per_fetch: int,
+    create_tasks_from_emails: bool,
+    source: str = "settings-service"
+) -> NovaEvent:
+    """Create a typed email settings update event."""
+    return NovaEvent(
+        type="email_settings_updated",
+        data=EmailSettingsUpdatedEventData(
+            enabled=enabled,
+            polling_interval_minutes=polling_interval_minutes,
+            email_label_filter=email_label_filter,
+            max_emails_per_fetch=max_emails_per_fetch,
+            create_tasks_from_emails=create_tasks_from_emails
         ).model_dump(),
         source=source
     )

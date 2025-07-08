@@ -154,6 +154,16 @@ def worker_ready_handler(sender=None, **kwargs):
         print(f"Failed to initialize configurations: {e}")
         # Don't raise - let worker continue with default settings
     
+    # Start Redis event listener for email settings changes
+    try:
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_in_executor(None, start_email_settings_listener)
+        print("Started Redis email settings listener")
+    except Exception as e:
+        print(f"Failed to start Redis email settings listener: {e}")
+    
     update_beat_schedule()
 
 @worker_shutdown.connect
@@ -235,6 +245,48 @@ def monitor_dead_letter_queue():
         
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+def start_email_settings_listener():
+    """
+    Start a Redis listener for email settings changes.
+    Runs in a separate thread to listen for configuration updates.
+    """
+    import asyncio
+    
+    async def listen_for_email_settings():
+        try:
+            from utils.redis_manager import get_redis
+            from models.events import NovaEvent
+            import json
+            
+            redis_client = get_redis()
+            print("Starting Redis email settings listener...")
+            
+            async for message in redis_client.subscribe(channel="nova_events"):
+                try:
+                    # Parse the event
+                    event_data = json.loads(message)
+                    event = NovaEvent.model_validate(event_data)
+                    
+                    if event.type == "email_settings_updated":
+                        print(f"Received email settings update event: {event.id}")
+                        
+                        # Update the beat schedule with new settings
+                        update_beat_schedule()
+                        
+                        print("Updated Celery Beat schedule based on email settings change")
+                        
+                except Exception as e:
+                    print(f"Error processing email settings event: {e}")
+                    
+        except Exception as e:
+            print(f"Email settings listener error: {e}")
+    
+    # Run the async listener
+    try:
+        asyncio.run(listen_for_email_settings())
+    except Exception as e:
+        print(f"Failed to start async email settings listener: {e}")
 
 # Initialize beat schedule on import
 update_beat_schedule()
