@@ -74,24 +74,55 @@ def update_beat_schedule():
     without restarting Celery Beat.
     """
     try:
-        # Use static settings for MVP
+        # Check global email enabled flag first
         if settings.EMAIL_ENABLED:
-            schedule_interval = settings.EMAIL_POLL_INTERVAL  # Already in seconds
+            # Import here to avoid circular import
+            import asyncio
+            from database.database import db_manager
+            from models.user_settings import UserSettings
+            from sqlalchemy import select
             
-            celery_app.conf.beat_schedule = {
-                "fetch-emails": {
-                    "task": "tasks.email_tasks.fetch_emails",
-                    "schedule": schedule_interval,
-                    "options": {"queue": "email"},
-                },
-            }
+            async def get_user_settings():
+                async with db_manager.get_session() as session:
+                    result = await session.execute(select(UserSettings).limit(1))
+                    return result.scalar_one_or_none()
             
-            print(f"Updated email fetch schedule: every {schedule_interval} seconds")
+            # Get user settings asynchronously
+            try:
+                user_settings = asyncio.run(get_user_settings())
+                
+                if user_settings and user_settings.email_polling_enabled:
+                    schedule_interval = user_settings.email_polling_interval
+                    
+                    celery_app.conf.beat_schedule = {
+                        "fetch-emails": {
+                            "task": "tasks.email_tasks.fetch_emails",
+                            "schedule": schedule_interval,
+                            "options": {"queue": "email"},
+                        },
+                    }
+                    
+                    print(f"Updated email fetch schedule: every {schedule_interval} seconds (from user settings)")
+                else:
+                    # User has disabled email polling or no settings exist
+                    celery_app.conf.beat_schedule = {}
+                    print("Email polling disabled in user settings - cleared beat schedule")
+                    
+            except Exception as db_error:
+                # Database not available or settings not created yet - use default
+                print(f"Could not load user settings, using default schedule: {db_error}")
+                celery_app.conf.beat_schedule = {
+                    "fetch-emails": {
+                        "task": "tasks.email_tasks.fetch_emails",
+                        "schedule": 300.0,  # 5 minutes default
+                        "options": {"queue": "email"},
+                    },
+                }
             
         else:
-            # Disable email processing
+            # Global email processing disabled
             celery_app.conf.beat_schedule = {}
-            print("Email processing disabled - cleared beat schedule")
+            print("Email processing globally disabled - cleared beat schedule")
             
     except Exception as e:
         # Fallback to default schedule if config loading fails

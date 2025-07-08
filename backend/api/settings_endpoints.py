@@ -123,6 +123,18 @@ async def update_user_settings(
         await session.commit()
         await session.refresh(settings)
         
+        # If email-related settings were updated, trigger beat schedule update
+        email_fields = {"email_polling_enabled", "email_polling_interval"}
+        if any(field in update_data for field in email_fields):
+            try:
+                # Import here to avoid circular import
+                from celery_app import update_beat_schedule_task
+                # Trigger async update of Celery Beat schedule
+                update_beat_schedule_task.delay()
+                logger.info("Triggered Celery Beat schedule update due to email settings change")
+            except Exception as e:
+                logger.warning(f"Failed to trigger beat schedule update: {e}")
+        
         logger.info(
             "User settings updated",
             extra={

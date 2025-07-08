@@ -10,6 +10,7 @@ from utils.logging import get_logger
 from config import settings
 from database.database import db_manager
 from models.models import ProcessedEmail
+from models.user_settings import UserSettings
 from mcp_client import mcp_manager
 from tools.task_tools import create_task_tool
 from models.email import EmailMetadata, EmailProcessingResult
@@ -22,6 +23,21 @@ class EmailProcessor:
     
     def __init__(self):
         self.mcp_tools = None
+    
+    async def _get_user_settings(self) -> UserSettings:
+        """Get current user settings from database."""
+        async with db_manager.get_session() as session:
+            result = await session.execute(select(UserSettings).limit(1))
+            settings = result.scalar_one_or_none()
+            
+            if not settings:
+                # Create default settings if none exist
+                settings = UserSettings()
+                session.add(settings)
+                await session.commit()
+                await session.refresh(settings)
+            
+            return settings
     
     async def _get_email_tools(self) -> Dict[str, Any]:
         """Get email-related MCP tools using configurable interface mapping."""
@@ -101,9 +117,16 @@ class EmailProcessor:
             List of email dictionaries
         """
         try:
-            # Check if email processing is enabled
+            # Get current user settings
+            user_settings = await self._get_user_settings()
+            
+            # Check if email processing is enabled (both globally and user preference)
             if not settings.EMAIL_ENABLED:
-                logger.info("Email processing is disabled in current configuration")
+                logger.info("Email processing is disabled in global configuration")
+                return []
+            
+            if not user_settings.email_polling_enabled:
+                logger.info("Email polling is disabled in user settings")
                 return []
             
             # Test MCP connection health by checking available tools
@@ -127,12 +150,15 @@ class EmailProcessor:
                 )
                 raise
             
-            # Fetch emails using MCP client
+            # Fetch emails using MCP client with user settings
             logger.info(
                 "Fetching emails from email provider",
                 extra={"data": {
-                    "max_results": settings.EMAIL_MAX_PER_FETCH,
-                    "label_filter": settings.EMAIL_LABEL_FILTER
+                    "max_results": user_settings.email_max_per_fetch,
+                    "label_filter": user_settings.email_label_filter,
+                    "polling_enabled": user_settings.email_polling_enabled,
+                    "polling_interval": user_settings.email_polling_interval,
+                    "create_tasks": user_settings.email_create_tasks
                 }}
             )
             
@@ -140,11 +166,20 @@ class EmailProcessor:
             # Note: get_unread_emails tool doesn't accept parameters
             result = await self._call_email_tool("list_emails")
             
-            if not result or "messages" not in result:
+            if not result:
                 logger.info("No messages found or invalid response from email API")
                 return []
             
-            messages = result["messages"]
+            # Handle different response formats from MCP tools
+            if isinstance(result, list):
+                messages = result
+            elif isinstance(result, dict) and "messages" in result:
+                messages = result["messages"]
+            elif isinstance(result, dict) and "data" in result:
+                messages = result["data"] if isinstance(result["data"], list) else []
+            else:
+                logger.warning(f"Unexpected email API response format: {type(result)}")
+                return []
             logger.info(
                 "Fetched message list from email provider",
                 extra={"data": {"message_count": len(messages)}}
@@ -243,10 +278,13 @@ class EmailProcessor:
         email_id = email_data.get("id")
         
         try:
+            # Get user settings for task creation preference
+            user_settings = await self._get_user_settings()
+            
             # Check if task creation from emails is enabled
-            if not settings.EMAIL_CREATE_TASKS:
+            if not user_settings.email_create_tasks:
                 logger.info(
-                    "Task creation from emails is disabled",
+                    "Task creation from emails is disabled in user settings",
                     extra={"data": {"email_id": email_id}}
                 )
                 return False
