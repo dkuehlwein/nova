@@ -128,7 +128,7 @@ async def update_user_settings(
             try:
                 # Publish Redis event for real-time updates
                 from models.events import create_email_settings_updated_event
-                from utils.redis_manager import get_redis
+                from utils.redis_manager import publish
                 
                 email_event = create_email_settings_updated_event(
                     enabled=settings.email_polling_enabled,
@@ -139,8 +139,7 @@ async def update_user_settings(
                     source="settings-api"
                 )
                 
-                redis_client = get_redis()
-                await redis_client.publish(email_event)
+                await publish(email_event)
                 
                 logger.info(
                     "Published email settings update event",

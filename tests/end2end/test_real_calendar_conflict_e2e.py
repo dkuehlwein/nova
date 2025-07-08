@@ -67,6 +67,15 @@ class TestRealCalendarConflictE2E:
     ):
         """Test complete real flow: send email -> core agent -> calendar conflict -> escalation."""
         
+        # Step 0: Check if Nova API is running
+        try:
+            async with httpx.AsyncClient() as client:
+                health_response = await client.get(f"{api_base_url}/api/system/health", timeout=5.0)
+                if health_response.status_code != 200:
+                    pytest.skip(f"Nova API not available at {api_base_url} - requires full environment setup")
+        except Exception:
+            pytest.skip(f"Nova API not available at {api_base_url} - requires full environment setup")
+        
         # Step 1: Create the initial "Project Sync" event in real calendar
         date_str = future_date.strftime("%Y-%m-%d")
         start_time = f"{date_str}T10:00:00+02:00"
@@ -82,14 +91,22 @@ class TestRealCalendarConflictE2E:
         if not create_event_tool or not list_events_tool:
             pytest.skip("Required calendar tools (create_calendar_event, list_calendar_events) not found")
         
-        # Create initial event
-        initial_event_result = await create_event_tool.arun({
-            "calendar_id": "primary",
-            "summary": test_event_title,
-            "start_datetime": start_time,
-            "end_datetime": end_time,
-            "description": "E2E test event that should conflict with kindergarten closure"
-        })
+        # Create initial event with timeout
+        try:
+            initial_event_result = await asyncio.wait_for(
+                create_event_tool.arun({
+                    "calendar_id": "primary",
+                    "summary": test_event_title,
+                    "start_datetime": start_time,
+                    "end_datetime": end_time,
+                    "description": "E2E test event that should conflict with kindergarten closure"
+                }),
+                timeout=30.0  # 30 second timeout
+            )
+        except asyncio.TimeoutError:
+            pytest.skip("Calendar API call timed out - check Google Calendar API access and credentials")
+        except Exception as e:
+            pytest.skip(f"Calendar API call failed: {str(e)} - check Google Calendar API access and credentials")
         
         assert "success" in str(initial_event_result).lower()
         print(f"✅ Created initial calendar event: {test_event_title}")
@@ -115,11 +132,19 @@ class TestRealCalendarConflictE2E:
     Kindergarten Management
     """
                 
-                email_result = await send_email_tool.arun({
-                    "recipient_ids": ["nova.daniel.kuehlwein@gmail.com"],  # Send to ourselves
-                    "subject": email_subject,
-                    "message": email_body
-                })
+                try:
+                    email_result = await asyncio.wait_for(
+                        send_email_tool.arun({
+                            "recipient_ids": ["nova.daniel.kuehlwein@gmail.com"],  # Send to ourselves
+                            "subject": email_subject,
+                            "message": email_body
+                        }),
+                        timeout=30.0  # 30 second timeout
+                    )
+                except asyncio.TimeoutError:
+                    pytest.skip("Email API call timed out - check Gmail API access and credentials")
+                except Exception as e:
+                    pytest.skip(f"Email API call failed: {str(e)} - check Gmail API access and credentials")
                 
                 assert "message_id" in str(email_result).lower()
                 print(f"✅ Sent test email: {email_subject}")

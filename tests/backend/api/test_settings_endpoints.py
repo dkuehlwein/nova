@@ -2,7 +2,7 @@
 Test settings endpoints functionality, specifically email settings event publishing.
 """
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock, Mock
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,8 +25,16 @@ def mock_db_session():
 @pytest.fixture 
 def mock_user_settings():
     """Mock user settings object."""
+    from uuid import uuid4
     settings = UserSettings()
-    settings.id = "test-user-id"
+    settings.id = uuid4()
+    settings.onboarding_complete = True
+    settings.timezone = "UTC"
+    settings.notification_preferences = {}
+    settings.task_defaults = {}
+    settings.agent_polling_interval = 30
+    settings.agent_error_retry_interval = 300
+    settings.mcp_server_preferences = {}
     settings.email_polling_enabled = True
     settings.email_polling_interval = 300
     settings.email_label_filter = "INBOX"
@@ -42,22 +50,17 @@ async def test_update_email_settings_publishes_redis_event(mock_db_session, mock
     # Import the update function
     from api.settings_endpoints import update_user_settings
     
-    # Setup mocks
-    mock_db_session.execute.return_value.scalar_one_or_none.return_value = mock_user_settings
+    # Setup mocks - create mock result that returns our settings object
+    mock_result = Mock()
+    mock_result.scalar_one_or_none.return_value = mock_user_settings
+    mock_db_session.execute.return_value = mock_result
     mock_db_session.commit = AsyncMock()
-    mock_db_session.refresh = AsyncMock()
+    mock_db_session.refresh = AsyncMock(return_value=None)  # refresh returns None
+    mock_db_session.add = Mock()  # Mock add as regular method
     
-    # Mock the refresh to return the updated settings object
-    async def mock_refresh(obj):
-        # Apply the updates to the mock object
-        obj.email_polling_interval = 120
-        obj.email_max_per_fetch = 25
-        return obj
-    mock_db_session.refresh.side_effect = mock_refresh
-    
-    # Mock Redis client and event publishing
-    mock_redis_client = AsyncMock()
-    mock_redis_get = patch('utils.redis_manager.get_redis', return_value=mock_redis_client)
+    # Mock Redis event publishing
+    mock_publish = AsyncMock()
+    mock_publish_patch = patch('utils.redis_manager.publish', mock_publish)
     
     # Mock Celery task
     mock_celery_task = MagicMock()
@@ -70,15 +73,15 @@ async def test_update_email_settings_publishes_redis_event(mock_db_session, mock
         email_max_per_fetch=25  # Changed from 50 to 25
     )
     
-    with mock_redis_get, mock_celery_patch:
+    with mock_publish_patch, mock_celery_patch:
         # Call the function
         result = await update_user_settings(update_data, mock_db_session)
         
         # Verify Redis event was published
-        mock_redis_client.publish.assert_called_once()
+        mock_publish.assert_called_once()
         
         # Get the published event
-        published_event_call = mock_redis_client.publish.call_args[0][0]
+        published_event_call = mock_publish.call_args[0][0]
         assert isinstance(published_event_call, NovaEvent)
         assert published_event_call.type == "email_settings_updated"
         assert published_event_call.source == "settings-api"
@@ -101,21 +104,17 @@ async def test_update_non_email_settings_no_redis_event(mock_db_session, mock_us
     
     from api.settings_endpoints import update_user_settings
     
-    # Setup mocks
-    mock_db_session.execute.return_value.scalar_one_or_none.return_value = mock_user_settings
+    # Setup mocks - create mock result that returns our settings object
+    mock_result = Mock()
+    mock_result.scalar_one_or_none.return_value = mock_user_settings
+    mock_db_session.execute.return_value = mock_result
     mock_db_session.commit = AsyncMock()
-    mock_db_session.refresh = AsyncMock()
+    mock_db_session.refresh = AsyncMock(return_value=None)  # refresh returns None
+    mock_db_session.add = Mock()  # Mock add as regular method
     
-    # Mock the refresh to return the updated settings object
-    async def mock_refresh(obj):
-        obj.full_name = "Test User"
-        obj.timezone = "UTC"
-        return obj
-    mock_db_session.refresh.side_effect = mock_refresh
-    
-    # Mock Redis client
-    mock_redis_client = AsyncMock()
-    mock_redis_get = patch('utils.redis_manager.get_redis', return_value=mock_redis_client)
+    # Mock Redis event publishing
+    mock_publish = AsyncMock()
+    mock_publish_patch = patch('utils.redis_manager.publish', mock_publish)
     
     # Create update data with non-email settings only
     update_data = UserSettingsUpdateModel(
@@ -123,12 +122,12 @@ async def test_update_non_email_settings_no_redis_event(mock_db_session, mock_us
         timezone="UTC"
     )
     
-    with mock_redis_get:
+    with mock_publish_patch:
         # Call the function
         result = await update_user_settings(update_data, mock_db_session)
         
         # Verify NO Redis event was published
-        mock_redis_client.publish.assert_not_called()
+        mock_publish.assert_not_called()
 
 
 @pytest.mark.asyncio 
@@ -167,21 +166,18 @@ async def test_redis_event_publishing_error_handling(mock_db_session, mock_user_
     
     from api.settings_endpoints import update_user_settings
     
-    # Setup mocks
-    mock_db_session.execute.return_value.scalar_one_or_none.return_value = mock_user_settings
+    # Setup mocks - create mock result that returns our settings object
+    mock_result = Mock()
+    mock_result.scalar_one_or_none.return_value = mock_user_settings
+    mock_db_session.execute.return_value = mock_result
     mock_db_session.commit = AsyncMock()
-    mock_db_session.refresh = AsyncMock()
+    mock_db_session.refresh = AsyncMock(return_value=None)  # refresh returns None
+    mock_db_session.add = Mock()  # Mock add as regular method
     
-    # Mock the refresh to return the updated settings object
-    async def mock_refresh(obj):
-        obj.email_polling_interval = 60
-        return obj
-    mock_db_session.refresh.side_effect = mock_refresh
-    
-    # Mock Redis client to raise an error
-    mock_redis_client = AsyncMock()
-    mock_redis_client.publish.side_effect = Exception("Redis connection failed")
-    mock_redis_get = patch('utils.redis_manager.get_redis', return_value=mock_redis_client)
+    # Mock Redis event publishing to raise an error
+    mock_publish = AsyncMock()
+    mock_publish.side_effect = Exception("Redis connection failed")
+    mock_publish_patch = patch('utils.redis_manager.publish', mock_publish)
     
     # Mock Celery task
     mock_celery_task = MagicMock()
@@ -192,7 +188,7 @@ async def test_redis_event_publishing_error_handling(mock_db_session, mock_user_
         email_polling_interval=60
     )
     
-    with mock_redis_get, mock_celery_patch:
+    with mock_publish_patch, mock_celery_patch:
         # Call the function - should not raise an exception
         result = await update_user_settings(update_data, mock_db_session)
         
@@ -201,4 +197,4 @@ async def test_redis_event_publishing_error_handling(mock_db_session, mock_user_
         assert result.email_polling_interval == 60
         
         # Verify Redis publish was attempted but failed
-        mock_redis_client.publish.assert_called_once()
+        mock_publish.assert_called_once()

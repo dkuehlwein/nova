@@ -229,7 +229,8 @@ class TestEmailIntegration:
             labels=normalized_data["labels"]
         )
         mock_user_settings = Mock()
-        description = task_creator._format_task_description(metadata, normalized_data["content"], mock_user_settings)
+        mock_user_settings.timezone = "UTC"
+        description = task_creator._format_task_description(metadata, mock_user_settings, normalized_data)
 
         assert "**From:** sender@example.com" in description
         assert "Test email body content" in description

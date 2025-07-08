@@ -92,11 +92,20 @@ backend/
 ├── api/                   # FastAPI Endpoints (single responsibility)
 │   ├── api_endpoints.py   # Task/Person/Project CRUD
 │   ├── chat_endpoints.py  # Chat/agent interaction
+│   ├── config_endpoints.py # Configuration management
+│   ├── mcp_endpoints.py   # MCP server management
+│   ├── memory_endpoints.py # Memory system endpoints
+│   ├── prompt_endpoints.py # Prompt management
+│   ├── settings_endpoints.py # User settings
+│   ├── system_endpoints.py # System status and health
 │   └── websocket_endpoints.py # Real-time connections
 ├── database/              # Database layer
 ├── models/                # Pydantic models
-├── tools/                 # LangChain tools for agents
-├── utils/                 # Shared utilities (service management, logging, etc.)
+├── email_processing/      # Email fetching and processing
+├── memory/               # Graph memory system (Graphiti)
+├── tasks/                # Celery background tasks
+├── tools/                # LangChain tools for agents
+├── utils/                # Shared utilities (service management, logging, etc.)
 └── start_*.py            # Service entry points
 ```
 
