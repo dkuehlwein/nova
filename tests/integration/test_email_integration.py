@@ -8,7 +8,9 @@ import pytest
 from unittest.mock import AsyncMock, patch, Mock
 from datetime import datetime
 
-from tasks.email_processor import EmailProcessor
+from backend.email_processing.processor import EmailProcessor
+from backend.email_processing.normalizer import EmailNormalizer
+from backend.email_processing.task_creator import EmailTaskCreator
 from tasks.email_tasks import fetch_emails, process_single_email
 from database.database import db_manager
 from models.models import Task, ProcessedEmail
@@ -82,9 +84,9 @@ class TestEmailIntegration:
         """Test complete flow from email fetch to task creation."""
         
         # Setup mocks
-        with patch('tasks.email_processor.mcp_manager') as mock_mcp_manager, \
-             patch('tasks.email_processor.settings') as mock_settings, \
-             patch('tasks.email_processor.EmailProcessor._get_user_settings') as mock_user_settings:
+        with patch('backend.email_processing.processor.EmailFetcher') as mock_fetcher, \
+             patch('backend.email_processing.processor.EmailNormalizer') as mock_normalizer, \
+             patch('backend.email_processing.processor.EmailTaskCreator') as mock_task_creator:
             
             # Configure mock settings
             mock_settings.EMAIL_ENABLED = True
@@ -173,9 +175,9 @@ class TestEmailIntegration:
     ):
         """Test that duplicate emails don't create multiple tasks."""
         
-        with patch('tasks.email_processor.mcp_manager') as mock_mcp_manager, \
-             patch('tasks.email_processor.settings') as mock_settings, \
-             patch('tasks.email_processor.EmailProcessor._get_user_settings') as mock_user_settings:
+        with patch('backend.email_processing.processor.EmailFetcher') as mock_fetcher, \
+             patch('backend.email_processing.processor.EmailNormalizer') as mock_normalizer, \
+             patch('backend.email_processing.processor.EmailTaskCreator') as mock_task_creator:
             
             # Configure mock settings
             mock_settings.EMAIL_ENABLED = True
@@ -340,9 +342,9 @@ class TestEmailIntegration:
     ):
         """Test error handling during email processing."""
         
-        with patch('tasks.email_processor.mcp_manager') as mock_mcp_manager, \
-             patch('tasks.email_processor.settings') as mock_settings, \
-             patch('tasks.email_processor.EmailProcessor._get_user_settings') as mock_user_settings:
+        with patch('backend.email_processing.processor.EmailFetcher') as mock_fetcher, \
+             patch('backend.email_processing.processor.EmailNormalizer') as mock_normalizer, \
+             patch('backend.email_processing.processor.EmailTaskCreator') as mock_task_creator:
             
             # Configure mock settings
             mock_settings.EMAIL_ENABLED = True
@@ -372,9 +374,9 @@ class TestEmailIntegration:
     async def test_metadata_extraction(self, sample_email_data):
         """Test email metadata extraction."""
         
-        processor = EmailProcessor()
+        normalizer = EmailNormalizer()
         
-        metadata = processor._extract_email_metadata(sample_email_data)
+        metadata = normalizer._extract_metadata(sample_email_data)
         
         assert isinstance(metadata, EmailMetadata)
         assert metadata.email_id == sample_email_data["id"]
@@ -384,36 +386,31 @@ class TestEmailIntegration:
         assert metadata.recipient == "recipient@nova.dev"
         assert metadata.has_attachments is False
         assert "INBOX" in metadata.labels
-        
-        await processor.close()
     
     @pytest.mark.asyncio
     async def test_email_body_extraction(self, sample_email_data):
         """Test email body text extraction."""
         
-        processor = EmailProcessor()
+        normalizer = EmailNormalizer()
         
-        body = processor._extract_email_body(sample_email_data)
+        body = normalizer._extract_body(sample_email_data)
         
         assert body == "Test email body content"
-        
-        await processor.close()
     
     @pytest.mark.asyncio
     async def test_task_description_formatting(self, sample_email_data):
         """Test task description formatting with email metadata."""
         
-        processor = EmailProcessor()
+        task_creator = EmailTaskCreator()
+        normalizer = EmailNormalizer()
         
-        metadata = processor._extract_email_metadata(sample_email_data)
-        body = processor._extract_email_body(sample_email_data)
-        description = processor._format_task_description(metadata, body)
+        metadata = normalizer._extract_metadata(sample_email_data)
+        body = normalizer._extract_body(sample_email_data)
+        description = task_creator._format_task_description(metadata, body)
         
         # Check that all important information is included
         assert "**From:** sender@example.com" in description
         assert "**To:** recipient@nova.dev" in description
         assert f"**Email ID:** {sample_email_data['id']}" in description
         assert "**Email Content:**" in description
-        assert "Test email body content" in description
-        
-        await processor.close() 
+        assert "Test email body content" in description 
