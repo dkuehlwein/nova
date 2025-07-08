@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.database import db_manager
+from database.database import get_db_session
 from models.user_settings import (
     UserSettings, 
     UserSettingsModel, 
@@ -26,10 +26,6 @@ logger = get_logger("settings_api")
 router = APIRouter(prefix="/api/user-settings", tags=["user-settings"])
 
 
-async def get_db_session():
-    """Dependency to get database session."""
-    async with db_manager.get_session() as session:
-        yield session
 
 
 @router.get("/status", response_model=OnboardingStatusModel)

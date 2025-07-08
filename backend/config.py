@@ -48,10 +48,6 @@ class Settings(BaseSettings):
     LANGCHAIN_API_KEY: Optional[SecretStr] = None
     LANGCHAIN_PROJECT: Optional[str] = None
 
-    # Agent Loop Settings
-    AGENT_POLLING_INTERVAL_SECONDS: int = 30
-    AGENT_ERROR_RETRY_INTERVAL_SECONDS: int = 60
-    
     # Service Ports
     CHAT_AGENT_PORT: int = 8000
     CORE_AGENT_PORT: int = 8001

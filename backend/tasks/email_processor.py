@@ -31,11 +31,8 @@ class EmailProcessor:
             settings = result.scalar_one_or_none()
             
             if not settings:
-                # Create default settings if none exist
-                settings = UserSettings()
-                session.add(settings)
-                await session.commit()
-                await session.refresh(settings)
+                logger.error("No user settings found in database - this should never happen in production")
+                raise RuntimeError("User settings not configured. Please complete onboarding first.")
             
             return settings
     
@@ -387,6 +384,9 @@ class EmailProcessor:
         """Extract metadata from email data."""
         headers = {}
         
+        # Log email structure for debugging
+        logger.debug(f"Email data structure: {list(email_data.keys()) if isinstance(email_data, dict) else type(email_data)}")
+        
         # Extract headers from email message format
         if "payload" in email_data and "headers" in email_data["payload"]:
             for header in email_data["payload"]["headers"]:
@@ -400,8 +400,14 @@ class EmailProcessor:
         except:
             email_date = datetime.utcnow()
         
+        # Extract email ID - ensure it's not None or empty
+        email_id = email_data.get("id")
+        if not email_id:
+            logger.error(f"Email ID is missing from email data: {email_data}")
+            raise ValueError("Email ID is required but missing from email data")
+        
         return EmailMetadata(
-            email_id=email_data.get("id", ""),
+            email_id=email_id,
             thread_id=email_data.get("threadId", ""),
             subject=headers.get("subject", "No Subject"),
             sender=headers.get("from", "Unknown Sender"),

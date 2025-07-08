@@ -62,4 +62,11 @@ class DatabaseManager:
 
 
 # Global database manager instance
-db_manager = DatabaseManager() 
+db_manager = DatabaseManager()
+
+
+# FastAPI dependency for database sessions
+async def get_db_session():
+    """Dependency to get database session for FastAPI endpoints."""
+    async with db_manager.get_session() as session:
+        yield session 
