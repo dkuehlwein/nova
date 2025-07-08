@@ -39,9 +39,9 @@ class EmailTaskCreator:
             # Create task title and description
             task_title = f"Read Email: {metadata.subject}"
             task_description = self._format_task_description(
-                metadata, 
-                normalized_email.get("content", ""), 
-                user_settings
+                metadata,                 
+                user_settings,
+                normalized_email
             )
             
             # Create the task
@@ -131,8 +131,8 @@ class EmailTaskCreator:
     def _format_task_description(
         self, 
         metadata: EmailMetadata, 
-        body: str, 
-        user_settings: UserSettings
+        user_settings: UserSettings,
+        normalized_email: Dict[str, Any] = None
     ) -> str:
         """Format task description with email metadata and content."""
         # Format date in user's timezone for better UX
@@ -147,12 +147,13 @@ class EmailTaskCreator:
         ]
         
         # If we have the original Gmail message ID, include it for agent tools
-        original_gmail_id = normalized_email.get("id")
-        if original_gmail_id and original_gmail_id != metadata.email_id:
-            description_parts.append(f"**Gmail Message ID:** {original_gmail_id}\n")
-        elif original_gmail_id:
-            # If they're the same, the agent should use the Email ID field
-            description_parts.append(f"**Gmail Message ID:** {original_gmail_id}\n")
+        if normalized_email:
+            original_gmail_id = normalized_email.get("id")
+            if original_gmail_id and original_gmail_id != metadata.email_id:
+                description_parts.append(f"**Gmail Message ID:** {original_gmail_id}\n")
+            elif original_gmail_id:
+                # If they're the same, the agent should use the Email ID field
+                description_parts.append(f"**Gmail Message ID:** {original_gmail_id}\n")
         
         if metadata.has_attachments:
             description_parts.append("**Attachments:** Yes\n")
@@ -163,7 +164,7 @@ class EmailTaskCreator:
             "",
             "**Email Content:**",
             "",
-            body
+            normalized_email.get("content", "")
         ])
         
         return "\n".join(description_parts)

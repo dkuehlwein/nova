@@ -2,6 +2,7 @@
 
 import Navbar from "@/components/Navbar";
 import { Plus, Calendar, Trash2, FileText, MessageCircle, Activity, Edit2, Check, X, MessageSquare } from "lucide-react";
+import { MarkdownMessage } from "@/components/MarkdownMessage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -371,9 +372,9 @@ function KanbanPage() {
         </div>
       </div>
       
-      <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
-        {task.description}
-      </p>
+      <div className="text-xs text-muted-foreground mb-3 line-clamp-2">
+        <MarkdownMessage content={task.description || ''} className="text-xs" />
+      </div>
 
       <div className="flex flex-wrap gap-1 mb-3">
         {(task.tags || []).map((tag: string) => (
@@ -641,9 +642,9 @@ function KanbanPage() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm text-foreground leading-relaxed">
-                      {selectedTask.description || 'No description provided.'}
-                    </p>
+                    <div className="text-sm text-foreground leading-relaxed">
+                      <MarkdownMessage content={selectedTask.description || 'No description provided.'} className="text-sm" />
+                    </div>
                   )}
                 </div>
 
@@ -654,9 +655,9 @@ function KanbanPage() {
                       <FileText className="h-3 w-3 mr-2" />
                       Summary
                     </Label>
-                    <p className="text-sm text-foreground leading-relaxed">
-                      {selectedTask.summary}
-                    </p>
+                    <div className="text-sm text-foreground leading-relaxed">
+                      <MarkdownMessage content={selectedTask.summary} className="text-sm" />
+                    </div>
                   </div>
                 )}
 
@@ -727,9 +728,9 @@ function KanbanPage() {
                                     {item.time}
                                   </span>
                                 </div>
-                                <p className="text-sm text-foreground leading-relaxed">
-                                  {item.content}
-                                </p>
+                                <div className="text-sm text-foreground leading-relaxed">
+                                  <MarkdownMessage content={item.content || ''} className="text-sm" />
+                                </div>
                               </>
                             ) : (
                               // Activity display

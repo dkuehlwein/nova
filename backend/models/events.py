@@ -24,6 +24,7 @@ class NovaEvent(BaseModel):
         "config_validated",
         "config_changed",
         "user_profile_updated",
+        "email_processing_started",
         "email_processing_completed",
         "email_settings_updated"
     ]

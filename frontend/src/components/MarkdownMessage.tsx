@@ -16,6 +16,7 @@ interface MarkdownMessageProps {
   content: string;
   className?: string;
   toolCalls?: ToolCall[];
+  disableLinks?: boolean;
 }
 
 // Regex to match tool call pattern: 🔧 **Using tool: toolname**\n```json\n{args}\n```
@@ -26,7 +27,7 @@ function parseContentWithToolCalls(content: string) {
   if (typeof content !== 'string') {
     console.warn('parseContentWithToolCalls received non-string content:', content);
     // If it's an array, join it; otherwise convert to string
-    content = Array.isArray(content) ? (content as any[]).join('\n\n') : String(content);
+    content = Array.isArray(content) ? (content as string[]).join('\n\n') : String(content);
   }
 
   const parts: Array<{ type: 'text' | 'tool'; content: string; toolName?: string; args?: string }> = [];
@@ -85,54 +86,6 @@ export function MarkdownMessage({ content, className = "", toolCalls }: Markdown
       <div className={`prose prose-sm max-w-none dark:prose-invert ${className}`}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          components={{
-            // Custom styling for different elements
-            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-            
-            // Style code blocks
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            code: ({ children, inline }: any) => {
-              if (inline) {
-                return (
-                  <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono">
-                    {children}
-                  </code>
-                );
-              }
-              return (
-                <code className="block p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border text-sm font-mono overflow-x-auto whitespace-pre-wrap">
-                  {children}
-                </code>
-              );
-            },
-            
-            // Style pre blocks
-            pre: ({ children }) => (
-              <pre className="bg-gray-50 dark:bg-gray-900 rounded-lg border p-3 overflow-x-auto">
-                {children}
-              </pre>
-            ),
-            
-            // Style headings
-            h1: ({ children }) => <h1 className="text-lg font-semibold mb-2">{children}</h1>,
-            h2: ({ children }) => <h2 className="text-base font-semibold mb-2">{children}</h2>,
-            h3: ({ children }) => <h3 className="text-sm font-semibold mb-1">{children}</h3>,
-            
-            // Style strong/bold text
-            strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-            
-            // Style lists
-            ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
-            ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-            li: ({ children }) => <li className="text-sm">{children}</li>,
-            
-            // Style blockquotes
-            blockquote: ({ children }) => (
-              <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic my-2">
-                {children}
-              </blockquote>
-            ),
-          }}
         >
           {content}
         </ReactMarkdown>
@@ -158,54 +111,6 @@ export function MarkdownMessage({ content, className = "", toolCalls }: Markdown
       <div>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          components={{
-            // Custom styling for different elements
-            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-            
-            // Style code blocks
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            code: ({ children, inline }: any) => {
-              if (inline) {
-                return (
-                  <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono">
-                    {children}
-                  </code>
-                );
-              }
-              return (
-                <code className="block p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border text-sm font-mono overflow-x-auto whitespace-pre-wrap">
-                  {children}
-                </code>
-              );
-            },
-            
-            // Style pre blocks
-            pre: ({ children }) => (
-              <pre className="bg-gray-50 dark:bg-gray-900 rounded-lg border p-3 overflow-x-auto">
-                {children}
-              </pre>
-            ),
-            
-            // Style headings
-            h1: ({ children }) => <h1 className="text-lg font-semibold mb-2">{children}</h1>,
-            h2: ({ children }) => <h2 className="text-base font-semibold mb-2">{children}</h2>,
-            h3: ({ children }) => <h3 className="text-sm font-semibold mb-1">{children}</h3>,
-            
-            // Style strong/bold text
-            strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-            
-            // Style lists
-            ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
-            ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-            li: ({ children }) => <li className="text-sm">{children}</li>,
-            
-            // Style blockquotes
-            blockquote: ({ children }) => (
-              <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic my-2">
-                {children}
-              </blockquote>
-            ),
-          }}
         >
           {hasStreamingToolCalls ? content : (parts.length > 0 ? parts.find(p => p.type === 'text')?.content || content : content)}
         </ReactMarkdown>

@@ -13,6 +13,7 @@ import { useState, useEffect } from "react";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, ArrowRight } from "lucide-react";
+import { MarkdownMessage } from "@/components/MarkdownMessage";
 
 interface PendingDecision {
   id: string;
@@ -246,7 +247,9 @@ export default function HomePage() {
                                   {getPriority(decision)}
                                 </Badge>
                               </div>
-                              <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{decision.description}</p>
+                              <div className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                                <MarkdownMessage content={decision.description} className="text-sm" disableLinks={true} />
+                              </div>
                               <div className="flex items-center space-x-3 text-xs text-muted-foreground">
                                 <div className="flex items-center space-x-1">
                                   <Clock className="h-3 w-3" />
@@ -305,7 +308,9 @@ export default function HomePage() {
                                 {formatStatusName(task.status)}
                               </Badge>
                             </div>
-                            <p className="text-xs text-muted-foreground line-clamp-2 mb-1">{task.description}</p>
+                            <div className="text-xs text-muted-foreground line-clamp-2 mb-1">
+                              <MarkdownMessage content={task.description} className="text-xs" disableLinks={true} />
+                            </div>
                             <div className="flex items-center justify-between">
                               <p className="text-xs text-muted-foreground">{formatTimeAgo(task.updated_at)}</p>
                               {task.tags.length > 0 && (

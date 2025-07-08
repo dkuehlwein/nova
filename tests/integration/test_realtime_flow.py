@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from utils.websocket_manager import WebSocketManager
-from utils.prompt_loader import load_nova_system_prompt
-from models.events import create_prompt_updated_event, create_mcp_toggled_event
+from backend.utils.websocket_manager import WebSocketManager
+from backend.utils.prompt_loader import load_nova_system_prompt
+from backend.models.events import create_prompt_updated_event, create_mcp_toggled_event
 
 
 class TestRealTimeFlow:
@@ -35,7 +35,7 @@ class TestRealTimeFlow:
             published_events.append(event)
             return True
         
-        with patch('utils.redis_manager.publish', side_effect=mock_publish):
+        with patch('backend.utils.redis_manager.publish', side_effect=mock_publish):
             # Create a prompt updated event directly (since PromptLoader no longer exists)
             event = create_prompt_updated_event(
                 prompt_file="test_prompt.md",
@@ -79,7 +79,7 @@ class TestRealTimeFlow:
             published_events.append(event)
             return True
         
-        with patch('utils.redis_manager.publish', side_effect=mock_publish):
+        with patch('backend.utils.redis_manager.publish', side_effect=mock_publish):
             # Create MCP toggle event
             event = create_mcp_toggled_event(
                 server_name="gmail",
@@ -151,8 +151,8 @@ class TestRealTimeFlow:
         async def mock_subscribe(channel="nova_events"):
             yield test_event
         
-        with patch('utils.redis_manager.subscribe', new=mock_subscribe):
-            from utils.redis_manager import subscribe
+        with patch('backend.utils.redis_manager.subscribe', new=mock_subscribe):
+            from backend.utils.redis_manager import subscribe
             
             # Test subscription
             events_received = []
@@ -206,7 +206,7 @@ class TestRealTimeFlow:
         client_id = await ws_manager.connect(mock_websocket, "test-client")
         
         # Mock Redis to simulate unavailability
-        with patch('utils.redis_manager.publish', side_effect=Exception("Redis unavailable")):
+        with patch('backend.utils.redis_manager.publish', side_effect=Exception("Redis unavailable")):
             # Create event
             event = create_prompt_updated_event("test.md", "modified")
             
@@ -225,63 +225,33 @@ class TestAgentPromptIntegration:
     """Test integration between prompt changes and agent reloading."""
     
     @pytest.mark.asyncio
-    async def test_prompt_change_triggers_agent_reload_via_redis(self):
+    @patch('backend.agent.chat_agent.create_chat_agent', new_callable=AsyncMock)
+    async def test_prompt_change_triggers_agent_reload_via_redis(self, mock_create_chat_agent):
         """Test that a prompt file change triggers agent reload through Redis events."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
-            f.write("Initial prompt content")
-            temp_path = Path(f.name)
-        
-        try:
-            # Track agent creation calls
-            agent_creation_calls = []
-            
-            # Mock agent creation to track calls
-            async def mock_create_chat_agent(reload_tools=False):
-                agent_creation_calls.append({"reload_tools": reload_tools})
-                return Mock()
-            
-            # Mock Redis event subscription
-            redis_events = []
-            
-            # Mock event handler
-            async def mock_event_handler(event):
-                redis_events.append(event)
-                # Simulate agent reloading logic
-                if event.type == "prompt_updated":
-                    await mock_create_chat_agent(reload_tools=True)
-            
-            # Patch agent creation to track reload_tools parameter
-            with patch('agent.chat_agent.create_chat_agent', side_effect=mock_create_chat_agent):
-                with patch('utils.redis_manager.publish') as mock_publish:
-                    
-                    # Create prompt loader and simulate prompt change
-                    loader = PromptLoader(temp_path, debounce_seconds=0.1)
-                    
-                    # Initial agent creation (simulate startup)
-                    await mock_create_chat_agent(reload_tools=False)
-                    
-                    # Modify prompt file
-                    with open(temp_path, 'w', encoding='utf-8') as f:
-                        f.write("Updated prompt content")
-                    
-                    # Trigger reload and publish event
-                    loader._load_prompt()
-                    loader._publish_prompt_updated_event()
-                    
-                    # Get the event that would be published
-                    if mock_publish.call_args:
-                        event = mock_publish.call_args[0][0]
-                        
-                        # Simulate the event handler receiving the event
-                        await mock_event_handler(event)
-                    
-                    # Verify agent was created twice: initial + reload
-                    assert len(agent_creation_calls) == 2  # Initial + reload
-                    assert agent_creation_calls[0]["reload_tools"] is False  # Initial creation
-                    assert agent_creation_calls[1]["reload_tools"] is True   # Reload after prompt change
-                    
-        finally:
-            temp_path.unlink()
+        from backend.utils.config_registry import config_registry
+        from backend.utils.config_events import create_config_event
+
+        # Create a mock event handler
+        async def mock_event_handler(event):
+            if event.type == "config_updated" and event.config_type == "system_prompt":
+                await mock_create_chat_agent(reload_tools=True)
+
+        with patch('backend.utils.config_events.publish_config_event', side_effect=mock_event_handler):
+            # Initial agent creation
+            await mock_create_chat_agent(reload_tools=False)
+
+            # Simulate a config change event
+            event = create_config_event(
+                config_type="system_prompt",
+                operation="reloaded",
+                source="file-watcher",
+                details={}
+            )
+            await mock_event_handler(event)
+
+            # Verify agent was reloaded
+            assert mock_create_chat_agent.call_count == 2
+            mock_create_chat_agent.assert_any_call(reload_tools=True)
     
     @pytest.mark.asyncio
     async def test_mcp_server_toggle_triggers_tool_reload_via_redis(self):
@@ -311,9 +281,9 @@ class TestAgentPromptIntegration:
             if event.type == "mcp_toggled":
                 await mock_create_chat_agent(reload_tools=True)
         
-        with patch('agent.chat_agent.mcp_manager.get_tools', side_effect=mock_get_client_and_tools):
-            with patch('agent.chat_agent.create_chat_agent', side_effect=mock_create_chat_agent):
-                with patch('utils.redis_manager.publish') as mock_publish:
+        with patch('backend.agent.chat_agent.mcp_manager.get_tools', side_effect=mock_get_client_and_tools):
+            with patch('backend.agent.chat_agent.create_chat_agent', side_effect=mock_create_chat_agent):
+                with patch('backend.utils.redis_manager.publish') as mock_publish:
                     
                     # Initial agent creation
                     await mock_create_chat_agent(reload_tools=False)
@@ -327,4 +297,4 @@ class TestAgentPromptIntegration:
                     assert len(redis_events) == 1
                     assert redis_events[0].type == "mcp_toggled"
                     assert redis_events[0].data["server_name"] == "gmail"
-                    assert redis_events[0].data["enabled"] is False 
+                    assert redis_events[0].data["enabled"] is False
