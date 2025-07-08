@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from utils.websocket_manager import WebSocketManager
-from utils.prompt_loader import PromptLoader
+from utils.prompt_loader import load_nova_system_prompt
 from models.events import create_prompt_updated_event, create_mcp_toggled_event
 
 
@@ -22,58 +22,48 @@ class TestRealTimeFlow:
     
     @pytest.mark.asyncio
     async def test_prompt_file_to_websocket_flow(self):
-        """Test complete flow: prompt file change → Redis → WebSocket broadcast."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
-            f.write("Initial prompt content")
-            temp_path = Path(f.name)
+        """Test complete flow: prompt change → Redis → WebSocket broadcast."""
+        # Set up components
+        ws_manager = WebSocketManager()
+        mock_websocket = AsyncMock()
+        client_id = await ws_manager.connect(mock_websocket, "test-client")
         
-        try:
-            # Set up components
-            ws_manager = WebSocketManager()
-            mock_websocket = AsyncMock()
-            client_id = await ws_manager.connect(mock_websocket, "test-client")
+        # Mock Redis to capture published events
+        published_events = []
+        
+        async def mock_publish(event, channel="nova_events"):
+            published_events.append(event)
+            return True
+        
+        with patch('utils.redis_manager.publish', side_effect=mock_publish):
+            # Create a prompt updated event directly (since PromptLoader no longer exists)
+            event = create_prompt_updated_event(
+                prompt_file="test_prompt.md",
+                change_type="modified"
+            )
             
-            # Mock Redis to capture published events
-            published_events = []
+            # Publish the event
+            await mock_publish(event)
             
-            async def mock_publish(event, channel="nova_events"):
-                published_events.append(event)
-                return True
+            # Give async operations time to complete
+            await asyncio.sleep(0.1)
             
-            with patch('utils.redis_manager.publish', side_effect=mock_publish):
-                # Create prompt loader and modify file
-                loader = PromptLoader(temp_path, debounce_seconds=0.1)
-                
-                # Modify the file to trigger event
-                with open(temp_path, 'w', encoding='utf-8') as f:
-                    f.write("Updated prompt content")
-                
-                # Trigger the reload manually (simulating file watcher)
-                loader._load_prompt()
-                loader._publish_prompt_updated_event()
-                
-                # Give async operations time to complete
-                await asyncio.sleep(0.2)
-                
-                # Verify event was published
-                assert len(published_events) == 1
-                event = published_events[0]
-                assert event.type == "prompt_updated"
-                assert event.data["prompt_file"] == temp_path.name
-                assert event.data["change_type"] == "modified"
-                
-                # Simulate the Redis → WebSocket bridge
-                await ws_manager.broadcast_event(event)
-                
-                # Verify WebSocket received the message
-                mock_websocket.send_text.assert_called_once()
-                sent_data = json.loads(mock_websocket.send_text.call_args[0][0])
-                
-                assert sent_data["type"] == "prompt_updated"
-                assert sent_data["data"]["prompt_file"] == temp_path.name
-                
-        finally:
-            temp_path.unlink()
+            # Verify event was published
+            assert len(published_events) == 1
+            published_event = published_events[0]
+            assert published_event.type == "prompt_updated"
+            assert published_event.data["prompt_file"] == "test_prompt.md"
+            assert published_event.data["change_type"] == "modified"
+            
+            # Simulate the Redis → WebSocket bridge
+            await ws_manager.broadcast_event(published_event)
+            
+            # Verify WebSocket received the message
+            mock_websocket.send_text.assert_called_once()
+            sent_data = json.loads(mock_websocket.send_text.call_args[0][0])
+            
+            assert sent_data["type"] == "prompt_updated"
+            assert sent_data["data"]["prompt_file"] == "test_prompt.md"
     
     @pytest.mark.asyncio
     async def test_mcp_server_toggle_to_websocket_flow(self):

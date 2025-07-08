@@ -83,13 +83,19 @@ class TestEmailIntegration:
         
         # Setup mocks
         with patch('tasks.email_processor.mcp_manager') as mock_mcp_manager, \
-             patch('tasks.email_processor.settings') as mock_settings:
+             patch('tasks.email_processor.settings') as mock_settings, \
+             patch('tasks.email_processor.EmailProcessor._get_user_settings') as mock_user_settings:
             
             # Configure mock settings
             mock_settings.EMAIL_ENABLED = True
-            mock_settings.EMAIL_CREATE_TASKS = True
-            mock_settings.EMAIL_MAX_PER_FETCH = 50
-            mock_settings.EMAIL_LABEL_FILTER = "INBOX"
+            
+            # Mock user settings to return what we need
+            mock_user_settings_obj = Mock()
+            mock_user_settings_obj.email_polling_enabled = True
+            mock_user_settings_obj.email_create_tasks = True
+            mock_user_settings_obj.email_max_per_fetch = 50
+            mock_user_settings_obj.email_label_filter = "INBOX"
+            mock_user_settings.return_value = mock_user_settings_obj
             
             # Create mock tools for the email processor
             mock_list_labels_tool = AsyncMock()
@@ -168,13 +174,19 @@ class TestEmailIntegration:
         """Test that duplicate emails don't create multiple tasks."""
         
         with patch('tasks.email_processor.mcp_manager') as mock_mcp_manager, \
-             patch('tasks.email_processor.settings') as mock_settings:
+             patch('tasks.email_processor.settings') as mock_settings, \
+             patch('tasks.email_processor.EmailProcessor._get_user_settings') as mock_user_settings:
             
             # Configure mock settings
             mock_settings.EMAIL_ENABLED = True
-            mock_settings.EMAIL_CREATE_TASKS = True
-            mock_settings.EMAIL_MAX_PER_FETCH = 50
-            mock_settings.EMAIL_LABEL_FILTER = "INBOX"
+            
+            # Mock user settings to return what we need
+            mock_user_settings_obj = Mock()
+            mock_user_settings_obj.email_polling_enabled = True
+            mock_user_settings_obj.email_create_tasks = True
+            mock_user_settings_obj.email_max_per_fetch = 50
+            mock_user_settings_obj.email_label_filter = "INBOX"
+            mock_user_settings.return_value = mock_user_settings_obj
             
             # Create mock tools for the email processor
             mock_list_labels_tool = AsyncMock()
@@ -329,13 +341,19 @@ class TestEmailIntegration:
         """Test error handling during email processing."""
         
         with patch('tasks.email_processor.mcp_manager') as mock_mcp_manager, \
-             patch('tasks.email_processor.settings') as mock_settings:
+             patch('tasks.email_processor.settings') as mock_settings, \
+             patch('tasks.email_processor.EmailProcessor._get_user_settings') as mock_user_settings:
             
             # Configure mock settings
             mock_settings.EMAIL_ENABLED = True
-            mock_settings.EMAIL_CREATE_TASKS = True
-            mock_settings.EMAIL_MAX_PER_FETCH = 50
-            mock_settings.EMAIL_LABEL_FILTER = "INBOX"
+            
+            # Mock user settings to return what we need
+            mock_user_settings_obj = Mock()
+            mock_user_settings_obj.email_polling_enabled = True
+            mock_user_settings_obj.email_create_tasks = True
+            mock_user_settings_obj.email_max_per_fetch = 50
+            mock_user_settings_obj.email_label_filter = "INBOX"
+            mock_user_settings.return_value = mock_user_settings_obj
             
             # Mock MCP manager to raise an error when getting tools
             async def mock_get_tools_error():
