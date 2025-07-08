@@ -477,9 +477,9 @@ function ChatPage() {
                               <h4 className="text-sm font-medium text-orange-900 truncate">
                                 {decision.title}
                               </h4>
-                              <p className="text-xs text-orange-700 line-clamp-2 mt-1">
-                                {decision.description}
-                              </p>
+                              <div className="text-xs text-orange-700 line-clamp-2 mt-1">
+                                <MarkdownMessage content={decision.description} />
+                              </div>
                               <p className="text-xs text-orange-600 mt-2">
                                 {formatDate(decision.updated_at)}
                               </p>
@@ -519,9 +519,9 @@ function ChatPage() {
                                 <h4 className="text-sm font-medium truncate">
                                   {chatItem.title}
                                 </h4>
-                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                                  {chatItem.last_message}
-                                </p>
+                                <div className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                                  <MarkdownMessage content={chatItem.last_message} />
+                                </div>
                                 <p className="text-xs text-muted-foreground mt-2">
                                   {formatDate(chatItem.last_activity || chatItem.updated_at)}
                                 </p>
