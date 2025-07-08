@@ -1,7 +1,6 @@
 "use client";
 
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { CollapsibleToolCall } from './CollapsibleToolCall';
 
 interface ToolCall {
@@ -68,7 +67,7 @@ function parseContentWithToolCalls(content: string) {
   return parts;
 }
 
-export function MarkdownMessage({ content, className = "", toolCalls }: MarkdownMessageProps) {
+export function MarkdownMessage({ content, className = "", toolCalls, disableLinks = false }: MarkdownMessageProps) {
   // Defensive check: ensure content is a string
   if (typeof content !== 'string') {
     console.warn('MarkdownMessage received non-string content:', content);
@@ -85,7 +84,10 @@ export function MarkdownMessage({ content, className = "", toolCalls }: Markdown
     return (
       <div className={`prose prose-sm max-w-none dark:prose-invert ${className}`}>
         <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
+          components={disableLinks ? {
+            // Disable links if requested (to prevent nested <a> tags)
+            a: ({ children }) => <span className="text-blue-600 dark:text-blue-400">{children}</span>,
+          } : undefined}
         >
           {content}
         </ReactMarkdown>
@@ -110,7 +112,10 @@ export function MarkdownMessage({ content, className = "", toolCalls }: Markdown
       {/* Always render remaining content */}
       <div>
         <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
+          components={disableLinks ? {
+            // Disable links if requested (to prevent nested <a> tags)
+            a: ({ children }) => <span className="text-blue-600 dark:text-blue-400">{children}</span>,
+          } : undefined}
         >
           {hasStreamingToolCalls ? content : (parts.length > 0 ? parts.find(p => p.type === 'text')?.content || content : content)}
         </ReactMarkdown>

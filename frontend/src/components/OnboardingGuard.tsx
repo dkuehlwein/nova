@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/api";
@@ -21,11 +21,7 @@ export default function OnboardingGuard({ children }: OnboardingGuardProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
 
-  useEffect(() => {
-    checkOnboardingStatus();
-  }, []);
-
-  const checkOnboardingStatus = async () => {
+  const checkOnboardingStatus = useCallback(async () => {
     try {
       const status = await apiRequest('/api/user-settings/status');
       setOnboardingStatus(status);
@@ -52,7 +48,11 @@ export default function OnboardingGuard({ children }: OnboardingGuardProps) {
         setIsLoading(false);
       }
     }
-  };
+  }, [router, pathname]);
+
+  useEffect(() => {
+    checkOnboardingStatus();
+  }, [checkOnboardingStatus]);
 
   // Show loading spinner while checking status
   if (isLoading) {

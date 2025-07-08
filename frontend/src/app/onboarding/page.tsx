@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +45,7 @@ export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
+  const [, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
   
   // Form data
   const [userSettings, setUserSettings] = useState<UserSettings>({
@@ -93,9 +93,9 @@ export default function OnboardingPage() {
   // Check onboarding status on load
   useEffect(() => {
     checkOnboardingStatus();
-  }, []);
+  }, [checkOnboardingStatus]);
 
-  const checkOnboardingStatus = async () => {
+  const checkOnboardingStatus = useCallback(async () => {
     try {
       const status = await apiRequest('/api/user-settings/status');
       setOnboardingStatus(status);
@@ -124,7 +124,7 @@ export default function OnboardingPage() {
       console.error('Failed to check onboarding status:', error);
       setLoading(false);
     }
-  };
+  }, [router, setOnboardingStatus]);
 
   const validateApiKey = async (keyType: string, value: string) => {
     if (!value.trim()) {
@@ -154,8 +154,8 @@ export default function OnboardingPage() {
   const handleApiKeyChange = (keyType: string, value: string) => {
     setApiKeys(prev => ({ ...prev, [keyType]: value }));
     // Debounced validation
-    clearTimeout((window as any)[`validate_${keyType}`]);
-    (window as any)[`validate_${keyType}`] = setTimeout(() => {
+    clearTimeout((window as Record<string, NodeJS.Timeout>)[`validate_${keyType}`]);
+    (window as Record<string, NodeJS.Timeout>)[`validate_${keyType}`] = setTimeout(() => {
       validateApiKey(keyType, value);
     }, 500);
   };
@@ -243,7 +243,7 @@ export default function OnboardingPage() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-foreground">Nova Setup</h1>
-              <p className="text-muted-foreground">Let's get you started with your AI productivity companion</p>
+              <p className="text-muted-foreground">Let&apos;s get you started with your AI productivity companion</p>
             </div>
             <Badge variant="outline">
               Step {currentStep + 1} of {steps.length}
@@ -479,7 +479,7 @@ export default function OnboardingPage() {
                     <CheckCircle className="h-8 w-8 text-green-600" />
                   </div>
                   
-                  <h3 className="text-xl font-semibold mb-4">You're all set!</h3>
+                  <h3 className="text-xl font-semibold mb-4">You&apos;re all set!</h3>
                   
                   <p className="text-muted-foreground mb-6">
                     Nova is now configured and ready to help you be more productive. 
