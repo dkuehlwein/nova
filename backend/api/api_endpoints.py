@@ -469,7 +469,7 @@ async def add_task_completion_to_memory(session, task_id: UUID):
                 comments_text = ". Complete work log: " + " | ".join(all_comments)
                 memory_text += comments_text
         
-        memory_result = await add_memory(memory_text)
+        memory_result = await add_memory(memory_text, f"Completed task: {full_task.title}")
         if memory_result["success"]:
             logging.info(f"Added comprehensive memory for completed task {task_id}: {full_task.title}")
         else:
