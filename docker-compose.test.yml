@@ -1,0 +1,224 @@
+# Docker Compose configuration for End-to-End testing
+# This extends the main docker-compose.yml with test-specific configurations
+
+services:
+  # PostgreSQL Database for Kanban MCP
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nova_kanban_test}
+      POSTGRES_USER: ${POSTGRES_USER:-nova}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nova_test_password}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"  # Use different port for test
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./backend/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nova} -d ${POSTGRES_DB:-nova_kanban_test}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Neo4j Database for Memory/Knowledge Graph
+  neo4j:
+    image: neo4j:5.26
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-test_password}
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "${NEO4J_PORT:-7688}:7687"      # Different port for test
+      - "${NEO4J_HTTP_PORT:-7475}:7474" # Different port for test
+    volumes:
+      - neo4j_test_data:/data
+    restart: unless-stopped
+
+  # Redis for pub/sub events, caching, and service coordination
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6380}:6379"  # Different port for test
+    volumes:
+      - redis_test_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Nova Backend (Core data services: API + Agent)
+  nova-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_test_password}@postgres:5432/${POSTGRES_DB:-nova_kanban_test}
+      REDIS_URL: redis://redis:6379
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-test_password}
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8000}
+      SQL_DEBUG: ${SQL_DEBUG:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      CREATE_TABLES: ${CREATE_TABLES:-true}
+      # Test-specific environment
+      ENVIRONMENT: test
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Mount docker socket for service restart functionality (dev-only)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount configs directory for hot-reload
+      - ./configs:/app/configs
+      # Mount prompts directory for hot-reload
+      - ./backend/agent/prompts:/app/backend/agent/prompts
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-8000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nova Core Agent Service (separate from backend)
+  nova-core-agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uv run python start_core_agent.py
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_test_password}@postgres:5432/${POSTGRES_DB:-nova_kanban_test}
+      REDIS_URL: redis://redis:6379
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-test_password}
+      HOST: ${HOST:-0.0.0.0}
+      PORT: 8001
+      SQL_DEBUG: ${SQL_DEBUG:-false}
+      # Test-specific environment
+      ENVIRONMENT: test
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Mount configs directory for MCP server access
+      - ./configs:/app/configs
+      # Mount prompts directory for hot-reload
+      - ./backend/agent/prompts:/app/backend/agent/prompts
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Celery Worker for email processing
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uv run celery -A celery_app worker --loglevel=info --queues=email
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_test_password}@postgres:5432/${POSTGRES_DB:-nova_kanban_test}
+      REDIS_URL: redis://redis:6379
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-test_password}
+      SQL_DEBUG: ${SQL_DEBUG:-false}
+      # Test-specific environment
+      ENVIRONMENT: test
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Mount configs directory for MCP server access
+      - ./configs:/app/configs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "uv", "run", "celery", "-A", "celery_app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Celery Beat for scheduling
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uv run celery -A celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_test_password}@postgres:5432/${POSTGRES_DB:-nova_kanban_test}
+      REDIS_URL: redis://redis:6379
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-test_password}
+      SQL_DEBUG: ${SQL_DEBUG:-false}
+      # Test-specific environment
+      ENVIRONMENT: test
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      # Mount configs directory for settings access
+      - ./configs:/app/configs
+    restart: unless-stopped
+
+  # Google-workspace MCP Server
+  google-workspace:
+    build:
+      context: ./mcp_servers/google-workspace
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./mcp_servers/google-workspace/token.json:/app/token.json
+      - ./mcp_servers/google-workspace/credentials.json:/app/credentials.json:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Feature Request MCP Server
+  feature-request:
+    build:
+      context: ./mcp_servers/feature_request
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_test_data:
+  neo4j_test_data:
+  redis_test_data:
+
+networks:
+  default:
+    name: nova-test-network
