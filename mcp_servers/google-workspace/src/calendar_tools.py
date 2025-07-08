@@ -44,9 +44,13 @@ class CalendarTools:
 
     async def create_event(self, calendar_id: str, summary: str, start_datetime: str,
                           end_datetime: str, description: str = "", location: str = "",
-                          attendees: Optional[List[str]] = None, timezone: str = 'Europe/Berlin') -> Dict[str, str]:
-        """Creates a new calendar event."""
+                          attendees: Optional[List[str]] = None, timezone: str = 'Europe/Berlin') -> Dict[str, Any]:
+        """Creates a new calendar event and reports any scheduling conflicts."""
         try:
+            # Check for conflicts BEFORE creating the event
+            conflicts = await self._check_conflicts(calendar_id, start_datetime, end_datetime)
+            
+            # Create the event regardless of conflicts (as requested)
             event = {
                 'summary': summary,
                 'location': location,
@@ -69,12 +73,23 @@ class CalendarTools:
             )
             
             logger.info(f"Calendar event created: {created_event['id']}")
-            return {
+            
+            # Prepare response with conflict information
+            response = {
                 "status": "success",
                 "event_id": created_event['id'],
                 "html_link": created_event.get('htmlLink', ''),
-                "summary": created_event.get('summary', '')
+                "summary": created_event.get('summary', ''),
+                "conflicts_detected": len(conflicts) > 0,
+                "conflicts": conflicts
             }
+            
+            if conflicts:
+                logger.warning(f"Event created with {len(conflicts)} scheduling conflicts: {created_event['id']}")
+                response["conflict_summary"] = f"This event conflicts with {len(conflicts)} existing event(s)"
+            
+            return response
+            
         except HttpError as error:
             logger.error(f"Error creating calendar event: {error}")
             return {"status": "error", "error_message": f"An HttpError occurred creating event: {str(error)}"}
@@ -158,8 +173,8 @@ class CalendarTools:
                           location: Optional[str] = None,
                           start_datetime: Optional[str] = None,
                           end_datetime: Optional[str] = None,
-                          timezone: str = 'Europe/Berlin') -> Dict[str, str]:
-        """Updates an existing calendar event."""
+                          timezone: str = 'Europe/Berlin') -> Dict[str, Any]:
+        """Updates an existing calendar event and reports any scheduling conflicts."""
         try:
             # First get the existing event
             event = await asyncio.to_thread(
@@ -184,6 +199,17 @@ class CalendarTools:
                     'timeZone': timezone
                 }
             
+            # Check for conflicts if time was changed
+            conflicts = []
+            if start_datetime is not None or end_datetime is not None:
+                # Get the final start/end times for conflict checking
+                final_start = start_datetime if start_datetime else event['start'].get('dateTime', event['start'].get('date'))
+                final_end = end_datetime if end_datetime else event['end'].get('dateTime', event['end'].get('date'))
+                
+                if final_start and final_end:
+                    conflicts = await self._check_conflicts(calendar_id, final_start, final_end, exclude_event_id=event_id)
+            
+            # Update the event regardless of conflicts
             updated_event = await asyncio.to_thread(
                 self.calendar_service.events().update(
                     calendarId=calendar_id, eventId=event_id, body=event
@@ -191,12 +217,23 @@ class CalendarTools:
             )
             
             logger.info(f"Calendar event updated: {event_id}")
-            return {
+            
+            # Prepare response with conflict information
+            response = {
                 "status": "success",
                 "event_id": updated_event['id'],
                 "html_link": updated_event.get('htmlLink', ''),
-                "summary": updated_event.get('summary', '')
+                "summary": updated_event.get('summary', ''),
+                "conflicts_detected": len(conflicts) > 0,
+                "conflicts": conflicts
             }
+            
+            if conflicts:
+                logger.warning(f"Event updated with {len(conflicts)} scheduling conflicts: {event_id}")
+                response["conflict_summary"] = f"This event now conflicts with {len(conflicts)} existing event(s)"
+            
+            return response
+            
         except HttpError as error:
             logger.error(f"Error updating calendar event {event_id}: {error}")
             return {"status": "error", "error_message": f"An HttpError occurred updating event: {str(error)}"}
@@ -214,20 +251,120 @@ class CalendarTools:
             logger.error(f"Error deleting calendar event {event_id}: {error}")
             return {"status": "error", "error_message": f"An HttpError occurred deleting event: {str(error)}"}
 
-    async def create_quick_event(self, calendar_id: str, text: str) -> Dict[str, str]:
-        """Creates an event using natural language."""
+    async def create_quick_event(self, calendar_id: str, text: str) -> Dict[str, Any]:
+        """Creates an event using natural language and reports any scheduling conflicts."""
         try:
+            # Create the event first (Google handles the natural language parsing)
             event = await asyncio.to_thread(
                 self.calendar_service.events().quickAdd(calendarId=calendar_id, text=text).execute
             )
             
             logger.info(f"Quick calendar event created: {event['id']}")
-            return {
+            
+            # Check for conflicts after creation (since we need Google to parse the time)
+            conflicts = []
+            if 'start' in event and 'end' in event:
+                start_time = event['start'].get('dateTime', event['start'].get('date'))
+                end_time = event['end'].get('dateTime', event['end'].get('date'))
+                
+                if start_time and end_time:
+                    conflicts = await self._check_conflicts(calendar_id, start_time, end_time, exclude_event_id=event['id'])
+            
+            # Prepare response with conflict information
+            response = {
                 "status": "success",
                 "event_id": event['id'],
                 "html_link": event.get('htmlLink', ''),
-                "summary": event.get('summary', text)
+                "summary": event.get('summary', text),
+                "conflicts_detected": len(conflicts) > 0,
+                "conflicts": conflicts
             }
+            
+            if conflicts:
+                logger.warning(f"Quick event created with {len(conflicts)} scheduling conflicts: {event['id']}")
+                response["conflict_summary"] = f"This event conflicts with {len(conflicts)} existing event(s)"
+            
+            return response
+            
         except HttpError as error:
             logger.error(f"Error creating quick calendar event: {error}")
-            return {"status": "error", "error_message": f"An HttpError occurred creating quick event: {str(error)}"} 
+            return {"status": "error", "error_message": f"An HttpError occurred creating quick event: {str(error)}"}
+
+    async def _check_conflicts(self, calendar_id: str, start_datetime: str, end_datetime: str, 
+                              exclude_event_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Check for scheduling conflicts with existing events in the specified time range.
+        
+        Args:
+            calendar_id: The calendar to check for conflicts
+            start_datetime: Start time in ISO format (e.g., '2025-06-25T10:00:00+02:00')
+            end_datetime: End time in ISO format
+            exclude_event_id: Optional event ID to exclude from conflict checking (for updates)
+            
+        Returns:
+            List of conflicting events with details
+        """
+        conflicts = []
+        
+        try:
+            # Query events in the time range
+            events_result = await asyncio.to_thread(
+                self.calendar_service.events().list(
+                    calendarId=calendar_id,
+                    timeMin=start_datetime,
+                    timeMax=end_datetime,
+                    singleEvents=True,
+                    orderBy='startTime'
+                ).execute
+            )
+            
+            events = events_result.get('items', [])
+            
+            # Parse input times for comparison
+            from datetime import datetime
+            import dateutil.parser
+            
+            new_start = dateutil.parser.parse(start_datetime)
+            new_end = dateutil.parser.parse(end_datetime)
+            
+            for event in events:
+                # Skip the event we're updating
+                if exclude_event_id and event.get('id') == exclude_event_id:
+                    continue
+                
+                # Skip declined events
+                if event.get('status') == 'cancelled':
+                    continue
+                
+                # Get event times
+                event_start_str = event['start'].get('dateTime', event['start'].get('date'))
+                event_end_str = event['end'].get('dateTime', event['end'].get('date'))
+                
+                if not event_start_str or not event_end_str:
+                    continue
+                
+                # Parse event times
+                event_start = dateutil.parser.parse(event_start_str)
+                event_end = dateutil.parser.parse(event_end_str)
+                
+                # Check for overlap: new event overlaps if it starts before existing ends 
+                # and ends after existing starts
+                if new_start < event_end and new_end > event_start:
+                    conflict = {
+                        'id': event.get('id'),
+                        'summary': event.get('summary', 'No Title'),
+                        'start': event_start_str,
+                        'end': event_end_str,
+                        'location': event.get('location', ''),
+                        'organizer': event.get('organizer', {}),
+                        'html_link': event.get('htmlLink', '')
+                    }
+                    conflicts.append(conflict)
+            
+            logger.info(f"Conflict check completed: found {len(conflicts)} conflicts")
+            return conflicts
+            
+        except Exception as error:
+            logger.error(f"Error checking calendar conflicts: {error}")
+            # Return empty list on error - don't block event creation
+            return []
