@@ -42,7 +42,7 @@ async def get_onboarding_status(session: AsyncSession = Depends(get_db_session))
             # No settings exist - first time setup required
             return OnboardingStatusModel(
                 onboarding_complete=False,
-                missing_required_settings=["user_profile", "api_keys"],
+                missing_required_settings=["user_profile"],
                 setup_required=True
             )
         
@@ -50,10 +50,8 @@ async def get_onboarding_status(session: AsyncSession = Depends(get_db_session))
         if not settings.full_name or not settings.email:
             missing.append("user_profile")
         
-        # Check if API keys are configured (read from Tier 2 - but don't expose values)
-        from config import settings as app_settings
-        if not app_settings.GOOGLE_API_KEY:
-            missing.append("google_api_key")
+        # Google API key is now optional since we have local models
+        # No need to check for API keys in onboarding anymore
         
         return OnboardingStatusModel(
             onboarding_complete=settings.onboarding_complete,

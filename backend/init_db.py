@@ -43,72 +43,9 @@ async def init_database():
 
 
 async def add_sample_data():
-    """Add sample data for development and testing."""
+    """Add minimal required data for system startup."""
     async with db_manager.get_session() as session:
-        
-        # Create sample tasks with memory-based person/project references
-        tasks = [
-            Task(
-                title="Complete Backend API",
-                description="Implement all REST endpoints for the kanban board",
-                status=TaskStatus.DONE,
-                tags=["backend", "api"],
-                person_emails=["daniel@nova.dev"],
-                project_names=["Nova Kanban System"]
-            ),
-            Task(
-                title="Fix Database Integration", 
-                description="Resolve database connection and table creation issues",
-                status=TaskStatus.IN_PROGRESS,
-                tags=["database", "integration"],
-                person_emails=["daniel@nova.dev"],
-                project_names=["Nova Kanban System"]
-            ),
-            Task(
-                title="Implement Frontend UI",
-                description="Build React components for the kanban board interface",
-                status=TaskStatus.NEEDS_REVIEW,
-                tags=["frontend", "ui"],
-                person_emails=["daniel@nova.dev"],
-                project_names=["Nova Kanban System"]
-            ),
-            Task(
-                title="Set Up Testing Framework",
-                description="Configure pytest and write unit tests for all components",
-                status=TaskStatus.NEW,
-                tags=["testing", "quality"],
-                person_emails=["daniel@nova.dev"],
-                project_names=["Nova Kanban System"]
-            ),
-            Task(
-                title="Document API Endpoints",
-                description="Create comprehensive API documentation using FastAPI docs",
-                status=TaskStatus.NEW,
-                tags=["documentation", "api"],
-                person_emails=["daniel@nova.dev"],
-                project_names=["Nova Kanban System"]
-            ),
-            Task(
-                title="User Authentication",
-                description="Implement user login and session management",
-                status=TaskStatus.USER_INPUT_RECEIVED,
-                tags=["auth", "security"],
-                person_emails=["daniel@nova.dev"],
-                project_names=["Nova Kanban System"]
-            ),
-            Task(
-                title="Deploy to Production",
-                description="Set up production environment and deployment pipeline",
-                status=TaskStatus.WAITING,
-                tags=["deployment", "production"],
-                person_emails=["daniel@nova.dev"],
-                project_names=["Nova Kanban System"]
-            )
-        ]
-        
-        session.add_all(tasks)
-        await session.commit()
-        logger.info(f"Added {len(tasks)} sample tasks")
+        # Note: No sample tasks added - keeping the database clean
         
         # Create initial agent status record
         agent_status = AgentStatus(
