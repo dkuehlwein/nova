@@ -194,6 +194,76 @@ async def complete_onboarding(session: AsyncSession = Depends(get_db_session)):
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
 
 
+async def _check_service_connections(app_settings):
+    """Check connectivity to external services."""
+    import aiohttp
+    import asyncio
+    from neo4j import GraphDatabase
+    
+    async def check_http_service(url: str, timeout: int = 5) -> dict:
+        """Check if HTTP service is reachable."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=timeout) as response:
+                    return {
+                        "status": "healthy" if response.status == 200 else "unhealthy",
+                        "status_code": response.status,
+                        "url": url
+                    }
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "error": str(e),
+                "url": url
+            }
+    
+    def check_neo4j_service(uri: str, user: str, password: str) -> dict:
+        """Check if Neo4j service is reachable."""
+        try:
+            driver = GraphDatabase.driver(uri, auth=(user, password))
+            with driver.session() as session:
+                session.run("RETURN 1")
+            driver.close()
+            return {
+                "status": "healthy",
+                "uri": uri
+            }
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "error": str(e),
+                "uri": uri
+            }
+    
+    # Run checks in parallel
+    ollama_check = check_http_service(f"{app_settings.OLLAMA_BASE_URL}/api/tags")
+    litellm_check = check_http_service(f"{app_settings.LITELLM_BASE_URL}/health")
+    
+    # Neo4j check (synchronous)
+    neo4j_status = check_neo4j_service(
+        app_settings.NEO4J_URI,
+        app_settings.NEO4J_USER,
+        app_settings.NEO4J_PASSWORD
+    )
+    
+    # Wait for HTTP checks
+    ollama_status, litellm_status = await asyncio.gather(
+        ollama_check, litellm_check, return_exceptions=True
+    )
+    
+    # Handle exceptions
+    if isinstance(ollama_status, Exception):
+        ollama_status = {"status": "unhealthy", "error": str(ollama_status)}
+    if isinstance(litellm_status, Exception):
+        litellm_status = {"status": "unhealthy", "error": str(litellm_status)}
+    
+    return {
+        "ollama": ollama_status,
+        "litellm": litellm_status,
+        "neo4j": neo4j_status
+    }
+
+
 @router.get("/system-status")
 async def get_system_status():
     """
@@ -203,6 +273,9 @@ async def get_system_status():
     """
     try:
         from config import settings as app_settings
+        
+        # Test service connections
+        service_status = await _check_service_connections(app_settings)
         
         # Safe, non-sensitive system information
         status = {
@@ -219,7 +292,10 @@ async def get_system_status():
             ],
             "services": {
                 "chat_agent_port": app_settings.CHAT_AGENT_PORT,
-                "core_agent_port": app_settings.CORE_AGENT_PORT
+                "core_agent_port": app_settings.CORE_AGENT_PORT,
+                "ollama": service_status["ollama"],
+                "litellm": service_status["litellm"],
+                "neo4j": service_status["neo4j"]
             },
             "api_keys_configured": {
                 "google": bool(app_settings.GOOGLE_API_KEY),

@@ -163,8 +163,8 @@ export default function OnboardingPage() {
   const canProceedFromStep = (step: number) => {
     switch (step) {
       case 0: return true; // Welcome
-      case 1: // API Keys - at least Google API key should be valid
-        return apiKeyValidation.google_api_key === true;
+      case 1: // API Keys - Google API key is now optional with local LLM support
+        return true; // Allow proceeding without Google API key
       case 2: // User Profile - name and email required
         return userSettings.full_name?.trim() && userSettings.email?.trim();
       case 3: return true; // Complete
@@ -349,7 +349,7 @@ export default function OnboardingPage() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="google_api_key">Google API Key *</Label>
+                      <Label htmlFor="google_api_key">Google API Key (Optional)</Label>
                       <div className="flex items-center space-x-2">
                         {validating === 'google_api_key' && (
                           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -370,7 +370,7 @@ export default function OnboardingPage() {
                       placeholder="Enter your Google API key"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Required for Gmail, Calendar, and AI features. 
+                      Optional for Gmail, Calendar, and cloud AI features. Local AI works without this. 
                       <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" 
                          className="text-primary hover:underline ml-1">
                         Get your API key →
