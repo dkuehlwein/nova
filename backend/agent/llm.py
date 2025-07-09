@@ -1,42 +1,46 @@
 """
 Nova LLM Module
 
-Centralized LLM initialization for Nova agents.
+Centralized LLM initialization for Nova agents using LiteLLM gateway.
 """
 
 import os
-from typing import Optional
+from typing import Optional, Union
 
 from langchain_core.runnables import RunnableConfig
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 
 from config import settings
 
 
-def create_llm(config: Optional[RunnableConfig] = None) -> ChatGoogleGenerativeAI:
-    """Create and configure the Google Gemini model.
+def create_llm(config: Optional[RunnableConfig] = None) -> ChatOpenAI:
+    """Create and configure LLM via LiteLLM gateway.
     
     Args:
         config: Optional configuration with model settings
         
     Returns:
-        Configured ChatGoogleGenerativeAI instance
+        Configured ChatOpenAI instance pointing to LiteLLM gateway
         
     Raises:
-        ValueError: If GOOGLE_API_KEY is not found
+        ValueError: If LiteLLM configuration is missing
     """
-    api_key = settings.GOOGLE_API_KEY.get_secret_value() if settings.GOOGLE_API_KEY else os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise ValueError("GOOGLE_API_KEY environment variable is required")
+    # LiteLLM configuration
+    litellm_base_url = settings.LITELLM_BASE_URL
+    litellm_api_key = settings.LITELLM_MASTER_KEY
+    
+    if not litellm_base_url or not litellm_api_key:
+        raise ValueError("LITELLM_BASE_URL and LITELLM_MASTER_KEY are required")
     
     # Get configuration values with defaults
     configuration = config.get("configurable", {}) if config else {}
-    model_name = configuration.get("model_name", settings.GOOGLE_MODEL_NAME or "gemini-2.5-flash-preview-04-17")
+    model_name = configuration.get("model_name", "gemma3-12b-local")  # Default to local model
     temperature = configuration.get("temperature", 0.1)
     
-    return ChatGoogleGenerativeAI(
+    return ChatOpenAI(
         model=model_name,
-        google_api_key=api_key,
+        openai_api_key=litellm_api_key,
+        openai_api_base=f"{litellm_base_url}/v1",
         temperature=temperature,
         max_tokens=2048,
     ) 

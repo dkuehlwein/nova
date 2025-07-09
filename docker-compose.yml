@@ -83,14 +83,16 @@ services:
   # LiteLLM Gateway for unified LLM API
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
+    env_file:
+      - .env
     ports:
       - "4000:4000"
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_password}@postgres:5432/${POSTGRES_DB:-nova_kanban}
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-1234}
-      - LITELLM_SALT_KEY=${LITELLM_SALT_KEY:-sk-salt-1234}
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - STORE_MODEL_IN_DB=True
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_password}@postgres:5432/${POSTGRES_DB:-nova_kanban}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-salt-1234}
+      OLLAMA_BASE_URL: http://ollama:11434
+      STORE_MODEL_IN_DB: "True"
     depends_on:
       postgres:
         condition: service_healthy
