@@ -39,9 +39,24 @@ We will add two new containers to our Docker-based infrastructure:
 
 #### 2. **Configuration Overhaul (Database-driven)**
 
-- **Database Storage**: A new `llm_models` table will be created in the PostgreSQL database to store model configurations (e.g., model name, provider, API keys). This aligns with the Tier 3 (User Settings) pattern from ADR-008.
+- **Database Storage**: A new `llm_models` table will be created in the PostgreSQL database to store model configurations. This aligns with the Tier 3 (User Settings) pattern from ADR-008.
 - **Dynamic Configuration**: The Nova Backend will be responsible for reading this database table and configuring the LiteLLM service on startup and on-change, likely by generating the necessary config and using LiteLLM's `/config/reload` endpoint.
 - **Secrets Management**: Secrets like API keys will still be loaded from the `.env` file into the backend, which then uses them to configure LiteLLM. They are never stored in the database directly.
+
+**Database Schema (`llm_models` table):**
+```sql
+CREATE TABLE llm_models (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,           -- Display name (e.g., "Gemma 3 8B Local")
+    model_name VARCHAR(200) NOT NULL,     -- LiteLLM model identifier
+    provider VARCHAR(50) NOT NULL,        -- Provider type (ollama, openai, etc.)
+    is_default BOOLEAN DEFAULT FALSE,     -- Whether this is the default model
+    is_active BOOLEAN DEFAULT TRUE,       -- Whether model is available
+    config JSONB,                         -- Provider-specific configuration
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
 
 #### 3. **Core LLM Integration Points (Revised Scope)**
 
@@ -57,15 +72,35 @@ All services that perform LLM calls will be updated to use the LiteLLM gateway. 
 #### 4. **Frontend Changes**
 
 - **Settings UI (`settings/page.tsx`)**: The frontend settings page will be extended with a new section to manage the `llm_models` database table, allowing users to add, edit, and select the models they want to use at runtime.
+- **LiteLLM Monitoring Integration**: The UI will include monitoring capabilities leveraging LiteLLM's built-in dashboard features:
+  - **Cost Tracking**: Real-time token usage and cost monitoring per model
+  - **Usage Analytics**: Request frequency, response times, and success rates
+  - **Expert Settings**: Advanced configuration panel with budget controls and usage alerts
+  - **Dashboard Integration**: Optional embedded LiteLLM UI at `/ui` endpoint
 
-#### 5. **Error Handling (MVP Scope)**
+#### 5. **Error Handling Strategy**
 
-- For the MVP, the LiteLLM gateway will be configured to **return an error** if the selected provider fails. An automatic fallback to a secondary provider is not in scope for the initial implementation.
+**MVP Scope:**
+- LiteLLM gateway will **return an error** if the selected provider fails
+- No automatic fallback to secondary providers initially
+- Errors will be logged and surfaced to the user through Nova's existing error handling system
+
+**Error Scenarios & Handling:**
+- **Ollama Service Down**: Return clear error message, suggest using cloud model
+- **Model Not Downloaded**: Automatically trigger model download via Ollama API
+- **Out of VRAM**: Return resource exhaustion error with model recommendations
+- **LiteLLM Gateway Failure**: Fallback to direct cloud provider calls (future enhancement)
+- **Invalid Model Configuration**: Validate model configs before saving to database
+
+**Monitoring & Alerting:**
+- LiteLLM provides built-in health check endpoints (`/health`)
+- Nova backend will monitor service health and update model availability status
+- Failed requests will be tracked in LiteLLM's monitoring dashboard
 
 ### Model Strategy
 
-- The default local model will be **Qwen 2.5 32B Instruct**, which is state-of-the-art for agentic tool use as of July 2025.
-- A smaller alternative, like **Gemma 2 9B IT**, will be recommended for users with less powerful hardware.
+- The default local model will be **Gemma 3 8B Instruct**, which provides excellent performance for agentic tool use while being suitable for 16GB VRAM configurations.
+- Alternative models like **Qwen 2.5 32B Instruct** will be available for users with more powerful hardware (32GB+ VRAM).
 
 ## Implementation Phases
 
