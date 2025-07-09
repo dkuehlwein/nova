@@ -23,7 +23,7 @@ export default function OnboardingGuard({ children }: OnboardingGuardProps) {
 
   const checkOnboardingStatus = useCallback(async () => {
     try {
-      const status = await apiRequest('/api/user-settings/status');
+      const status = await apiRequest('/api/user-settings/status') as OnboardingStatus;
       setOnboardingStatus(status);
       
       // If setup is required and user is not on onboarding page, redirect

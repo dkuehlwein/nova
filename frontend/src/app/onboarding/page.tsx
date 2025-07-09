@@ -90,14 +90,9 @@ export default function OnboardingPage() {
     }
   ];
 
-  // Check onboarding status on load
-  useEffect(() => {
-    checkOnboardingStatus();
-  }, [checkOnboardingStatus]);
-
   const checkOnboardingStatus = useCallback(async () => {
     try {
-      const status = await apiRequest('/api/user-settings/status');
+      const status = await apiRequest('/api/user-settings/status') as OnboardingStatus;
       setOnboardingStatus(status);
       
       if (!status.setup_required) {
@@ -108,7 +103,7 @@ export default function OnboardingPage() {
       
       // Load existing user settings if any
       try {
-        const settings = await apiRequest('/api/user-settings/');
+        const settings = await apiRequest('/api/user-settings/') as UserSettings;
         setUserSettings({
           full_name: settings.full_name || '',
           email: settings.email || '',
@@ -126,6 +121,11 @@ export default function OnboardingPage() {
     }
   }, [router, setOnboardingStatus]);
 
+  // Check onboarding status on load
+  useEffect(() => {
+    checkOnboardingStatus();
+  }, [checkOnboardingStatus]);
+
   const validateApiKey = async (keyType: string, value: string) => {
     if (!value.trim()) {
       setApiKeyValidation(prev => ({ ...prev, [keyType]: false }));
@@ -140,7 +140,7 @@ export default function OnboardingPage() {
           key_type: keyType,
           api_key: value
         })
-      });
+      }) as { valid: boolean };
       
       setApiKeyValidation(prev => ({ ...prev, [keyType]: response.valid }));
     } catch (error) {
@@ -154,8 +154,8 @@ export default function OnboardingPage() {
   const handleApiKeyChange = (keyType: string, value: string) => {
     setApiKeys(prev => ({ ...prev, [keyType]: value }));
     // Debounced validation
-    clearTimeout((window as Record<string, NodeJS.Timeout>)[`validate_${keyType}`]);
-    (window as Record<string, NodeJS.Timeout>)[`validate_${keyType}`] = setTimeout(() => {
+    clearTimeout((window as unknown as Record<string, NodeJS.Timeout>)[`validate_${keyType}`]);
+    (window as unknown as Record<string, NodeJS.Timeout>)[`validate_${keyType}`] = setTimeout(() => {
       validateApiKey(keyType, value);
     }, 500);
   };

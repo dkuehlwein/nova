@@ -311,7 +311,7 @@ function SystemStatusTab() {
 
 // User Settings tab content  
 function UserSettingsTab() {
-  const [settings, setSettings] = useState<any>(null);
+  const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -333,7 +333,7 @@ function UserSettingsTab() {
 
   const fetchUserSettings = async () => {
     try {
-      const data = await apiRequest('/api/user-settings/');
+      const data = await apiRequest('/api/user-settings/') as Record<string, unknown>;
       setSettings(data);
     } catch (error) {
       console.error('Failed to load user settings:', error);
@@ -397,7 +397,7 @@ function UserSettingsTab() {
             <Label htmlFor="full_name">Full Name</Label>
             <Input
               id="full_name"
-              value={settings.full_name || ''}
+              value={String(settings.full_name || '')}
               onChange={(e) => setSettings({...settings, full_name: e.target.value})}
               placeholder="Enter your full name"
             />
@@ -408,7 +408,7 @@ function UserSettingsTab() {
             <Input
               id="email"
               type="email"
-              value={settings.email || ''}
+              value={String(settings.email || '')}
               onChange={(e) => setSettings({...settings, email: e.target.value})}
               placeholder="Enter your email address"
             />
@@ -418,7 +418,7 @@ function UserSettingsTab() {
             <Label htmlFor="timezone">Timezone</Label>
             <select
               id="timezone"
-              value={settings.timezone || 'UTC'}
+              value={String(settings.timezone || 'UTC')}
               onChange={(e) => setSettings({...settings, timezone: e.target.value})}
               className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -434,7 +434,7 @@ function UserSettingsTab() {
             <Label htmlFor="notes">Additional Notes</Label>
             <Textarea
               id="notes"
-              value={settings.notes || ''}
+              value={String(settings.notes || '')}
               onChange={(e) => setSettings({...settings, notes: e.target.value})}
               placeholder="Add any additional context you'd like Nova to know about you..."
               rows={6}
@@ -456,7 +456,7 @@ function UserSettingsTab() {
 
 // API Keys and Model Settings tab content
 function APIKeysTab() {
-  const [systemStatus, setSystemStatus] = useState<any>(null);
+  const [systemStatus, setSystemStatus] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
 
   React.useEffect(() => {
@@ -465,7 +465,7 @@ function APIKeysTab() {
 
   const fetchSystemStatus = async () => {
     try {
-      const data = await apiRequest('/api/user-settings/system-status');
+      const data = await apiRequest('/api/user-settings/system-status') as Record<string, unknown>;
       setSystemStatus(data);
     } catch (error) {
       console.error('Failed to load system status:', error);
@@ -503,8 +503,8 @@ function APIKeysTab() {
                 <p className="font-medium">Google API Key</p>
                 <p className="text-sm text-muted-foreground">For Gmail, Calendar, and AI features</p>
               </div>
-              <Badge variant={systemStatus?.api_keys_configured?.google ? "default" : "secondary"}>
-                {systemStatus?.api_keys_configured?.google ? "Configured" : "Not configured"}
+              <Badge variant={systemStatus?.api_keys_configured && typeof systemStatus.api_keys_configured === 'object' && 'google' in systemStatus.api_keys_configured ? "default" : "secondary"}>
+                {systemStatus?.api_keys_configured && typeof systemStatus.api_keys_configured === 'object' && 'google' in systemStatus.api_keys_configured ? "Configured" : "Not configured"}
               </Badge>
             </div>
             
@@ -513,8 +513,8 @@ function APIKeysTab() {
                 <p className="font-medium">LangSmith API Key</p>
                 <p className="text-sm text-muted-foreground">For AI debugging and monitoring (optional)</p>
               </div>
-              <Badge variant={systemStatus?.api_keys_configured?.langsmith ? "default" : "secondary"}>
-                {systemStatus?.api_keys_configured?.langsmith ? "Configured" : "Not configured"}
+              <Badge variant={systemStatus?.api_keys_configured && typeof systemStatus.api_keys_configured === 'object' && 'langsmith' in systemStatus.api_keys_configured ? "default" : "secondary"}>
+                {systemStatus?.api_keys_configured && typeof systemStatus.api_keys_configured === 'object' && 'langsmith' in systemStatus.api_keys_configured ? "Configured" : "Not configured"}
               </Badge>
             </div>
           </div>
@@ -553,11 +553,11 @@ function APIKeysTab() {
           <div className="space-y-3 border border-muted rounded-lg p-4">
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium">Environment</span>
-              <Badge variant="outline">{systemStatus?.environment || "unknown"}</Badge>
+              <Badge variant="outline">{String(systemStatus?.environment || "unknown")}</Badge>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium">Log Level</span>
-              <Badge variant="outline">{systemStatus?.log_level || "INFO"}</Badge>
+              <Badge variant="outline">{String(systemStatus?.log_level || "INFO")}</Badge>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium">Email Processing</span>
@@ -580,7 +580,7 @@ function APIKeysTab() {
 
 // Agent and Email Settings tab content
 function AgentSettingsTab() {
-  const [settings, setSettings] = useState<any>(null);
+  const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -591,7 +591,7 @@ function AgentSettingsTab() {
 
   const fetchUserSettings = async () => {
     try {
-      const data = await apiRequest('/api/user-settings/');
+      const data = await apiRequest('/api/user-settings/') as Record<string, unknown>;
       setSettings(data);
     } catch (error) {
       console.error('Failed to load user settings:', error);
@@ -660,12 +660,12 @@ function AgentSettingsTab() {
               </p>
             </div>
             <Switch
-              checked={settings.email_polling_enabled || false}
+              checked={Boolean(settings.email_polling_enabled)}
               onCheckedChange={(checked) => setSettings({...settings, email_polling_enabled: checked})}
             />
           </div>
           
-          {settings.email_polling_enabled && (
+          {Boolean(settings.email_polling_enabled) && (
             <div className="space-y-2">
               <Label htmlFor="email_polling_interval">Polling Interval (seconds)</Label>
               <Input
@@ -673,7 +673,7 @@ function AgentSettingsTab() {
                 type="number"
                 min="60"
                 max="3600"
-                value={settings.email_polling_interval || 300}
+                value={Number(settings.email_polling_interval) || 300}
                 onChange={(e) => setSettings({...settings, email_polling_interval: parseInt(e.target.value)})}
               />
               <p className="text-xs text-muted-foreground">
@@ -694,7 +694,7 @@ function AgentSettingsTab() {
               type="number"
               min="10"
               max="300"
-              value={settings.agent_polling_interval || 30}
+              value={Number(settings.agent_polling_interval) || 30}
               onChange={(e) => setSettings({...settings, agent_polling_interval: parseInt(e.target.value)})}
             />
             <p className="text-xs text-muted-foreground">
@@ -714,7 +714,7 @@ function AgentSettingsTab() {
               type="number"
               min="1"
               max="100"
-              value={settings.memory_search_limit || 10}
+              value={Number(settings.memory_search_limit) || 10}
               onChange={(e) => setSettings({...settings, memory_search_limit: parseInt(e.target.value)})}
             />
             <p className="text-xs text-muted-foreground">
@@ -730,7 +730,7 @@ function AgentSettingsTab() {
               min="1000"
               max="100000"
               step="1000"
-              value={settings.memory_token_limit || 32000}
+              value={Number(settings.memory_token_limit) || 32000}
               onChange={(e) => setSettings({...settings, memory_token_limit: parseInt(e.target.value)})}
             />
             <p className="text-xs text-muted-foreground">

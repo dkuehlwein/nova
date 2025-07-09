@@ -12,7 +12,7 @@ interface ToolCall {
 }
 
 interface MarkdownMessageProps {
-  content: string;
+  content: string | string[];
   className?: string;
   toolCalls?: ToolCall[];
   disableLinks?: boolean;
@@ -21,12 +21,12 @@ interface MarkdownMessageProps {
 // Regex to match tool call pattern: 🔧 **Using tool: toolname**\n```json\n{args}\n```
 const TOOL_CALL_PATTERN = /🔧 \*\*Using tool: ([^*]+)\*\*\n```json\n([\s\S]*?)\n```/g;
 
-function parseContentWithToolCalls(content: string) {
+function parseContentWithToolCalls(content: string | string[]) {
   // Defensive check: ensure content is a string
   if (typeof content !== 'string') {
     console.warn('parseContentWithToolCalls received non-string content:', content);
     // If it's an array, join it; otherwise convert to string
-    content = Array.isArray(content) ? (content as string[]).join('\n\n') : String(content);
+    content = Array.isArray(content) ? content.join('\n\n') : String(content);
   }
 
   const parts: Array<{ type: 'text' | 'tool'; content: string; toolName?: string; args?: string }> = [];

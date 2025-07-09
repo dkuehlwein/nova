@@ -258,7 +258,7 @@ export function useChat() {
                         let contentToAdd = messageData.content;
                         if (typeof contentToAdd !== 'string') {
                           console.warn('Received non-string content in streaming:', contentToAdd);
-                          contentToAdd = Array.isArray(contentToAdd) ? (contentToAdd as any[]).join('\n\n') : String(contentToAdd);
+                          contentToAdd = Array.isArray(contentToAdd) ? (contentToAdd as string[]).join('\n\n') : String(contentToAdd);
                         }
                         
                         // Accumulate content instead of overwriting
@@ -402,7 +402,7 @@ export function useChat() {
         const response = await apiRequest<{
           message: { content: string };
           thread_id: string;
-        }>(API_ENDPOINTS.chat, {
+        }>(API_ENDPOINTS.chatStream, {
           method: 'POST',
           body: JSON.stringify({
             messages: [{

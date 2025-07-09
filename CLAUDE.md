@@ -45,8 +45,11 @@ cd frontend && npm run lint
 # Start dependencies (PostgreSQL, Redis, Neo4j)
 docker-compose up -d postgres redis neo4j
 
-# Full stack with containers
+# Full stack with containers (including frontend)
 docker-compose up -d
+
+# Frontend only (after backend is running)
+docker-compose up -d nova-frontend
 ```
 
 ## Architecture Overview
@@ -56,7 +59,7 @@ Nova is an AI-powered kanban task management system with a dual-agent architectu
 ### Core Components
 1. **Chat Agent Service** (`start_website.py:8000`) - User-facing chat interface and API endpoints
 2. **Core Agent Service** (`start_core_agent.py:8001`) - Autonomous task processing loop
-3. **Frontend** (`Next.js:3000`) - Web interface for task management
+3. **Frontend** (`Next.js:3000`) - Web interface for task management (containerized)
 4. **MCP Servers** - External tool integrations (Google Workspace, Feature Requests)
 
 ### Key Architectural Patterns
