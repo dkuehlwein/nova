@@ -64,6 +64,13 @@ class Settings(BaseSettings):
 
     # Email Integration Configuration
     EMAIL_ENABLED: bool = True  # Master toggle for email processing (Tier 1: infrastructure available)
+    
+    # LiteLLM Configuration (Tier 2: Deployment Environment)
+    LITELLM_BASE_URL: str = "http://localhost:4000"  # LiteLLM gateway URL
+    LITELLM_MASTER_KEY: str = "sk-1234"  # Master key for LiteLLM API access
+    
+    # Ollama Configuration (Tier 2: Deployment Environment)
+    OLLAMA_BASE_URL: str = "http://localhost:11434"  # Ollama server URL
 
     @model_validator(mode="after")
     def compute_urls(self):

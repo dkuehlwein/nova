@@ -53,6 +53,55 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Ollama for local LLM inference with GPU support
+  ollama:
+    image: ollama/ollama:latest
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_MODELS=/root/.ollama/models
+      - OLLAMA_HOST=0.0.0.0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # LiteLLM Gateway for unified LLM API
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_password}@postgres:5432/${POSTGRES_DB:-nova_kanban}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-1234}
+      - LITELLM_SALT_KEY=${LITELLM_SALT_KEY:-sk-salt-1234}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - STORE_MODEL_IN_DB=True
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
   # Nova Backend (Core data services: API + Agent)
   nova-backend:
     build:
@@ -77,6 +126,11 @@ services:
       SQL_DEBUG: ${SQL_DEBUG:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
       CREATE_TABLES: ${CREATE_TABLES:-true}
+      # LLM Provider Configuration
+      LLM_PROVIDER: ${LLM_PROVIDER:-google}
+      OLLAMA_BASE_URL: http://ollama:11434
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,10 +173,17 @@ services:
       HOST: ${HOST:-0.0.0.0}
       PORT: ${CORE_AGENT_PORT:-8001}
       SQL_DEBUG: ${SQL_DEBUG:-false}
+      # LLM Provider Configuration
+      LLM_PROVIDER: ${LLM_PROVIDER:-google}
+      OLLAMA_BASE_URL: http://ollama:11434
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      litellm:
         condition: service_healthy
       nova-backend:
         condition: service_healthy
@@ -274,6 +335,7 @@ volumes:
   postgres_data:
   neo4j_data:
   redis_data:
+  ollama_data:
 
 networks:
   default:

@@ -1,0 +1,35 @@
+model_list:
+  # Default Google Gemini model (cloud)
+  - model_name: gemini-2.5-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: "env:GOOGLE_API_KEY"
+  
+  # Default local model - Gemma 3 12B
+  - model_name: gemma3-12b
+    litellm_params:
+      model: ollama/gemma3:12b-it-qat
+      api_base: http://ollama:11434
+
+general_settings:
+  # Enable database logging for usage tracking
+  database_url: "env:DATABASE_URL"
+  master_key: "env:LITELLM_MASTER_KEY"
+  
+  # Enable UI for monitoring
+  ui_access_mode: "admin_only"
+  
+  # Default model fallback strategy
+  fallbacks:
+    - gemini-1.5-flash: [gemma3-12b]
+    - gemma3-8b: [gemini-2.5-flash]
+
+litellm_settings:
+  # Enable detailed logging
+  set_verbose: true
+  
+  # Request timeout settings
+  request_timeout: 60
+  
+  # Retry settings
+  num_retries: 3

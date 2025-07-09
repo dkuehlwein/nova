@@ -76,7 +76,7 @@ All services that perform LLM calls will be updated to use the LiteLLM gateway. 
   - **Cost Tracking**: Real-time token usage and cost monitoring per model
   - **Usage Analytics**: Request frequency, response times, and success rates
   - **Expert Settings**: Advanced configuration panel with budget controls and usage alerts
-  - **Dashboard Integration**: Optional embedded LiteLLM UI at `/ui` endpoint
+  - **Dashboard Integration**: Optional embedded LiteLLM UI at `/llm-monitoring` endpoint
 
 #### 5. **Error Handling Strategy**
 

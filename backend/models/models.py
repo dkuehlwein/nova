@@ -207,4 +207,32 @@ class AgentStatus(Base):
     
     # Metadata
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class LLMModel(Base):
+    """
+    Model to store LLM model configurations for LiteLLM gateway.
+    
+    This table stores the model configurations that are used to dynamically
+    configure the LiteLLM service for hybrid cloud/local model support.
+    """
+    __tablename__ = 'llm_models'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    
+    # Model identification
+    name: Mapped[str] = mapped_column(String(100), nullable=False)  # Display name
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)  # LiteLLM model identifier
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)  # Provider type (ollama, openai, etc.)
+    
+    # Model state
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    
+    # Configuration
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)  # Provider-specific configuration
+    
+    # Metadata
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now()) 
