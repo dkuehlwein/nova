@@ -35,21 +35,11 @@ def create_graphiti_llm() -> GeminiClient:
     # Get user settings for memory token limit
     max_tokens = 32000  # Default from database schema
     try:
-        import asyncio
         from database.database import UserSettingsService
         
-        # If we're in an async context, try to get the user setting
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We're in an async context but can't await, use default
-                max_tokens = 32000  # Default from database schema
-            else:
-                memory_settings = asyncio.run(UserSettingsService.get_memory_settings())
-                max_tokens = memory_settings.get("memory_token_limit", 32000)  # Default from database schema
-        except RuntimeError:
-            # No event loop, use default
-            max_tokens = 32000  # Default from database schema
+        # Get memory settings synchronously
+        memory_settings = UserSettingsService.get_memory_settings_sync()
+        max_tokens = memory_settings.get("memory_token_limit", 32000)  # Default from database schema
     except Exception:
         max_tokens = 32000  # Default from database schema
     

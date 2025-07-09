@@ -136,6 +136,24 @@ class UserSettingsService:
         except Exception as e:
             print(f"Warning: Could not get user settings, using defaults: {e}")
             return {}
+    
+    @staticmethod
+    def get_memory_settings_sync() -> dict:
+        """Get memory settings from database synchronously."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we're already in an async context, we need to use a new event loop
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, UserSettingsService.get_memory_settings())
+                    return future.result()
+            else:
+                return asyncio.run(UserSettingsService.get_memory_settings())
+        except Exception as e:
+            print(f"Warning: Could not get memory settings, using defaults: {e}")
+            return {"memory_search_limit": 10, "memory_token_limit": 32000}  # Database defaults
 
 
 # Global user settings service instance

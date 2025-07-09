@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem } from "@/components/ui/select";
 
 import { useMCPServers, useToggleMCPServer, useSystemHealth, useRestartService } from "@/hooks/useNovaQueries";
 import { useState, Suspense } from "react";
@@ -647,9 +647,6 @@ function APIKeysTab() {
                   value={String(editingSettings?.llm_provider || 'ollama')} 
                   onValueChange={(value) => handleInputChange('llm_provider', value)}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select provider" />
-                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ollama">Ollama (Local)</SelectItem>
                     <SelectItem value="google">Google (Cloud)</SelectItem>
@@ -670,9 +667,6 @@ function APIKeysTab() {
                   value={String(editingSettings?.llm_model || 'gemma3:12b-it-qat')} 
                   onValueChange={(value) => handleInputChange('llm_model', value)}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select model" />
-                  </SelectTrigger>
                   <SelectContent>
                     {editingSettings?.llm_provider === 'ollama' ? (
                       <>
