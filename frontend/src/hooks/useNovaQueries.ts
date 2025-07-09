@@ -310,6 +310,69 @@ export function useInvalidateAllQueries() {
   })
 }
 
+// User Settings Queries
+interface UserSettings {
+  id?: string
+  created_at?: string
+  updated_at?: string
+  onboarding_complete: boolean
+  full_name?: string
+  email?: string
+  timezone: string
+  notes?: string
+  email_polling_enabled: boolean
+  email_polling_interval: number
+  email_create_tasks: boolean
+  email_max_per_fetch: number
+  email_label_filter: string
+  notification_preferences: Record<string, unknown>
+  task_defaults: Record<string, unknown>
+  agent_polling_interval: number
+  agent_error_retry_interval: number
+  memory_search_limit: number
+  memory_token_limit: number
+  mcp_server_preferences: Record<string, unknown>
+  llm_model: string
+  llm_provider: string
+  llm_temperature: number
+  llm_max_tokens: number
+}
+
+export function useUserSettings() {
+  return useQuery({
+    queryKey: ['user-settings'],
+    queryFn: async (): Promise<UserSettings> => {
+      return await apiRequest('/api/user-settings/')
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes - user settings don't change often
+    refetchOnWindowFocus: false, // Don't refetch when switching tabs
+    retry: 2
+  })
+}
+
+export function useUpdateUserSettings() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (updates: Partial<UserSettings>): Promise<UserSettings> => {
+      return await apiRequest('/api/user-settings/', {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+    },
+    onSuccess: (data) => {
+      // Update the cache with the new settings
+      queryClient.setQueryData(['user-settings'], data)
+    },
+    onError: (error) => {
+      console.error('Failed to update user settings:', error)
+    }
+  })
+}
+
 // System Prompt Queries
 interface SystemPromptData {
   content: string

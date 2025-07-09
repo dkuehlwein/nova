@@ -67,7 +67,7 @@ class UserSettings(Base):
     llm_model: Mapped[str] = mapped_column(String(100), default="gemma3-12b-local")
     llm_provider: Mapped[str] = mapped_column(String(50), default="ollama")  # ollama or google
     llm_temperature: Mapped[float] = mapped_column(Float, default=0.1)
-    llm_max_tokens: Mapped[int] = mapped_column(Integer, default=2048)
+    llm_max_tokens: Mapped[int] = mapped_column(Integer, default=64000)
 
 
 class UserSettingsModel(BaseModel):

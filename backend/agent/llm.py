@@ -16,14 +16,10 @@ from config import settings
 
 def _get_user_settings() -> dict:
     """Get user settings from database synchronously."""
-    try:
-        # Import here to avoid circular imports
-        from database.database import UserSettingsService
-        
-        return UserSettingsService.get_llm_settings_sync()
-    except Exception as e:
-        print(f"Warning: Could not get user settings, using defaults: {e}")
-        return {}
+    # Import here to avoid circular imports
+    from database.database import UserSettingsService
+    
+    return UserSettingsService.get_llm_settings_sync()
 
 
 def create_llm(config: Optional[RunnableConfig] = None) -> ChatOpenAI:
