@@ -118,6 +118,10 @@ backend/
 
 ### Configuration Management
 - **Environment variables**: Defined in `config.py` (never access directly)
+- **Database connections**: 
+  - `DATABASE_URL`: Plain PostgreSQL URL for LangChain checkpointer
+  - `SQLALCHEMY_DATABASE_URL`: PostgreSQL+asyncpg URL for SQLAlchemy
+  - `POSTGRES_HOST`: Database host (defaults to "localhost", Docker sets to "postgres")
 - **MCP servers**: Configured in `configs/mcp_servers.yaml`
 - **User profile**: `configs/user_profile.yaml`
 - **Prompts**: `backend/agent/prompts/*.md` with hot-reload

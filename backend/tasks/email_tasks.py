@@ -8,7 +8,7 @@ from celery.exceptions import Retry
 from celery_app import celery_app
 from utils.logging import get_logger
 from email_processing import EmailProcessor
-from utils.redis_manager import publish
+from utils.redis_manager import publish_sync
 from models.email import EmailProcessingEvent
 
 logger = get_logger(__name__)
@@ -74,7 +74,7 @@ def fetch_emails(self) -> Dict[str, Any]:
         
         # Publish failure event
         try:
-            asyncio.run(publish(EmailProcessingEvent(
+            publish_sync(EmailProcessingEvent(
                 event_type="email_processing_failed",
                 data={
                     "task_id": task_id,
@@ -82,7 +82,7 @@ def fetch_emails(self) -> Dict[str, Any]:
                     "retry_count": retry_count,
                     "is_final_failure": retry_count >= max_retries
                 }
-            )))
+            ))
         except Exception as publish_error:
             logger.error(
                 "Failed to publish email processing failure event",
@@ -126,7 +126,7 @@ async def _fetch_emails_async(task_id: str) -> Dict[str, Any]:
     
     try:
         # Publish start event
-        await publish(EmailProcessingEvent(
+        publish_sync(EmailProcessingEvent(
             event_type="email_processing_started",
             data={"task_id": task_id}
         ))
@@ -170,7 +170,7 @@ async def _fetch_emails_async(task_id: str) -> Dict[str, Any]:
         }
         
         # Publish completion event
-        await publish(EmailProcessingEvent(
+        publish_sync(EmailProcessingEvent(
             event_type="email_processing_completed",
             data=result
         ))
@@ -179,7 +179,7 @@ async def _fetch_emails_async(task_id: str) -> Dict[str, Any]:
         
     except Exception as e:
         # Publish failure event
-        await publish(EmailProcessingEvent(
+        publish_sync(EmailProcessingEvent(
             event_type="email_processing_failed",
             data={
                 "task_id": task_id,
@@ -314,7 +314,7 @@ async def _store_failed_task_info(task_id: str, error: str, retry_count: int) ->
         }
         
         # Publish to dead letter queue monitoring
-        await publish(EmailProcessingEvent(
+        publish_sync(EmailProcessingEvent(
             event_type="email_task_dead_letter",
             data=failed_task_data
         ))

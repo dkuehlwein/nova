@@ -79,6 +79,33 @@ async def get_redis() -> Redis:
     return _redis_client
 
 
+def get_sync_redis():
+    """Get a synchronous Redis client for use in Celery workers."""
+    try:
+        from config import settings
+        redis_url = settings.REDIS_URL
+        
+        # Import the synchronous Redis client
+        import redis as sync_redis
+        
+        # Create synchronous Redis client
+        return sync_redis.Redis.from_url(
+            redis_url,
+            decode_responses=True,
+            health_check_interval=30,
+            socket_keepalive=True,
+            socket_keepalive_options={},
+            retry_on_timeout=True,
+            retry_on_error=[sync_redis.ConnectionError, sync_redis.TimeoutError]
+        )
+    except Exception as e:
+        logger.error(
+            "Failed to create sync Redis client",
+            extra={"data": {"error": str(e)}}
+        )
+        return None
+
+
 async def publish(event: NovaEvent, channel: str = "nova_events") -> bool:
     """
     Publish an event to Redis channel.
@@ -138,6 +165,69 @@ async def publish(event: NovaEvent, channel: str = "nova_events") -> bool:
             }
         )
         return False
+    except Exception as e:
+        logger.error(
+            "Failed to publish event to Redis",
+            exc_info=True,
+            extra={
+                "data": {
+                    "event_id": event.id,
+                    "event_type": event.type,
+                    "channel": channel,
+                    "error": str(e)
+                }
+            }
+        )
+        return False
+
+
+def publish_sync(event: NovaEvent, channel: str = "nova_events") -> bool:
+    """
+    Synchronously publish an event to Redis channel (for use in Celery workers).
+    
+    Args:
+        event: The NovaEvent to publish
+        channel: Redis channel name (default: "nova_events")
+    
+    Returns:
+        bool: True if published successfully, False otherwise
+    """
+    try:
+        redis_client = get_sync_redis()
+        if redis_client is None:
+            logger.debug(
+                "Redis not available, skipping event publish",
+                extra={
+                    "data": {
+                        "event_id": event.id,
+                        "event_type": event.type,
+                        "channel": channel
+                    }
+                }
+            )
+            return False
+        
+        # Serialize the event to JSON
+        event_json = event.model_dump_json()
+        
+        # Publish to Redis channel
+        subscribers = redis_client.publish(channel, event_json)
+        
+        logger.info(
+            f"Published event to Redis channel",
+            extra={
+                "data": {
+                    "event_id": event.id,
+                    "event_type": event.type,
+                    "channel": channel,
+                    "subscribers": subscribers,
+                    "source": event.source
+                }
+            }
+        )
+        
+        return True
+        
     except Exception as e:
         logger.error(
             "Failed to publish event to Redis",

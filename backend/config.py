@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "nova"
     POSTGRES_PASSWORD: str = "nova_dev_password"
     POSTGRES_PORT: int = 5432
-    POSTGRES_HOST: str = "localhost"
+    POSTGRES_HOST: str = "localhost"  # Default to localhost, Docker compose overrides this
     
     # Database Configuration (constructed from PostgreSQL variables)
     DATABASE_URL: Optional[str] = None  # PostgreSQL connection string for LangChain checkpointer (no driver)
@@ -68,16 +68,13 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def compute_urls(self):
         """Compute DATABASE_URL and Celery URLs if not explicitly provided"""
-        # Auto-detect host based on environment (localhost for local, postgres for Docker)
-        host = "postgres" if self._is_running_in_docker() else "localhost"
-        
         # Construct DATABASE_URL for LangChain checkpointer (no driver)
         if not self.DATABASE_URL:
-            self.DATABASE_URL = f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{host}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            self.DATABASE_URL = f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         
         # Construct SQLALCHEMY_DATABASE_URL for SQLAlchemy (+asyncpg driver)
         if not self.SQLALCHEMY_DATABASE_URL:
-            self.SQLALCHEMY_DATABASE_URL = f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{host}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            self.SQLALCHEMY_DATABASE_URL = f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         
         # Construct Celery URLs from REDIS_URL (already loaded from environment by pydantic-settings)
         self.CELERY_BROKER_URL = f"{self.REDIS_URL}/0"
@@ -85,28 +82,14 @@ class Settings(BaseSettings):
         
         return self
 
-    def _is_running_in_docker(self) -> bool:
-        """Detect if running inside Docker container."""
-        try:
-            # Check if we're in the Docker environment by looking for specific indicators
-            return (
-                # Check if we're in the /app directory (Docker working directory)
-                os.getcwd().startswith('/app') or
-                # Check for Docker-specific environment variables
-                os.path.exists('/.dockerenv') or
-                # Check if running as the expected Docker user
-                os.getenv('USER') == 'root'
-            )
-        except:
-            return False
 
     def _adapt_mcp_url_for_environment(self, url: str) -> str:
         """Adapt MCP server URL based on runtime environment."""
-        if self._is_running_in_docker():
+        if self.POSTGRES_HOST == "postgres":
             # In Docker: use internal network names
             return url
         else:
-            # In WSL/host: convert Docker internal URLs to localhost
+            # In local/WSL: convert Docker internal URLs to localhost
             url_mappings = {
                 "http://google-workspace:8000/mcp": "http://localhost:8002/mcp",
                 "http://feature-request:8000/mcp": "http://localhost:8003/mcp",

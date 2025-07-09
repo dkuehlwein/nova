@@ -484,11 +484,9 @@ async def cleanup_task_chat_data(task_id: str):
     logger = logging.getLogger(__name__)
     
     try:
-        # Get database URL
-        database_url = os.getenv(
-            'DATABASE_URL', 
-            'postgresql+asyncpg://nova:nova_dev_password@localhost:5432/nova_kanban'
-        )
+        # Get database URL from settings
+        from config import settings
+        database_url = settings.DATABASE_URL
         
         # Clean up LangGraph checkpointer data
         thread_id = f"core_agent_task_{task_id}"
@@ -496,7 +494,7 @@ async def cleanup_task_chat_data(task_id: str):
         try:
             # Create connection pool for checkpointer
             pool = AsyncConnectionPool(
-                database_url.replace('+asyncpg', ''),
+                database_url,
                 open=False
             )
             await pool.open()
