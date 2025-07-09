@@ -361,7 +361,7 @@ async def stream_chat(chat_request: ChatRequest):
         is_first_turn = await _is_first_turn(chat_request.thread_id, checkpointer)
         
         if is_first_turn:
-            logger.error("TESTING: First turn in conversation - injecting memory search tool call")
+            logger.info("First turn in conversation - injecting memory search tool call")
             try:
                 from memory.memory_functions import search_memory
                 
@@ -380,7 +380,7 @@ async def stream_chat(chat_request: ChatRequest):
                 
                 # Create tool call message (AI calling the tool) 
                 ai_tool_call = AIMessage(
-                    content="",
+                    content="Before answering you, let me search my memory for relevant information...",
                     tool_calls=[{
                         "name": "search_memory",
                         "args": {"query": user_message},

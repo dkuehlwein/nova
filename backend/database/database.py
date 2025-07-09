@@ -13,6 +13,24 @@ from models.models import Base
 from config import settings
 
 
+async def get_user_settings_dict() -> dict:
+    """Get user settings from database as a dictionary."""
+    from models.user_settings import UserSettings
+    from sqlalchemy import select
+    
+    async with db_manager.get_session() as session:
+        result = await session.execute(select(UserSettings).limit(1))
+        settings = result.scalar_one_or_none()
+        if settings:
+            return {
+                "llm_model": settings.llm_model,
+                "llm_provider": settings.llm_provider,
+                "llm_temperature": settings.llm_temperature,
+                "llm_max_tokens": settings.llm_max_tokens,
+            }
+        return {}
+
+
 class DatabaseManager:
     """Manages database connections and sessions."""
     

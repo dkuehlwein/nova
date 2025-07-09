@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, Float, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 
@@ -62,6 +62,12 @@ class UserSettings(Base):
     
     # MCP Server Preferences (which servers are enabled/disabled)
     mcp_server_preferences: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
+    
+    # LLM Settings
+    llm_model: Mapped[str] = mapped_column(String(100), default="gemma3-12b-local")
+    llm_provider: Mapped[str] = mapped_column(String(50), default="ollama")  # ollama or google
+    llm_temperature: Mapped[float] = mapped_column(Float, default=0.1)
+    llm_max_tokens: Mapped[int] = mapped_column(Integer, default=2048)
 
 
 class UserSettingsModel(BaseModel):
@@ -104,6 +110,12 @@ class UserSettingsModel(BaseModel):
     
     # MCP Server Preferences
     mcp_server_preferences: Dict[str, Any] = Field(default_factory=dict)
+    
+    # LLM Settings
+    llm_model: str = "gemma3-12b-local"
+    llm_provider: str = "ollama"
+    llm_temperature: float = 0.1
+    llm_max_tokens: int = 64000
 
     class Config:
         from_attributes = True
@@ -143,6 +155,12 @@ class UserSettingsUpdateModel(BaseModel):
     
     # MCP Server Preferences
     mcp_server_preferences: Optional[Dict[str, Any]] = None
+    
+    # LLM Settings
+    llm_model: Optional[str] = None
+    llm_provider: Optional[str] = None
+    llm_temperature: Optional[float] = None
+    llm_max_tokens: Optional[int] = None
 
 
 class OnboardingStatusModel(BaseModel):

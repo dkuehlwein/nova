@@ -42,26 +42,29 @@ class LLMModelService:
     async def initialize_default_models_in_litellm(self, db: AsyncSession) -> bool:
         """Initialize default models directly in LiteLLM via API."""
         try:
-            # Check if models already exist in LiteLLM
-            url = f"{self.litellm_base_url}/model/info"
-            headers = {"Authorization": f"Bearer {self.litellm_master_key}"}
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if len(data.get("data", [])) > 0:
-                            logger.info("LiteLLM models already exist, skipping initialization")
-                            return True
-            
-            # Add Ollama model (always available)
-            ollama_success = await self._add_model_to_litellm({
-                "model_name": "gemma3-12b-local",
-                "litellm_params": {
-                    "model": "ollama/gemma3:12b-it-qat",
-                    "api_base": "http://ollama:11434"
+            # Add Ollama models (always available)
+            ollama_models = [
+                {
+                    "model_name": "gemma3:12b-it-qat",
+                    "litellm_params": {
+                        "model": "ollama/gemma3:12b-it-qat",
+                        "api_base": "http://ollama:11434"
+                    }
+                },
+                {
+                    "model_name": "gemma2:9b-instruct-q4_0",
+                    "litellm_params": {
+                        "model": "ollama/gemma2:9b-instruct-q4_0",
+                        "api_base": "http://ollama:11434"
+                    }
                 }
-            })
+            ]
+            
+            ollama_success = True
+            for model_config in ollama_models:
+                success = await self._add_model_to_litellm(model_config)
+                if not success:
+                    ollama_success = False
             
             if not ollama_success:
                 logger.error("Failed to add Ollama model to LiteLLM")

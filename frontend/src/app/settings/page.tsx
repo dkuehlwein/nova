@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { useMCPServers, useToggleMCPServer, useSystemHealth, useRestartService } from "@/hooks/useNovaQueries";
 import { useState, Suspense } from "react";
@@ -220,6 +221,23 @@ function MCPServersTab() {
 function SystemStatusTab() {
   const { data: systemHealth, isLoading: systemHealthLoading } = useSystemHealth();
   const { data: mcpData, isLoading: mcpLoading } = useMCPServers();
+  const [systemStatus, setSystemStatus] = useState<Record<string, unknown> | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  React.useEffect(() => {
+    fetchSystemStatus();
+  }, []);
+
+  const fetchSystemStatus = async () => {
+    try {
+      const data = await apiRequest('/api/user-settings/system-status') as Record<string, unknown>;
+      setSystemStatus(data);
+    } catch (error) {
+      console.error('Failed to load system status:', error);
+    } finally {
+      setStatusLoading(false);
+    }
+  };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -303,6 +321,57 @@ function SystemStatusTab() {
         </div>
         <p className="text-xs text-muted-foreground mt-1">
           {systemHealthLoading ? "Loading..." : `Last check: ${systemHealth?.core_agent_last_check || "Not running"}`}
+        </p>
+      </div>
+
+      <div className="p-4 border border-border rounded-lg">
+        <div className="flex items-center space-x-2 mb-2">
+          <Cpu className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium text-foreground">Ollama (Local AI)</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          {statusLoading ? (
+            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
+          ) : (
+            getStatusIcon(systemStatus?.services?.ollama?.status === 'healthy' ? 'operational' : 'offline')
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {statusLoading ? "Loading..." : `Last check: ${systemStatus?.services?.ollama?.status === 'healthy' ? "Just now" : "Failed"}`}
+        </p>
+      </div>
+
+      <div className="p-4 border border-border rounded-lg">
+        <div className="flex items-center space-x-2 mb-2">
+          <Server className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium text-foreground">LiteLLM (Gateway)</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          {statusLoading ? (
+            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
+          ) : (
+            getStatusIcon(systemStatus?.services?.litellm?.status === 'healthy' ? 'operational' : 'offline')
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {statusLoading ? "Loading..." : `Last check: ${systemStatus?.services?.litellm?.status === 'healthy' ? "Just now" : "Failed"}`}
+        </p>
+      </div>
+
+      <div className="p-4 border border-border rounded-lg">
+        <div className="flex items-center space-x-2 mb-2">
+          <Database className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium text-foreground">Neo4j (Memory)</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          {statusLoading ? (
+            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
+          ) : (
+            getStatusIcon(systemStatus?.services?.neo4j?.status === 'healthy' ? 'operational' : 'offline')
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {statusLoading ? "Loading..." : `Last check: ${systemStatus?.services?.neo4j?.status === 'healthy' ? "Just now" : "Failed"}`}
         </p>
       </div>
     </div>
@@ -457,10 +526,14 @@ function UserSettingsTab() {
 // API Keys and Model Settings tab content
 function APIKeysTab() {
   const [systemStatus, setSystemStatus] = useState<Record<string, unknown> | null>(null);
+  const [userSettings, setUserSettings] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editingSettings, setEditingSettings] = useState<Record<string, unknown> | null>(null);
 
   React.useEffect(() => {
     fetchSystemStatus();
+    fetchUserSettings();
   }, []);
 
   const fetchSystemStatus = async () => {
@@ -469,9 +542,47 @@ function APIKeysTab() {
       setSystemStatus(data);
     } catch (error) {
       console.error('Failed to load system status:', error);
+    }
+  };
+
+  const fetchUserSettings = async () => {
+    try {
+      const data = await apiRequest('/api/user-settings/') as Record<string, unknown>;
+      setUserSettings(data);
+      setEditingSettings(data);
+    } catch (error) {
+      console.error('Failed to load user settings:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSave = async () => {
+    if (!editingSettings) return;
+    
+    setSaving(true);
+    try {
+      const response = await apiRequest('/api/user-settings/', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          llm_model: editingSettings.llm_model,
+          llm_provider: editingSettings.llm_provider,
+          llm_temperature: editingSettings.llm_temperature,
+          llm_max_tokens: editingSettings.llm_max_tokens,
+        })
+      });
+      
+      setUserSettings(response as Record<string, unknown>);
+      setEditingSettings(response as Record<string, unknown>);
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleInputChange = (field: string, value: string | number) => {
+    setEditingSettings(prev => prev ? { ...prev, [field]: value } : null);
   };
 
   if (loading) {
@@ -492,7 +603,7 @@ function APIKeysTab() {
       <div className="space-y-6">
         {/* API Keys Section */}
         <div className="space-y-4">
-          <h3 className="text-lg font-medium text-foreground">API Keys</h3>
+          <h3 className="text-lg font-medium text-foreground">API Keys & Services</h3>
           <p className="text-sm text-muted-foreground">
             Manage your API keys for external services. These are stored securely and never shared.
           </p>
@@ -501,10 +612,10 @@ function APIKeysTab() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium">Google API Key</p>
-                <p className="text-sm text-muted-foreground">For Gmail, Calendar, and AI features</p>
+                <p className="text-sm text-muted-foreground">For Gmail, Calendar, and cloud AI features</p>
               </div>
-              <Badge variant={systemStatus?.api_keys_configured && typeof systemStatus.api_keys_configured === 'object' && 'google' in systemStatus.api_keys_configured ? "default" : "secondary"}>
-                {systemStatus?.api_keys_configured && typeof systemStatus.api_keys_configured === 'object' && 'google' in systemStatus.api_keys_configured ? "Configured" : "Not configured"}
+              <Badge variant={systemStatus?.api_keys_configured?.google ? "default" : "secondary"}>
+                {systemStatus?.api_keys_configured?.google ? "Configured" : "Not configured"}
               </Badge>
             </div>
             
@@ -513,10 +624,11 @@ function APIKeysTab() {
                 <p className="font-medium">LangSmith API Key</p>
                 <p className="text-sm text-muted-foreground">For AI debugging and monitoring (optional)</p>
               </div>
-              <Badge variant={systemStatus?.api_keys_configured && typeof systemStatus.api_keys_configured === 'object' && 'langsmith' in systemStatus.api_keys_configured ? "default" : "secondary"}>
-                {systemStatus?.api_keys_configured && typeof systemStatus.api_keys_configured === 'object' && 'langsmith' in systemStatus.api_keys_configured ? "Configured" : "Not configured"}
+              <Badge variant={systemStatus?.api_keys_configured?.langsmith ? "default" : "secondary"}>
+                {systemStatus?.api_keys_configured?.langsmith ? "Configured" : "Not configured"}
               </Badge>
             </div>
+            
           </div>
         </div>
 
@@ -524,55 +636,103 @@ function APIKeysTab() {
         <div className="space-y-4 border-t border-border pt-6">
           <h3 className="text-lg font-medium text-foreground">AI Model Configuration</h3>
           <p className="text-sm text-muted-foreground">
-            Configure which AI models Nova uses for different tasks.
+            Configure which AI models Nova uses for different tasks. Changes apply immediately.
           </p>
           
           <div className="space-y-4 border border-muted rounded-lg p-4">
             <div className="space-y-2">
-              <Label>Current Google Model</Label>
-              <div className="flex items-center justify-between">
-                <code className="text-sm bg-muted px-2 py-1 rounded">
-                  gemini-2.5-flash-preview-04-17
-                </code>
-                <Badge variant="outline">Active</Badge>
-              </div>
+              <Label>AI Provider</Label>
+              {editingSettings ? (
+                <Select 
+                  value={String(editingSettings?.llm_provider || 'ollama')} 
+                  onValueChange={(value) => handleInputChange('llm_provider', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ollama">Ollama (Local)</SelectItem>
+                    <SelectItem value="google">Google (Cloud)</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="h-10 w-full bg-muted rounded animate-pulse" />
+              )}
+              <p className="text-xs text-muted-foreground">
+                AI provider: Ollama (local) or Google (cloud)
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Model</Label>
+              {editingSettings ? (
+                <Select 
+                  value={String(editingSettings?.llm_model || 'gemma3:12b-it-qat')} 
+                  onValueChange={(value) => handleInputChange('llm_model', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {editingSettings?.llm_provider === 'ollama' ? (
+                      <>
+                        <SelectItem value="gemma3:12b-it-qat">Gemma 3 12B (Local)</SelectItem>
+                        <SelectItem value="gemma2:9b-instruct-q4_0">Gemma 2 9B (Local)</SelectItem>
+                      </>
+                    ) : (
+                      <>
+                        <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+                        <SelectItem value="gemini-1.5-pro">Gemini 1.5 Pro</SelectItem>
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="h-10 w-full bg-muted rounded animate-pulse" />
+              )}
               <p className="text-xs text-muted-foreground">
                 Model used for chat responses and task generation
               </p>
             </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Temperature</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={String(editingSettings?.llm_temperature || 0.1)}
+                  onChange={(e) => handleInputChange('llm_temperature', parseFloat(e.target.value))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Response randomness (0.0 - 1.0)
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Max Tokens</Label>
+                <Input
+                  type="number"
+                  min="100"
+                  max="32000"
+                  value={String(editingSettings?.llm_max_tokens || 2048)}
+                  onChange={(e) => handleInputChange('llm_max_tokens', parseInt(e.target.value))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Maximum response length
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex justify-end">
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* Environment Settings Section */}
-        <div className="space-y-4 border-t border-border pt-6">
-          <h3 className="text-lg font-medium text-foreground">Environment Settings</h3>
-          <p className="text-sm text-muted-foreground">
-            Current system environment and configuration details.
-          </p>
-          
-          <div className="space-y-3 border border-muted rounded-lg p-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Environment</span>
-              <Badge variant="outline">{String(systemStatus?.environment || "unknown")}</Badge>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Log Level</span>
-              <Badge variant="outline">{String(systemStatus?.log_level || "INFO")}</Badge>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Email Processing</span>
-              <Badge variant={systemStatus?.email_enabled ? "default" : "secondary"}>
-                {systemStatus?.email_enabled ? "Enabled" : "Disabled"}
-              </Badge>
-            </div>
-          </div>
-        </div>
-        
-        <div className="text-sm text-muted-foreground p-4 bg-muted/50 rounded-lg">
-          <p className="font-medium mb-2">Note:</p>
-          <p>API keys and model configuration are currently managed through environment variables. 
-          Direct editing capabilities will be available in a future update.</p>
-        </div>
       </div>
     </div>
   );

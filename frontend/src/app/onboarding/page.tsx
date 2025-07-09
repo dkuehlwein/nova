@@ -162,13 +162,9 @@ export default function OnboardingPage() {
 
   const canProceedFromStep = (step: number) => {
     switch (step) {
-      case 0: return true; // Welcome
-      case 1: // API Keys - Google API key is now optional with local LLM support
-        return true; // Allow proceeding without Google API key
       case 2: // User Profile - name and email required
         return userSettings.full_name?.trim() && userSettings.email?.trim();
-      case 3: return true; // Complete
-      default: return false;
+      default: return true; // All other steps can proceed
     }
   };
 
@@ -341,15 +337,12 @@ export default function OnboardingPage() {
                     Connect Nova to external services to unlock its full potential. 
                     Your API keys are stored securely and never shared.
                   </p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    * Required fields
-                  </p>
                 </div>
                 
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="google_api_key">Google API Key (Optional)</Label>
+                      <Label htmlFor="google_api_key">Google API Key</Label>
                       <div className="flex items-center space-x-2">
                         {validating === 'google_api_key' && (
                           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

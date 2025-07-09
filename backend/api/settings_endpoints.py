@@ -200,11 +200,12 @@ async def _check_service_connections(app_settings):
     import asyncio
     from neo4j import GraphDatabase
     
-    async def check_http_service(url: str, timeout: int = 5) -> dict:
-        """Check if HTTP service is reachable."""
+    async def check_http_service(url: str, api_key: Optional[str] = None, timeout: int = 5) -> dict:
+        """Check if HTTP service is reachable, with optional API key authentication."""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=timeout) as response:
+                headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+                async with session.get(url, headers=headers, timeout=timeout) as response:
                     return {
                         "status": "healthy" if response.status == 200 else "unhealthy",
                         "status_code": response.status,
@@ -237,7 +238,7 @@ async def _check_service_connections(app_settings):
     
     # Run checks in parallel
     ollama_check = check_http_service(f"{app_settings.OLLAMA_BASE_URL}/api/tags")
-    litellm_check = check_http_service(f"{app_settings.LITELLM_BASE_URL}/health")
+    litellm_check = check_http_service(f"{app_settings.LITELLM_BASE_URL}/health", app_settings.LITELLM_MASTER_KEY)
     
     # Neo4j check (synchronous)
     neo4j_status = check_neo4j_service(

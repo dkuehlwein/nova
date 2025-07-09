@@ -146,6 +146,10 @@ class Settings(BaseSettings):
             print(f"Warning: Failed to load MCP configuration: {e}")
         
         return servers
+    
+    def _is_running_in_docker(self) -> bool:
+        """Check if the application is running inside Docker."""
+        return os.path.exists('/.dockerenv') or os.environ.get('DOCKER_ENV') == 'true'
 
 
 settings = Settings()
