@@ -34,9 +34,10 @@ async def get_onboarding_status(session: AsyncSession = Depends(get_db_session))
     Check if user has completed onboarding and what setup is required.
     """
     try:
-        # Get or create user settings (assume single user for MVP)
-        result = await session.execute(select(UserSettings).limit(1))
-        settings = result.scalar_one_or_none()
+        from database.database import UserSettingsService
+        
+        # Get user settings using centralized service
+        settings = await UserSettingsService.get_user_settings()
         
         if not settings:
             # No settings exist - first time setup required
@@ -71,9 +72,10 @@ async def get_user_settings(session: AsyncSession = Depends(get_db_session)):
     NEVER returns Tier 1 or Tier 2 configuration values.
     """
     try:
-        # Get or create user settings (assume single user for MVP)
-        result = await session.execute(select(UserSettings).limit(1))
-        settings = result.scalar_one_or_none()
+        from database.database import UserSettingsService
+        
+        # Get user settings using centralized service
+        settings = await UserSettingsService.get_user_settings()
         
         if not settings:
             # Create default settings for first-time user
@@ -99,9 +101,10 @@ async def update_user_settings(
     Performs partial updates - only provided fields are changed.
     """
     try:
-        # Get existing settings
-        result = await session.execute(select(UserSettings).limit(1))
-        settings = result.scalar_one_or_none()
+        from database.database import UserSettingsService
+        
+        # Get existing settings using centralized service
+        settings = await UserSettingsService.get_user_settings()
         
         if not settings:
             # Create new settings if none exist
@@ -174,9 +177,10 @@ async def complete_onboarding(session: AsyncSession = Depends(get_db_session)):
     Mark onboarding as complete.
     """
     try:
-        # Get or create settings
-        result = await session.execute(select(UserSettings).limit(1))
-        settings = result.scalar_one_or_none()
+        from database.database import UserSettingsService
+        
+        # Get or create settings using centralized service
+        settings = await UserSettingsService.get_user_settings()
         
         if not settings:
             settings = UserSettings()

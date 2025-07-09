@@ -37,16 +37,13 @@ async def search_memory(query: str, limit: int = None, group_id: str = None) -> 
         # Get user settings for memory search limit
         if limit is None:
             from database.database import db_manager
-            from models.user_settings import UserSettings
-            from sqlalchemy import select
+            from database.database import UserSettingsService
             
             try:
-                async with db_manager.get_session() as session:
-                    result = await session.execute(select(UserSettings).limit(1))
-                    user_settings = result.scalar_one_or_none()
-                    limit = user_settings.memory_search_limit if user_settings else settings.MEMORY_SEARCH_LIMIT
+                memory_settings = await UserSettingsService.get_memory_settings()
+                limit = memory_settings.get("memory_search_limit", 10)  # Default from database schema
             except Exception:
-                limit = settings.MEMORY_SEARCH_LIMIT
+                limit = 10  # Default from database schema
         
         search_limit = limit
         search_group_id = group_id or settings.MEMORY_GROUP_ID

@@ -57,9 +57,8 @@ async def add_sample_data():
         logger.info("Added initial agent status record")
         
         # Create default user settings if they don't exist
-        from sqlalchemy import select
-        result = await session.execute(select(UserSettings).limit(1))
-        existing_settings = result.scalar_one_or_none()
+        from database.database import UserSettingsService
+        existing_settings = await UserSettingsService.get_user_settings()
         
         if not existing_settings:
             user_settings = UserSettings(

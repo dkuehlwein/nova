@@ -163,15 +163,15 @@ class EmailProcessor:
     
     async def _get_user_settings(self) -> UserSettings:
         """Get current user settings from database."""
-        async with db_manager.get_session() as session:
-            result = await session.execute(select(UserSettings).limit(1))
-            settings = result.scalar_one_or_none()
-            
-            if not settings:
-                logger.error("No user settings found in database - this should never happen in production")
-                raise RuntimeError("User settings not configured. Please complete onboarding first.")
-            
-            return settings
+        from database.database import UserSettingsService
+        
+        settings = await UserSettingsService.get_user_settings()
+        
+        if not settings:
+            logger.error("No user settings found in database - this should never happen in production")
+            raise RuntimeError("User settings not configured. Please complete onboarding first.")
+        
+        return settings
     
     async def _filter_new_emails(self, normalized_emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Filter out already processed emails using database lookup."""

@@ -29,10 +29,8 @@ async def load_nova_system_prompt() -> str:
         raise RuntimeError("System prompt manager not initialized in config registry")
     
     # Get user profile from database
-    async with db_manager.get_session() as session:
-        from sqlalchemy import select
-        result = await session.execute(select(UserSettings).limit(1))
-        user_settings = result.scalar_one_or_none()
+    from database.database import UserSettingsService
+    user_settings = await UserSettingsService.get_user_settings()
     
     # Use defaults if no user settings found
     if user_settings is None:

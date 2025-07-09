@@ -82,17 +82,11 @@ def update_beat_schedule():
             # Import here to avoid circular import
             import asyncio
             from database.database import db_manager
-            from models.user_settings import UserSettings
-            from sqlalchemy import select
+            from database.database import UserSettingsService
             
-            async def get_user_settings():
-                async with db_manager.get_session() as session:
-                    result = await session.execute(select(UserSettings).limit(1))
-                    return result.scalar_one_or_none()
-            
-            # Get user settings asynchronously
+            # Get user settings synchronously
             try:
-                user_settings = asyncio.run(get_user_settings())
+                user_settings = UserSettingsService.get_user_settings_sync()
                 
                 if user_settings and user_settings.email_polling_enabled:
                     schedule_interval = user_settings.email_polling_interval
