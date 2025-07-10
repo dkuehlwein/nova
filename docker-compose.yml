@@ -1,5 +1,5 @@
 services:
-  # PostgreSQL Database for Kanban MCP
+  # PostgreSQL Database for Nova Kanban
   postgres:
     image: postgres:16-alpine
     environment:
@@ -11,6 +11,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database/init-litellm.sql:/docker-entrypoint-initdb.d/init-litellm.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nova} -d ${POSTGRES_DB:-nova_kanban}"]
       interval: 10s
@@ -88,7 +89,7 @@ services:
     ports:
       - "4000:4000"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_password}@postgres:5432/${POSTGRES_DB:-nova_kanban}
+      DATABASE_URL: postgresql://${LITELLM_USER:-litellm}:${LITELLM_PASSWORD:-litellm_dev_password}@postgres:5432/${LITELLM_DB:-litellm}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-salt-1234}
       OLLAMA_BASE_URL: http://ollama:11434
@@ -97,7 +98,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/readiness')"]
       interval: 30s
       timeout: 10s
       retries: 3
