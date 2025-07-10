@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem } from "@/components/ui/select";
 
-import { useMCPServers, useToggleMCPServer, useSystemHealth, useRestartService } from "@/hooks/useNovaQueries";
+import { useMCPServers, useToggleMCPServer, useSystemHealth, useRestartService, useUserSettings, useUpdateUserSettings } from "@/hooks/useNovaQueries";
 import { useState, Suspense } from "react";
 import React from "react";
 import SystemPromptEditor from "@/components/SystemPromptEditor";
@@ -562,14 +562,19 @@ function UserSettingsTab() {
 // API Keys and Model Settings tab content
 function APIKeysTab() {
   const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { data: userSettings, isLoading: loading } = useUserSettings();
+  const updateUserSettings = useUpdateUserSettings();
   const [editingSettings, setEditingSettings] = useState<Record<string, unknown> | null>(null);
 
   React.useEffect(() => {
     fetchSystemStatus();
-    fetchUserSettings();
   }, []);
+
+  React.useEffect(() => {
+    if (userSettings && !editingSettings) {
+      setEditingSettings(userSettings as unknown as Record<string, unknown>);
+    }
+  }, [userSettings, editingSettings]);
 
   const fetchSystemStatus = async () => {
     try {
@@ -580,37 +585,18 @@ function APIKeysTab() {
     }
   };
 
-  const fetchUserSettings = async () => {
-    try {
-      const data = await apiRequest('/api/user-settings/') as Record<string, unknown>;
-      setEditingSettings(data);
-    } catch (error) {
-      console.error('Failed to load user settings:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSave = async () => {
     if (!editingSettings) return;
     
-    setSaving(true);
     try {
-      const response = await apiRequest('/api/user-settings/', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          llm_model: editingSettings.llm_model,
-          llm_provider: editingSettings.llm_provider,
-          llm_temperature: editingSettings.llm_temperature,
-          llm_max_tokens: editingSettings.llm_max_tokens,
-        })
+      await updateUserSettings.mutateAsync({
+        llm_model: editingSettings.llm_model as string,
+        llm_provider: editingSettings.llm_provider as string,
+        llm_temperature: editingSettings.llm_temperature as number,
+        llm_max_tokens: editingSettings.llm_max_tokens as number,
       });
-      
-      setEditingSettings(response as Record<string, unknown>);
     } catch (error) {
       console.error('Failed to save settings:', error);
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -703,13 +689,12 @@ function APIKeysTab() {
                   <SelectContent>
                     {editingSettings?.llm_provider === 'ollama' ? (
                       <>
-                        <SelectItem value="gemma3:12b-it-qat">Gemma 3 12B (Local)</SelectItem>
-                        <SelectItem value="gemma2:9b-instruct-q4_0">Gemma 2 9B (Local)</SelectItem>
+                        <SelectItem value="gemma3:12b-it-qat">gemma3:12b-it-qat</SelectItem>
                       </>
                     ) : (
                       <>
-                        <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
-                        <SelectItem value="gemini-1.5-pro">Gemini 1.5 Pro</SelectItem>
+                        <SelectItem value="gemini-2.5-flash">gemini-2.5-flash</SelectItem>
+                        <SelectItem value="gemini-2.5-flash-preview-04-17">gemini-2.5-flash-preview-04-17</SelectItem>
                       </>
                     )}
                   </SelectContent>
@@ -753,8 +738,8 @@ function APIKeysTab() {
             </div>
             
             <div className="flex justify-end">
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Changes'}
+              <Button onClick={handleSave} disabled={updateUserSettings.isPending}>
+                {updateUserSettings.isPending ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
           </div>
