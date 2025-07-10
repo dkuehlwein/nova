@@ -601,7 +601,31 @@ function APIKeysTab() {
   };
 
   const handleInputChange = (field: string, value: string | number) => {
-    setEditingSettings(prev => prev ? { ...prev, [field]: value } : null);
+    setEditingSettings(prev => {
+      if (!prev) return null;
+      
+      // When provider changes, update model to a compatible default
+      if (field === 'llm_provider') {
+        const newProvider = value as string;
+        let defaultModel: string;
+        
+        if (newProvider === 'ollama') {
+          defaultModel = 'gemma3:12b-it-qat';
+        } else if (newProvider === 'google') {
+          defaultModel = 'gemini-2.5-flash';
+        } else {
+          defaultModel = prev.llm_model as string;
+        }
+        
+        return { 
+          ...prev, 
+          [field]: value, 
+          llm_model: defaultModel 
+        };
+      }
+      
+      return { ...prev, [field]: value };
+    });
   };
 
   if (loading) {
