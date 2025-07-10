@@ -17,14 +17,24 @@ class UserSettingsService:
     """Centralized service for all user settings operations."""
     
     @staticmethod
-    async def get_user_settings():
-        """Get user settings object from database."""
+    async def get_user_settings(session: AsyncSession = None):
+        """Get user settings object from database.
+        
+        Args:
+            session: Optional database session. If not provided, creates a new one.
+        """
         from models.user_settings import UserSettings
         from sqlalchemy import select
         
-        async with db_manager.get_session() as session:
+        if session:
+            # Use provided session
             result = await session.execute(select(UserSettings).limit(1))
             return result.scalar_one_or_none()
+        else:
+            # Create new session
+            async with db_manager.get_session() as new_session:
+                result = await new_session.execute(select(UserSettings).limit(1))
+                return result.scalar_one_or_none()
     
     @staticmethod
     async def get_user_settings_dict() -> dict:

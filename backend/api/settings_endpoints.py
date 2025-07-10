@@ -36,8 +36,8 @@ async def get_onboarding_status(session: AsyncSession = Depends(get_db_session))
     try:
         from database.database import UserSettingsService
         
-        # Get user settings using centralized service
-        settings = await UserSettingsService.get_user_settings()
+        # Get user settings using the current session
+        settings = await UserSettingsService.get_user_settings(session)
         
         if not settings:
             # No settings exist - first time setup required
@@ -74,8 +74,8 @@ async def get_user_settings(session: AsyncSession = Depends(get_db_session)):
     try:
         from database.database import UserSettingsService
         
-        # Get user settings using centralized service
-        settings = await UserSettingsService.get_user_settings()
+        # Get user settings using the current session
+        settings = await UserSettingsService.get_user_settings(session)
         
         if not settings:
             # Create default settings for first-time user
@@ -102,14 +102,14 @@ async def update_user_settings(
     """
     try:
         from database.database import UserSettingsService
-        
-        # Get existing settings using centralized service
-        settings = await UserSettingsService.get_user_settings()
+        settings = await UserSettingsService.get_user_settings(session)
         
         if not settings:
             # Create new settings if none exist
             settings = UserSettings()
             session.add(settings)
+            # Flush to get the ID for the new object
+            await session.flush()
         
         # Apply updates (only non-None values)
         update_data = updates.model_dump(exclude_unset=True, exclude_none=True)
@@ -118,7 +118,7 @@ async def update_user_settings(
                 setattr(settings, field, value)
         
         await session.commit()
-        await session.refresh(settings)
+        await session.refresh(settings)  # Refresh to ensure all attributes are loaded
         
         # If email-related settings were updated, publish Redis event and trigger beat schedule update
         email_fields = {
@@ -179,8 +179,8 @@ async def complete_onboarding(session: AsyncSession = Depends(get_db_session)):
     try:
         from database.database import UserSettingsService
         
-        # Get or create settings using centralized service
-        settings = await UserSettingsService.get_user_settings()
+        # Get or create settings using the current session
+        settings = await UserSettingsService.get_user_settings(session)
         
         if not settings:
             settings = UserSettings()
