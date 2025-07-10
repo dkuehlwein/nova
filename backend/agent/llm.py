@@ -56,4 +56,9 @@ def create_llm(config: Optional[RunnableConfig] = None) -> ChatOpenAI:
         openai_api_base=f"{litellm_base_url}/v1",
         temperature=temperature,
         max_tokens=max_tokens,
+        default_headers={
+            "user": "nova-user",
+            "team_id": "nova-team", 
+            "user_id": "nova-user-1"
+        }
     ) 

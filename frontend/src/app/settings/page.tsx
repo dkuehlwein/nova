@@ -217,11 +217,27 @@ function MCPServersTab() {
   );
 }
 
+interface ServiceStatus {
+  status: string;
+}
+
+interface SystemStatusResponse {
+  services?: {
+    ollama?: ServiceStatus;
+    litellm?: ServiceStatus;
+    neo4j?: ServiceStatus;
+  };
+  api_keys_configured?: {
+    google?: boolean;
+    langsmith?: boolean;
+  };
+}
+
 // System Status tab content - loaded only when tab is active
 function SystemStatusTab() {
   const { data: systemHealth, isLoading: systemHealthLoading } = useSystemHealth();
   const { data: mcpData, isLoading: mcpLoading } = useMCPServers();
-  const [systemStatus, setSystemStatus] = useState<Record<string, unknown> | null>(null);
+  const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
 
   React.useEffect(() => {
@@ -230,7 +246,7 @@ function SystemStatusTab() {
 
   const fetchSystemStatus = async () => {
     try {
-      const data = await apiRequest('/api/user-settings/system-status') as Record<string, unknown>;
+      const data = await apiRequest('/api/user-settings/system-status') as SystemStatusResponse;
       setSystemStatus(data);
     } catch (error) {
       console.error('Failed to load system status:', error);
@@ -372,6 +388,26 @@ function SystemStatusTab() {
         </div>
         <p className="text-xs text-muted-foreground mt-1">
           {statusLoading ? "Loading..." : `Last check: ${systemStatus?.services?.neo4j?.status === 'healthy' ? "Just now" : "Failed"}`}
+        </p>
+      </div>
+
+      {/* LiteLLM UI Access */}
+      <div className="col-span-full p-4 border border-border rounded-lg bg-muted/50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Brain className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium text-foreground">LiteLLM Admin UI</span>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => window.open('http://localhost:4000', '_blank')}
+          >
+            Open Admin UI
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Monitor LLM usage, costs, and performance metrics
         </p>
       </div>
     </div>
@@ -525,8 +561,7 @@ function UserSettingsTab() {
 
 // API Keys and Model Settings tab content
 function APIKeysTab() {
-  const [systemStatus, setSystemStatus] = useState<Record<string, unknown> | null>(null);
-  const [userSettings, setUserSettings] = useState<Record<string, unknown> | null>(null);
+  const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingSettings, setEditingSettings] = useState<Record<string, unknown> | null>(null);
@@ -538,7 +573,7 @@ function APIKeysTab() {
 
   const fetchSystemStatus = async () => {
     try {
-      const data = await apiRequest('/api/user-settings/system-status') as Record<string, unknown>;
+      const data = await apiRequest('/api/user-settings/system-status') as SystemStatusResponse;
       setSystemStatus(data);
     } catch (error) {
       console.error('Failed to load system status:', error);
@@ -548,7 +583,6 @@ function APIKeysTab() {
   const fetchUserSettings = async () => {
     try {
       const data = await apiRequest('/api/user-settings/') as Record<string, unknown>;
-      setUserSettings(data);
       setEditingSettings(data);
     } catch (error) {
       console.error('Failed to load user settings:', error);
@@ -572,7 +606,6 @@ function APIKeysTab() {
         })
       });
       
-      setUserSettings(response as Record<string, unknown>);
       setEditingSettings(response as Record<string, unknown>);
     } catch (error) {
       console.error('Failed to save settings:', error);

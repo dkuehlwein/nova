@@ -66,23 +66,6 @@ function ChatPage() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const { data: userSettings } = useUserSettings();
 
-  // Format the model name for display
-  const formatModelName = useCallback((model: string, provider: string) => {
-    if (provider === 'ollama') {
-      // Format Ollama model names
-      if (model.includes('gemma3')) return 'Gemma 3 (Local)';
-      if (model.includes('gemma2')) return 'Gemma 2 (Local)';
-      if (model.includes('llama')) return 'Llama (Local)';
-      return `${model} (Local)`;
-    } else if (provider === 'google') {
-      // Format Google model names
-      if (model.includes('gemini-2.5-flash')) return 'Gemini 2.5 Flash';
-      if (model.includes('gemini-1.5-pro')) return 'Gemini 1.5 Pro';
-      if (model.includes('gemini')) return 'Gemini';
-      return model;
-    }
-    return model;
-  }, []);
 
   // Memoize the stable data to prevent unnecessary re-renders
   const memoizedPendingDecisions = useMemo(() => pendingDecisions, [pendingDecisions]);
@@ -598,18 +581,13 @@ function ChatPage() {
                       ? "Chatting about this specific task" 
                       : isConnected ? "Ready to help with your tasks" : "Connecting..."
                     }
-                    {userSettings && (
-                      <span className="ml-2 text-xs">
-                        • {formatModelName(userSettings.llm_model, userSettings.llm_provider)}
-                      </span>
-                    )}
                   </p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
                 {userSettings && (
                   <Badge variant="outline" className="text-xs">
-                    {formatModelName(userSettings.llm_model, userSettings.llm_provider)}
+                    {userSettings.llm_model}
                   </Badge>
                 )}
                 {taskInfo && (
