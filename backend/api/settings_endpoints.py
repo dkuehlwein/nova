@@ -154,6 +154,34 @@ async def update_user_settings(
             except Exception as e:
                 logger.warning(f"Failed to publish email settings event or trigger beat schedule update: {e}")
         
+        # If LLM-related settings were updated, publish Redis event for chat agent cache clearing
+        llm_fields = {
+            "llm_model", "llm_provider", "llm_temperature", "llm_max_tokens"
+        }
+        if any(field in update_data for field in llm_fields):
+            try:
+                # Publish Redis event for real-time updates
+                from models.events import create_llm_settings_updated_event
+                from utils.redis_manager import publish
+                
+                llm_event = create_llm_settings_updated_event(
+                    model=settings.llm_model,
+                    provider=settings.llm_provider,
+                    temperature=settings.llm_temperature,
+                    max_tokens=settings.llm_max_tokens,
+                    source="settings-api"
+                )
+                
+                await publish(llm_event)
+                
+                logger.info(
+                    "Published LLM settings update event",
+                    extra={"data": {"event_id": llm_event.id, "updated_fields": list(update_data.keys())}}
+                )
+                
+            except Exception as e:
+                logger.warning(f"Failed to publish LLM settings event: {e}")
+        
         logger.info(
             "User settings updated",
             extra={

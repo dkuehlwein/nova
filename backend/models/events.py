@@ -26,7 +26,8 @@ class NovaEvent(BaseModel):
         "user_profile_updated",
         "email_processing_started",
         "email_processing_completed",
-        "email_settings_updated"
+        "email_settings_updated",
+        "llm_settings_updated"
     ]
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     data: Dict[str, Any]
@@ -107,6 +108,14 @@ class EmailSettingsUpdatedEventData(BaseModel):
     email_label_filter: str
     max_emails_per_fetch: int
     create_tasks_from_emails: bool
+
+
+class LLMSettingsUpdatedEventData(BaseModel):
+    """Data structure for LLM settings update events."""
+    model: str
+    provider: str
+    temperature: float
+    max_tokens: int
 
 
 # Helper functions for creating typed events
@@ -233,6 +242,26 @@ def create_email_settings_updated_event(
             email_label_filter=email_label_filter,
             max_emails_per_fetch=max_emails_per_fetch,
             create_tasks_from_emails=create_tasks_from_emails
+        ).model_dump(),
+        source=source
+    )
+
+
+def create_llm_settings_updated_event(
+    model: str,
+    provider: str,
+    temperature: float,
+    max_tokens: int,
+    source: str = "settings-service"
+) -> NovaEvent:
+    """Create a typed LLM settings update event."""
+    return NovaEvent(
+        type="llm_settings_updated",
+        data=LLMSettingsUpdatedEventData(
+            model=model,
+            provider=provider,
+            temperature=temperature,
+            max_tokens=max_tokens
         ).model_dump(),
         source=source
     )
