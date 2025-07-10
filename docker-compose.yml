@@ -84,16 +84,18 @@ services:
   # LiteLLM Gateway for unified LLM API
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
-    env_file:
-      - .env
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
     ports:
       - "4000:4000"
+    volumes:
+      - ./configs/litellm_config.yaml:/app/config.yaml
     environment:
       DATABASE_URL: postgresql://${LITELLM_USER:-litellm}:${LITELLM_PASSWORD:-litellm_dev_password}@postgres:5432/${LITELLM_DB:-litellm}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-salt-1234}
       OLLAMA_BASE_URL: http://ollama:11434
-      STORE_MODEL_IN_DB: "True"
+      STORE_MODEL_IN_DB: "False"
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy

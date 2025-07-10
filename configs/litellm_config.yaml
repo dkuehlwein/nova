@@ -3,23 +3,21 @@ model_list:
   - model_name: gemini-2.5-flash
     litellm_params:
       model: gemini/gemini-2.5-flash
-      api_key: "env:GOOGLE_API_KEY"
+      api_key: os.environ/GOOGLE_API_KEY
   
   - model_name: gemini-2.5-flash-preview-04-17
     litellm_params:
       model: gemini/gemini-2.5-flash-preview-04-17
-      api_key: "env:GOOGLE_API_KEY"
+      api_key: os.environ/GOOGLE_API_KEY
   
   # Ollama local models
   - model_name: gemma3:12b-it-qat
     litellm_params:
-      model: ollama/gemma3:12b-it-qat
+      model: ollama_chat/gemma3:12b-it-qat
       api_base: http://ollama:11434
 
 general_settings:
-  # Enable database logging for usage tracking
-  database_url: "env:DATABASE_URL"
-  master_key: "env:LITELLM_MASTER_KEY"
+  master_key: "sk-1234"
   
   # Enable UI for monitoring
   ui_access_mode: "admin_only"

@@ -313,18 +313,26 @@ async def get_checkpointer_from_service_manager():
         from start_website import get_service_manager
         from utils.service_manager import create_postgres_checkpointer
         
+        logger.info("Getting service manager...")
         service_manager = get_service_manager()
+        logger.info(f"Service manager: {service_manager}, pg_pool: {service_manager.pg_pool}")
+        
         # The service manager is not unique and different from the one in the app lifespan.
         if service_manager.pg_pool is None:
+            logger.info("PostgreSQL pool is None, initializing...")
             await service_manager.init_pg_pool()
+            logger.info(f"After init_pg_pool, pg_pool: {service_manager.pg_pool}")
         
         if service_manager.pg_pool:
-            logger.debug("Using PostgreSQL checkpointer from ServiceManager", extra={
+            logger.info("Using PostgreSQL checkpointer from ServiceManager", extra={
                 "data": {"pool_id": id(service_manager.pg_pool)}
             })
-            return create_postgres_checkpointer(service_manager.pg_pool)
+            checkpointer = create_postgres_checkpointer(service_manager.pg_pool)
+            logger.info(f"Created checkpointer: {checkpointer}")
+            return checkpointer
         else:
             # PostgreSQL is mandatory - raise error if not available
+            logger.error("PostgreSQL connection pool is still None after init")
             raise RuntimeError("PostgreSQL connection pool is required but not available")
             
     except Exception as e:
@@ -597,7 +605,32 @@ async def chat_health():
     """
     try:
         # Test if the chat agent can be created and is working
-        chat_agent = await create_chat_agent()
+        logger.info("Health check: Starting...")
+        
+        # Import here to avoid circular dependency
+        from start_website import get_service_manager
+        from utils.service_manager import create_postgres_checkpointer
+        
+        logger.info("Health check: Getting service manager...")
+        service_manager = get_service_manager()
+        logger.info(f"Health check: Service manager: {service_manager}, pg_pool: {service_manager.pg_pool}")
+        
+        if service_manager.pg_pool is None:
+            logger.info("Health check: PostgreSQL pool is None, initializing...")
+            await service_manager.init_pg_pool()
+            logger.info(f"Health check: After init_pg_pool, pg_pool: {service_manager.pg_pool}")
+        
+        if service_manager.pg_pool:
+            logger.info("Health check: Creating checkpointer...")
+            checkpointer = create_postgres_checkpointer(service_manager.pg_pool)
+            logger.info(f"Health check: Got checkpointer: {checkpointer}")
+        else:
+            logger.error("Health check: PostgreSQL connection pool is still None after init")
+            raise RuntimeError("PostgreSQL connection pool is required but not available")
+        
+        logger.info("Health check: Creating chat agent...")
+        chat_agent = await create_chat_agent(checkpointer=checkpointer)
+        logger.info(f"Health check: Chat agent created: {chat_agent}")
         agent_ready = chat_agent is not None
         
         return HealthResponse(
@@ -607,7 +640,7 @@ async def chat_health():
         )
         
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error(f"Health check failed: {e}", exc_info=True)
         return HealthResponse(
             status="unhealthy",
             agent_ready=False,
