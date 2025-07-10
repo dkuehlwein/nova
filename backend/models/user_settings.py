@@ -64,9 +64,9 @@ class UserSettings(Base):
     mcp_server_preferences: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
     
     # LLM Settings
-    llm_model: Mapped[str] = mapped_column(String(100), default="gemma3:12b-it-qat")
+    llm_model: Mapped[str] = mapped_column(String(100), default="hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL")
     llm_provider: Mapped[str] = mapped_column(String(50), default="ollama")  # ollama or google
-    llm_temperature: Mapped[float] = mapped_column(Float, default=0.1)
+    llm_temperature: Mapped[float] = mapped_column(Float, default=0.6)
     llm_max_tokens: Mapped[int] = mapped_column(Integer, default=64000)
 
 

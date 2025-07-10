@@ -11,9 +11,14 @@ model_list:
       api_key: os.environ/GOOGLE_API_KEY
   
   # Ollama local models
-  - model_name: gemma3:12b-it-qat
+  - model_name: deepseek-r1:8b
     litellm_params:
-      model: ollama_chat/gemma3:12b-it-qat
+      model: ollama_chat/deepseek-r1:8b
+      api_base: http://ollama:11434
+  
+  - model_name: hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL
+    litellm_params:
+      model: ollama_chat/hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL
       api_base: http://ollama:11434
 
 general_settings:
@@ -24,8 +29,8 @@ general_settings:
   
   # Default model fallback strategy
   fallbacks:
-    - gemini-2.5-flash: [gemma3:12b-it-qat]
-    - gemma3:12b-it-qat: [gemini-2.5-flash]
+    - gemini-2.5-flash: [hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL]
+    - hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL: [deepseek-r1:8b]
 
 litellm_settings:
   # Enable detailed logging

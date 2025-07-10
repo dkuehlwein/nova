@@ -40,37 +40,15 @@ class LLMModelService:
             return None
     
     async def initialize_default_models_in_litellm(self, db: AsyncSession) -> bool:
-        """Initialize default models directly in LiteLLM via API."""
+        """
+        Initialize models in LiteLLM. 
+        
+        Note: Static models are configured in configs/litellm_config.yaml.
+        This method only handles dynamic Google API key configuration.
+        """
         try:
-            # Add Ollama models (always available)
-            ollama_models = [
-                {
-                    "model_name": "gemma3:12b-it-qat",
-                    "litellm_params": {
-                        "model": "ollama/gemma3:12b-it-qat",
-                        "api_base": "http://ollama:11434"
-                    }
-                },
-                {
-                    "model_name": "gemma2:9b-instruct-q4_0",
-                    "litellm_params": {
-                        "model": "ollama/gemma2:9b-instruct-q4_0",
-                        "api_base": "http://ollama:11434"
-                    }
-                }
-            ]
-            
-            ollama_success = True
-            for model_config in ollama_models:
-                success = await self._add_model_to_litellm(model_config)
-                if not success:
-                    ollama_success = False
-            
-            if not ollama_success:
-                logger.error("Failed to add Ollama model to LiteLLM")
-                return False
-            
-            # Add Google model if API key is available in environment
+            # Only add Google model if API key is available in environment
+            # Ollama models are configured in litellm_config.yaml
             google_api_key = self.get_google_api_key()
             if google_api_key:
                 google_success = await self._add_model_to_litellm({
@@ -82,16 +60,17 @@ class LLMModelService:
                 })
                 
                 if google_success:
-                    logger.info("Successfully initialized both local and cloud models")
+                    logger.info("Successfully initialized Google model with runtime API key")
                 else:
-                    logger.warning("Local model added, but failed to add Google model")
+                    logger.warning("Failed to add Google model with runtime API key")
+                    
+                return google_success
             else:
-                logger.info("Google API key not available - only local model initialized")
-            
-            return True
+                logger.info("Google API key not available - using only models from config file")
+                return True
             
         except Exception as e:
-            logger.error(f"Error initializing default models: {e}")
+            logger.error(f"Error initializing dynamic models: {e}")
             return False
     
     async def _add_model_to_litellm(self, model_config: Dict) -> bool:

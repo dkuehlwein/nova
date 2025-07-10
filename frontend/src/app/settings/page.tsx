@@ -610,7 +610,7 @@ function APIKeysTab() {
         let defaultModel: string;
         
         if (newProvider === 'ollama') {
-          defaultModel = 'gemma3:12b-it-qat';
+          defaultModel = 'hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL';
         } else if (newProvider === 'google') {
           defaultModel = 'gemini-2.5-flash';
         } else {
@@ -707,13 +707,14 @@ function APIKeysTab() {
               <Label>Model</Label>
               {editingSettings ? (
                 <Select 
-                  value={String(editingSettings?.llm_model || 'gemma3:12b-it-qat')} 
+                  value={String(editingSettings?.llm_model || 'hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL')} 
                   onValueChange={(value) => handleInputChange('llm_model', value)}
                 >
                   <SelectContent>
                     {editingSettings?.llm_provider === 'ollama' ? (
                       <>
-                        <SelectItem value="gemma3:12b-it-qat">gemma3:12b-it-qat</SelectItem>
+                        <SelectItem value="deepseek-r1:8b" />
+                        <SelectItem value="hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL" />
                       </>
                     ) : (
                       <>
