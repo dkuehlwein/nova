@@ -175,8 +175,8 @@ class LLMModelService:
         try:
             fallback_config = {
                 "fallbacks": {
-                    "DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL": ["gemini-2.5-flash"],
-                    "gemini-2.5-flash": ["DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL"]
+                    "phi-4-Q4_K_M": ["gemini-2.5-flash"],
+                    "gemini-2.5-flash": ["phi-4-Q4_K_M"]
                 }
             }
             
@@ -217,7 +217,7 @@ class LLMModelService:
                         
                         for model in models:
                             model_name = model.get("model_name", "")
-                            if "DeepSeek" in model_name or "llama" in model_name.lower():
+                            if "phi-4" in model_name.lower() or "llama" in model_name.lower():
                                 local_models.append({"model_name": model_name})
                             elif "gemini" in model_name.lower():
                                 cloud_models.append({"model_name": model_name})

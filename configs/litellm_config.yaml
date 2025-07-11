@@ -1,8 +1,9 @@
 model_list:
   # llama.cpp local models (always available)
-  - model_name: DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL
+  # Phi-4 (supports function calling) - PRIMARY MODEL
+  - model_name: phi-4-Q4_K_M
     litellm_params:
-      model: openai/DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL
+      model: openai/phi-4-Q4_K_M
       api_base: http://llamacpp:8080/v1
       api_key: "not-required"
   

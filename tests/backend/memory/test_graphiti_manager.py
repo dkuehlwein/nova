@@ -191,7 +191,7 @@ class TestGraphitiClients:
             assert config.api_key == "test_api_key"
             assert config.model == "gemini-2.0-flash-exp"
             assert config.temperature == 0.1
-            assert config.max_tokens == 8192
+            assert config.max_tokens == 32000
 
     @pytest.mark.asyncio
     async def test_create_graphiti_llm_missing_api_key(self):

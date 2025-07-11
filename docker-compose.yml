@@ -73,7 +73,7 @@ services:
       - CUDA_VISIBLE_DEVICES=0
     entrypoint: ["/app/llama-server"]
     command: >
-      --model /models/DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL.gguf
+      --model /models/phi-4-Q4_K_M.gguf
       --host 0.0.0.0
       --port 8080
       --n-gpu-layers 37

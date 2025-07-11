@@ -64,8 +64,8 @@ class UserSettings(Base):
     mcp_server_preferences: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
     
     # LLM Settings
-    llm_model: Mapped[str] = mapped_column(String(100), default="DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL")
-    llm_temperature: Mapped[float] = mapped_column(Float, default=0.6)
+    llm_model: Mapped[str] = mapped_column(String(100), default="phi-4-Q4_K_M")
+    llm_temperature: Mapped[float] = mapped_column(Float, default=0.1)
     llm_max_tokens: Mapped[int] = mapped_column(Integer, default=64000)
 
 
@@ -111,8 +111,8 @@ class UserSettingsModel(BaseModel):
     mcp_server_preferences: Dict[str, Any] = Field(default_factory=dict)
     
     # LLM Settings
-    llm_model: str = "DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL"
-    llm_temperature: float = 0.6
+    llm_model: str = "phi-4-Q4_K_M"
+    llm_temperature: float = 0.1
     llm_max_tokens: int = 2048
 
     class Config:

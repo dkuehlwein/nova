@@ -40,6 +40,12 @@ def mock_user_settings():
     settings.email_label_filter = "INBOX"
     settings.email_max_per_fetch = 50
     settings.email_create_tasks = True
+    # Add missing required fields for UserSettingsModel validation
+    settings.memory_search_limit = 10
+    settings.memory_token_limit = 32000
+    settings.llm_model = "phi-4-Q4_K_M"
+    settings.llm_temperature = 0.1
+    settings.llm_max_tokens = 2048
     return settings
 
 

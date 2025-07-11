@@ -164,7 +164,7 @@ backend/
 After starting Nova with `docker-compose up -d`, test the chat endpoint:
 
 ```bash
-# Test basic chat with DeepSeek model
+# Test basic chat with Phi-4 model
 curl -X POST "http://localhost:8000/chat/stream" \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"Hello! What time is it?"}]}'
@@ -184,11 +184,11 @@ curl -X POST "http://localhost:8000/chat/stream" \
 Change the LLM model via API:
 
 ```bash
-# Update user settings to use DeepSeek model
+# Update user settings to use Phi-4 model (default)
 curl -X PATCH "http://localhost:8000/api/user-settings/" \
   -H "Content-Type: application/json" \
   -d '{
-    "llm_model": "DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL",
+    "llm_model": "phi-4-Q4_K_M",
     "llm_provider": "litellm",
     "llm_temperature": 0.1,
     "llm_max_tokens": 2048
@@ -214,6 +214,6 @@ curl http://localhost:8000/api/user-settings/
 
 ### Common Issues
 - **Tool calling fails**: Ensure llama.cpp has `--jinja` flag (required for function calling)
-- **Model loading slow**: DeepSeek R1 Q8_K_XL (~10GB) takes 30-60 seconds to load
+- **Model loading slow**: Phi-4 Q4_K_M (~8GB) takes 30-60 seconds to load
 - **CUDA not detected**: Check `docker logs nova-llamacpp-1` for GPU initialization
 - **Settings not persisting**: Restart Nova backend after changing LLM settings
