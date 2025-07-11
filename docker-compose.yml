@@ -102,7 +102,7 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-salt-1234}
       LLAMACPP_BASE_URL: http://llamacpp:8080
-      STORE_MODEL_IN_DB: "False"
+      STORE_MODEL_IN_DB: "True"
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
     depends_on:
       postgres:

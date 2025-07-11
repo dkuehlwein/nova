@@ -1,21 +1,13 @@
 model_list:
-  # Google Gemini models (cloud)
-  - model_name: gemini-2.5-flash
-    litellm_params:
-      model: gemini/gemini-2.5-flash
-      api_key: os.environ/GOOGLE_API_KEY
-  
-  - model_name: gemini-2.5-flash-preview-04-17
-    litellm_params:
-      model: gemini/gemini-2.5-flash-preview-04-17
-      api_key: os.environ/GOOGLE_API_KEY
-  
-  # llama.cpp local models
+  # llama.cpp local models (always available)
   - model_name: DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL
     litellm_params:
       model: openai/DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL
       api_base: http://llamacpp:8080/v1
       api_key: "not-required"
+  
+  # Google Gemini models are now added dynamically via API when valid Google API key is available
+  # This prevents exposure of unusable models when no Google API key is configured
 
 general_settings:
   master_key: "sk-1234"
@@ -23,10 +15,9 @@ general_settings:
   # Enable UI for monitoring
   ui_access_mode: "admin_only"
   
-  # Default model fallback strategy
+  # Default model fallback strategy (updated dynamically when Gemini models are available)
   fallbacks:
-    - DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL: [gemini-2.5-flash]
-    - gemini-2.5-flash: [DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL]
+    # No fallbacks defined here - managed dynamically by LLM service
 
 litellm_settings:
   # Enable detailed logging

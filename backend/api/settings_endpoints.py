@@ -51,8 +51,8 @@ async def get_onboarding_status(session: AsyncSession = Depends(get_db_session))
         if not settings.full_name or not settings.email:
             missing.append("user_profile")
         
-        # Google API key is now optional since we have local models
-        # No need to check for API keys in onboarding anymore
+        # Google API key is optional but provide status info
+        # Users can choose to use only local models or add Google API key for cloud models
         
         return OnboardingStatusModel(
             onboarding_complete=settings.onboarding_complete,
@@ -332,7 +332,8 @@ async def get_system_status():
             "api_keys_configured": {
                 "google": bool(app_settings.GOOGLE_API_KEY),
                 "langsmith": bool(app_settings.LANGCHAIN_API_KEY)
-            }
+            },
+            "google_models_available": bool(app_settings.GOOGLE_API_KEY)  # Indicates if Gemini models should be available
         }
         
         return status
@@ -524,12 +525,26 @@ async def save_api_keys(request: dict):
                     }
                 }
             )
+            
+            # Refresh LiteLLM models if Google API key was updated
+            if "GOOGLE_API_KEY" in updated_keys:
+                try:
+                    from services.llm_service import llm_service
+                    from database.database import db_manager
+                    
+                    async with db_manager.get_session() as session:
+                        await llm_service.refresh_models_after_api_key_update(session)
+                    
+                    logger.info("Triggered model refresh after Google API key update")
+                except Exception as e:
+                    logger.warning(f"Failed to refresh models after API key update: {e}")
         
         return {
             "status": "success",
             "message": f"Saved {len(updated_keys)} API keys to .env file",
             "updated_keys": updated_keys,
-            "env_file": str(env_file)
+            "env_file": str(env_file),
+            "models_refreshed": "GOOGLE_API_KEY" in updated_keys
         }
         
     except HTTPException:
@@ -537,3 +552,35 @@ async def save_api_keys(request: dict):
     except Exception as e:
         logger.error("Failed to save API keys", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to save API keys: {str(e)}")
+
+
+@router.get("/google-api-status")
+async def get_google_api_status():
+    """Get the current status of Google API key and model availability."""
+    try:
+        from config import settings as app_settings
+        from services.llm_service import llm_service
+        
+        # Check if API key is configured
+        has_api_key = bool(app_settings.GOOGLE_API_KEY)
+        
+        # Check if API key is valid (if configured)
+        is_valid = False
+        if has_api_key:
+            is_valid = await llm_service.is_google_api_key_valid()
+        
+        # Get available models
+        available_models = await llm_service.get_available_models()
+        gemini_models_count = len(available_models.get("cloud", []))
+        
+        return {
+            "has_google_api_key": has_api_key,
+            "google_api_key_valid": is_valid,
+            "gemini_models_available": gemini_models_count,
+            "models": available_models,
+            "status": "ready" if is_valid else ("configured_invalid" if has_api_key else "not_configured")
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get Google API status", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get Google API status")

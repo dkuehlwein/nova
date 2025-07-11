@@ -563,13 +563,24 @@ function UserSettingsTab() {
 // API Keys and Model Settings tab content
 function APIKeysTab() {
   const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(null);
+  const [googleApiStatus, setGoogleApiStatus] = useState<{
+    has_google_api_key: boolean;
+    google_api_key_valid: boolean;
+    gemini_models_available: number;
+    status: string;
+  } | null>(null);
+  const [showApiKeyForm, setShowApiKeyForm] = useState(false);
+  const [newApiKey, setNewApiKey] = useState('');
+  const [validatingApiKey, setValidatingApiKey] = useState(false);
+  const [savingApiKey, setSavingApiKey] = useState(false);
   const { data: userSettings, isLoading: loading } = useUserSettings();
-  const { data: availableModels, isLoading: modelsLoading } = useAvailableModels();
+  const { data: availableModels, isLoading: modelsLoading, refetch: refetchModels } = useAvailableModels();
   const updateUserSettings = useUpdateUserSettings();
   const [editingSettings, setEditingSettings] = useState<Record<string, unknown> | null>(null);
 
   React.useEffect(() => {
     fetchSystemStatus();
+    fetchGoogleApiStatus();
   }, []);
 
   React.useEffect(() => {
@@ -587,6 +598,20 @@ function APIKeysTab() {
     }
   };
 
+  const fetchGoogleApiStatus = async () => {
+    try {
+      const data = await apiRequest('/api/user-settings/google-api-status') as {
+        has_google_api_key: boolean;
+        google_api_key_valid: boolean;
+        gemini_models_available: number;
+        status: string;
+      };
+      setGoogleApiStatus(data);
+    } catch (error) {
+      console.error('Failed to load Google API status:', error);
+    }
+  };
+
   const handleSave = async () => {
     if (!editingSettings) return;
     
@@ -598,6 +623,64 @@ function APIKeysTab() {
       });
     } catch (error) {
       console.error('Failed to save settings:', error);
+    }
+  };
+
+  const validateGoogleApiKey = async (apiKey: string) => {
+    setValidatingApiKey(true);
+    try {
+      const response = await apiRequest('/api/user-settings/validate-api-key', {
+        method: 'POST',
+        body: JSON.stringify({
+          key_type: 'google_api_key',
+          api_key: apiKey
+        })
+      }) as { valid: boolean };
+      return response.valid;
+    } catch (error) {
+      console.error('Failed to validate Google API key:', error);
+      return false;
+    } finally {
+      setValidatingApiKey(false);
+    }
+  };
+
+  const saveGoogleApiKey = async () => {
+    if (!newApiKey.trim()) return;
+    
+    setSavingApiKey(true);
+    try {
+      // First validate the key
+      const isValid = await validateGoogleApiKey(newApiKey);
+      if (!isValid) {
+        alert('Invalid Google API key. Please check your key and try again.');
+        return;
+      }
+
+      // Save the validated key
+      await apiRequest('/api/user-settings/save-api-keys', {
+        method: 'POST',
+        body: JSON.stringify({
+          api_keys: {
+            google_api_key: newApiKey
+          }
+        })
+      });
+
+      // Refresh status and models
+      await fetchGoogleApiStatus();
+      await refetchModels();
+      
+      // Reset form
+      setNewApiKey('');
+      setShowApiKeyForm(false);
+      
+      alert('Google API key saved successfully! Gemini models are now available.');
+    } catch (error) {
+      console.error('Failed to save Google API key:', error);
+      alert('Failed to save Google API key. Please try again.');
+    } finally {
+      setSavingApiKey(false);
     }
   };
 
@@ -632,24 +715,110 @@ function APIKeysTab() {
           </p>
           
           <div className="space-y-4 border border-muted rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Google API Key</p>
-                <p className="text-sm text-muted-foreground">For Gmail, Calendar, and cloud AI features</p>
+            {/* Google API Key Section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Google API Key</p>
+                  <p className="text-sm text-muted-foreground">For Gmail, Calendar, and cloud AI features</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {googleApiStatus?.status === 'ready' && (
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  )}
+                  {googleApiStatus?.status === 'configured_invalid' && (
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                  )}
+                  <Badge variant={googleApiStatus?.has_google_api_key ? 
+                    (googleApiStatus?.google_api_key_valid ? "default" : "destructive") : 
+                    "secondary"
+                  }>
+                    {googleApiStatus?.status === 'ready' ? 'Valid' :
+                     googleApiStatus?.status === 'configured_invalid' ? 'Invalid' :
+                     'Not configured'}
+                  </Badge>
+                </div>
               </div>
-              <Badge variant={systemStatus?.api_keys_configured?.google ? "default" : "secondary"}>
-                {systemStatus?.api_keys_configured?.google ? "Configured" : "Not configured"}
-              </Badge>
+              
+              {googleApiStatus?.has_google_api_key && (
+                <div className="text-sm text-muted-foreground">
+                  <p>• Status: {googleApiStatus.google_api_key_valid ? 'Valid' : 'Invalid'}</p>
+                  <p>• Gemini models available: {googleApiStatus.gemini_models_available}</p>
+                </div>
+              )}
+              
+              <div className="flex items-center space-x-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setShowApiKeyForm(!showApiKeyForm)}
+                >
+                  {googleApiStatus?.has_google_api_key ? 'Update API Key' : 'Add API Key'}
+                </Button>
+                {googleApiStatus?.has_google_api_key && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={fetchGoogleApiStatus}
+                  >
+                    Refresh Status
+                  </Button>
+                )}
+              </div>
+              
+              {showApiKeyForm && (
+                <div className="space-y-3 p-3 bg-muted/50 rounded border">
+                  <div className="space-y-2">
+                    <Label htmlFor="google-api-key">Google API Key</Label>
+                    <Input
+                      id="google-api-key"
+                      type="password"
+                      value={newApiKey}
+                      onChange={(e) => setNewApiKey(e.target.value)}
+                      placeholder="Enter your Google API key"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Get your API key from{' '}
+                      <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" 
+                         className="text-primary hover:underline">
+                        Google Cloud Console
+                      </a>
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button 
+                      size="sm"
+                      onClick={saveGoogleApiKey}
+                      disabled={!newApiKey.trim() || validatingApiKey || savingApiKey}
+                    >
+                      {savingApiKey ? 'Saving...' : validatingApiKey ? 'Validating...' : 'Save'}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        setShowApiKeyForm(false);
+                        setNewApiKey('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
             
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">LangSmith API Key</p>
-                <p className="text-sm text-muted-foreground">For AI debugging and monitoring (optional)</p>
+            {/* LangSmith API Key Section */}
+            <div className="border-t border-border pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">LangSmith API Key</p>
+                  <p className="text-sm text-muted-foreground">For AI debugging and monitoring (optional)</p>
+                </div>
+                <Badge variant={systemStatus?.api_keys_configured?.langsmith ? "default" : "secondary"}>
+                  {systemStatus?.api_keys_configured?.langsmith ? "Configured" : "Not configured"}
+                </Badge>
               </div>
-              <Badge variant={systemStatus?.api_keys_configured?.langsmith ? "default" : "secondary"}>
-                {systemStatus?.api_keys_configured?.langsmith ? "Configured" : "Not configured"}
-              </Badge>
             </div>
             
           </div>

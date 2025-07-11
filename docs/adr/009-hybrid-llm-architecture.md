@@ -139,12 +139,18 @@ litellm:
    - System status monitoring
    - LiteLLM admin UI integration
 
+5. **API Key Validation**
+   - Google API key validation endpoint (`/api/user-settings/validate-api-key`)
+   - LangSmith API key validation
+   - Secure key storage in environment variables
+
 ### 🔄 In Progress
 
-1. **Dynamic Model Discovery**
-   - API endpoint for available models (`/api/models/available`)
-   - Dynamic frontend model dropdown
-   - Consistent model naming across stack
+1. **Conditional Google API Key Validation** 
+   - Remove static Gemini models from LiteLLM config
+   - Add dynamic Gemini model registration based on valid Google API key
+   - Update model discovery endpoint to filter unavailable models
+   - Ensure users can only select models they can actually use
 
 2. **Enhanced Monitoring**
    - Model performance metrics
@@ -254,10 +260,10 @@ CREATE TABLE user_settings (
 
 ## Future Considerations
 
-### Next Phase: Dynamic Model Discovery
-1. **API Endpoints**: Query available models from LiteLLM
-2. **Frontend Updates**: Dynamic model dropdown population
-3. **Consistency**: Eliminate hardcoded model lists
+### Next Phase: Conditional Model Availability
+1. **Google API Key Validation**: Only expose Gemini models when valid Google API key is available
+2. **Dynamic Model Registration**: Add/remove cloud models based on API key availability
+3. **Improved User Experience**: Prevent selection of unusable models
 
 ### Long-term Roadmap
 1. **Multi-Model Support**: Multiple local models simultaneously

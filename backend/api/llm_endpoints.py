@@ -20,21 +20,20 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 
 @router.get("/models")
 async def list_models():
-    """List all LLM models from LiteLLM."""
+    """List available LLM models, filtered by what's actually usable."""
     try:
-        url = f"{settings.LITELLM_BASE_URL}/model/info"
-        headers = {"Authorization": f"Bearer {settings.LITELLM_MASTER_KEY}"}
+        # Use the enhanced service method that filters models
+        available_models = await llm_service.get_available_models()
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return {
-                        "models": data.get("data", []),
-                        "total": len(data.get("data", []))
-                    }
-                else:
-                    raise HTTPException(status_code=response.status, detail="Failed to fetch models from LiteLLM")
+        # Flatten the categorized models for compatibility
+        all_models = []
+        all_models.extend(available_models.get("local", []))
+        all_models.extend(available_models.get("cloud", []))
+        
+        return {
+            "models": all_models,
+            "total": len(all_models)
+        }
     
     except Exception as e:
         logger.error(f"Error listing LLM models: {str(e)}")
@@ -47,15 +46,33 @@ async def list_models():
 async def initialize_default_models(
     db: AsyncSession = Depends(get_db_session)
 ):
-    """Initialize default LLM models in LiteLLM."""
+    """Initialize default LLM models in LiteLLM with conditional Gemini support."""
     try:
         success = await llm_service.initialize_default_models_in_litellm(db)
         
         if success:
-            return {"message": "Successfully initialized default models in LiteLLM"}
+            return {"message": "Successfully initialized models in LiteLLM (conditional on API key validity)"}
         else:
-            raise HTTPException(status_code=500, detail="Failed to initialize default models")
+            raise HTTPException(status_code=500, detail="Failed to initialize models")
     
     except Exception as e:
-        logger.error(f"Error initializing default models: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to initialize default models")
+        logger.error(f"Error initializing models: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to initialize models")
+
+
+@router.get("/models/categorized")
+async def list_models_categorized():
+    """List available LLM models categorized by type (local/cloud)."""
+    try:
+        available_models = await llm_service.get_available_models()
+        
+        return {
+            "models": available_models,
+            "total_local": len(available_models.get("local", [])),
+            "total_cloud": len(available_models.get("cloud", [])),
+            "total": len(available_models.get("local", [])) + len(available_models.get("cloud", []))
+        }
+    
+    except Exception as e:
+        logger.error(f"Error listing categorized models: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to list categorized models")
