@@ -48,7 +48,7 @@ class LLMModelService:
         """
         try:
             # Only add Google model if API key is available in environment
-            # Ollama models are configured in litellm_config.yaml
+            # Local models are configured in litellm_config.yaml
             google_api_key = self.get_google_api_key()
             if google_api_key:
                 google_success = await self._add_model_to_litellm({

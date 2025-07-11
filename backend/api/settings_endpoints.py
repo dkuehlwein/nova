@@ -269,7 +269,7 @@ async def _check_service_connections(app_settings):
             }
     
     # Run checks in parallel
-    ollama_check = check_http_service(f"{app_settings.OLLAMA_BASE_URL}/api/tags")
+    llamacpp_check = check_http_service(f"{app_settings.LLAMACPP_BASE_URL}/health")
     litellm_check = check_http_service(f"{app_settings.LITELLM_BASE_URL}/health", app_settings.LITELLM_MASTER_KEY)
     
     # Neo4j check (synchronous)
@@ -280,18 +280,18 @@ async def _check_service_connections(app_settings):
     )
     
     # Wait for HTTP checks
-    ollama_status, litellm_status = await asyncio.gather(
-        ollama_check, litellm_check, return_exceptions=True
+    llamacpp_status, litellm_status = await asyncio.gather(
+        llamacpp_check, litellm_check, return_exceptions=True
     )
     
     # Handle exceptions
-    if isinstance(ollama_status, Exception):
-        ollama_status = {"status": "unhealthy", "error": str(ollama_status)}
+    if isinstance(llamacpp_status, Exception):
+        llamacpp_status = {"status": "unhealthy", "error": str(llamacpp_status)}
     if isinstance(litellm_status, Exception):
         litellm_status = {"status": "unhealthy", "error": str(litellm_status)}
     
     return {
-        "ollama": ollama_status,
+        "llamacpp": llamacpp_status,
         "litellm": litellm_status,
         "neo4j": neo4j_status
     }
@@ -326,7 +326,7 @@ async def get_system_status():
             "services": {
                 "chat_agent_port": app_settings.CHAT_AGENT_PORT,
                 "core_agent_port": app_settings.CORE_AGENT_PORT,
-                "ollama": service_status["ollama"],
+                "llamacpp": service_status["llamacpp"],
                 "litellm": service_status["litellm"],
                 "neo4j": service_status["neo4j"]
             },

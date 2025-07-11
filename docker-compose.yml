@@ -79,6 +79,7 @@ services:
       --n-gpu-layers -1
       --ctx-size 32768
       --parallel 4
+      --jinja
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s

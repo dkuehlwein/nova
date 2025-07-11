@@ -69,8 +69,8 @@ class Settings(BaseSettings):
     LITELLM_BASE_URL: str = "http://localhost:4000"  # LiteLLM gateway URL
     LITELLM_MASTER_KEY: str = "sk-1234"  # Master key for LiteLLM API access
     
-    # Ollama Configuration (Tier 2: Deployment Environment)
-    OLLAMA_BASE_URL: str = "http://localhost:11434"  # Ollama server URL
+    # llama.cpp Configuration (Tier 2: Deployment Environment)
+    LLAMACPP_BASE_URL: str = "http://localhost:8080"  # llama.cpp server URL
 
     @model_validator(mode="after")
     def compute_urls(self):

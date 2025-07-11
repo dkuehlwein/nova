@@ -42,8 +42,8 @@ cd frontend && npm run lint
 
 ### Docker Services
 ```bash
-# Start dependencies (PostgreSQL, Redis, Neo4j)
-docker-compose up -d postgres redis neo4j
+# Start dependencies (PostgreSQL, Redis, Neo4j, llama.cpp, LiteLLM)
+docker-compose up -d postgres redis neo4j llamacpp litellm
 
 # Full stack with containers (including frontend)
 docker-compose up -d
@@ -60,7 +60,8 @@ Nova is an AI-powered kanban task management system with a dual-agent architectu
 1. **Chat Agent Service** (`start_website.py:8000`) - User-facing chat interface and API endpoints
 2. **Core Agent Service** (`start_core_agent.py:8001`) - Autonomous task processing loop
 3. **Frontend** (`Next.js:3000`) - Web interface for task management (containerized)
-4. **MCP Servers** - External tool integrations (Google Workspace, Feature Requests)
+4. **Local LLM Infrastructure** - llama.cpp (`8080`) + LiteLLM gateway (`4000`) for local AI inference
+5. **MCP Servers** - External tool integrations (Google Workspace, Feature Requests)
 
 ### Key Architectural Patterns
 
@@ -132,6 +133,7 @@ backend/
 ### Key Technologies
 - **Backend**: FastAPI, LangChain, LangGraph, SQLAlchemy, Redis, PostgreSQL
 - **Frontend**: Next.js, React, TailwindCSS, Radix UI
+- **Local LLM**: llama.cpp (CUDA-accelerated) + LiteLLM (OpenAI-compatible gateway)
 - **Memory**: Graphiti (Neo4j graph memory system)
 - **Task Queue**: Celery with Redis broker
 - **Tools**: MCP (Model Context Protocol) servers
@@ -155,3 +157,63 @@ backend/
 3. Follow single responsibility principle for API endpoints
 4. Use async/await throughout for better performance
 5. Leverage hot-reload for prompts and configuration changes
+
+## Testing Chat and Tool Calling
+
+### Quick Chat Test
+After starting Nova with `docker-compose up -d`, test the chat endpoint:
+
+```bash
+# Test basic chat with DeepSeek model
+curl -X POST "http://localhost:8000/chat/stream" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Hello! What time is it?"}]}'
+```
+
+### Tool Calling Test
+Test Nova's tool calling capabilities:
+
+```bash
+# Test tool calling (task creation and time lookup)
+curl -X POST "http://localhost:8000/chat/stream" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Create a task called Test Task and tell me the current time"}]}'
+```
+
+### Update Model Settings
+Change the LLM model via API:
+
+```bash
+# Update user settings to use DeepSeek model
+curl -X PATCH "http://localhost:8000/api/user-settings/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "llm_model": "DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL",
+    "llm_provider": "litellm",
+    "llm_temperature": 0.1,
+    "llm_max_tokens": 2048
+  }'
+```
+
+### Service Health Checks
+Verify all services are running:
+
+```bash
+# Check Nova backend
+curl http://localhost:8000/health
+
+# Check llama.cpp
+curl http://localhost:8080/health
+
+# Check LiteLLM gateway
+curl http://localhost:4000/health/readiness
+
+# Check user settings
+curl http://localhost:8000/api/user-settings/
+```
+
+### Common Issues
+- **Tool calling fails**: Ensure llama.cpp has `--jinja` flag (required for function calling)
+- **Model loading slow**: DeepSeek R1 Q8_K_XL (~10GB) takes 30-60 seconds to load
+- **CUDA not detected**: Check `docker logs nova-llamacpp-1` for GPU initialization
+- **Settings not persisting**: Restart Nova backend after changing LLM settings
