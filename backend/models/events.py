@@ -113,7 +113,6 @@ class EmailSettingsUpdatedEventData(BaseModel):
 class LLMSettingsUpdatedEventData(BaseModel):
     """Data structure for LLM settings update events."""
     model: str
-    provider: str
     temperature: float
     max_tokens: int
 
@@ -249,7 +248,6 @@ def create_email_settings_updated_event(
 
 def create_llm_settings_updated_event(
     model: str,
-    provider: str,
     temperature: float,
     max_tokens: int,
     source: str = "settings-service"
@@ -259,7 +257,6 @@ def create_llm_settings_updated_event(
         type="llm_settings_updated",
         data=LLMSettingsUpdatedEventData(
             model=model,
-            provider=provider,
             temperature=temperature,
             max_tokens=max_tokens
         ).model_dump(),

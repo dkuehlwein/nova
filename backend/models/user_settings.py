@@ -64,8 +64,7 @@ class UserSettings(Base):
     mcp_server_preferences: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
     
     # LLM Settings
-    llm_model: Mapped[str] = mapped_column(String(100), default="hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL")
-    llm_provider: Mapped[str] = mapped_column(String(50), default="ollama")  # ollama or google
+    llm_model: Mapped[str] = mapped_column(String(100), default="DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL")
     llm_temperature: Mapped[float] = mapped_column(Float, default=0.6)
     llm_max_tokens: Mapped[int] = mapped_column(Integer, default=64000)
 
@@ -112,10 +111,9 @@ class UserSettingsModel(BaseModel):
     mcp_server_preferences: Dict[str, Any] = Field(default_factory=dict)
     
     # LLM Settings
-    llm_model: str = "gemma3-12b-local"
-    llm_provider: str = "ollama"
-    llm_temperature: float = 0.1
-    llm_max_tokens: int = 64000
+    llm_model: str = "DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL"
+    llm_temperature: float = 0.6
+    llm_max_tokens: int = 2048
 
     class Config:
         from_attributes = True
@@ -158,7 +156,6 @@ class UserSettingsUpdateModel(BaseModel):
     
     # LLM Settings
     llm_model: Optional[str] = None
-    llm_provider: Optional[str] = None
     llm_temperature: Optional[float] = None
     llm_max_tokens: Optional[int] = None
 

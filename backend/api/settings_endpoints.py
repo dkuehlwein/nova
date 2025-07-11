@@ -156,7 +156,7 @@ async def update_user_settings(
         
         # If LLM-related settings were updated, publish Redis event for chat agent cache clearing
         llm_fields = {
-            "llm_model", "llm_provider", "llm_temperature", "llm_max_tokens"
+            "llm_model", "llm_temperature", "llm_max_tokens"
         }
         if any(field in update_data for field in llm_fields):
             try:
@@ -166,7 +166,6 @@ async def update_user_settings(
                 
                 llm_event = create_llm_settings_updated_event(
                     model=settings.llm_model,
-                    provider=settings.llm_provider,
                     temperature=settings.llm_temperature,
                     max_tokens=settings.llm_max_tokens,
                     source="settings-api"

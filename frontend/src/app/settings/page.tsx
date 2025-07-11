@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-import { useMCPServers, useToggleMCPServer, useSystemHealth, useRestartService, useUserSettings, useUpdateUserSettings } from "@/hooks/useNovaQueries";
+import { useMCPServers, useToggleMCPServer, useSystemHealth, useRestartService, useUserSettings, useUpdateUserSettings, useAvailableModels } from "@/hooks/useNovaQueries";
 import { useState, Suspense } from "react";
 import React from "react";
 import SystemPromptEditor from "@/components/SystemPromptEditor";
@@ -226,6 +226,7 @@ interface SystemStatusResponse {
     ollama?: ServiceStatus;
     litellm?: ServiceStatus;
     neo4j?: ServiceStatus;
+    llamacpp?: ServiceStatus;
   };
   api_keys_configured?: {
     google?: boolean;
@@ -343,17 +344,17 @@ function SystemStatusTab() {
       <div className="p-4 border border-border rounded-lg">
         <div className="flex items-center space-x-2 mb-2">
           <Cpu className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">Ollama (Local AI)</span>
+          <span className="text-sm font-medium text-foreground">llama.cpp (Local AI)</span>
         </div>
         <div className="flex items-center space-x-2">
           {statusLoading ? (
             <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
           ) : (
-            getStatusIcon(systemStatus?.services?.ollama?.status === 'healthy' ? 'operational' : 'offline')
+            getStatusIcon(systemStatus?.services?.llamacpp?.status === 'healthy' ? 'operational' : 'offline')
           )}
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          {statusLoading ? "Loading..." : `Last check: ${systemStatus?.services?.ollama?.status === 'healthy' ? "Just now" : "Failed"}`}
+          {statusLoading ? "Loading..." : `Last check: ${systemStatus?.services?.llamacpp?.status === 'healthy' ? "Just now" : "Failed"}`}
         </p>
       </div>
 
@@ -563,6 +564,7 @@ function UserSettingsTab() {
 function APIKeysTab() {
   const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(null);
   const { data: userSettings, isLoading: loading } = useUserSettings();
+  const { data: availableModels, isLoading: modelsLoading } = useAvailableModels();
   const updateUserSettings = useUpdateUserSettings();
   const [editingSettings, setEditingSettings] = useState<Record<string, unknown> | null>(null);
 
@@ -591,7 +593,6 @@ function APIKeysTab() {
     try {
       await updateUserSettings.mutateAsync({
         llm_model: editingSettings.llm_model as string,
-        llm_provider: editingSettings.llm_provider as string,
         llm_temperature: editingSettings.llm_temperature as number,
         llm_max_tokens: editingSettings.llm_max_tokens as number,
       });
@@ -603,27 +604,6 @@ function APIKeysTab() {
   const handleInputChange = (field: string, value: string | number) => {
     setEditingSettings(prev => {
       if (!prev) return null;
-      
-      // When provider changes, update model to a compatible default
-      if (field === 'llm_provider') {
-        const newProvider = value as string;
-        let defaultModel: string;
-        
-        if (newProvider === 'litellm') {
-          defaultModel = 'DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL';
-        } else if (newProvider === 'google') {
-          defaultModel = 'gemini-2.5-flash';
-        } else {
-          defaultModel = prev.llm_model as string;
-        }
-        
-        return { 
-          ...prev, 
-          [field]: value, 
-          llm_model: defaultModel 
-        };
-      }
-      
       return { ...prev, [field]: value };
     });
   };
@@ -683,25 +663,6 @@ function APIKeysTab() {
           </p>
           
           <div className="space-y-4 border border-muted rounded-lg p-4">
-            <div className="space-y-2">
-              <Label>AI Provider</Label>
-              {editingSettings ? (
-                <Select 
-                  value={String(editingSettings?.llm_provider || 'litellm')} 
-                  onValueChange={(value) => handleInputChange('llm_provider', value)}
-                >
-                  <SelectContent>
-                    <SelectItem value="litellm">LiteLLM (Local)</SelectItem>
-                    <SelectItem value="google">Google (Cloud)</SelectItem>
-                  </SelectContent>
-                </Select>
-              ) : (
-                <div className="h-10 w-full bg-muted rounded animate-pulse" />
-              )}
-              <p className="text-xs text-muted-foreground">
-                AI provider: LiteLLM (local) or Google (cloud)
-              </p>
-            </div>
             
             <div className="space-y-2">
               <Label>Model</Label>
@@ -714,16 +675,27 @@ function APIKeysTab() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {editingSettings?.llm_provider === 'litellm' ? (
+                    {modelsLoading ? (
+                      <SelectItem value="loading" disabled>Loading models...</SelectItem>
+                    ) : availableModels?.models ? (
                       <>
-                        <SelectItem value="DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL">DeepSeek R1 Q8_K_XL (Local)</SelectItem>
-                        <SelectItem value="gemini-2.5-flash">gemini-2.5-flash (Fallback)</SelectItem>
+                        {/* Local Models */}
+                        {availableModels.models.local?.map((model: {model_name: string}) => (
+                          <SelectItem key={model.model_name} value={model.model_name}>
+                            {model.model_name.includes('DeepSeek') ? 'DeepSeek R1 Q8_K_XL (Local)' : model.model_name}
+                          </SelectItem>
+                        ))}
+                        {/* Cloud Models */}
+                        {availableModels.models.cloud?.map((model: {model_name: string}) => (
+                          <SelectItem key={model.model_name} value={model.model_name}>
+                            {model.model_name === 'gemini-2.5-flash' ? 'Gemini 2.5 Flash' : 
+                             model.model_name === 'gemini-2.5-flash-preview-04-17' ? 'Gemini 2.5 Flash Preview' : 
+                             model.model_name}
+                          </SelectItem>
+                        ))}
                       </>
                     ) : (
-                      <>
-                        <SelectItem value="gemini-2.5-flash">gemini-2.5-flash</SelectItem>
-                        <SelectItem value="gemini-2.5-flash-preview-04-17">gemini-2.5-flash-preview-04-17</SelectItem>
-                      </>
+                      <SelectItem value="fallback">DeepSeek R1 Q8_K_XL (Local)</SelectItem>
                     )}
                   </SelectContent>
                 </Select>

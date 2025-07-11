@@ -350,6 +350,25 @@ export function useUserSettings() {
   })
 }
 
+export function useAvailableModels() {
+  return useQuery({
+    queryKey: ['available-models'],
+    queryFn: async () => {
+      const response = await apiRequest('/llm/models') as {models: {model_name: string}[], total: number}
+      // Transform the response to match our expected format
+      return {
+        models: {
+          local: response.models.filter((model: {model_name: string}) => model.model_name.includes('DeepSeek') || model.model_name.includes('llama')),
+          cloud: response.models.filter((model: {model_name: string}) => model.model_name.includes('gemini'))
+        },
+        total_models: response.total
+      }
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes - models don't change often
+    refetchOnWindowFocus: false
+  })
+}
+
 export function useUpdateUserSettings() {
   const queryClient = useQueryClient()
   

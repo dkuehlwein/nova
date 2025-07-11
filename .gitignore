@@ -235,6 +235,4 @@ GEMINI.md
 # User Profile Configuration (contains PII)
 configs/user_profile.yaml
 configs/user_profile.yaml.backup
-
-# LLMs
-models/
+models/DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL.gguf

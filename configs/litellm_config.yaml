@@ -13,7 +13,7 @@ model_list:
   # llama.cpp local models
   - model_name: DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL
     litellm_params:
-      model: gpt-3.5-turbo  # llama.cpp server uses OpenAI-compatible endpoint
+      model: openai/DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL
       api_base: http://llamacpp:8080/v1
       api_key: "not-required"
 
