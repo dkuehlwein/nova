@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { useMCPServers, useToggleMCPServer, useSystemHealth, useRestartService, useUserSettings, useUpdateUserSettings } from "@/hooks/useNovaQueries";
 import { useState, Suspense } from "react";
@@ -609,8 +609,8 @@ function APIKeysTab() {
         const newProvider = value as string;
         let defaultModel: string;
         
-        if (newProvider === 'ollama') {
-          defaultModel = 'hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL';
+        if (newProvider === 'litellm') {
+          defaultModel = 'DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL';
         } else if (newProvider === 'google') {
           defaultModel = 'gemini-2.5-flash';
         } else {
@@ -687,11 +687,11 @@ function APIKeysTab() {
               <Label>AI Provider</Label>
               {editingSettings ? (
                 <Select 
-                  value={String(editingSettings?.llm_provider || 'ollama')} 
+                  value={String(editingSettings?.llm_provider || 'litellm')} 
                   onValueChange={(value) => handleInputChange('llm_provider', value)}
                 >
                   <SelectContent>
-                    <SelectItem value="ollama">Ollama (Local)</SelectItem>
+                    <SelectItem value="litellm">LiteLLM (Local)</SelectItem>
                     <SelectItem value="google">Google (Cloud)</SelectItem>
                   </SelectContent>
                 </Select>
@@ -699,7 +699,7 @@ function APIKeysTab() {
                 <div className="h-10 w-full bg-muted rounded animate-pulse" />
               )}
               <p className="text-xs text-muted-foreground">
-                AI provider: Ollama (local) or Google (cloud)
+                AI provider: LiteLLM (local) or Google (cloud)
               </p>
             </div>
             
@@ -707,14 +707,17 @@ function APIKeysTab() {
               <Label>Model</Label>
               {editingSettings ? (
                 <Select 
-                  value={String(editingSettings?.llm_model || 'hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL')} 
+                  value={String(editingSettings?.llm_model || 'DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL')} 
                   onValueChange={(value) => handleInputChange('llm_model', value)}
                 >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
-                    {editingSettings?.llm_provider === 'ollama' ? (
+                    {editingSettings?.llm_provider === 'litellm' ? (
                       <>
-                        <SelectItem value="deepseek-r1:8b" />
-                        <SelectItem value="hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL" />
+                        <SelectItem value="DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL">DeepSeek R1 Q8_K_XL (Local)</SelectItem>
+                        <SelectItem value="gemini-2.5-flash">gemini-2.5-flash (Fallback)</SelectItem>
                       </>
                     ) : (
                       <>

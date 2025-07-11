@@ -235,3 +235,6 @@ GEMINI.md
 # User Profile Configuration (contains PII)
 configs/user_profile.yaml
 configs/user_profile.yaml.backup
+
+# LLMs
+models/

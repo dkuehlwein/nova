@@ -10,16 +10,12 @@ model_list:
       model: gemini/gemini-2.5-flash-preview-04-17
       api_key: os.environ/GOOGLE_API_KEY
   
-  # Ollama local models
-  - model_name: deepseek-r1:8b
+  # llama.cpp local models
+  - model_name: DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL
     litellm_params:
-      model: ollama_chat/deepseek-r1:8b
-      api_base: http://ollama:11434
-  
-  - model_name: hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL
-    litellm_params:
-      model: ollama_chat/hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL
-      api_base: http://ollama:11434
+      model: gpt-3.5-turbo  # llama.cpp server uses OpenAI-compatible endpoint
+      api_base: http://llamacpp:8080/v1
+      api_key: "not-required"
 
 general_settings:
   master_key: "sk-1234"
@@ -29,8 +25,8 @@ general_settings:
   
   # Default model fallback strategy
   fallbacks:
-    - gemini-2.5-flash: [hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL]
-    - hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q8_K_XL: [deepseek-r1:8b]
+    - DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL: [gemini-2.5-flash]
+    - gemini-2.5-flash: [DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL]
 
 litellm_settings:
   # Enable detailed logging

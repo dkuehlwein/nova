@@ -54,9 +54,9 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Ollama for local LLM inference with GPU support
-  ollama:
-    image: ollama/ollama:latest
+  # llama.cpp for local LLM inference with GPU support
+  llamacpp:
+    image: ghcr.io/ggerganov/llama.cpp:server-cuda
     deploy:
       resources:
         reservations:
@@ -65,20 +65,26 @@ services:
               count: 1
               capabilities: [gpu]
     ports:
-      - "11434:11434"
+      - "8080:8080"
     volumes:
-      - ollama_data:/root/.ollama
+      - ./models:/models
+      - ~/.cache/huggingface:/root/.cache/huggingface
     environment:
-      - OLLAMA_MODELS=/root/.ollama/models
-      - OLLAMA_HOST=0.0.0.0
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
+    entrypoint: ["/app/llama-server"]
+    command: >
+      --model /models/DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL.gguf
+      --host 0.0.0.0
+      --port 8080
+      --n-gpu-layers -1
+      --ctx-size 32768
+      --parallel 4
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:11434/api/tags"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 90s
     restart: unless-stopped
 
   # LiteLLM Gateway for unified LLM API
@@ -93,7 +99,7 @@ services:
       DATABASE_URL: postgresql://${LITELLM_USER:-litellm}:${LITELLM_PASSWORD:-litellm_dev_password}@postgres:5432/${LITELLM_DB:-litellm}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-salt-1234}
-      OLLAMA_BASE_URL: http://ollama:11434
+      LLAMACPP_BASE_URL: http://llamacpp:8080
       STORE_MODEL_IN_DB: "False"
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
     depends_on:
@@ -133,7 +139,7 @@ services:
       CREATE_TABLES: ${CREATE_TABLES:-true}
       # LLM Provider Configuration
       LLM_PROVIDER: ${LLM_PROVIDER:-google}
-      OLLAMA_BASE_URL: http://ollama:11434
+      LLAMACPP_BASE_URL: http://llamacpp:8080
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
     depends_on:
@@ -180,7 +186,7 @@ services:
       SQL_DEBUG: ${SQL_DEBUG:-false}
       # LLM Provider Configuration
       LLM_PROVIDER: ${LLM_PROVIDER:-google}
-      OLLAMA_BASE_URL: http://ollama:11434
+      LLAMACPP_BASE_URL: http://llamacpp:8080
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
     depends_on:
@@ -340,7 +346,6 @@ volumes:
   postgres_data:
   neo4j_data:
   redis_data:
-  ollama_data:
 
 networks:
   default:

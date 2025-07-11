@@ -64,6 +64,25 @@ Nova supports both human-readable console output and structured JSON logging:
 - **Development**: Uses in-memory checkpointer by default
 - **Production**: PostgreSQL checkpointer is required
 
+### Local LLM Setup (Optional)
+Nova supports local LLM inference using llama.cpp for reduced cloud dependencies:
+
+1. **Start llama.cpp Service**: Use Docker Compose to run the local LLM
+   ```bash
+   # Start llama.cpp with GPU support (auto-downloads model)
+   docker-compose up -d llamacpp
+   ```
+
+2. **Configure LLM Provider**: Update your environment to use local models
+   ```env
+   LLM_PROVIDER=litellm
+   # Models are configured in configs/litellm_config.yaml
+   ```
+
+The service automatically downloads the DeepSeek R1 Q8_K_XL model (~10GB) on first startup.
+
+See [models/README.md](models/README.md) for detailed setup instructions and model options.
+
 ## 🛠️ Architecture
 
 Nova consists of three main components:
