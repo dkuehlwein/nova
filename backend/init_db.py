@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from database.database import db_manager
 from models.models import Task, TaskStatus, Chat, Artifact, AgentStatus, AgentStatusEnum
+from sqlalchemy import select
 from models.user_settings import UserSettings
 
 # Configure logging
@@ -47,14 +48,20 @@ async def add_sample_data():
     async with db_manager.get_session() as session:
         # Note: No sample tasks added - keeping the database clean
         
-        # Create initial agent status record
-        agent_status = AgentStatus(
-            status=AgentStatusEnum.IDLE
-        )
+        # Create initial agent status record if it doesn't exist
+        result = await session.execute(select(AgentStatus))
+        existing_status = result.scalar_one_or_none()
         
-        session.add(agent_status)
-        await session.commit()
-        logger.info("Added initial agent status record")
+        if not existing_status:
+            agent_status = AgentStatus(
+                status=AgentStatusEnum.IDLE
+            )
+            
+            session.add(agent_status)
+            await session.commit()
+            logger.info("Added initial agent status record")
+        else:
+            logger.info("Agent status record already exists, skipping creation")
         
         # Create default user settings if they don't exist
         from database.database import UserSettingsService
