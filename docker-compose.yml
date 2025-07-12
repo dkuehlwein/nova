@@ -56,7 +56,12 @@ services:
 
   # llama.cpp for local LLM inference with GPU support
   llamacpp:
-    image: ghcr.io/ggerganov/llama.cpp:server-cuda
+    # Use latest official CUDA image with full tools (newer than server-cuda)
+    image: ghcr.io/ggml-org/llama.cpp:full-cuda
+    # Alternative: build custom for absolute latest (has CUDA linking issues)
+    # build:
+    #   context: .
+    #   dockerfile: llamacpp.Dockerfile
     deploy:
       resources:
         reservations:
@@ -71,12 +76,14 @@ services:
       - ~/.cache/huggingface:/root/.cache/huggingface
     environment:
       - CUDA_VISIBLE_DEVICES=0
-    entrypoint: ["/app/llama-server"]
+      - CUDA_DOCKER_ARCH=all
+      - GGML_CUDA=1
     command: >
+      --server
       --model /models/phi-4-Q4_K_M.gguf
       --host 0.0.0.0
       --port 8080
-      --n-gpu-layers 37
+      --n-gpu-layers 40
       --ctx-size 32768
       --parallel 4
       --jinja
