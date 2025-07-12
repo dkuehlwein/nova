@@ -354,13 +354,16 @@ export function useAvailableModels() {
   return useQuery({
     queryKey: ['available-models'],
     queryFn: async () => {
-      const response = await apiRequest('/llm/models') as {models: {model_name: string}[], total: number}
-      // Transform the response to match our expected format
-      return {
+      // Use the categorized endpoint that properly categorizes models on the backend
+      const response = await apiRequest('/llm/models/categorized') as {
         models: {
-          local: response.models.filter((model: {model_name: string}) => model.model_name.includes('DeepSeek') || model.model_name.includes('llama')),
-          cloud: response.models.filter((model: {model_name: string}) => model.model_name.includes('gemini'))
+          local: {model_name: string}[],
+          cloud: {model_name: string}[]
         },
+        total: number
+      }
+      return {
+        models: response.models,
         total_models: response.total
       }
     },
