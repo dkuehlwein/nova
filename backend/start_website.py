@@ -144,6 +144,9 @@ async def lifespan(app: FastAPI):
         initialize_configs()
         start_config_watchers()
         
+        # Ensure database is initialized before starting services
+        await service_manager.ensure_database_initialized()
+        
         # Initialize PostgreSQL pool via ServiceManager
         await service_manager.init_pg_pool()
         

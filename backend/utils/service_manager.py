@@ -226,6 +226,36 @@ class ServiceManager:
             self.logger.warning("Memory cleanup timed out")
         except Exception as e:
             self.logger.debug(f"Memory cleanup error (may not be initialized): {e}")
+    
+    async def ensure_database_initialized(self):
+        """Ensure database is initialized by checking if core tables exist.
+        
+        If tables don't exist, runs the existing init_db.py initialization.
+        """
+        try:
+            from database.database import db_manager
+            from sqlalchemy import text
+            
+            self.logger.info("Checking database initialization status...")
+            
+            # Simple check - try to query tasks table
+            try:
+                async with db_manager.get_session() as session:
+                    await session.execute(text("SELECT 1 FROM tasks LIMIT 1"))
+                self.logger.info("Database already initialized")
+                return
+                
+            except Exception:
+                # Tables don't exist - run init_db
+                self.logger.info("Database needs initialization, running init_db...")
+                from init_db import init_database
+                await init_database()
+                self.logger.info("✅ Database initialization completed")
+                
+        except Exception as e:
+            error_msg = f"Database initialization failed: {e}"
+            self.logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
 
 async def create_prompt_updated_handler(reload_callback: Callable[[], Any]):
