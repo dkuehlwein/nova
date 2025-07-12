@@ -522,18 +522,21 @@ function UserSettingsTab() {
           
           <div className="space-y-2">
             <Label htmlFor="timezone">Timezone</Label>
-            <select
-              id="timezone"
-              value={String(settings.timezone || 'UTC')}
-              onChange={(e) => setSettings({...settings, timezone: e.target.value})}
-              className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            <Select 
+              value={String(settings.timezone || 'UTC')} 
+              onValueChange={(value) => setSettings({...settings, timezone: value})}
             >
-              {COMMON_TIMEZONES.map((tz) => (
-                <option key={tz} value={tz}>
-                  {tz}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {COMMON_TIMEZONES.map((tz) => (
+                  <SelectItem key={tz} value={tz}>
+                    {tz}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           
           <div className="space-y-2">
