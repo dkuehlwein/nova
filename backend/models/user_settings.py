@@ -66,7 +66,7 @@ class UserSettings(Base):
     # LLM Settings
     llm_model: Mapped[str] = mapped_column(String(100), default="phi-4-Q4_K_M")
     llm_temperature: Mapped[float] = mapped_column(Float, default=0.1)
-    llm_max_tokens: Mapped[int] = mapped_column(Integer, default=64000)
+    llm_max_tokens: Mapped[int] = mapped_column(Integer, default=2048)
 
 
 class UserSettingsModel(BaseModel):

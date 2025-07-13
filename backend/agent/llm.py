@@ -48,7 +48,7 @@ def create_llm(config: Optional[RunnableConfig] = None) -> ChatOpenAI:
     configuration = config.get("configurable", {}) if config else {}
     model_name = configuration.get("model_name", user_settings.get("llm_model", "phi-4-Q4_K_M"))
     temperature = configuration.get("temperature", user_settings.get("llm_temperature", 0.1))
-    max_tokens = configuration.get("max_tokens", user_settings.get("llm_max_tokens", 64000))
+    max_tokens = configuration.get("max_tokens", user_settings.get("llm_max_tokens", 2048))
     
     return ChatOpenAI(
         model=model_name,

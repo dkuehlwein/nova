@@ -193,6 +193,16 @@ curl -X PATCH "http://localhost:8000/api/user-settings/" \
     "llm_temperature": 0.1,
     "llm_max_tokens": 2048
   }'
+
+# Update user settings to use SmolLM3-3B model
+curl -X PATCH "http://localhost:8000/api/user-settings/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "llm_model": "smollm3-3b-Q4_K_M",
+    "llm_provider": "litellm",
+    "llm_temperature": 0.6,
+    "llm_max_tokens": 2048
+  }'
 ```
 
 ### Service Health Checks

@@ -15,19 +15,26 @@ The service will automatically download the DeepSeek R1 Q8_K_XL model on first s
 
 ## Model Variants
 
-### DeepSeek R1 0528 (Recommended)
+### Phi-4 (Default/Primary)
 
-- **Q8_K_XL**: `DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL.gguf` (~10GB VRAM)
-  - Highest quality quantization that fits in 16GB VRAM
+- **Q4_K_M**: `phi-4-Q4_K_M.gguf` (~8GB VRAM)
   - Primary model configured in docker-compose.yml
-  
-- **Q4_K_M**: `DeepSeek-R1-0528-Qwen3-8B-UD-Q4_K_M.gguf` (~5GB VRAM)
+  - Excellent function calling capabilities
   - Balanced performance and quality
-  - Good for testing or higher throughput
 
-- **Q2_K**: `DeepSeek-R1-0528-Qwen3-8B-UD-Q2_K.gguf` (~3GB VRAM)
-  - Ultra-lightweight for testing
-  - Lower quality but very fast
+### SmolLM3-3B (Multilingual, Reasoning)
+
+- **Q4_K_M**: `HuggingFaceTB_SmolLM3-3B-Q4_K_M.gguf` (~1.9GB VRAM)
+  - Compact 3B parameter model with strong capabilities
+  - Supports 6 languages: English, French, Spanish, German, Italian, Portuguese
+  - Tool calling and reasoning support
+  - Recommended settings: temperature=0.6, top_p=0.95
+
+### Other Available Models
+
+- **Llama 3.2 3B**: `Llama-3.2-3B-Instruct-Q4_K_M.gguf` (~2GB VRAM)
+- **Llama 3 8B Function Calling**: `llama-3-8B-function-calling-Q4_K_M.gguf` (~5GB VRAM)
+- **DeepSeek R1**: `DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL.gguf` (~10GB VRAM)
 
 ## Automatic Model Loading
 
@@ -56,13 +63,20 @@ If you prefer to manually manage models, you can use huggingface-cli:
 # Install huggingface-hub
 pip install huggingface-hub
 
-# Download specific model file
-huggingface-cli download unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF \
-  DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL.gguf \
+# Download SmolLM3-3B Q4_K_M (recommended quantization)
+huggingface-cli download bartowski/HuggingFaceTB_SmolLM3-3B-GGUF \
+  HuggingFaceTB_SmolLM3-3B-Q4_K_M.gguf \
   --local-dir ./models
 
-# Then update docker-compose.yml to use local file:
-# --model /models/DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL.gguf
+# Download other quantizations if needed
+huggingface-cli download bartowski/HuggingFaceTB_SmolLM3-3B-GGUF \
+  HuggingFaceTB_SmolLM3-3B-Q5_K_M.gguf \
+  --local-dir ./models
+
+# Then switch model using Nova's dynamic loading:
+# 1. Place model file in ./models/ directory
+# 2. Update llama.cpp to load the new model
+# 3. Change user settings to use the new model name
 ```
 
 ## Model Selection

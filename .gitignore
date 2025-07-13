@@ -240,3 +240,4 @@ models/llama-3-8B-function-calling-Q4_K_M.gguf
 models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
 
 models/phi-4-Q4_K_M.gguf
+models/HuggingFaceTB_SmolLM3-3B-Q4_K_M.gguf
