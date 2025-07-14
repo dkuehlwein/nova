@@ -175,8 +175,9 @@ class LLMModelService:
         try:
             fallback_config = {
                 "fallbacks": {
+                    "SmolLM3-3B-128K-BF16": ["gemini-2.5-flash"],
                     "phi-4-Q4_K_M": ["gemini-2.5-flash"],
-                    "gemini-2.5-flash": ["phi-4-Q4_K_M"]
+                    "gemini-2.5-flash": ["gemini-2.5-flash-preview-04-17"]
                 }
             }
             

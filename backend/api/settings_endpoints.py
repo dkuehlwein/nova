@@ -436,11 +436,10 @@ async def validate_api_key(
             try:
                 import requests
                 
-                # Test LangSmith API
+                # Test LangSmith API using minimal permissions endpoint
                 response = requests.get(
-                    "https://api.smith.langchain.com/sessions",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    params={"limit": 1},
+                    "https://api.smith.langchain.com/info",
+                    headers={"x-api-key": api_key},
                     timeout=10
                 )
                 
@@ -778,11 +777,10 @@ async def get_langsmith_api_status(
             if has_api_key:
                 logger.info("Performing real-time LangSmith API validation", extra={"data": {"force_refresh": force_refresh}})
                 try:
-                    # Test LangSmith API
+                    # Test LangSmith API using minimal permissions endpoint
                     response = requests.get(
-                        "https://api.smith.langchain.com/sessions",
-                        headers={"Authorization": f"Bearer {app_settings.LANGCHAIN_API_KEY}"},
-                        params={"limit": 1},
+                        "https://api.smith.langchain.com/info",
+                        headers={"x-api-key": app_settings.LANGCHAIN_API_KEY},
                         timeout=10
                     )
                     
