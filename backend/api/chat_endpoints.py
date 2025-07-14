@@ -5,7 +5,6 @@ FastAPI endpoints for LangGraph agent compatible with agent-chat-ui patterns.
 """
 
 import json
-import uuid
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
@@ -15,9 +14,8 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
 
-from agent.chat_agent import create_chat_agent
 from models.chat import (
-    ChatMessage, ChatRequest, ChatResponse, HealthResponse, ChatSummary, 
+    ChatMessage, ChatRequest, ChatSummary, 
     ChatMessageDetail, TaskChatResponse
 )
 from utils.logging import get_logger
@@ -598,54 +596,6 @@ async def stream_chat(chat_request: ChatRequest):
 
 
 
-@router.get("/health", response_model=HealthResponse)
-async def chat_health():
-    """
-    Health check endpoint for chat functionality.
-    """
-    try:
-        # Test if the chat agent can be created and is working
-        logger.info("Health check: Starting...")
-        
-        # Import here to avoid circular dependency
-        from start_website import get_service_manager
-        from utils.service_manager import create_postgres_checkpointer
-        
-        logger.info("Health check: Getting service manager...")
-        service_manager = get_service_manager()
-        logger.info(f"Health check: Service manager: {service_manager}, pg_pool: {service_manager.pg_pool}")
-        
-        if service_manager.pg_pool is None:
-            logger.info("Health check: PostgreSQL pool is None, initializing...")
-            await service_manager.init_pg_pool()
-            logger.info(f"Health check: After init_pg_pool, pg_pool: {service_manager.pg_pool}")
-        
-        if service_manager.pg_pool:
-            logger.info("Health check: Creating checkpointer...")
-            checkpointer = create_postgres_checkpointer(service_manager.pg_pool)
-            logger.info(f"Health check: Got checkpointer: {checkpointer}")
-        else:
-            logger.error("Health check: PostgreSQL connection pool is still None after init")
-            raise RuntimeError("PostgreSQL connection pool is required but not available")
-        
-        logger.info("Health check: Creating chat agent...")
-        chat_agent = await create_chat_agent(checkpointer=checkpointer)
-        logger.info(f"Health check: Chat agent created: {chat_agent}")
-        agent_ready = chat_agent is not None
-        
-        return HealthResponse(
-            status="healthy" if agent_ready else "degraded",
-            agent_ready=agent_ready,
-            timestamp=datetime.now().isoformat()
-        )
-        
-    except Exception as e:
-        logger.error(f"Health check failed: {e}", exc_info=True)
-        return HealthResponse(
-            status="unhealthy",
-            agent_ready=False,
-            timestamp=datetime.now().isoformat()
-        )
 
 
 @router.get("/tools")

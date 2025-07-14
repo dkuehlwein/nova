@@ -7,20 +7,14 @@ service management, and development utilities.
 
 import subprocess
 from typing import Dict, Any, List
-import asyncio
-import aiohttp
 
 from fastapi import APIRouter, HTTPException
 
-from config import settings
 from utils.logging import get_logger
-from mcp_client import mcp_manager
-from api.mcp_endpoints import get_mcp_servers
-from database.database import db_manager
-from sqlalchemy import text
+from services.health_monitor import health_monitor
 
 # Import domain-specific models
-from models.system import ServiceRestartRequest, ServiceRestartResponse, SystemHealthSummary
+from models.system import ServiceRestartRequest, ServiceRestartResponse
 
 logger = get_logger("system-api")
 router = APIRouter(prefix="/api/system", tags=["System Management"])
@@ -35,86 +29,6 @@ ALLOWED_SERVICES = {
 }
 
 
-async def check_database_health() -> str:
-    """Check database health using existing database manager."""
-    try:
-        async with db_manager.get_session() as session:
-            await session.execute(text("SELECT 1"))
-        return "healthy"
-    except Exception as e:
-        logger.warning(f"Database health check failed: {e}")
-        return "unhealthy"
-
-
-async def check_core_agent_health() -> str:
-    """Check core agent health via its dedicated health endpoint."""
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3.0)) as session:
-            async with session.get("http://localhost:8001/health") as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return "healthy" if data.get("status") == "healthy" else "degraded"
-                else:
-                    return "unhealthy"
-    except Exception as e:
-        logger.warning(f"Core agent health check failed: {e}")
-        return "unhealthy"
-
-
-@router.get("/system-health-summary", response_model=SystemHealthSummary)
-async def get_system_health_summary():
-    """
-    Get aggregated system health summary for navbar display.
-    
-    Checks actual health endpoints for accurate status reporting.
-    """
-    try:
-        # Use existing MCP server health check
-        mcp_data = await get_mcp_servers()
-        mcp_servers_healthy = mcp_data.healthy_servers
-        mcp_servers_total = mcp_data.enabled_servers
-        
-        # Check database using existing database manager
-        database_status = await check_database_health()
-        
-        # Check core agent health via its endpoint
-        core_agent_status = await check_core_agent_health()
-        
-        # Chat agent is healthy if we can reach this endpoint (since this runs on chat agent service)
-        chat_agent_status = "healthy"
-        
-        # Determine overall status
-        overall_status = "operational"
-        
-        # Critical if any core service is unhealthy
-        if (core_agent_status == "unhealthy" or database_status == "unhealthy"):
-            overall_status = "critical"
-        # Degraded if core agent is degraded or some MCP servers are down
-        elif (core_agent_status == "degraded" or 
-              (mcp_servers_total > 0 and mcp_servers_healthy < mcp_servers_total)):
-            overall_status = "degraded"
-        
-        logger.info(f"System health summary: {overall_status} (chat: {chat_agent_status}, core: {core_agent_status}, db: {database_status}, mcp: {mcp_servers_healthy}/{mcp_servers_total})")
-        
-        return SystemHealthSummary(
-            overall_status=overall_status,
-            chat_agent_status=chat_agent_status,
-            core_agent_status=core_agent_status,
-            mcp_servers_healthy=mcp_servers_healthy,
-            mcp_servers_total=mcp_servers_total,
-            database_status=database_status
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to get system health summary: {e}")
-        return SystemHealthSummary(
-            overall_status="critical",
-            chat_agent_status="unknown",
-            core_agent_status="unknown", 
-            mcp_servers_healthy=0,
-            mcp_servers_total=0,
-            database_status="unknown"
-        )
 
 
 @router.post("/restart/{service_name}", response_model=ServiceRestartResponse)
@@ -220,5 +134,191 @@ async def system_health() -> Dict[str, str]:
         "service": "system-api",
         "version": "1.0.0"
     }
+
+
+@router.get("/system-health")
+async def get_unified_system_status(
+    force_refresh: bool = False,
+    include_history: bool = False
+):
+    """
+    Get comprehensive system status with caching from unified health monitor.
+    
+    This is the primary endpoint for unified system health monitoring following ADR 010.
+    
+    Args:
+        force_refresh: Force real-time checks (bypass cache)
+        include_history: Include health history for trends
+    
+    Returns:
+        Comprehensive system status with cached data
+    """
+    try:
+        # If force refresh requested, trigger immediate health check
+        if force_refresh:
+            await health_monitor.monitor_all_services()
+        
+        # Get overall status calculation
+        overall_status = await health_monitor.calculate_overall_status()
+        
+        # Build service categories for response
+        core_services = []
+        infrastructure_services = []
+        external_services = []
+        
+        for service_name, config in health_monitor.SERVICES.items():
+            cached_status = overall_status["all_statuses"].get(service_name)
+            
+            if not cached_status:
+                continue
+                
+            service_data = {
+                "name": service_name,
+                "type": config["type"],
+                "status": cached_status.get("status", "unknown"),
+                "response_time_ms": cached_status.get("response_time_ms"),
+                "last_check": cached_status.get("checked_at"),
+                "error_message": cached_status.get("error_message"),
+                "metadata": cached_status.get("metadata", {}),
+                "essential": config.get("essential", False)
+            }
+            
+            if config["type"] == "core":
+                core_services.append(service_data)
+            elif config["type"] == "infrastructure":
+                infrastructure_services.append(service_data)
+            elif config["type"] == "external":
+                external_services.append(service_data)
+        
+        # Build unified response
+        response = {
+            "overall_status": overall_status["overall_status"],
+            "overall_health_percentage": overall_status["overall_health_percentage"],
+            "last_updated": overall_status["last_updated"],
+            "cached": not force_refresh,
+            
+            # Service Categories
+            "core_services": core_services,
+            "infrastructure_services": infrastructure_services,
+            "external_services": external_services,
+            
+            # Quick Summary for Navbar
+            "summary": overall_status["summary"]
+        }
+        
+        # Add history if requested
+        if include_history:
+            response["history"] = await _get_health_history()
+        
+        logger.debug(f"Unified system status: {overall_status['overall_status']} "
+                    f"({overall_status['summary']['healthy_services']}/{overall_status['summary']['total_services']} healthy)")
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Failed to get unified system status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve system status: {str(e)}")
+
+
+@router.get("/system-health/{service_name}")
+async def get_service_status(
+    service_name: str,
+    force_refresh: bool = False
+):
+    """
+    Get detailed status for specific service.
+    
+    Args:
+        service_name: Name of the service to check
+        force_refresh: Force real-time check (bypass cache)
+    
+    Returns:
+        Detailed service status information
+    """
+    try:
+        # Validate service exists
+        if service_name not in health_monitor.SERVICES:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Service '{service_name}' not found in monitoring configuration"
+            )
+        
+        # If force refresh, trigger check for this specific service
+        if force_refresh:
+            config = health_monitor.SERVICES[service_name]
+            if config["endpoint"] == "cached":
+                # For cached services, we can't force refresh here
+                pass
+            elif config["endpoint"] != "dynamic" and config["endpoint"] != "internal":
+                # HTTP service - trigger individual check
+                await health_monitor._check_http_service(service_name, config)
+            elif config["endpoint"] == "internal":
+                # Internal service - trigger individual check
+                await health_monitor._check_internal_service(service_name, config)
+        
+        # Get cached status
+        cached_status = await health_monitor.get_cached_status(service_name)
+        
+        if not cached_status:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No status data available for service '{service_name}'"
+            )
+        
+        # Add service configuration info
+        config = health_monitor.SERVICES[service_name]
+        response = {
+            **cached_status,
+            "service_type": config["type"],
+            "essential": config.get("essential", False),
+            "endpoint": config["endpoint"],
+            "functional_tests": config.get("functional_tests", [])
+        }
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get status for service {service_name}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get service status: {str(e)}")
+
+
+@router.post("/system-health/refresh")
+async def refresh_all_services():
+    """
+    Trigger immediate refresh of all service health checks.
+    
+    This bypasses the cache and performs real-time health checks for all services.
+    
+    Returns:
+        Summary of refresh operation
+    """
+    try:
+        logger.info("Manual refresh of all services triggered")
+        
+        # Trigger immediate health check for all services
+        await health_monitor.monitor_all_services()
+        
+        # Get updated overall status
+        overall_status = await health_monitor.calculate_overall_status()
+        
+        return {
+            "message": "All services refreshed successfully",
+            "overall_status": overall_status["overall_status"],
+            "refreshed_at": overall_status["last_updated"],
+            "summary": overall_status["summary"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to refresh all services: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to refresh services: {str(e)}")
+
+
+async def _get_health_history() -> List[Dict[str, Any]]:
+    """Get recent health history for trends (placeholder for future implementation)."""
+    # TODO: Implement health history retrieval from SystemHealthStatus table
+    # This would query the last 24 hours of health data and provide trend information
+    return []
 
 

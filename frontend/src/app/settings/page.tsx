@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { CheckCircle, AlertCircle, Clock, Brain, Mail, KanbanSquare, Server, Cpu, Database, FileText, ListChecks, ShieldCheck, User, Key, Cog } from "lucide-react";
+import { AlertCircle, Brain, Mail, KanbanSquare, Server, FileText, ListChecks, ShieldCheck, User, Key, Cog } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -10,12 +10,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-import { useMCPServers, useToggleMCPServer, useSystemHealth, useRestartService, useUserSettings, useUpdateUserSettings, useAvailableModels } from "@/hooks/useNovaQueries";
+import { useMCPServers, useToggleMCPServer, useRestartService, useUserSettings, useUpdateUserSettings, useAvailableModels } from "@/hooks/useNovaQueries";
+import { useSystemStatusPage, useRefreshAllServices } from "@/hooks/useUnifiedSystemStatus";
 import { useState, Suspense } from "react";
 import React from "react";
 import SystemPromptEditor from "@/components/SystemPromptEditor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest } from "@/lib/api";
+import { StatusGrid, StatusOverview, ServiceStatusIndicator, getStatusIcon, getStatusColor } from "@/components/status";
 
 // Loading component for tabs
 function TabContentLoader({ children }: { children: string }) {
@@ -55,41 +57,6 @@ function MCPServersTab() {
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "operational":
-      case "healthy":
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "degraded":
-        return <Clock className="h-4 w-4 text-yellow-500" />;
-      case "offline":
-      case "unhealthy":
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return <AlertCircle className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "operational":
-      case "healthy":
-        return "text-green-500";
-      case "degraded":
-        return "text-yellow-500";
-      case "offline":
-      case "unhealthy":
-        return "text-red-500";
-      default:
-        return "text-gray-500";
-    }
-  };
-
-  const getStatusText = (enabled: boolean, healthy: boolean) => {
-    if (!enabled) return "disabled";
-    if (healthy) return "operational";
-    return "offline";
-  };
 
   const getServerIcon = (serverName: string) => {
     switch (serverName.toLowerCase()) {
@@ -150,7 +117,7 @@ function MCPServersTab() {
       <div className="space-y-4">
         {mcpData?.servers?.map((server) => {
           const ServerIcon = getServerIcon(server.name);
-          const status = getStatusText(server.enabled, server.healthy);
+          const status = !server.enabled ? "disabled" : (server.healthy ? "healthy" : "unhealthy");
           const isToggling = toggleMutation.isPending;
           const isRestarting = restartingService === server.name;
 
@@ -165,17 +132,17 @@ function MCPServersTab() {
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <div className="flex items-center space-x-2">
-                    {getStatusIcon(status)}
-                    {status !== "operational" && (
-                      <Badge
-                        variant={status === "disabled" ? "outline" : "destructive"}
-                        className={getStatusColor(status)}
-                      >
-                        {status}
-                      </Badge>
-                    )}
-                  </div>
+                  <ServiceStatusIndicator
+                    service={{
+                      name: "",
+                      type: "external",
+                      status: status,
+                      features_available: [`${server.tools_count || 0} tools`],
+                      essential: false
+                    }}
+                    showDetails={false}
+                    size="sm"
+                  />
                   <Switch
                     checked={server.enabled}
                     onCheckedChange={() => handleToggleServer(server.name, server.enabled)}
@@ -189,7 +156,7 @@ function MCPServersTab() {
                   {server.tools_count || 0} tools available
                 </span>
                 <span className="text-muted-foreground">
-                  {server.enabled ? (server.healthy ? `Last check: ${server.last_check || 'Just now'}` : "Health check failed") : "Disabled"}
+                  {server.enabled ? (server.healthy ? `Last check: Just now` : "Health check failed") : "Disabled"}
                 </span>
               </div>
               {!server.healthy && server.enabled && (
@@ -217,199 +184,116 @@ function MCPServersTab() {
   );
 }
 
-interface ServiceStatus {
-  status: string;
-}
-
-interface SystemStatusResponse {
-  services?: {
-    ollama?: ServiceStatus;
-    litellm?: ServiceStatus;
-    neo4j?: ServiceStatus;
-    llamacpp?: ServiceStatus;
-  };
-  api_keys_configured?: {
-    google?: boolean;
-    langsmith?: boolean;
-  };
-}
-
-// System Status tab content - loaded only when tab is active
+// System Status tab content - Unified implementation using new components
 function SystemStatusTab() {
-  const { data: systemHealth, isLoading: systemHealthLoading } = useSystemHealth();
-  const { data: mcpData, isLoading: mcpLoading } = useMCPServers();
-  const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(null);
-  const [statusLoading, setStatusLoading] = useState(true);
+  const { data: systemStatus, error: systemError } = useSystemStatusPage();
+  const refreshMutation = useRefreshAllServices();
 
-  React.useEffect(() => {
-    fetchSystemStatus();
-  }, []);
-
-  const fetchSystemStatus = async () => {
-    try {
-      const data = await apiRequest('/api/user-settings/system-status') as SystemStatusResponse;
-      setSystemStatus(data);
-    } catch (error) {
-      console.error('Failed to load system status:', error);
-    } finally {
-      setStatusLoading(false);
-    }
+  const handleRefreshAll = () => {
+    refreshMutation.mutate();
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "operational":
-      case "healthy":
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "degraded":
-        return <Clock className="h-4 w-4 text-yellow-500" />;
-      case "offline":
-      case "unhealthy":
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return <AlertCircle className="h-4 w-4 text-gray-500" />;
-    }
-  };
+  if (systemError) {
+    return (
+      <div className="text-center py-8 text-red-500">
+        <AlertCircle className="h-8 w-8 mx-auto mb-2" />
+        <p>Failed to load system status</p>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="mt-2"
+          onClick={handleRefreshAll}
+          disabled={refreshMutation.isPending}
+        >
+          {refreshMutation.isPending ? "Refreshing..." : "Retry"}
+        </Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div className="p-4 border border-border rounded-lg">
-        <div className="flex items-center space-x-2 mb-2">
-          <Cpu className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">Chat Agent</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          {systemHealthLoading ? (
-            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
-          ) : (
-            getStatusIcon(systemHealth?.chat_agent || "operational")
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          {systemHealthLoading ? "Loading..." : `Last check: ${systemHealth?.chat_agent_last_check || "Just now"}`}
-        </p>
-      </div>
+    <div className="space-y-6">
+      {/* Overall Health Overview */}
+      <StatusOverview
+        overallStatus={systemStatus?.overall_status || "loading"}
+        overallHealthPercentage={systemStatus?.overall_health_percentage || 0}
+        lastUpdated={systemStatus?.last_updated || new Date().toISOString()}
+        cached={systemStatus?.cached || false}
+        summary={systemStatus?.summary}
+        onRefresh={handleRefreshAll}
+      />
+      
+      {/* Core Services */}
+      <StatusGrid
+        title="Core Services"
+        services={systemStatus?.core_services || []}
+        columns={2}
+        emptyMessage="No core services configured"
+      />
+      
+      {/* Infrastructure Services */}
+      <StatusGrid
+        title="Infrastructure Services"
+        services={systemStatus?.infrastructure_services || []}
+        columns={3}
+        emptyMessage="No infrastructure services configured"
+      />
+      
+      {/* External Services */}
+      <StatusGrid
+        title="External Services"
+        services={systemStatus?.external_services || []}
+        columns={2}
+        emptyMessage="No external services configured"
+      />
 
-      <div className="p-4 border border-border rounded-lg">
-        <div className="flex items-center space-x-2 mb-2">
-          <Database className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">Database</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          {systemHealthLoading ? (
-            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
-          ) : (
-            getStatusIcon(systemHealth?.database || "operational")
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          {systemHealthLoading ? "Loading..." : `Last check: ${systemHealth?.database_last_check || "Just now"}`}
-        </p>
-      </div>
-
-      <div className="p-4 border border-border rounded-lg">
-        <div className="flex items-center space-x-2 mb-2">
-          <Server className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">MCP Servers</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          {mcpLoading ? (
-            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
-          ) : (
-            getStatusIcon(mcpData?.healthy_servers === mcpData?.enabled_servers ? "operational" : (mcpData?.enabled_servers || 0) > 0 ? "degraded" : "offline")
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          {mcpLoading ? "Loading..." : (mcpData ? `${mcpData.healthy_servers}/${mcpData.enabled_servers} healthy` : "Loading...")}
-        </p>
-      </div>
-
-      <div className="p-4 border border-border rounded-lg">
-        <div className="flex items-center space-x-2 mb-2">
-          <Brain className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">Core Agent</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          {systemHealthLoading ? (
-            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
-          ) : (
-            getStatusIcon(systemHealth?.core_agent || "offline")
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          {systemHealthLoading ? "Loading..." : `Last check: ${systemHealth?.core_agent_last_check || "Not running"}`}
-        </p>
-      </div>
-
-      <div className="p-4 border border-border rounded-lg">
-        <div className="flex items-center space-x-2 mb-2">
-          <Cpu className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">llama.cpp (Local AI)</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          {statusLoading ? (
-            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
-          ) : (
-            getStatusIcon(systemStatus?.services?.llamacpp?.status === 'healthy' ? 'operational' : 'offline')
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          {statusLoading ? "Loading..." : `Last check: ${systemStatus?.services?.llamacpp?.status === 'healthy' ? "Just now" : "Failed"}`}
-        </p>
-      </div>
-
-      <div className="p-4 border border-border rounded-lg">
-        <div className="flex items-center space-x-2 mb-2">
-          <Server className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">LiteLLM (Gateway)</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          {statusLoading ? (
-            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
-          ) : (
-            getStatusIcon(systemStatus?.services?.litellm?.status === 'healthy' ? 'operational' : 'offline')
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          {statusLoading ? "Loading..." : `Last check: ${systemStatus?.services?.litellm?.status === 'healthy' ? "Just now" : "Failed"}`}
-        </p>
-      </div>
-
-      <div className="p-4 border border-border rounded-lg">
-        <div className="flex items-center space-x-2 mb-2">
-          <Database className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">Neo4j (Memory)</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          {statusLoading ? (
-            <div className="h-4 w-4 animate-pulse bg-muted rounded-full" />
-          ) : (
-            getStatusIcon(systemStatus?.services?.neo4j?.status === 'healthy' ? 'operational' : 'offline')
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          {statusLoading ? "Loading..." : `Last check: ${systemStatus?.services?.neo4j?.status === 'healthy' ? "Just now" : "Failed"}`}
-        </p>
-      </div>
-
-      {/* LiteLLM UI Access */}
-      <div className="col-span-full p-4 border border-border rounded-lg bg-muted/50">
-        <div className="flex items-center justify-between">
+      {/* Quick Actions */}
+      <div className="p-4 border border-border rounded-lg bg-muted/50">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
-            <Brain className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-foreground">LiteLLM Admin UI</span>
+            <Cog className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium text-foreground">Quick Actions</span>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => window.open('http://localhost:4000', '_blank')}
-          >
-            Open Admin UI
-          </Button>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          Monitor LLM usage, costs, and performance metrics
-        </p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* LiteLLM Admin UI */}
+          <div className="flex items-center justify-between p-3 border border-border rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Brain className="h-4 w-4 text-primary" />
+              <div>
+                <span className="text-sm font-medium text-foreground">LiteLLM Admin UI</span>
+                <p className="text-xs text-muted-foreground">Monitor LLM usage and costs</p>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => window.open('http://localhost:4000', '_blank')}
+            >
+              Open UI
+            </Button>
+          </div>
+
+          {/* Refresh All Services */}
+          <div className="flex items-center justify-between p-3 border border-border rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Server className="h-4 w-4 text-primary" />
+              <div>
+                <span className="text-sm font-medium text-foreground">Refresh All Services</span>
+                <p className="text-xs text-muted-foreground">Force health check update</p>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleRefreshAll}
+              disabled={refreshMutation.isPending}
+            >
+              {refreshMutation.isPending ? "Refreshing..." : "Refresh"}
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -753,12 +637,14 @@ function APIKeysTab() {
                   <p className="text-sm text-muted-foreground">For Google Workspace integration and Gemini cloud AI models</p>
                 </div>
                 <div className="flex items-center space-x-2">
-                  {googleApiStatus?.status === 'ready' && (
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                  )}
-                  {googleApiStatus?.status === 'configured_invalid' && (
-                    <AlertCircle className="h-4 w-4 text-red-500" />
-                  )}
+                  {googleApiStatus?.status === 'ready' && (() => {
+                    const StatusIcon = getStatusIcon('operational');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('operational')}`} />;
+                  })()}
+                  {googleApiStatus?.status === 'configured_invalid' && (() => {
+                    const StatusIcon = getStatusIcon('critical');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
+                  })()}
                   <Badge variant={googleApiStatus?.has_google_api_key ? 
                     (googleApiStatus?.google_api_key_valid ? "default" : "destructive") : 
                     "secondary"
@@ -839,12 +725,14 @@ function APIKeysTab() {
                   <p className="text-sm text-muted-foreground">For AI debugging and monitoring</p>
                 </div>
                 <div className="flex items-center space-x-2">
-                  {langsmithApiStatus?.status === 'ready' && (
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                  )}
-                  {langsmithApiStatus?.status === 'configured_invalid' && (
-                    <AlertCircle className="h-4 w-4 text-red-500" />
-                  )}
+                  {langsmithApiStatus?.status === 'ready' && (() => {
+                    const StatusIcon = getStatusIcon('operational');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('operational')}`} />;
+                  })()}
+                  {langsmithApiStatus?.status === 'configured_invalid' && (() => {
+                    const StatusIcon = getStatusIcon('critical');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
+                  })()}
                   <Badge variant={langsmithApiStatus?.has_langsmith_api_key ? 
                     (langsmithApiStatus?.langsmith_api_key_valid ? "default" : "destructive") : 
                     "secondary"

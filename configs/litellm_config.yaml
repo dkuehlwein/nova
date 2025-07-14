@@ -19,6 +19,17 @@ model_list:
       top_p: 0.95
       max_tokens: 2048
   
+  # SmolLM3-3B (supports function calling, multilingual, reasoning)
+  - model_name: DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL
+    litellm_params:
+      model: openai/DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL.gguf
+      api_base: http://llamacpp:8080/v1
+      api_key: "not-required"
+      # SmolLM3 recommended settings
+      temperature: 0.6
+      top_p: 0.95
+      max_tokens: 2048
+
   # Google Gemini models are now added dynamically via API when valid Google API key is available
   # This prevents exposure of unusable models when no Google API key is configured
 

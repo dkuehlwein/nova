@@ -10,22 +10,22 @@ import {
   InboxIcon,
   UserCheck,
   Eye,
-  HourglassIcon,
-  XCircle,
-  AlertTriangle
+  HourglassIcon
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useOverview as useOverviewQuery, useSystemHealthSummary } from "@/hooks/useNovaQueries";
+import { useOverview as useOverviewQuery } from "@/hooks/useNovaQueries";
+import { useNavbarSystemStatus } from "@/hooks/useUnifiedSystemStatus";
 import { useNovaWebSocket } from "@/hooks/useNovaWebSocket";
 import { useKanban } from "@/hooks/useKanban";
+import { StatusIndicatorCompact } from "@/components/status";
 
 export default function Navbar() {
   const pathname = usePathname();
   const { data, isLoading: loading, isRefetching: refreshing } = useOverviewQuery();
   const { getCurrentTask } = useKanban();
   const currentTask = getCurrentTask();
-  const { data: healthSummary, isLoading: healthLoading } = useSystemHealthSummary();
+  const { data: systemStatus, isLoading: healthLoading } = useNavbarSystemStatus();
   
   // Subscribe to WebSocket events for real-time updates
   useNovaWebSocket();
@@ -47,46 +47,6 @@ export default function Navbar() {
   }
 
   const pendingDecisions = data?.task_counts?.needs_review || 0;
-
-  // Get system status icon and color based on health summary
-  const getSystemStatusDisplay = () => {
-    if (healthLoading || !healthSummary) {
-      return {
-        icon: <CheckCircle className="h-4 w-4 text-gray-500" />,
-        text: "System Status",
-        color: "text-gray-500"
-      };
-    }
-
-    switch (healthSummary.overall_status) {
-      case "operational":
-        return {
-          icon: <CheckCircle className="h-4 w-4 text-green-500" />,
-          text: "System Status",
-          color: "text-green-500"
-        };
-      case "degraded":
-        return {
-          icon: <AlertTriangle className="h-4 w-4 text-yellow-500" />,
-          text: "System Status",
-          color: "text-yellow-500"
-        };
-      case "critical":
-        return {
-          icon: <XCircle className="h-4 w-4 text-red-500" />,
-          text: "System Status",
-          color: "text-red-500"
-        };
-      default:
-        return {
-          icon: <CheckCircle className="h-4 w-4 text-gray-500" />,
-          text: "System Status",
-          color: "text-gray-500"
-        };
-    }
-  };
-
-  const systemStatus = getSystemStatusDisplay();
 
   return (
     <nav className="border-b border-border bg-card">
@@ -217,10 +177,28 @@ export default function Navbar() {
           </div>
 
           {/* System Status */}
-          <div className={`flex items-center space-x-2 ${systemStatus.color}`}>
-            <span className="text-sm font-medium">{systemStatus.text}</span>
-            {systemStatus.icon}
-          </div>
+          <Link 
+            href="/settings?tab=system-status" 
+            className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
+            title={systemStatus?.summary?.top_issues?.join(", ") || "View system status"}
+          >
+            <StatusIndicatorCompact
+              status={systemStatus?.overall_status || (healthLoading ? "loading" : "unknown")}
+              service={systemStatus ? `${systemStatus.summary.healthy_services}/${systemStatus.summary.total_services} healthy` : "System Status"}
+              showText={true}
+              className="text-sm font-medium"
+            />
+            
+            {/* Health Percentage Badge */}
+            {systemStatus && systemStatus.overall_status !== "loading" && (
+              <Badge 
+                variant={systemStatus.overall_status === "operational" ? "default" : "destructive"}
+                className="text-xs ml-2"
+              >
+                {systemStatus.overall_health_percentage.toFixed(0)}%
+              </Badge>
+            )}
+          </Link>
         </div>
       </div>
     </nav>

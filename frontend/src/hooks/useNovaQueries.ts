@@ -23,14 +23,6 @@ interface AdminOperationResult {
   exit_code: number
 }
 
-interface SystemHealthSummary {
-  overall_status: 'operational' | 'degraded' | 'critical'
-  chat_agent_status: string
-  core_agent_status: string
-  mcp_servers_healthy: number
-  mcp_servers_total: number
-  database_status: string
-}
 
 interface MCPServerStatus {
   name: string
@@ -51,19 +43,6 @@ interface MCPServersData {
   enabled_servers: number
 }
 
-interface SystemHealthData {
-  status: string
-  service: string
-  version: string
-  database: string
-  chat_checkpointer?: string
-  error?: string
-  chat_agent?: string
-  chat_agent_last_check?: string
-  database_last_check?: string
-  core_agent?: string
-  core_agent_last_check?: string
-}
 
 // MCP Servers Queries
 export function useMCPServers() {
@@ -241,32 +220,7 @@ export function useOverview() {
   })
 }
 
-// System Health Queries
-export function useSystemHealth() {
-  return useQuery({
-    queryKey: ['system-health'],
-    queryFn: async (): Promise<SystemHealthData> => {
-      return await apiRequest('/api/admin/health')
-    },
-    staleTime: 60000, // 1 minute - health doesn't change rapidly
-    refetchInterval: 2 * 60 * 1000, // Poll every 2 minutes instead of 1 minute
-    refetchOnWindowFocus: false, // Don't refetch when switching tabs
-    retry: 2
-  })
-}
 
-export function useSystemHealthSummary() {
-  return useQuery({
-    queryKey: ['system-health-summary'],
-    queryFn: async (): Promise<SystemHealthSummary> => {
-      return await apiRequest('/api/system/system-health-summary')
-    },
-    staleTime: 30000, // 30 seconds for navbar updates
-    refetchInterval: 60000, // Poll every minute instead of 30 seconds
-    refetchOnWindowFocus: false, // Don't refetch when switching tabs
-    retry: 2
-  })
-}
 
 // Admin Operations
 export function useRestartService() {

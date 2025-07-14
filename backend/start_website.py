@@ -150,6 +150,11 @@ async def lifespan(app: FastAPI):
         # Initialize PostgreSQL pool via ServiceManager
         await service_manager.init_pg_pool()
         
+        # Start health monitor service
+        from services.health_monitor import health_monitor
+        await health_monitor.start()
+        service_manager.logger.info("Health monitor service started")
+        
         # Create event handler for WebSocket broadcasting and agent reloading
         event_handler = await create_website_event_handler()
         
@@ -171,6 +176,11 @@ async def lifespan(app: FastAPI):
     from utils.config_registry import stop_config_watchers
     stop_config_watchers()
     await service_manager.stop_redis_bridge(app)
+    
+    # Stop health monitor
+    from services.health_monitor import health_monitor
+    await health_monitor.stop()
+    service_manager.logger.info("Health monitor service stopped")
     
     # Cleanup resources
     await service_manager.cleanup_redis()

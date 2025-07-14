@@ -162,7 +162,7 @@ class UserSettingsService:
                 return asyncio.run(UserSettingsService.get_memory_settings())
         except Exception as e:
             print(f"Warning: Could not get memory settings, using defaults: {e}")
-            return {"memory_search_limit": 10, "memory_token_limit": 32000}  # Database defaults
+            return {"memory_search_limit": 10, "memory_token_limit": 2048}  # Database defaults
     
     @staticmethod
     async def create_user_settings(session: AsyncSession):
