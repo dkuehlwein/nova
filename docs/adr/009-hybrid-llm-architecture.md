@@ -36,7 +36,7 @@ From the user's perspective, there's no separate "provider" selection - just mod
 - **Features**: Function calling, streaming, OpenAI-compatible endpoints
 
 #### 3. **Model Selection System**
-- **Storage**: User settings database (`llm_model`, `llm_provider`, `llm_temperature`, `llm_max_tokens`)
+- **Storage**: User settings database (`llm_model`, `llm_temperature`, `llm_max_tokens`)
 - **Interface**: Settings UI with dynamic model discovery
 - **Runtime**: Chat agent queries user settings for each request
 

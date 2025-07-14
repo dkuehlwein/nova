@@ -333,7 +333,6 @@ interface UserSettings {
   memory_token_limit: number
   mcp_server_preferences: Record<string, unknown>
   llm_model: string
-  llm_provider: string
   llm_temperature: number
   llm_max_tokens: number
 }

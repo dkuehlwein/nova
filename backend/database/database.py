@@ -65,7 +65,6 @@ class UserSettingsService:
             "memory_token_limit": settings.memory_token_limit,
             "mcp_server_preferences": settings.mcp_server_preferences,
             "llm_model": settings.llm_model,
-            "llm_provider": settings.llm_provider,
             "llm_temperature": settings.llm_temperature,
             "llm_max_tokens": settings.llm_max_tokens,
         }
@@ -79,7 +78,6 @@ class UserSettingsService:
         
         return {
             "llm_model": settings.llm_model,
-            "llm_provider": settings.llm_provider,
             "llm_temperature": settings.llm_temperature,
             "llm_max_tokens": settings.llm_max_tokens,
         }

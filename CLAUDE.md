@@ -189,7 +189,6 @@ curl -X PATCH "http://localhost:8000/api/user-settings/" \
   -H "Content-Type: application/json" \
   -d '{
     "llm_model": "phi-4-Q4_K_M",
-    "llm_provider": "litellm",
     "llm_temperature": 0.1,
     "llm_max_tokens": 2048
   }'
@@ -199,7 +198,6 @@ curl -X PATCH "http://localhost:8000/api/user-settings/" \
   -H "Content-Type: application/json" \
   -d '{
     "llm_model": "smollm3-3b-Q4_K_M",
-    "llm_provider": "litellm",
     "llm_temperature": 0.6,
     "llm_max_tokens": 2048
   }'

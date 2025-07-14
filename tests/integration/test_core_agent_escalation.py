@@ -144,7 +144,6 @@ async def test_complete_escalation_workflow():
             })
             
             # Check if escalation occurred (task should be in needs review)
-            # Note: The exact status depends on how the agent handles escalation
             assert updated_task.status in [TaskStatus.NEEDS_REVIEW]
             
             # Check for escalation comment
