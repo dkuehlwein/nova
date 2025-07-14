@@ -6,11 +6,12 @@ model_list:
       model: openai/phi-4-Q4_K_M
       api_base: http://llamacpp:8080/v1
       api_key: "not-required"
+      max_tokens: 2048
   
   # SmolLM3-3B (supports function calling, multilingual, reasoning)
-  - model_name: smollm3-3b-Q4_K_M
+  - model_name: SmolLM3-3B-128K-BF16
     litellm_params:
-      model: openai/smollm3-3b-Q4_K_M
+      model: openai/SmolLM3-3B-128K-BF16.gguf
       api_base: http://llamacpp:8080/v1
       api_key: "not-required"
       # SmolLM3 recommended settings

@@ -565,12 +565,19 @@ function UserSettingsTab() {
 
 // API Keys and Model Settings tab content
 function APIKeysTab() {
-  const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(null);
   const [googleApiStatus, setGoogleApiStatus] = useState<{
     has_google_api_key: boolean;
     google_api_key_valid: boolean;
     gemini_models_available: number;
     status: string;
+  } | null>(null);
+  const [langsmithApiStatus, setLangsmithApiStatus] = useState<{
+    has_langsmith_api_key: boolean;
+    langsmith_api_key_valid: boolean;
+    features_available: number;
+    status: string;
+    cached?: boolean;
+    last_check?: string;
   } | null>(null);
   const [showApiKeyForm, setShowApiKeyForm] = useState(false);
   const [newApiKey, setNewApiKey] = useState('');
@@ -582,8 +589,10 @@ function APIKeysTab() {
   const [editingSettings, setEditingSettings] = useState<Record<string, unknown> | null>(null);
 
   React.useEffect(() => {
-    fetchSystemStatus();
+    // Only fetch API status if we don't have cached status
+    // These will use cached results by default
     fetchGoogleApiStatus();
+    fetchLangsmithApiStatus();
   }, []);
 
   React.useEffect(() => {
@@ -592,26 +601,44 @@ function APIKeysTab() {
     }
   }, [userSettings, editingSettings]);
 
-  const fetchSystemStatus = async () => {
-    try {
-      const data = await apiRequest('/api/user-settings/system-status') as SystemStatusResponse;
-      setSystemStatus(data);
-    } catch (error) {
-      console.error('Failed to load system status:', error);
-    }
-  };
 
-  const fetchGoogleApiStatus = async () => {
+  const fetchGoogleApiStatus = async (forceRefresh: boolean = false) => {
     try {
-      const data = await apiRequest('/api/user-settings/google-api-status') as {
+      const url = forceRefresh 
+        ? '/api/user-settings/google-api-status?force_refresh=true'
+        : '/api/user-settings/google-api-status';
+      
+      const data = await apiRequest(url) as {
         has_google_api_key: boolean;
         google_api_key_valid: boolean;
         gemini_models_available: number;
         status: string;
+        cached?: boolean;
+        last_check?: string;
       };
       setGoogleApiStatus(data);
     } catch (error) {
       console.error('Failed to load Google API status:', error);
+    }
+  };
+
+  const fetchLangsmithApiStatus = async (forceRefresh: boolean = false) => {
+    try {
+      const url = forceRefresh 
+        ? '/api/user-settings/langsmith-api-status?force_refresh=true'
+        : '/api/user-settings/langsmith-api-status';
+      
+      const data = await apiRequest(url) as {
+        has_langsmith_api_key: boolean;
+        langsmith_api_key_valid: boolean;
+        features_available: number;
+        status: string;
+        cached?: boolean;
+        last_check?: string;
+      };
+      setLangsmithApiStatus(data);
+    } catch (error) {
+      console.error('Failed to load LangSmith API status:', error);
     }
   };
 
@@ -670,8 +697,8 @@ function APIKeysTab() {
         })
       });
 
-      // Refresh status and models
-      await fetchGoogleApiStatus();
+      // Refresh status and models (force refresh to validate new key)
+      await fetchGoogleApiStatus(true);
       await refetchModels();
       
       // Reset form
@@ -712,9 +739,9 @@ function APIKeysTab() {
       <div className="space-y-6">
         {/* API Keys Section */}
         <div className="space-y-4">
-          <h3 className="text-lg font-medium text-foreground">API Keys & Services</h3>
+          <h3 className="text-lg font-medium text-foreground">External Services</h3>
           <p className="text-sm text-muted-foreground">
-            Manage your API keys for external services. These are stored securely and never shared.
+            Configure optional external services. All API keys are stored securely and never shared.
           </p>
           
           <div className="space-y-4 border border-muted rounded-lg p-4">
@@ -722,8 +749,8 @@ function APIKeysTab() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium">Google API Key</p>
-                  <p className="text-sm text-muted-foreground">For Gmail, Calendar, and cloud AI features</p>
+                  <p className="font-medium">Google API Key <span className="text-xs text-muted-foreground">(Optional)</span></p>
+                  <p className="text-sm text-muted-foreground">For Google Workspace integration and Gemini cloud AI models</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   {googleApiStatus?.status === 'ready' && (
@@ -736,19 +763,12 @@ function APIKeysTab() {
                     (googleApiStatus?.google_api_key_valid ? "default" : "destructive") : 
                     "secondary"
                   }>
-                    {googleApiStatus?.status === 'ready' ? 'Valid' :
+                    {googleApiStatus?.status === 'ready' ? `Valid (${googleApiStatus.gemini_models_available} models)` :
                      googleApiStatus?.status === 'configured_invalid' ? 'Invalid' :
                      'Not configured'}
                   </Badge>
                 </div>
               </div>
-              
-              {googleApiStatus?.has_google_api_key && (
-                <div className="text-sm text-muted-foreground">
-                  <p>• Status: {googleApiStatus.google_api_key_valid ? 'Valid' : 'Invalid'}</p>
-                  <p>• Gemini models available: {googleApiStatus.gemini_models_available}</p>
-                </div>
-              )}
               
               <div className="flex items-center space-x-2">
                 <Button 
@@ -762,7 +782,7 @@ function APIKeysTab() {
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={fetchGoogleApiStatus}
+                    onClick={() => fetchGoogleApiStatus(true)}
                   >
                     Refresh Status
                   </Button>
@@ -815,13 +835,38 @@ function APIKeysTab() {
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium">LangSmith API Key</p>
-                  <p className="text-sm text-muted-foreground">For AI debugging and monitoring (optional)</p>
+                  <p className="font-medium">LangSmith API Key <span className="text-xs text-muted-foreground">(Optional)</span></p>
+                  <p className="text-sm text-muted-foreground">For AI debugging and monitoring</p>
                 </div>
-                <Badge variant={systemStatus?.api_keys_configured?.langsmith ? "default" : "secondary"}>
-                  {systemStatus?.api_keys_configured?.langsmith ? "Configured" : "Not configured"}
-                </Badge>
+                <div className="flex items-center space-x-2">
+                  {langsmithApiStatus?.status === 'ready' && (
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  )}
+                  {langsmithApiStatus?.status === 'configured_invalid' && (
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                  )}
+                  <Badge variant={langsmithApiStatus?.has_langsmith_api_key ? 
+                    (langsmithApiStatus?.langsmith_api_key_valid ? "default" : "destructive") : 
+                    "secondary"
+                  }>
+                    {langsmithApiStatus?.status === 'ready' ? `Valid (${langsmithApiStatus.features_available} features)` :
+                     langsmithApiStatus?.status === 'configured_invalid' ? 'Invalid' :
+                     'Not configured'}
+                  </Badge>
+                </div>
               </div>
+              
+              {langsmithApiStatus?.has_langsmith_api_key && (
+                <div className="flex items-center space-x-2 mt-3">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => fetchLangsmithApiStatus(true)}
+                  >
+                    Refresh Status
+                  </Button>
+                </div>
+              )}
             </div>
             
           </div>
@@ -840,7 +885,7 @@ function APIKeysTab() {
               <Label>Model</Label>
               {editingSettings ? (
                 <Select 
-                  value={String(editingSettings?.llm_model || 'DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL')} 
+                  value={String(editingSettings?.llm_model || '')} 
                   onValueChange={(value) => handleInputChange('llm_model', value)}
                 >
                   <SelectTrigger>
@@ -849,25 +894,37 @@ function APIKeysTab() {
                   <SelectContent>
                     {modelsLoading ? (
                       <SelectItem value="loading" disabled>Loading models...</SelectItem>
-                    ) : availableModels?.models ? (
-                      <>
-                        {/* Local Models */}
-                        {availableModels.models.local?.map((model: {model_name: string}) => (
-                          <SelectItem key={model.model_name} value={model.model_name}>
-                            {model.model_name.includes('DeepSeek') ? 'DeepSeek R1 Q8_K_XL (Local)' : model.model_name}
-                          </SelectItem>
-                        ))}
-                        {/* Cloud Models */}
-                        {availableModels.models.cloud?.map((model: {model_name: string}) => (
-                          <SelectItem key={model.model_name} value={model.model_name}>
-                            {model.model_name === 'gemini-2.5-flash' ? 'Gemini 2.5 Flash' : 
-                             model.model_name === 'gemini-2.5-flash-preview-04-17' ? 'Gemini 2.5 Flash Preview' : 
-                             model.model_name}
-                          </SelectItem>
-                        ))}
-                      </>
                     ) : (
-                      <SelectItem value="fallback">DeepSeek R1 Q8_K_XL (Local)</SelectItem>
+                      <>
+                        {/* Current user setting (always show this first) */}
+                        {editingSettings?.llm_model && (
+                          <SelectItem key={`current-${editingSettings.llm_model}`} value={String(editingSettings.llm_model)}>
+                            {String(editingSettings.llm_model)} (Current)
+                          </SelectItem>
+                        )}
+                        
+                        {/* Available models */}
+                        {availableModels?.models ? (
+                          <>
+                            {/* Local Models */}
+                            {availableModels.models.local?.filter((model: {model_name: string}) => 
+                              model.model_name !== editingSettings?.llm_model
+                            ).map((model: {model_name: string}) => (
+                              <SelectItem key={model.model_name} value={model.model_name}>
+                                {model.model_name}
+                              </SelectItem>
+                            ))}
+                            {/* Cloud Models */}
+                            {availableModels.models.cloud?.filter((model: {model_name: string}) => 
+                              model.model_name !== editingSettings?.llm_model
+                            ).map((model: {model_name: string}) => (
+                              <SelectItem key={model.model_name} value={model.model_name}>
+                                {model.model_name}
+                              </SelectItem>
+                            ))}
+                          </>
+                        ) : null}
+                      </>
                     )}
                   </SelectContent>
                 </Select>

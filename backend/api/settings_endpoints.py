@@ -346,10 +346,13 @@ async def get_system_status():
 
 
 @router.post("/validate-api-key")
-async def validate_api_key(request: dict):
+async def validate_api_key(
+    request: dict, 
+    session: AsyncSession = Depends(get_db_session)
+):
     """
     Validate an API key by making a test call to the service.
-    Only validates - does not store the key.
+    Caches validation results in user settings for future reference.
     """
     try:
         key_type = request.get("key_type")
@@ -369,6 +372,15 @@ async def validate_api_key(request: dict):
         if not key_type or not api_key:
             raise HTTPException(status_code=400, detail="key_type and api_key are required")
         
+        # Get user settings to store validation cache
+        from database.database import UserSettingsService
+        from datetime import datetime, timezone
+        
+        settings = await UserSettingsService.get_user_settings(session)
+        if not settings:
+            # Create default settings if none exist
+            settings = await UserSettingsService.create_user_settings(session)
+        
         if key_type == "google_api_key":
             # Validate Google API key by making a simple AI request
             try:
@@ -381,6 +393,17 @@ async def validate_api_key(request: dict):
                 model = genai.GenerativeModel(model_name)
                 response = model.generate_content("Hello")
                 
+                # Cache successful validation
+                now = datetime.now(timezone.utc).isoformat()
+                settings.api_key_validation_status["google_api_key"] = {
+                    "validated": True,
+                    "validated_at": now,
+                    "validation_error": None,
+                    "last_check": now,
+                    "gemini_models_available": 0  # Will be updated by google-api-status endpoint
+                }
+                await UserSettingsService.update_user_settings(session, settings)
+                
                 result = {
                     "valid": True,
                     "message": "Google API key is valid",
@@ -389,6 +412,17 @@ async def validate_api_key(request: dict):
                 logger.info("Google API key validation successful", extra={"data": result})
                 return result
             except Exception as e:
+                # Cache failed validation
+                now = datetime.now(timezone.utc).isoformat()
+                settings.api_key_validation_status["google_api_key"] = {
+                    "validated": False,
+                    "validated_at": None,
+                    "validation_error": str(e),
+                    "last_check": now,
+                    "gemini_models_available": 0
+                }
+                await UserSettingsService.update_user_settings(session, settings)
+                
                 result = {
                     "valid": False,
                     "message": f"Google API key validation failed: {str(e)}",
@@ -410,7 +444,19 @@ async def validate_api_key(request: dict):
                     timeout=10
                 )
                 
+                now = datetime.now(timezone.utc).isoformat()
+                
                 if response.status_code == 200:
+                    # Cache successful validation
+                    settings.api_key_validation_status["langsmith_api_key"] = {
+                        "validated": True,
+                        "validated_at": now,
+                        "validation_error": None,
+                        "last_check": now,
+                        "features_available": ["tracing", "monitoring", "debugging"]
+                    }
+                    await UserSettingsService.update_user_settings(session, settings)
+                    
                     result = {
                         "valid": True,
                         "message": "LangSmith API key is valid",
@@ -419,6 +465,16 @@ async def validate_api_key(request: dict):
                     logger.info("LangSmith API key validation successful", extra={"data": result})
                     return result
                 else:
+                    # Cache failed validation
+                    settings.api_key_validation_status["langsmith_api_key"] = {
+                        "validated": False,
+                        "validated_at": None,
+                        "validation_error": f"API returned status {response.status_code}",
+                        "last_check": now,
+                        "features_available": []
+                    }
+                    await UserSettingsService.update_user_settings(session, settings)
+                    
                     result = {
                         "valid": False,
                         "message": f"LangSmith API key validation failed: {response.status_code}",
@@ -427,6 +483,17 @@ async def validate_api_key(request: dict):
                     logger.warning("LangSmith API key validation failed", extra={"data": {"status_code": response.status_code, "result": result}})
                     return result
             except Exception as e:
+                # Cache failed validation
+                now = datetime.now(timezone.utc).isoformat()
+                settings.api_key_validation_status["langsmith_api_key"] = {
+                    "validated": False,
+                    "validated_at": None,
+                    "validation_error": str(e),
+                    "last_check": now,
+                    "features_available": []
+                }
+                await UserSettingsService.update_user_settings(session, settings)
+                
                 result = {
                     "valid": False,
                     "message": f"LangSmith API key validation failed: {str(e)}",
@@ -446,18 +513,30 @@ async def validate_api_key(request: dict):
 
 
 @router.post("/save-api-keys")
-async def save_api_keys(request: dict):
+async def save_api_keys(
+    request: dict, 
+    session: AsyncSession = Depends(get_db_session)
+):
     """
     Save validated API keys to .env file (Tier 2 configuration).
+    Also updates validation status cache in user settings (Tier 3).
     Only saves keys that have been previously validated.
     """
     try:
         import os
         from pathlib import Path
+        from database.database import UserSettingsService
+        from datetime import datetime, timezone
         
         api_keys = request.get("api_keys", {})
         if not api_keys:
             raise HTTPException(status_code=400, detail="No API keys provided")
+        
+        # Get user settings to update validation cache
+        settings = await UserSettingsService.get_user_settings(session)
+        if not settings:
+            # Create default settings if none exist
+            settings = await UserSettingsService.create_user_settings(session)
         
         # Path to .env file (look in parent directory and current directory)
         env_paths = [
@@ -516,12 +595,30 @@ async def save_api_keys(request: dict):
         if updated_keys:
             env_file.write_text('\n'.join(env_lines) + '\n')
             
+            # Update validation status cache to mark keys as configured
+            now = datetime.now(timezone.utc).isoformat()
+            for key_type in api_keys.keys():
+                if key_type in ["google_api_key", "langsmith_api_key"]:
+                    # Mark as configured and previously validated (since we only save validated keys)
+                    if key_type not in settings.api_key_validation_status:
+                        settings.api_key_validation_status[key_type] = {}
+                    
+                    settings.api_key_validation_status[key_type].update({
+                        "configured": True,
+                        "configured_at": now,
+                        "last_updated": now
+                    })
+            
+            # Save updated validation status to database
+            await UserSettingsService.update_user_settings(session, settings)
+            
             logger.info(
-                "API keys saved to .env file",
+                "API keys saved to .env file and validation cache updated",
                 extra={
                     "data": {
                         "env_file": str(env_file),
-                        "updated_keys": updated_keys
+                        "updated_keys": updated_keys,
+                        "validation_cache_updated": list(api_keys.keys())
                     }
                 }
             )
@@ -555,32 +652,173 @@ async def save_api_keys(request: dict):
 
 
 @router.get("/google-api-status")
-async def get_google_api_status():
-    """Get the current status of Google API key and model availability."""
+async def get_google_api_status(
+    force_refresh: bool = False,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """
+    Get the current status of Google API key and model availability.
+    Uses cached validation status unless force_refresh=True.
+    """
     try:
         from config import settings as app_settings
         from services.llm_service import llm_service
+        from database.database import UserSettingsService
+        from datetime import datetime, timezone
         
         # Check if API key is configured
         has_api_key = bool(app_settings.GOOGLE_API_KEY)
         
-        # Check if API key is valid (if configured)
-        is_valid = False
-        if has_api_key:
-            is_valid = await llm_service.is_google_api_key_valid()
+        # Get user settings to check cached validation status
+        settings = await UserSettingsService.get_user_settings(session)
+        if not settings:
+            # Create default settings if none exist
+            settings = await UserSettingsService.create_user_settings(session)
         
-        # Get available models
-        available_models = await llm_service.get_available_models()
-        gemini_models_count = len(available_models.get("cloud", []))
+        cached_status = settings.api_key_validation_status.get("google_api_key", {})
+        
+        # Use cached status unless force_refresh is requested or cache is empty
+        if not force_refresh and cached_status and has_api_key:
+            is_valid = cached_status.get("validated", False)
+            gemini_models_count = cached_status.get("gemini_models_available", 0)
+            last_check = cached_status.get("last_check", "Unknown")
+            
+            logger.info("Using cached Google API validation status", extra={"data": {
+                "cached": True,
+                "valid": is_valid,
+                "models_count": gemini_models_count,
+                "last_check": last_check
+            }})
+        else:
+            # Perform real-time validation
+            is_valid = False
+            gemini_models_count = 0
+            
+            if has_api_key:
+                logger.info("Performing real-time Google API validation", extra={"data": {"force_refresh": force_refresh}})
+                is_valid = await llm_service.is_google_api_key_valid()
+                
+                # Get available models
+                available_models = await llm_service.get_available_models()
+                gemini_models_count = len(available_models.get("cloud", []))
+                
+                # Cache the validation results
+                now = datetime.now(timezone.utc).isoformat()
+                new_status = {
+                    "validated": is_valid,
+                    "validated_at": now if is_valid else cached_status.get("validated_at"),
+                    "validation_error": None if is_valid else "API key validation failed",
+                    "last_check": now,
+                    "gemini_models_available": gemini_models_count
+                }
+                
+                # Update cached status
+                settings.api_key_validation_status["google_api_key"] = new_status
+                await UserSettingsService.update_user_settings(session, settings)
+                
+                logger.info("Cached Google API validation results", extra={"data": new_status})
         
         return {
             "has_google_api_key": has_api_key,
             "google_api_key_valid": is_valid,
             "gemini_models_available": gemini_models_count,
-            "models": available_models,
-            "status": "ready" if is_valid else ("configured_invalid" if has_api_key else "not_configured")
+            "status": "ready" if is_valid else ("configured_invalid" if has_api_key else "not_configured"),
+            "cached": not force_refresh and bool(cached_status),
+            "last_check": cached_status.get("last_check", "Never") if not force_refresh else "Just now"
         }
         
     except Exception as e:
         logger.error("Failed to get Google API status", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get Google API status")
+
+
+@router.get("/langsmith-api-status")
+async def get_langsmith_api_status(
+    force_refresh: bool = False,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """
+    Get the current status of LangSmith API key and availability.
+    Uses cached validation status unless force_refresh=True.
+    """
+    try:
+        from config import settings as app_settings
+        from database.database import UserSettingsService
+        from datetime import datetime, timezone
+        import requests
+        
+        # Check if API key is configured
+        has_api_key = bool(app_settings.LANGCHAIN_API_KEY)
+        
+        # Get user settings to check cached validation status
+        settings = await UserSettingsService.get_user_settings(session)
+        if not settings:
+            # Create default settings if none exist
+            settings = await UserSettingsService.create_user_settings(session)
+        
+        cached_status = settings.api_key_validation_status.get("langsmith_api_key", {})
+        
+        # Use cached status unless force_refresh is requested or cache is empty
+        if not force_refresh and cached_status and has_api_key:
+            is_valid = cached_status.get("validated", False)
+            features_available = cached_status.get("features_available", [])
+            last_check = cached_status.get("last_check", "Unknown")
+            
+            logger.info("Using cached LangSmith API validation status", extra={"data": {
+                "cached": True,
+                "valid": is_valid,
+                "features_count": len(features_available),
+                "last_check": last_check
+            }})
+        else:
+            # Perform real-time validation
+            is_valid = False
+            features_available = []
+            
+            if has_api_key:
+                logger.info("Performing real-time LangSmith API validation", extra={"data": {"force_refresh": force_refresh}})
+                try:
+                    # Test LangSmith API
+                    response = requests.get(
+                        "https://api.smith.langchain.com/sessions",
+                        headers={"Authorization": f"Bearer {app_settings.LANGCHAIN_API_KEY}"},
+                        params={"limit": 1},
+                        timeout=10
+                    )
+                    
+                    is_valid = response.status_code == 200
+                    features_available = ["tracing", "monitoring", "debugging"] if is_valid else []
+                except Exception as e:
+                    logger.warning(f"LangSmith API validation failed: {e}")
+                    is_valid = False
+                    features_available = []
+                
+                # Cache the validation results
+                now = datetime.now(timezone.utc).isoformat()
+                new_status = {
+                    "validated": is_valid,
+                    "validated_at": now if is_valid else cached_status.get("validated_at"),
+                    "validation_error": None if is_valid else "API key validation failed",
+                    "last_check": now,
+                    "features_available": features_available
+                }
+                
+                # Update cached status
+                settings.api_key_validation_status["langsmith_api_key"] = new_status
+                await UserSettingsService.update_user_settings(session, settings)
+                
+                logger.info("Cached LangSmith API validation results", extra={"data": new_status})
+        
+        return {
+            "has_langsmith_api_key": has_api_key,
+            "langsmith_api_key_valid": is_valid,
+            "features_available": len(features_available) if isinstance(features_available, list) else 0,
+            "features": features_available,
+            "status": "ready" if is_valid else ("configured_invalid" if has_api_key else "not_configured"),
+            "cached": not force_refresh and bool(cached_status),
+            "last_check": cached_status.get("last_check", "Never") if not force_refresh else "Just now"
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get LangSmith API status", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get LangSmith API status")

@@ -67,6 +67,7 @@ class UserSettingsService:
             "llm_model": settings.llm_model,
             "llm_temperature": settings.llm_temperature,
             "llm_max_tokens": settings.llm_max_tokens,
+            "api_key_validation_status": settings.api_key_validation_status,
         }
     
     @staticmethod
@@ -162,6 +163,47 @@ class UserSettingsService:
         except Exception as e:
             print(f"Warning: Could not get memory settings, using defaults: {e}")
             return {"memory_search_limit": 10, "memory_token_limit": 32000}  # Database defaults
+    
+    @staticmethod
+    async def create_user_settings(session: AsyncSession):
+        """Create a new user settings record with default values.
+        
+        Args:
+            session: Database session to use for the operation.
+            
+        Returns:
+            UserSettings: The newly created user settings object.
+        """
+        from models.user_settings import UserSettings
+        
+        # Create new user settings with default values
+        settings = UserSettings(
+            api_key_validation_status={}  # Initialize with empty dict
+        )
+        
+        session.add(settings)
+        await session.commit()
+        await session.refresh(settings)
+        
+        return settings
+    
+    @staticmethod
+    async def update_user_settings(session: AsyncSession, settings):
+        """Update an existing user settings record.
+        
+        Args:
+            session: Database session to use for the operation.
+            settings: UserSettings object to update.
+            
+        Returns:
+            UserSettings: The updated user settings object.
+        """
+        # The settings object is already tracked by SQLAlchemy
+        # Just commit the changes
+        await session.commit()
+        await session.refresh(settings)
+        
+        return settings
 
 
 # Global user settings service instance

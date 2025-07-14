@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import Boolean, DateTime, Integer, String, Text, Float, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
@@ -67,6 +67,9 @@ class UserSettings(Base):
     llm_model: Mapped[str] = mapped_column(String(100), default="phi-4-Q4_K_M")
     llm_temperature: Mapped[float] = mapped_column(Float, default=0.1)
     llm_max_tokens: Mapped[int] = mapped_column(Integer, default=2048)
+    
+    # API Key Validation Status (Tier 3 - cached validation results)
+    api_key_validation_status: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
 
 class UserSettingsModel(BaseModel):
@@ -114,6 +117,15 @@ class UserSettingsModel(BaseModel):
     llm_model: str = "phi-4-Q4_K_M"
     llm_temperature: float = 0.1
     llm_max_tokens: int = 2048
+    
+    # API Key Validation Status
+    api_key_validation_status: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator('api_key_validation_status', mode='before')
+    @classmethod
+    def validate_api_key_status(cls, v):
+        """Ensure api_key_validation_status is never None."""
+        return v if v is not None else {}
 
     class Config:
         from_attributes = True
@@ -158,6 +170,9 @@ class UserSettingsUpdateModel(BaseModel):
     llm_model: Optional[str] = None
     llm_temperature: Optional[float] = None
     llm_max_tokens: Optional[int] = None
+    
+    # API Key Validation Status
+    api_key_validation_status: Optional[Dict[str, Any]] = None
 
 
 class OnboardingStatusModel(BaseModel):
