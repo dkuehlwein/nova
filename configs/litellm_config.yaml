@@ -19,13 +19,24 @@ model_list:
       top_p: 0.95
       max_tokens: 2048
   
-  # SmolLM3-3B (supports function calling, multilingual, reasoning)
+  # Llama-3 8B Function Calling (optimized for tool calling)
+  - model_name: llama-3-8B-function-calling-Q4_K_M
+    litellm_params:
+      model: openai/llama-3-8B-function-calling-Q4_K_M.gguf
+      api_base: http://llamacpp:8080/v1
+      api_key: "not-required"
+      # Function calling optimized settings
+      temperature: 0.3
+      top_p: 0.9
+      max_tokens: 2048
+
+  # DeepSeek-R1 (reasoning model)  
   - model_name: DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL
     litellm_params:
       model: openai/DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL.gguf
       api_base: http://llamacpp:8080/v1
       api_key: "not-required"
-      # SmolLM3 recommended settings
+      # DeepSeek recommended settings
       temperature: 0.6
       top_p: 0.95
       max_tokens: 2048
