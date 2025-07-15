@@ -42,9 +42,13 @@ class FakeCoreAgentModel:
             input_data = {"messages": messages_or_input}
         
         if self.should_escalate:
-            # Simulate escalation interrupt
+            # Simulate escalation interrupt with updates format
             yield {
-                "messages": [Mock(content="I need to ask the user a question.")],
+                "agent": {
+                    "messages": [Mock(content="I need to ask the user a question.")]
+                }
+            }
+            yield {
                 "__interrupt__": [Mock(value={
                     "type": "human_escalation", 
                     "question": self.escalation_question,
@@ -52,11 +56,13 @@ class FakeCoreAgentModel:
                 })]
             }
         else:
-            # Normal response
+            # Normal response with updates format
             response = self.responses[self.response_index % len(self.responses)]
             self.response_index += 1
             yield {
-                "messages": [Mock(content=response)]
+                "agent": {
+                    "messages": [Mock(content=response)]
+                }
             }
 
 

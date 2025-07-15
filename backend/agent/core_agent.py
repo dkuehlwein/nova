@@ -304,7 +304,8 @@ class CoreAgent:
                     for node_name, node_output in chunk.items():
                         # Handle message nodes
                         if isinstance(node_output, dict) and "messages" in node_output and node_output["messages"]:
-                            messages = node_output["messages"]
+                            # Accumulate all messages from the stream
+                            messages.extend(node_output["messages"])
                         # Handle interrupt nodes (interrupt data is stored directly in chunk)
                         if node_name == "__interrupt__":
                             interrupt_detected = True
