@@ -161,7 +161,7 @@ export default function Navbar() {
             
             {/* In Progress */}
             <div className="flex items-center space-x-1">
-              <Eye className="h-3 w-3 text-orange-500" />
+              <Eye className="h-3 w-3 text-purple-500" />
               <Badge variant="secondary" className="text-xs px-1 py-0">
                 {data?.task_counts?.in_progress || 0}
               </Badge>
@@ -169,7 +169,7 @@ export default function Navbar() {
             
             {/* Needs Review */}
             <div className="flex items-center space-x-1">
-              <HourglassIcon className="h-3 w-3 text-yellow-500" />
+              <HourglassIcon className="h-3 w-3 text-red-500" />
               <Badge variant="secondary" className="text-xs px-1 py-0">
                 {data?.task_counts?.needs_review || 0}
               </Badge>
