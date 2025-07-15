@@ -29,6 +29,11 @@ class HealthMonitorService:
     # Service configuration following ADR 010 binary criticality logic
     SERVICES = {
         # Core Services (System fails if any of these are down)
+        "chat_agent": {
+            "type": "core",
+            "endpoint": "http://localhost:8000/chat/health",
+            "essential": True
+        },
         "core_agent": {
             "type": "core", 
             "endpoint": "http://localhost:8001/health",

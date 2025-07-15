@@ -152,6 +152,17 @@ async def health_check():
         raise HTTPException(status_code=503, detail="Core agent not initialized")
     
     try:
+        # Check if agent has been initialized with status
+        if not core_agent.status_id:
+            return {
+                "status": "starting",
+                "agent_status": "initializing",
+                "current_task": None,
+                "started_at": None,
+                "last_activity": None,
+                "error": "Agent status not yet initialized"
+            }
+        
         status = await core_agent.get_status()
         return {
             "status": "healthy",
@@ -163,7 +174,15 @@ async def health_check():
         }
     except Exception as e:
         service_manager.logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=503, detail=f"Health check failed: {str(e)}")
+        # Return unhealthy status instead of raising exception for health checks
+        return {
+            "status": "unhealthy",
+            "agent_status": "error",
+            "current_task": None,
+            "started_at": None,
+            "last_activity": None,
+            "error": str(e)
+        }
 
 
 @app.get("/status")

@@ -338,6 +338,32 @@ async def get_checkpointer_from_service_manager():
         raise RuntimeError(f"Failed to create PostgreSQL checkpointer: {str(e)}")
 
 
+@router.get("/health")
+async def health_check():
+    """Health check for chat service."""
+    from datetime import datetime
+    
+    try:
+        # Check if we can create a chat agent
+        checkpointer = await get_checkpointer_from_service_manager()
+        from agent.chat_agent import create_chat_agent
+        chat_agent = await create_chat_agent(checkpointer=checkpointer)
+        
+        return {
+            "status": "healthy",
+            "agent_ready": True,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "agent_ready": False,
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e)
+        }
+
+
 @router.post("/stream")
 async def stream_chat(chat_request: ChatRequest):
     """Stream chat messages with the assistant."""
