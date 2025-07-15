@@ -122,18 +122,16 @@ def client(test_app):
 @pytest.fixture(autouse=True)
 def mock_dependencies():
     """Mock all external dependencies."""
-    with patch('api.chat_endpoints.create_chat_agent') as mock_create_agent, \
+    with patch('agent.chat_agent.create_chat_agent') as mock_create_agent, \
          patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools, \
          patch('api.chat_endpoints.get_checkpointer_from_service_manager') as mock_get_checkpointer, \
          patch('pathlib.Path') as mock_path_class, \
          patch('builtins.open') as mock_open, \
-         patch('database.database.db_manager') as mock_db_manager, \
-         patch('agent.chat_agent.create_chat_agent') as mock_agent_create:
+         patch('database.database.db_manager') as mock_db_manager:
         
         # Mock chat agent creation
         mock_agent = MockChatAgent()
         mock_create_agent.return_value = mock_agent
-        mock_agent_create.return_value = mock_agent
         
         # Mock tools - return empty list to avoid LangChain tool issues
         async def async_get_tools():

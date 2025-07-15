@@ -29,11 +29,6 @@ class HealthMonitorService:
     # Service configuration following ADR 010 binary criticality logic
     SERVICES = {
         # Core Services (System fails if any of these are down)
-        "chat_agent": {
-            "type": "core",
-            "endpoint": "http://localhost:8000/health",
-            "essential": True
-        },
         "core_agent": {
             "type": "core", 
             "endpoint": "http://localhost:8001/health",
@@ -225,21 +220,32 @@ class HealthMonitorService:
                     
             elif service_name == "redis":
                 # Test Redis connectivity
-                from utils.redis_manager import redis_manager
-                if redis_manager.redis_client:
-                    await redis_manager.redis_client.ping()
+                from utils.redis_manager import get_redis
+                redis_client = await get_redis()
+                if redis_client:
+                    await redis_client.ping()
                 else:
                     raise Exception("Redis client not initialized")
                     
             elif service_name == "neo4j":
                 # Test Neo4j connectivity via memory manager
                 from memory.graphiti_manager import graphiti_manager
-                if hasattr(graphiti_manager, 'driver') and graphiti_manager.driver:
-                    # Simple connectivity test
-                    async with graphiti_manager.driver.session() as session:
-                        await session.run("RETURN 1")
-                else:
-                    raise Exception("Neo4j driver not initialized")
+                try:
+                    # Test connectivity by getting the client (this will initialize connection)
+                    client = await graphiti_manager.get_client()
+                    if client and client.driver:
+                        # Simple connectivity test using the underlying driver
+                        try:
+                            async with client.driver.session(database="neo4j") as session:
+                                await session.run("RETURN 1")
+                        except TypeError:
+                            # Fallback for older Neo4j driver versions
+                            async with client.driver.session() as session:
+                                await session.run("RETURN 1")
+                    else:
+                        raise Exception("Neo4j client not available")
+                except Exception as e:
+                    raise Exception(f"Neo4j connectivity test failed: {str(e)}")
             
             response_time_ms = int((time.time() - start_time) * 1000)
             await self._cache_health_status(
@@ -397,6 +403,8 @@ class HealthMonitorService:
                     infrastructure_services_down.append(service_name)
                 elif config["type"] == "external":
                     external_services_down.append(service_name)
+            # Note: "unknown" status for external services like APIs is not considered "down"
+            # since they're optional and may not be configured
             
             all_statuses[service_name] = cached_status
         
@@ -431,62 +439,83 @@ class HealthMonitorService:
         }
     
     async def _get_api_key_status(self, service_name: str) -> Optional[Dict[str, Any]]:
-        """Get API key validation status from user settings."""
+        """Get API key validation status from user settings (cached data)."""
         try:
-            from database.database import get_user_settings_dict
-            user_settings = await get_user_settings_dict()
+            from database.database import UserSettingsService
             
-            if not user_settings:
-                return None
+            # Get user settings with current database session
+            async with db_manager.get_session() as session:
+                user_settings = await UserSettingsService.get_user_settings(session)
                 
-            validation_status = user_settings.get("api_key_validation_status", {})
-            
-            if service_name == "google_api":
-                google_status = validation_status.get("google_api_key", {})
-                if google_status.get("validated"):
+                if not user_settings:
                     return {
                         "service_name": service_name,
-                        "status": "healthy",
-                        "checked_at": google_status.get("last_check"),
-                        "metadata": {"type": "api_key", "validated": True}
-                    }
-                else:
-                    return {
-                        "service_name": service_name,
-                        "status": "unhealthy",
-                        "checked_at": google_status.get("last_check"),
-                        "error_message": google_status.get("validation_error", "API key not validated"),
+                        "status": "unknown",
+                        "checked_at": None,
+                        "error_message": "User settings not available",
                         "metadata": {"type": "api_key", "validated": False}
                     }
-            
-            elif service_name == "langsmith_api":
-                langsmith_status = validation_status.get("langsmith_api_key", {})
-                if langsmith_status.get("validated"):
-                    return {
-                        "service_name": service_name,
-                        "status": "healthy",
-                        "checked_at": langsmith_status.get("last_check"),
-                        "metadata": {"type": "api_key", "validated": True}
-                    }
-                else:
-                    return {
-                        "service_name": service_name,
-                        "status": "unhealthy",
-                        "checked_at": langsmith_status.get("last_check"),
-                        "error_message": langsmith_status.get("validation_error", "API key not validated"),
-                        "metadata": {"type": "api_key", "validated": False}
-                    }
-            
-            return None
+                    
+                validation_status = user_settings.api_key_validation_status or {}
+                
+                if service_name == "google_api":
+                    google_status = validation_status.get("google_api_key", {})
+                    if google_status.get("validated"):
+                        return {
+                            "service_name": service_name,
+                            "status": "healthy",
+                            "checked_at": google_status.get("last_check"),
+                            "metadata": {"type": "api_key", "validated": True}
+                        }
+                    else:
+                        return {
+                            "service_name": service_name,
+                            "status": "unknown",
+                            "checked_at": google_status.get("last_check"),
+                            "error_message": google_status.get("validation_error", "API key not configured or validated"),
+                            "metadata": {"type": "api_key", "validated": False}
+                        }
+                
+                elif service_name == "langsmith_api":
+                    langsmith_status = validation_status.get("langsmith_api_key", {})
+                    if langsmith_status.get("validated"):
+                        return {
+                            "service_name": service_name,
+                            "status": "healthy",
+                            "checked_at": langsmith_status.get("last_check"),
+                            "metadata": {"type": "api_key", "validated": True}
+                        }
+                    else:
+                        return {
+                            "service_name": service_name,
+                            "status": "unknown",
+                            "checked_at": langsmith_status.get("last_check"),
+                            "error_message": langsmith_status.get("validation_error", "API key not configured or validated"),
+                            "metadata": {"type": "api_key", "validated": False}
+                        }
+                
+                return {
+                    "service_name": service_name,
+                    "status": "unknown",
+                    "checked_at": None,
+                    "error_message": "Unsupported API service",
+                    "metadata": {"type": "api_key", "validated": False}
+                }
             
         except Exception as e:
             logger.error(f"Failed to get API key status for {service_name}: {e}")
-            return None
+            return {
+                "service_name": service_name,
+                "status": "unknown",
+                "checked_at": None,
+                "error_message": f"Error getting API key status: {str(e)}",
+                "metadata": {"type": "api_key", "error": True}
+            }
     
     async def _subscribe_to_mcp_events(self):
         """Subscribe to MCP server toggle events to trigger immediate refresh."""
         try:
-            from utils.redis_manager import redis_manager
+            from utils.redis_manager import get_redis, subscribe
             
             async def handle_mcp_event(event):
                 """Handle MCP server toggle events by refreshing MCP server status."""
@@ -497,10 +526,14 @@ class HealthMonitorService:
                     logger.info("MCP servers status refreshed after toggle")
             
             # Subscribe to MCP events (non-blocking)
-            if redis_manager.redis_client:
+            redis_client = await get_redis()
+            if redis_client:
                 # Note: This is a simplified implementation
-                # In a full implementation, you'd use redis_manager.subscribe()
+                # In a full implementation, you'd use subscribe() to listen for MCP events
+                logger.info("Redis available for MCP event subscription")
                 pass
+            else:
+                logger.info("Redis not available, MCP events will not be subscribed to")
             
         except Exception as e:
             logger.warning(f"Failed to subscribe to MCP events: {e}")

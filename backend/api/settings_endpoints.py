@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from database.database import get_db_session
 from models.user_settings import (
@@ -402,6 +403,7 @@ async def validate_api_key(
                     "last_check": now,
                     "gemini_models_available": 0  # Will be updated by google-api-status endpoint
                 }
+                flag_modified(settings, "api_key_validation_status")
                 await UserSettingsService.update_user_settings(session, settings)
                 
                 result = {
@@ -421,6 +423,7 @@ async def validate_api_key(
                     "last_check": now,
                     "gemini_models_available": 0
                 }
+                flag_modified(settings, "api_key_validation_status")
                 await UserSettingsService.update_user_settings(session, settings)
                 
                 result = {
@@ -454,6 +457,7 @@ async def validate_api_key(
                         "last_check": now,
                         "features_available": ["tracing", "monitoring", "debugging"]
                     }
+                    flag_modified(settings, "api_key_validation_status")
                     await UserSettingsService.update_user_settings(session, settings)
                     
                     result = {
@@ -472,6 +476,7 @@ async def validate_api_key(
                         "last_check": now,
                         "features_available": []
                     }
+                    flag_modified(settings, "api_key_validation_status")
                     await UserSettingsService.update_user_settings(session, settings)
                     
                     result = {
@@ -491,6 +496,7 @@ async def validate_api_key(
                     "last_check": now,
                     "features_available": []
                 }
+                flag_modified(settings, "api_key_validation_status")
                 await UserSettingsService.update_user_settings(session, settings)
                 
                 result = {
@@ -609,6 +615,7 @@ async def save_api_keys(
                     })
             
             # Save updated validation status to database
+            flag_modified(settings, "api_key_validation_status")
             await UserSettingsService.update_user_settings(session, settings)
             
             logger.info(
@@ -713,6 +720,8 @@ async def get_google_api_status(
                 
                 # Update cached status
                 settings.api_key_validation_status["google_api_key"] = new_status
+                # Mark the JSONB field as modified so SQLAlchemy knows to update it
+                flag_modified(settings, "api_key_validation_status")
                 await UserSettingsService.update_user_settings(session, settings)
                 
                 logger.info("Cached Google API validation results", extra={"data": new_status})
@@ -780,7 +789,7 @@ async def get_langsmith_api_status(
                     # Test LangSmith API using minimal permissions endpoint
                     response = requests.get(
                         "https://api.smith.langchain.com/info",
-                        headers={"x-api-key": app_settings.LANGCHAIN_API_KEY},
+                        headers={"x-api-key": app_settings.LANGCHAIN_API_KEY.get_secret_value()},
                         timeout=10
                     )
                     
@@ -803,6 +812,8 @@ async def get_langsmith_api_status(
                 
                 # Update cached status
                 settings.api_key_validation_status["langsmith_api_key"] = new_status
+                # Mark the JSONB field as modified so SQLAlchemy knows to update it
+                flag_modified(settings, "api_key_validation_status")
                 await UserSettingsService.update_user_settings(session, settings)
                 
                 logger.info("Cached LangSmith API validation results", extra={"data": new_status})

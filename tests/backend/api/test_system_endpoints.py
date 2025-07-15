@@ -10,7 +10,7 @@ import subprocess
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
-from backend.api.system_endpoints import router, ALLOWED_SERVICES, SystemHealthSummary
+from backend.api.system_endpoints import router, ALLOWED_SERVICES
 
 
 @pytest.fixture
@@ -165,4 +165,191 @@ class TestSystemEndpoints:
             "mcp_gmail", "redis", "postgres", "chat-agent", "core-agent"
         }
         
-        assert ALLOWED_SERVICES == expected_services 
+        assert ALLOWED_SERVICES == expected_services
+
+    @patch('backend.api.system_endpoints.health_monitor')
+    def test_get_unified_system_status(self, mock_health_monitor, client):
+        """Test GET /api/system/system-health."""
+        # Mock the health monitor's calculate_overall_status method
+        from unittest.mock import AsyncMock
+        mock_health_monitor.calculate_overall_status = AsyncMock(return_value={
+            "overall_status": "operational",
+            "overall_health_percentage": 100.0,
+            "last_updated": "2024-01-01T00:00:00Z",
+            "summary": {
+                "total_services": 5,
+                "healthy_services": 5,
+                "degraded_services": 0,
+                "critical_services": 0,
+                "top_issues": []
+            },
+            "all_statuses": {
+                "database": {
+                    "status": "healthy",
+                    "checked_at": "2024-01-01T00:00:00Z",
+                    "response_time_ms": 10,
+                    "error_message": None,
+                    "metadata": {"type": "internal"}
+                },
+                "redis": {
+                    "status": "healthy", 
+                    "checked_at": "2024-01-01T00:00:00Z",
+                    "response_time_ms": 5,
+                    "error_message": None,
+                    "metadata": {"type": "internal"}
+                }
+            }
+        })
+        
+        # Mock the SERVICES configuration
+        mock_health_monitor.SERVICES = {
+            "database": {"type": "infrastructure", "essential": True},
+            "redis": {"type": "infrastructure", "essential": True},
+            "core_agent": {"type": "core", "essential": True},
+            "google_api": {"type": "external", "essential": False},
+            "mcp_servers": {"type": "external", "essential": False}
+        }
+        
+        response = client.get("/api/system/system-health")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify response structure
+        assert data["overall_status"] == "operational"
+        assert data["overall_health_percentage"] == 100.0
+        assert "last_updated" in data
+        assert data["cached"] is True  # Default behavior
+        assert "core_services" in data
+        assert "infrastructure_services" in data
+        assert "external_services" in data
+        assert "summary" in data
+        
+        # Verify summary structure
+        summary = data["summary"]
+        assert summary["total_services"] == 5
+        assert summary["healthy_services"] == 5
+        assert summary["degraded_services"] == 0
+        assert summary["critical_services"] == 0
+        assert summary["top_issues"] == []
+
+    @patch('backend.api.system_endpoints.health_monitor')
+    def test_get_unified_system_status_with_force_refresh(self, mock_health_monitor, client):
+        """Test GET /api/system/system-health with force_refresh=true."""
+        from unittest.mock import AsyncMock
+        mock_health_monitor.monitor_all_services = AsyncMock(return_value=None)
+        mock_health_monitor.calculate_overall_status = AsyncMock(return_value={
+            "overall_status": "degraded",
+            "overall_health_percentage": 75.0,
+            "last_updated": "2024-01-01T00:00:00Z",
+            "summary": {
+                "total_services": 4,
+                "healthy_services": 3,
+                "degraded_services": 1,
+                "critical_services": 0,
+                "top_issues": ["mcp_servers"]
+            },
+            "all_statuses": {}
+        })
+        
+        mock_health_monitor.SERVICES = {
+            "database": {"type": "infrastructure", "essential": True},
+            "redis": {"type": "infrastructure", "essential": True},
+            "core_agent": {"type": "core", "essential": True},
+            "mcp_servers": {"type": "external", "essential": False}
+        }
+        
+        response = client.get("/api/system/system-health?force_refresh=true")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify force refresh triggered monitoring
+        mock_health_monitor.monitor_all_services.assert_called_once()
+        
+        # Verify response indicates fresh data
+        assert data["cached"] is False
+        assert data["overall_status"] == "degraded"
+        assert data["overall_health_percentage"] == 75.0
+
+    @patch('backend.api.system_endpoints.health_monitor')
+    def test_get_service_status(self, mock_health_monitor, client):
+        """Test GET /api/system/system-health/{service_name}."""
+        # Mock the health monitor's get_cached_status method
+        from unittest.mock import AsyncMock
+        mock_health_monitor.get_cached_status = AsyncMock(return_value={
+            "service_name": "database",
+            "status": "healthy",
+            "response_time_ms": 15,
+            "checked_at": "2024-01-01T00:00:00Z",
+            "error_message": None,
+            "metadata": {"type": "internal"}
+        })
+        
+        # Mock the SERVICES configuration
+        mock_health_monitor.SERVICES = {
+            "database": {
+                "type": "infrastructure", 
+                "essential": True,
+                "endpoint": "internal"
+            }
+        }
+        
+        response = client.get("/api/system/system-health/database")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify response structure
+        assert data["service_name"] == "database"
+        assert data["status"] == "healthy"
+        assert data["response_time_ms"] == 15
+        assert data["service_type"] == "infrastructure"
+        assert data["essential"] is True
+        assert data["endpoint"] == "internal"
+
+    @patch('backend.api.system_endpoints.health_monitor')
+    def test_get_service_status_not_found(self, mock_health_monitor, client):
+        """Test GET /api/system/system-health/{service_name} for non-existent service."""
+        mock_health_monitor.SERVICES = {
+            "database": {"type": "infrastructure", "essential": True}
+        }
+        
+        response = client.get("/api/system/system-health/nonexistent")
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"]
+
+    @patch('backend.api.system_endpoints.health_monitor')
+    def test_refresh_all_services(self, mock_health_monitor, client):
+        """Test POST /api/system/system-health/refresh."""
+        # Mock async methods with AsyncMock
+        from unittest.mock import AsyncMock
+        mock_health_monitor.monitor_all_services = AsyncMock(return_value=None)
+        mock_health_monitor.calculate_overall_status = AsyncMock(return_value={
+            "overall_status": "operational",
+            "overall_health_percentage": 100.0,
+            "last_updated": "2024-01-01T00:00:00Z",
+            "summary": {
+                "total_services": 3,
+                "healthy_services": 3,
+                "degraded_services": 0,
+                "critical_services": 0,
+                "top_issues": []
+            }
+        })
+        
+        response = client.post("/api/system/system-health/refresh")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify monitoring was triggered
+        mock_health_monitor.monitor_all_services.assert_called_once()
+        
+        # Verify response structure
+        assert data["message"] == "All services refreshed successfully"
+        assert data["overall_status"] == "operational"
+        assert "refreshed_at" in data
+        assert "summary" in data 

@@ -169,8 +169,15 @@ async def get_unified_system_status(
         for service_name, config in health_monitor.SERVICES.items():
             cached_status = overall_status["all_statuses"].get(service_name)
             
+            # If no cached status, create a default "unknown" status entry
             if not cached_status:
-                continue
+                cached_status = {
+                    "status": "unknown",
+                    "response_time_ms": None,
+                    "checked_at": None,
+                    "error_message": "No status data available",
+                    "metadata": {"reason": "no_cached_data"}
+                }
                 
             service_data = {
                 "name": service_name,
