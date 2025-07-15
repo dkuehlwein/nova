@@ -128,16 +128,24 @@ function ChatPage() {
         message_count: number;
       }[]>(`${API_ENDPOINTS.chats}?limit=5&offset=${offset}`);
 
-      const chatHistoryItems: ChatHistoryItem[] = chats.map(chat => ({
-        id: chat.id,
-        title: chat.title,
-        last_message: chat.last_message || 'No messages yet',
-        updated_at: chat.updated_at,
-        last_activity: chat.last_activity,
-        needs_decision: chat.has_decision,
-        message_count: chat.message_count,
-        has_decision: chat.has_decision,
-      }));
+      const chatHistoryItems: ChatHistoryItem[] = chats.map(chat => {
+        // Extract task ID from thread ID pattern: core_agent_task_<task_id>
+        const taskId = chat.id.startsWith('core_agent_task_') 
+          ? chat.id.replace('core_agent_task_', '') 
+          : undefined;
+        
+        return {
+          id: chat.id,
+          title: chat.title,
+          last_message: chat.last_message || 'No messages yet',
+          updated_at: chat.updated_at,
+          last_activity: chat.last_activity,
+          needs_decision: chat.has_decision,
+          message_count: chat.message_count,
+          has_decision: chat.has_decision,
+          task_id: taskId,
+        };
+      });
 
       if (isInitial) {
         setChatHistory(chatHistoryItems);

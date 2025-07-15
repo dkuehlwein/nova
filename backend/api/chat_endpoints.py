@@ -868,29 +868,51 @@ async def get_task_chat_data(chat_id: str):
                 config = RunnableConfig(configurable={"thread_id": chat_id})
                 state = await agent.aget_state(config)
                 
-                # Process interrupts - look for human escalation interrupts
+                # Helper function to find most recent escalate_to_human tool call
+                def find_escalation_tool_call():
+                    if not state.values:
+                        return None
+                    for msg in reversed(state.values.get("messages", [])):
+                        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                            escalation_call = next((tc for tc in msg.tool_calls if tc.get("name") == "escalate_to_human"), None)
+                            if escalation_call:
+                                return escalation_call
+                    return None
+                
+                # Check for human escalation interrupts
+                pending_escalation = None
+                escalation_data = None
+                
+                # First check active interrupts (immediate detection)
                 if state.interrupts:
                     for interrupt in state.interrupts:
                         if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
                             if interrupt.value.get("type") == "human_escalation":
-                                # Find the associated tool call for context
-                                last_ai_message = None
-                                if state.values and state.values.get("messages"):
-                                    for msg in reversed(state.values["messages"]):
-                                        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                                            for tool_call in msg.tool_calls:
-                                                if tool_call.get("name") == "escalate_to_human":
-                                                    last_ai_message = msg
-                                                    break
-                                            if last_ai_message:
-                                                break
-                                
-                                pending_escalation = {
-                                    "question": interrupt.value.get("question", "No question provided"),
-                                    "instructions": interrupt.value.get("instructions", "Please respond to continue"),
-                                    "tool_call_id": last_ai_message.tool_calls[0].get("id") if last_ai_message and last_ai_message.tool_calls else None
-                                }
+                                escalation_data = interrupt.value
                                 break
+                
+                # If no active interrupts, check if waiting for resume (persistent detection)
+                if not escalation_data and state.next and "__interrupt__" in state.next:
+                    escalation_call = find_escalation_tool_call()
+                    if escalation_call:
+                        escalation_data = {
+                            "question": escalation_call.get("args", {}).get("question", "No question provided"),
+                            "instructions": "Please respond to continue"
+                        }
+                
+                # Build pending escalation response
+                if escalation_data:
+                    tool_call_id = None
+                    if "tool_call_id" not in escalation_data:
+                        escalation_call = find_escalation_tool_call()
+                        if escalation_call:
+                            tool_call_id = escalation_call.get("id")
+                    
+                    pending_escalation = {
+                        "question": escalation_data.get("question", "No question provided"),
+                        "instructions": escalation_data.get("instructions", "Please respond to continue"),
+                        "tool_call_id": escalation_data.get("tool_call_id", tool_call_id)
+                    }
             except Exception as e:
                 logger.warning(f"Could not get escalation info for {chat_id}: {e}")
         
