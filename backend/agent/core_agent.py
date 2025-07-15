@@ -47,7 +47,7 @@ class CoreAgent:
         logger.info("Initializing Core Agent...")
         
         # Create the LangGraph agent using the PostgreSQL pool
-        self.agent = await create_chat_agent(pg_pool=self.pg_pool)
+        self.agent = await create_chat_agent(pg_pool=self.pg_pool, include_escalation=True)
         logger.info("Core Agent using PostgreSQL pool from ServiceManager")
         
         # Initialize or get agent status record
@@ -61,7 +61,7 @@ class CoreAgent:
         
         try:
             # Recreate the agent with new prompt and tools using the PostgreSQL pool
-            self.agent = await create_chat_agent(pg_pool=self.pg_pool, use_cache=False)
+            self.agent = await create_chat_agent(pg_pool=self.pg_pool, use_cache=False, include_escalation=True)
             logger.info("Core Agent reloaded with PostgreSQL pool")
             
             logger.info("Core Agent reloaded successfully")

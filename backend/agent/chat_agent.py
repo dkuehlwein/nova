@@ -27,18 +27,20 @@ _cached_tools: Optional[List[Any]] = None
 _cached_llm = None
 
 
-async def get_all_tools_with_mcp(use_cache=True) -> List[Any]:
+async def get_all_tools_with_mcp(use_cache=True, include_escalation=False) -> List[Any]:
     """Get all tools including both local Nova tools and external MCP tools.
     
     Args:
         use_cache: If True, use cached tools; if False, reload tools
+        include_escalation: If True, include escalate_to_human tool (for task contexts)
         
     Returns:
         List of all available tools (cached or fresh)
     """
     global _cached_tools
     
-    if not use_cache:
+    # Don't use cache if escalation setting is different
+    if not use_cache or (include_escalation and _cached_tools is not None):
         _cached_tools = None
         logger.info("Tools cache cleared for reload")
     
@@ -46,7 +48,7 @@ async def get_all_tools_with_mcp(use_cache=True) -> List[Any]:
         return _cached_tools
     
     # Get local Nova tools
-    local_tools = get_all_tools()
+    local_tools = get_all_tools(include_escalation=include_escalation)
     
     # Get MCP tools from external servers (respects enabled/disabled state)
     try:
@@ -82,13 +84,14 @@ async def get_llm(use_cache=True):
     return _cached_llm
 
 
-async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True):
+async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, include_escalation=False):
     """Create LangGraph chat agent with cached components.
     
     Args:
         checkpointer: Optional checkpointer to use for conversation state
         pg_pool: PostgreSQL connection pool (required if no checkpointer provided)
         use_cache: If True, use cached components; if False, reload everything
+        include_escalation: If True, include escalate_to_human tool (for task contexts)
     
     Returns:
         LangGraph chat agent with current tools/prompt and PostgreSQL checkpointer
@@ -126,7 +129,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True):
     
     # Get cached or fresh components
     llm = await get_llm(use_cache=use_cache)
-    tools = await get_all_tools_with_mcp(use_cache=use_cache)
+    tools = await get_all_tools_with_mcp(use_cache=use_cache, include_escalation=include_escalation)
     system_prompt = await get_nova_system_prompt(use_cache=use_cache)
 
     # Always create fresh agent instance with current components + checkpointer

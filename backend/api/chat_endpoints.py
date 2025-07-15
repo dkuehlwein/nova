@@ -710,12 +710,26 @@ async def list_chats(limit: int = 5, offset: int = 0):
                 # Get last message
                 last_message = messages[-1] if messages else None
                 
+                # Get last message content, fallback to tool calls if content is empty
+                last_message_text = ""
+                if last_message:
+                    if last_message.content:
+                        last_message_text = last_message.content
+                    elif last_message.tool_calls:
+                        # Show tool call info when content is empty
+                        tool_names = [tc.get('tool', 'unknown') for tc in last_message.tool_calls]
+                        last_message_text = f"Used tools: {', '.join(tool_names)}"
+                
+                # Truncate if too long
+                if len(last_message_text) > 100:
+                    last_message_text = last_message_text[:100] + "..."
+                
                 chat_summaries.append(ChatSummary(
                     id=thread_id,
                     title=title,
                     created_at=messages[0].created_at if messages else datetime.now().isoformat(),
                     updated_at=last_message.created_at if last_message else datetime.now().isoformat(),
-                    last_message=last_message.content[:100] + "..." if last_message and len(last_message.content) > 100 else (last_message.content if last_message else ""),
+                    last_message=last_message_text,
                     last_activity=last_message.created_at if last_message else datetime.now().isoformat(),
                     has_decision=any(msg.needs_decision for msg in messages),
                     message_count=len(messages)
