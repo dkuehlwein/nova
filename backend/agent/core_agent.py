@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 
 from langchain_core.runnables import RunnableConfig
-from sqlalchemy import select, func
+from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
 from agent.chat_agent import create_chat_agent
@@ -74,26 +74,17 @@ class CoreAgent:
     async def _initialize_status(self):
         """Initialize the agent status in database."""
         async with db_manager.get_session() as session:
-            # Check if status record exists
-            result = await session.execute(select(AgentStatus))
-            status = result.scalar_one_or_none()
+            # Clean up any existing agent status records (there should only be one)
+            await session.execute(delete(AgentStatus))
             
-            if not status:
-                # Create new status record
-                status = AgentStatus(
-                    status=AgentStatusEnum.IDLE,
-                    started_at=datetime.utcnow()
-                )
-                session.add(status)
-                await session.commit()
-                await session.refresh(status)
-            else:
-                # Reset status on startup (in case of crash)
-                status.status = AgentStatusEnum.IDLE
-                status.current_task_id = None
-                status.started_at = datetime.utcnow()
-                status.last_error = None
-                await session.commit()
+            # Create new status record
+            status = AgentStatus(
+                status=AgentStatusEnum.IDLE,
+                started_at=datetime.utcnow()
+            )
+            session.add(status)
+            await session.commit()
+            await session.refresh(status)
             
             self.status_id = status.id
             logger.info(f"Agent status initialized with ID: {self.status_id}")

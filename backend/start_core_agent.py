@@ -175,6 +175,7 @@ async def health_check():
     except Exception as e:
         service_manager.logger.error(f"Health check failed: {e}")
         # Return unhealthy status instead of raising exception for health checks
+        # This ensures the health check endpoint always returns a valid response
         return {
             "status": "unhealthy",
             "agent_status": "error",
