@@ -293,28 +293,6 @@ async def add_task_comment_tool(
         return f"Comment added successfully to task '{task.title}'. Comment: {content}"
 
 
-async def get_pending_decisions_tool() -> str:
-    """Get tasks that need user decisions."""
-    async with db_manager.get_session() as session:
-        result = await session.execute(
-            select(Task)
-            .options(selectinload(Task.comments))
-            .where(Task.status == TaskStatus.NEEDS_REVIEW)
-            .order_by(Task.updated_at.desc())
-        )
-        tasks = result.scalars().all()
-        
-        formatted_tasks = []
-        for task in tasks:
-            # Get comments count for each task
-            comments_count = await session.scalar(
-                select(func.count(TaskComment.id)).where(TaskComment.task_id == task.id)
-            )
-            formatted_tasks.append(format_task_for_agent(task, comments_count or 0))
-        
-        return f"Found {len(formatted_tasks)} tasks needing decisions: {json.dumps(formatted_tasks, indent=2)}"
-
-
 def get_task_tools() -> List[StructuredTool]:
     """Get task management LangChain tools."""
     return [
@@ -342,10 +320,5 @@ def get_task_tools() -> List[StructuredTool]:
             func=add_task_comment_tool,
             name="add_task_comment",
             coroutine=add_task_comment_tool
-        ),
-        StructuredTool.from_function(
-            func=get_pending_decisions_tool,
-            name="get_pending_decisions",
-            coroutine=get_pending_decisions_tool
         ),
     ] 

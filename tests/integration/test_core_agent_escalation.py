@@ -4,7 +4,7 @@ Integration test for Nova Core Agent Escalation Workflow
 Tests the complete escalation workflow with real LLM:
 1. Add task asking user for favorite food
 2. Core agent takes task and moves to processing
-3. Core agent uses escalate_to_human tool 
+3. Core agent uses ask_user tool 
 4. Task moves to "needs review" lane
 5. Core agent becomes idle
 6. User answers "pizza"
@@ -84,7 +84,7 @@ async def test_complete_escalation_workflow():
         # Step 1: Create task that will trigger escalation with real LLM
         task_data = {
             "title": "Ask User About Food Preference",
-            "description": "I need you to ask the user what their favorite food is. Since this requires direct user input, you should use the escalate_to_human tool to ask them directly.",
+            "description": "I need you to ask the user what their favorite food is. Since this requires direct user input, you should use the ask_user tool to ask them directly.",
             "status": TaskStatus.NEW
         }
         

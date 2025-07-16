@@ -17,7 +17,7 @@ When (The Action):
 Then (The Expected Outcome):
 - ✔️ A new all-day event is created in the user's calendar for [Date_6_Months_From_Now]
   - Title: contains "Kindergarten" or "Closure"
-- ✔️ The escalate_to_human tool is triggered due to scheduling conflict
+- ✔️ The ask_user tool is triggered due to scheduling conflict
 - ✔️ Task moves to waiting_for_review status
 - ✔️ Original "Project Sync E2E Test" event remains unchanged
 
