@@ -72,7 +72,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./models:/models
+      - ./llm_models:/models
       - ~/.cache/huggingface:/root/.cache/huggingface
     environment:
       - CUDA_VISIBLE_DEVICES=0
@@ -80,11 +80,14 @@ services:
       - GGML_CUDA=1
     command: >
       --server
-      --model /models/phi-4-Q4_K_M.gguf
+      --model /models/phi-4-Q6_K.gguf
       --host 0.0.0.0
       --port 8080
       --n-gpu-layers 40
       --ctx-size 2048
+      --cache-type-k q8_0
+      --cache-type-v q8_0
+      --flash-attn
       --jinja
       --verbose
     healthcheck:

@@ -1,6 +1,16 @@
 model_list:
   # llama.cpp local models (always available)
-  # Phi-4 (supports function calling) - PRIMARY MODEL
+  # Phi-4 Q6_K (supports function calling) - PRIMARY MODEL
+  - model_name: phi-4-Q6_K
+    litellm_params:
+      model: openai/phi-4-Q6_K.gguf
+      api_base: http://llamacpp:8080/v1
+      api_key: "not-required"
+      temperature: 0.1
+      top_p: 0.95
+      max_tokens: 2048
+
+  # Phi-4 Q4_K_M (supports function calling) - ALTERNATIVE
   - model_name: phi-4-Q4_K_M
     litellm_params:
       model: openai/phi-4-Q4_K_M
@@ -37,6 +47,17 @@ model_list:
       api_base: http://llamacpp:8080/v1
       api_key: "not-required"
       # DeepSeek recommended settings
+      temperature: 0.6
+      top_p: 0.95
+      max_tokens: 2048
+
+  # Qwen3-14B (enhanced reasoning and tool calling)
+  - model_name: Qwen3-14B-Q5_K_M
+    litellm_params:
+      model: openai/Qwen3-14B-Q5_K_M.gguf
+      api_base: http://llamacpp:8080/v1
+      api_key: "not-required"
+      # Qwen3 recommended settings
       temperature: 0.6
       top_p: 0.95
       max_tokens: 2048

@@ -54,16 +54,18 @@ def setup_tools(workspace_service: GoogleWorkspaceService):
         """Retrieves the full content of a specific email and marks it as read."""
         return await workspace_service.gmail_tools.read_email(email_id)
 
+    '''
     @mcp.tool()
     async def trash_email(email_id: str) -> Union[str, Dict[str, str]]:
         """Moves the specified email to the trash."""
-        return await workspace_service.gmail_tools.trash_email(email_id)
+        return await workspace_service.gmail_tools.trash_email(email_id)    
 
     @mcp.tool()
     async def mark_email_as_read(email_id: str) -> Union[str, Dict[str, str]]:
         """Marks the specified email as read."""
         return await workspace_service.gmail_tools.mark_email_as_read(email_id)
-
+    #'''
+        
     @mcp.tool()
     async def create_draft_email(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
         """Creates a draft email message for one or more recipients."""
@@ -74,6 +76,7 @@ def setup_tools(workspace_service: GoogleWorkspaceService):
         """Lists all draft emails with their ID, subject, and recipient."""
         return await workspace_service.gmail_tools.list_drafts()
 
+    '''
     @mcp.tool()
     async def list_gmail_labels() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Lists all labels in the user's mailbox."""
@@ -83,13 +86,14 @@ def setup_tools(workspace_service: GoogleWorkspaceService):
     async def create_new_label(label_name: str) -> Dict[str, str]:
         """Creates a new label in Gmail."""
         return await workspace_service.gmail_tools.create_label(label_name)
-
+    #'''
     # === Calendar Tools ===
-    
+    '''
     @mcp.tool()
     async def list_calendars() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Lists all calendars accessible to the user."""
         return await workspace_service.calendar_tools.list_calendars()
+    #'''
 
     @mcp.tool()
     async def create_calendar_event(calendar_id: str, summary: str, start_datetime: str, 
@@ -106,11 +110,12 @@ def setup_tools(workspace_service: GoogleWorkspaceService):
         """Lists upcoming events from a calendar. If time_min not provided, uses current time."""
         return await workspace_service.calendar_tools.list_events(calendar_id, max_results, time_min)
 
+    '''
     @mcp.tool()
     async def create_quick_calendar_event(calendar_id: str, text: str) -> Dict[str, str]:
         """Creates an event using natural language. Example: 'Meeting with John tomorrow at 2pm'"""
         return await workspace_service.calendar_tools.create_quick_event(calendar_id, text)
-
+    #'''
     # Health endpoint for server monitoring
     @mcp.custom_route("/health", methods=["GET"])
     async def health_check(request):

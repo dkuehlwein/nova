@@ -52,6 +52,11 @@ docker-compose up -d
 docker-compose up -d nova-frontend
 ```
 
+## Development Notes
+
+### Service Restart Strategies
+- Restart llama.cpp with docker compose up/down instead of restart. Otherwise changes will not be picked up
+
 ## Architecture Overview
 
 Nova is an AI-powered kanban task management system with a dual-agent architecture:

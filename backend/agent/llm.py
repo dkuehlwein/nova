@@ -4,9 +4,7 @@ Nova LLM Module
 Centralized LLM initialization for Nova agents using LiteLLM gateway.
 """
 
-import os
-from typing import Optional, Union
-import asyncio
+from typing import Optional
 
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
@@ -46,14 +44,14 @@ def create_llm(config: Optional[RunnableConfig] = None) -> ChatOpenAI:
     
     # Get configuration values with user settings as defaults
     configuration = config.get("configurable", {}) if config else {}
-    model_name = configuration.get("model_name", user_settings.get("llm_model", "phi-4-Q4_K_M"))
-    temperature = configuration.get("temperature", user_settings.get("llm_temperature", 0.1))
+    model_name = configuration.get("model_name", user_settings.get("llm_model", "Qwen3-14B-Q5_K_M"))
+    temperature = configuration.get("temperature", user_settings.get("llm_temperature", 0.6))
     max_tokens = configuration.get("max_tokens", user_settings.get("llm_max_tokens", 2048))
     
     return ChatOpenAI(
         model=model_name,
-        openai_api_key=litellm_api_key,
-        openai_api_base=f"{litellm_base_url}/v1",
+        api_key=litellm_api_key,
+        base_url=f"{litellm_base_url}/v1",
         temperature=temperature,
         max_tokens=max_tokens,
         default_headers={

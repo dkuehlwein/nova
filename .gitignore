@@ -235,10 +235,10 @@ GEMINI.md
 # User Profile Configuration (contains PII)
 configs/user_profile.yaml
 configs/user_profile.yaml.backup
-models/DeepSeek-R1-0528-Qwen3-8B-UD-Q8_K_XL.gguf
-models/llama-3-8B-function-calling-Q4_K_M.gguf
-models/Llama-3.2-3B-Instruct-Q4_K_M.gguf
 
-models/phi-4-Q4_K_M.gguf
-models/HuggingFaceTB_SmolLM3-3B-Q4_K_M.gguf
-models/SmolLM3-3B-128K-BF16.gguf
+# LLM Models (renamed from /models to /llm_models)
+llm_models/
+/llm_models/
+*.gguf
+*.bin
+*.safetensors
