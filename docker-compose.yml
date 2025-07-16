@@ -83,7 +83,7 @@ services:
       --model /models/phi-4-Q6_K.gguf
       --host 0.0.0.0
       --port 8080
-      --n-gpu-layers 40
+      --n-gpu-layers 42
       --ctx-size 2048
       --cache-type-k q8_0
       --cache-type-v q8_0

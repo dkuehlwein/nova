@@ -13,22 +13,22 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-def escalate_to_human(question: str) -> str:
+def ask_user(question: str) -> str:
     """
-    Ask the human a question when you need user input, decisions, or clarification.
+    Ask the user a question when you need input, decisions, or clarification.
     
     **WHEN TO USE THIS TOOL**:
     - Task contains "ask user" or "get user input" - use this tool
     - Task requires user decision, approval, or clarification
     - Task involves notifying user of important information
-    - You need human input to proceed with the task
+    - You need user input to proceed with the task
     
-    This will pause the current task and wait for human response.
+    This will pause the current task and wait for user response.
     The core agent will automatically move the task to NEEDS_REVIEW status
     when this tool is called, and back to USER_INPUT_RECEIVED when resumed.
     
     Args:
-        question: Your question for the human. Provide sufficient context 
+        question: Your question for the user. Provide sufficient context 
                  since this will be the message they see in the task chat.
                  
                  Examples:
@@ -37,27 +37,27 @@ def escalate_to_human(question: str) -> str:
                  - "This task requires clarification: should I prioritize speed or accuracy?"
     
     Returns:
-        The human's response from the chat interface
+        The user's response from the chat interface
     """
-    logger.info(f"Escalating question to human: {question}")
+    logger.info(f"Asking user question: {question}")
     
-    # Use LangGraph interrupt to pause execution and wait for human input
+    # Use LangGraph interrupt to pause execution and wait for user input
     # The interrupt data will be handled by the core agent to update task status
-    human_response = interrupt({
-        "type": "human_escalation",
+    user_response = interrupt({
+        "type": "user_question",
         "question": question,
         "instructions": "Please respond to this question to continue task processing."
     })
     
     # When resuming with Command(resume=value), the interrupt receives the value directly
     # If it's a string, use it directly; if it's a dict, extract the response
-    if isinstance(human_response, str):
-        response = human_response
-    elif isinstance(human_response, dict):
-        response = human_response.get("response", "No response received")
+    if isinstance(user_response, str):
+        response = user_response
+    elif isinstance(user_response, dict):
+        response = user_response.get("response", "No response received")
     else:
-        response = str(human_response)
+        response = str(user_response)
     
-    logger.info(f"Received human response: {response}")
+    logger.info(f"Received user response: {response}")
     
     return response 

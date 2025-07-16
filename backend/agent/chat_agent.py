@@ -32,7 +32,7 @@ async def get_all_tools_with_mcp(use_cache=True, include_escalation=False) -> Li
     
     Args:
         use_cache: If True, use cached tools; if False, reload tools
-        include_escalation: If True, include escalate_to_human tool (for task contexts)
+        include_escalation: If True, include ask_user tool (for task contexts)
         
     Returns:
         List of all available tools (cached or fresh)
@@ -91,7 +91,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
         checkpointer: Optional checkpointer to use for conversation state
         pg_pool: PostgreSQL connection pool (required if no checkpointer provided)
         use_cache: If True, use cached components; if False, reload everything
-        include_escalation: If True, include escalate_to_human tool (for task contexts)
+        include_escalation: If True, include ask_user tool (for task contexts)
     
     Returns:
         LangGraph chat agent with current tools/prompt and PostgreSQL checkpointer

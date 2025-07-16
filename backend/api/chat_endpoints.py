@@ -868,13 +868,13 @@ async def get_task_chat_data(chat_id: str):
                 config = RunnableConfig(configurable={"thread_id": chat_id})
                 state = await agent.aget_state(config)
                 
-                # Helper function to find most recent escalate_to_human tool call
+                # Helper function to find most recent ask_user tool call
                 def find_escalation_tool_call():
                     if not state.values:
                         return None
                     for msg in reversed(state.values.get("messages", [])):
                         if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                            escalation_call = next((tc for tc in msg.tool_calls if tc.get("name") == "escalate_to_human"), None)
+                            escalation_call = next((tc for tc in msg.tool_calls if tc.get("name") == "ask_user"), None)
                             if escalation_call:
                                 return escalation_call
                     return None
