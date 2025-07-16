@@ -31,12 +31,12 @@ class HealthMonitorService:
         # Core Services (System fails if any of these are down)
         "chat_agent": {
             "type": "core",
-            "endpoint": "http://localhost:8000/chat/health",
+            "endpoint": f"http://{'nova-backend' if settings.POSTGRES_HOST != 'localhost' else 'localhost'}:8000/chat/health",
             "essential": True
         },
         "core_agent": {
             "type": "core", 
-            "endpoint": "http://localhost:8001/health",
+            "endpoint": f"http://{'nova-core-agent' if settings.POSTGRES_HOST != 'localhost' else 'localhost'}:8001/health",
             "essential": True
         },
         
@@ -54,12 +54,12 @@ class HealthMonitorService:
         "llamacpp": {
             "type": "infrastructure",
             "essential": True,  # Required for local AI inference
-            "endpoint": "http://localhost:8080/health"
+            "endpoint": f"http://{'nova-llamacpp-1' if settings.POSTGRES_HOST != 'localhost' else 'localhost'}:8080/health"
         },
         "litellm": {
             "type": "infrastructure",
             "essential": True,  # Required for AI model gateway
-            "endpoint": "http://localhost:4000/health/readiness"
+            "endpoint": f"http://{'nova-litellm-1' if settings.POSTGRES_HOST != 'localhost' else 'localhost'}:4000/health/readiness"
         },
         "neo4j": {
             "type": "infrastructure", 
