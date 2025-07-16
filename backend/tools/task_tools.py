@@ -103,7 +103,7 @@ async def update_task_tool(
     person_emails: List[str] = None,
     project_names: List[str] = None
 ) -> str:
-    """Update an existing task."""
+    """Update an existing task. Status must be one of: 'todo', 'in_progress', 'done', 'needs_review', 'error'."""
     try:
         task_id_uuid = UUID(task_id)
     except ValueError:
@@ -228,7 +228,7 @@ async def get_tasks_tool(
 
 
 async def get_task_by_id_tool(task_id: str) -> str:
-    """Get a specific task by ID."""
+    """Retrieve details of a specific task using its UUID. Only use when you have a valid task ID from previous operations (not for searching tasks)."""
     async with db_manager.get_session() as session:
         try:
             uuid_task_id = UUID(task_id)

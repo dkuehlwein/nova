@@ -15,13 +15,13 @@ logger = logging.getLogger(__name__)
 @tool
 def escalate_to_human(question: str) -> str:
     """
-    **CRITICAL TOOL**: Ask the human a question about the current task.
+    Ask the human a question when you need user input, decisions, or clarification.
     
     **WHEN TO USE THIS TOOL**:
-    - Task asks you to "ask user" or "get user input" - USE THIS IMMEDIATELY
-    - Task requires user decision, approval, or clarification - USE THIS
-    - Task involves notifying user of important information - USE THIS
-    - You need human input to proceed with the task - USE THIS
+    - Task contains "ask user" or "get user input" - use this tool
+    - Task requires user decision, approval, or clarification
+    - Task involves notifying user of important information
+    - You need human input to proceed with the task
     
     This will pause the current task and wait for human response.
     The core agent will automatically move the task to NEEDS_REVIEW status
