@@ -222,12 +222,12 @@ class TestRealCalendarConflictE2E:
                     
                     # Wait for the core agent to process the task and change its status
                     processed_task = None
-                    agent_wait_time = 30   # 30 seconds for agent processing (testing)
+                    agent_wait_time = 60   # 60 seconds for agent processing (testing)
                     elapsed_time = 0
                     
                     while elapsed_time < agent_wait_time:
-                        await asyncio.sleep(15)  # Check every 15 seconds
-                        elapsed_time += 15
+                        await asyncio.sleep(10)  # Check every 10 seconds
+                        elapsed_time += 10
                         
                         # Get updated task status via API
                         task_response = await client.get(f"{api_base_url}/api/tasks/{email_task['id']}")

@@ -131,8 +131,8 @@ class TestCoreAgentInitialization:
             agent = CoreAgent(mock_pg_pool)
             await agent.initialize()
             
-            # Verify agent was created with pg_pool
-            mock_create_agent.assert_called_once_with(pg_pool=mock_pg_pool)
+            # Verify agent was created with pg_pool and include_escalation=True
+            mock_create_agent.assert_called_once_with(pg_pool=mock_pg_pool, include_escalation=True)
             assert agent.agent is not None
             
             # Verify status was initialized
@@ -148,8 +148,8 @@ class TestCoreAgentInitialization:
             agent = CoreAgent(mock_pg_pool)
             await agent.reload_agent()
             
-            # Verify agent was recreated with pg_pool and use_cache=False
-            mock_create_agent.assert_called_once_with(pg_pool=mock_pg_pool, use_cache=False)
+            # Verify agent was recreated with pg_pool, use_cache=False and include_escalation=True
+            mock_create_agent.assert_called_once_with(pg_pool=mock_pg_pool, use_cache=False, include_escalation=True)
             assert agent.agent is not None
     
     @pytest.mark.asyncio

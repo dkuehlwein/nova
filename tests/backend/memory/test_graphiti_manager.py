@@ -177,10 +177,12 @@ class TestGraphitiClients:
     async def test_create_graphiti_llm_with_api_key(self):
         """Test LLM client creation with API key."""
         with patch('memory.graphiti_manager.settings') as mock_settings, \
-             patch('memory.graphiti_manager.GeminiClient') as mock_client_cls:
+             patch('memory.graphiti_manager.GeminiClient') as mock_client_cls, \
+             patch('database.database.UserSettingsService') as mock_settings_service:
             
             mock_settings.GOOGLE_API_KEY.get_secret_value.return_value = "test_api_key"
             mock_settings.GOOGLE_MODEL_NAME = "gemini-2.0-flash-exp"
+            mock_settings_service.get_memory_settings_sync.return_value = {"memory_token_limit": 2048}
             
             from memory.graphiti_manager import create_graphiti_llm
             
@@ -191,7 +193,7 @@ class TestGraphitiClients:
             assert config.api_key == "test_api_key"
             assert config.model == "gemini-2.0-flash-exp"
             assert config.temperature == 0.1
-            assert config.max_tokens == 32000
+            assert config.max_tokens == 2048
 
     @pytest.mark.asyncio
     async def test_create_graphiti_llm_missing_api_key(self):
