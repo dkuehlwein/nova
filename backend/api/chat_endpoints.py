@@ -347,7 +347,7 @@ async def health_check():
         # Check if we can create a chat agent
         checkpointer = await get_checkpointer_from_service_manager()
         from agent.chat_agent import create_chat_agent
-        chat_agent = await create_chat_agent(checkpointer=checkpointer)
+        chat_agent = await create_chat_agent(checkpointer=checkpointer, include_escalation=True)
         
         return {
             "status": "healthy",
@@ -379,7 +379,7 @@ async def stream_chat(chat_request: ChatRequest):
         logger.info("Getting chat agent with checkpointer...")
         try:
             from agent.chat_agent import create_chat_agent
-            chat_agent = await create_chat_agent(checkpointer=checkpointer)
+            chat_agent = await create_chat_agent(checkpointer=checkpointer, include_escalation=True)
             logger.info(f"Chat agent ready. Using checkpointer: {type(checkpointer)} (id: {id(checkpointer)})")
         except Exception as agent_error:
             logger.error(f"Failed to create chat agent: {agent_error}")
@@ -864,7 +864,7 @@ async def get_task_chat_data(chat_id: str):
                 from langchain_core.runnables import RunnableConfig
                 
                 # Get agent with the same checkpointer and check current state for interrupts
-                agent = await create_chat_agent(checkpointer=checkpointer)
+                agent = await create_chat_agent(checkpointer=checkpointer, include_escalation=True)
                 config = RunnableConfig(configurable={"thread_id": chat_id})
                 state = await agent.aget_state(config)
                 

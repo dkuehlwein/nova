@@ -682,7 +682,7 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
         checkpointer = await get_checkpointer_from_service_manager()
         
         # Get agent with the proper checkpointer - same pattern as chat endpoints
-        agent = await create_chat_agent(checkpointer=checkpointer)
+        agent = await create_chat_agent(checkpointer=checkpointer, include_escalation=True)
         state = await agent.aget_state(config)
         
         # Determine if this is an escalation response or regular message
