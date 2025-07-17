@@ -225,13 +225,10 @@ class LLMModelService:
                         
                         for model in models:
                             model_name = model.get("model_name", "")
-                            if ("phi-4" in model_name.lower() or 
-                                "llama" in model_name.lower() or 
-                                "smollm3" in model_name.lower()):
-                                local_models.append({"model_name": model_name})
-                            elif "gemini" in model_name.lower():
+                            if ("gemini" in model_name.lower() or "gemma" in model_name.lower()):
                                 cloud_models.append({"model_name": model_name})
-                        
+                            else:
+                                local_models.append({"model_name": model_name})
                         return {
                             "local": local_models,
                             "cloud": cloud_models
