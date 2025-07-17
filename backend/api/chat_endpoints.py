@@ -556,16 +556,18 @@ async def stream_chat(chat_request: ChatRequest):
                                         else:
                                             content = str(content)
                                     
-                                    event = {
-                                        "type": "message",
-                                        "data": {
-                                            "role": "assistant",
-                                            "content": content,
-                                            "timestamp": timestamp,
-                                            "node": node_name
+                                    # Skip empty messages to avoid displaying dots
+                                    if content and content.strip():
+                                        event = {
+                                            "type": "message",
+                                            "data": {
+                                                "role": "assistant",
+                                                "content": content,
+                                                "timestamp": timestamp,
+                                                "node": node_name
+                                            }
                                         }
-                                    }
-                                    yield f"data: {json.dumps(event)}\n\n"
+                                        yield f"data: {json.dumps(event)}\n\n"
                                 
                                 # Handle tool calls
                                 if hasattr(message, 'tool_calls') and message.tool_calls:
