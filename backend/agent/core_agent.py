@@ -305,8 +305,8 @@ class CoreAgent:
             
             # Handle interrupts first (regardless of messages)
             if interrupt_detected and interrupt_data:
-                logger.info(f"Handling human escalation for task {task.id}")
-                await self._handle_human_escalation(task, interrupt_data)
+                logger.info(f"Handling user question for task {task.id}")
+                await self._handle_user_question(task, interrupt_data)
                 return
             
             # Extract and save AI response if we have messages
@@ -435,8 +435,8 @@ class CoreAgent:
         ]
     
     
-    async def _handle_human_escalation(self, task: Task, interrupts):
-        """Handle human escalation interrupts."""
+    async def _handle_user_question(self, task: Task, interrupts):
+        """Handle user question interrupts."""
         try:
             # Move task to NEEDS_REVIEW status
             await update_task_tool(
@@ -448,7 +448,7 @@ class CoreAgent:
             escalation_questions = []
             for interrupt in interrupts:
                 if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
-                    if interrupt.value.get("type") == "human_escalation":
+                    if interrupt.value.get("type") == "user_question":
                         question = interrupt.value.get("question", "Human input requested")
                         escalation_questions.append(question)
             

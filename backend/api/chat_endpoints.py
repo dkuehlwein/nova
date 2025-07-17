@@ -388,11 +388,24 @@ async def stream_chat(chat_request: ChatRequest):
         # Create config
         config = _create_config(chat_request.thread_id)
         
-        # Inject memory search tool call on first turn
+        # Check if there's an active interrupt that needs to be resumed
+        resume_from_interrupt = False
+        user_response = None
+        try:
+            state = await chat_agent.aget_state(config)
+            logger.info(f"Checking for interrupts in thread {chat_request.thread_id}: state={state}, interrupts={state.interrupts if state else None}")
+            if state and state.interrupts:
+                logger.info(f"Found active interrupt for thread {chat_request.thread_id}, resuming with user response")
+                resume_from_interrupt = True
+                user_response = chat_request.messages[-1].content
+        except Exception as state_error:
+            logger.warning(f"Could not check for interrupts: {state_error}")
+        
+        # Inject memory search tool call on first turn (skip if resuming from interrupt)
         memory_tool_messages = []
         is_first_turn = await _is_first_turn(chat_request.thread_id, checkpointer)
         
-        if is_first_turn:
+        if is_first_turn and not resume_from_interrupt:
             logger.info("First turn in conversation - injecting memory search tool call")
             try:
                 from memory.memory_functions import search_memory
@@ -437,36 +450,39 @@ async def stream_chat(chat_request: ChatRequest):
             logger.debug("Not first turn - skipping memory search tool injection")
             memory_tool_messages = []
         
-        # Convert Pydantic models to LangChain messages
-        logger.debug("Converting messages...")
-        try:
-            messages = _convert_messages_to_langchain(chat_request.messages)
-            
-            # Inject memory tool messages if this is first turn
-            if memory_tool_messages:
-                # Add memory tool messages AFTER the user message
-                # This ensures they become part of the conversation history
-                messages.extend(memory_tool_messages)  # Add memory tool call and result
+        # Convert Pydantic models to LangChain messages (skip if resuming from interrupt)
+        messages = []
+        if not resume_from_interrupt:
+            logger.debug("Converting messages...")
+            try:
+                messages = _convert_messages_to_langchain(chat_request.messages)
                 
-                logger.info(f"Injected {len(memory_tool_messages)} memory tool messages")
-                for i, msg in enumerate(memory_tool_messages):
-                    logger.info(f"Memory tool message {i}: {type(msg).__name__} - {getattr(msg, 'tool_calls', 'no tool_calls')} - {msg.content[:100] if hasattr(msg, 'content') else 'no content'}")
-            
-            logger.debug(f"Converted {len(messages)} messages to LangChain format")
-            logger.info(f"Final message list has {len(messages)} messages:")
-            for i, msg in enumerate(messages):
-                logger.info(f"Message {i}: {type(msg).__name__} - {getattr(msg, 'tool_calls', 'no tool_calls')} - {msg.content[:50] if hasattr(msg, 'content') else 'no content'}...")
-        except Exception as convert_error:
-            logger.error(f"Failed to convert messages: {convert_error}")
-            raise HTTPException(status_code=500, detail=f"Failed to convert messages: {str(convert_error)}")
+                # Inject memory tool messages if this is first turn
+                if memory_tool_messages:
+                    # Add memory tool messages AFTER the user message
+                    # This ensures they become part of the conversation history
+                    messages.extend(memory_tool_messages)  # Add memory tool call and result
+                    
+                    logger.info(f"Injected {len(memory_tool_messages)} memory tool messages")
+                    for i, msg in enumerate(memory_tool_messages):
+                        logger.info(f"Memory tool message {i}: {type(msg).__name__} - {getattr(msg, 'tool_calls', 'no tool_calls')} - {msg.content[:100] if hasattr(msg, 'content') else 'no content'}")
+                
+                logger.debug(f"Converted {len(messages)} messages to LangChain format")
+                logger.info(f"Final message list has {len(messages)} messages:")
+                for i, msg in enumerate(messages):
+                    logger.info(f"Message {i}: {type(msg).__name__} - {getattr(msg, 'tool_calls', 'no tool_calls')} - {msg.content[:50] if hasattr(msg, 'content') else 'no content'}...")
+            except Exception as convert_error:
+                logger.error(f"Failed to convert messages: {convert_error}")
+                raise HTTPException(status_code=500, detail=f"Failed to convert messages: {str(convert_error)}")
         
-        logger.debug(f"Starting stream for thread_id: {chat_request.thread_id} with {len(messages)} messages")
+        logger.debug(f"Starting stream for thread_id: {chat_request.thread_id}, resume_from_interrupt: {resume_from_interrupt}")
         
         
         async def generate_response():
             """Generate SSE (Server-Sent Events) response stream."""
             # Yield memory tool calls first if they exist (for immediate display)
-            if memory_tool_messages and len(memory_tool_messages) >= 2:
+            # Skip memory tool injection if resuming from interrupt
+            if not resume_from_interrupt and memory_tool_messages and len(memory_tool_messages) >= 2:
                 timestamp = datetime.now().isoformat()
                 
                 # Get the AI message with tool calls (first message)
@@ -503,8 +519,17 @@ async def stream_chat(chat_request: ChatRequest):
             # Now process the agent stream
             stream_count = 0
             try:
+                # Choose input based on whether we're resuming from interrupt
+                if resume_from_interrupt:
+                    from langgraph.types import Command
+                    stream_input = Command(resume=user_response)
+                    logger.info(f"Resuming from interrupt with user response: {user_response}")
+                else:
+                    stream_input = {"messages": messages}
+                    logger.info(f"Starting new conversation with {len(messages)} messages")
+                
                 async for chunk in chat_agent.astream(
-                    {"messages": messages},
+                    stream_input,
                     config=config,
                     stream_mode="updates"
                 ):
@@ -887,7 +912,8 @@ async def get_task_chat_data(chat_id: str):
                 if state.interrupts:
                     for interrupt in state.interrupts:
                         if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
-                            if interrupt.value.get("type") == "human_escalation":
+                            interrupt_type = interrupt.value.get("type")
+                            if interrupt_type == "user_question":
                                 escalation_data = interrupt.value
                                 break
                 
