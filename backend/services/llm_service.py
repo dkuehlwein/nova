@@ -95,9 +95,16 @@ class LLMModelService:
                         }
                     },
                     {
-                        "model_name": "gemini-2.5-flash-preview-04-17",
+                        "model_name": "gemini-2.5-flash-lite-preview-06-17",
                         "litellm_params": {
-                            "model": "gemini/gemini-2.5-flash-preview-04-17",
+                            "model": "gemini/gemini-2.5-flash-lite-preview-06-17",
+                            "api_key": google_api_key
+                        }
+                    },
+                    {
+                        "model_name": "gemma-3-27b-it",
+                        "litellm_params": {
+                            "model": "gemini/gemma-3-27b-it",
                             "api_key": google_api_key
                         }
                     }

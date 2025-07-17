@@ -181,7 +181,7 @@ class TestGraphitiClients:
              patch('database.database.UserSettingsService') as mock_settings_service:
             
             mock_settings.GOOGLE_API_KEY.get_secret_value.return_value = "test_api_key"
-            mock_settings.GOOGLE_MODEL_NAME = "gemini-2.0-flash-exp"
+            mock_settings_service.get_llm_settings_sync.return_value = {"llm_model": "gemini-2.0-flash-exp"}
             mock_settings_service.get_memory_settings_sync.return_value = {"memory_token_limit": 2048}
             
             from memory.graphiti_manager import create_graphiti_llm

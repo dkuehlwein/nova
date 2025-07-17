@@ -22,7 +22,7 @@ load_dotenv()
 LINEAR_API_KEY = os.getenv("LINEAR_API_KEY")
 GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY") 
 LINEAR_API_URL = os.getenv("LINEAR_API_URL", "https://api.linear.app/graphql")
-GOOGLE_MODEL_NAME = os.getenv("GOOGLE_MODEL_NAME", "gemini-2.5-flash")
+GOOGLE_MODEL_NAME = "gemini-2.5-flash"
 
 # Configure Gemini
 if GEMINI_API_KEY:

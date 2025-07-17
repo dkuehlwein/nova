@@ -292,9 +292,11 @@ def create_graphiti_llm() -> GeminiClient:
     if not api_key:
         raise ValueError("GOOGLE_API_KEY environment variable is required")
     
-    # Use the same model name logic as Nova's create_llm()
-    model_name = settings.GOOGLE_MODEL_NAME or "gemini-2.5-flash-preview-04-17"
-    
+    # Use UserSettingsService for model configuration (replaces deprecated GOOGLE_MODEL_NAME)
+    from database.database import UserSettingsService
+    user_settings = UserSettingsService.get_llm_settings_sync()
+    model_name = user_settings.get("llm_model", "phi-4-Q4_K_M")
+       
     config = LLMConfig(
         model=model_name,
         api_key=api_key,

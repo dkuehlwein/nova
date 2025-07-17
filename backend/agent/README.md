@@ -25,7 +25,6 @@ This directory contains the Nova LangGraph chat agent implementation, refactored
 GOOGLE_API_KEY="your-google-api-key"
 
 # Optional
-GOOGLE_MODEL_NAME="gemini-2.5-flash-preview-04-17"  # Default model
 DATABASE_URL="postgresql://user:password@localhost:5432/nova"  # For persistence
 
 # LangSmith (Optional)

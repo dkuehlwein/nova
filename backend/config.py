@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     
     # Google Generative AI Settings (using API Key)
     GOOGLE_API_KEY: Optional[SecretStr] = None
-    GOOGLE_MODEL_NAME: Optional[str] = None  # e.g., gemini-pro, gemini-1.5-flash
 
     # PostgreSQL Database Configuration
     POSTGRES_DB: str = "nova_kanban"

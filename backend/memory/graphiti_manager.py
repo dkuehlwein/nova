@@ -29,8 +29,22 @@ def create_graphiti_llm() -> GeminiClient:
     if not api_key:
         raise ValueError("GOOGLE_API_KEY environment variable is required")
     
-    # Use the same model name logic as Nova's create_llm()
-    model_name = settings.GOOGLE_MODEL_NAME or "gemini-2.0-flash-exp"
+    # Memory system requires Gemini models for GeminiClient and GeminiEmbedder
+    # Check if user has a Gemini model configured, otherwise use default Gemini model
+    try:
+        from database.database import UserSettingsService
+        user_settings = UserSettingsService.get_llm_settings_sync()
+        user_model = user_settings.get("llm_model", "phi-4-Q4_K_M")
+        
+        # If user has a Gemini model configured, use it; otherwise use current working Gemini model
+        if user_model.startswith("gemini-") or user_model.startswith("models/gemini-"):
+            model_name = user_model
+        else:
+            # Use a working Gemini model for memory operations
+            model_name = "gemini-2.0-flash-exp"
+    except Exception:
+        # Fallback to working Gemini model if database unavailable
+        model_name = "gemini-2.0-flash-exp"
     
     # Get user settings for memory token limit
     max_tokens = 32000  # Default from database schema

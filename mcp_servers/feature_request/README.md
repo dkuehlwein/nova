@@ -53,7 +53,6 @@ LINEAR_API_URL=https://api.linear.app/graphql
 
 # Google AI Configuration  
 GOOGLE_API_KEY=your_google_api_key_here
-GOOGLE_MODEL_NAME=gemini-1.5-flash
 
 # Optional: Server Configuration
 HOST=127.0.0.1
