@@ -101,9 +101,16 @@ async def update_task_tool(
     due_date: str = None,
     tags: List[str] = None,
     person_emails: List[str] = None,
-    project_names: List[str] = None
+    project_names: List[str] = None,
+    comment: str = None
 ) -> str:
-    """Update an existing task. Status must be one of: 'todo', 'in_progress', 'done', 'needs_review', 'error'."""
+    """Update an existing task. Status must be one of: 'todo', 'in_progress', 'done', 'needs_review', 'error'.
+    
+    IMPORTANT: Always call this tool with status='done' and a comment summarizing what was achieved when you complete a task.
+    
+    Args:
+        comment: Optional comment to add to the task. Use this to document what was accomplished, especially when marking tasks as 'done'.
+    """
     try:
         task_id_uuid = UUID(task_id)
     except ValueError:
@@ -164,6 +171,21 @@ async def update_task_tool(
         except Exception as e:
             # Don't fail the operation if event publishing fails
             print(f"Warning: Failed to publish task update event: {e}")
+        
+        # Add comment if provided
+        if comment:
+            try:
+                comment_obj = TaskComment(
+                    task_id=task_id_uuid,
+                    content=comment,
+                    author="nova"
+                )
+                async with db_manager.get_session() as session:
+                    session.add(comment_obj)
+                    await session.commit()
+            except Exception as e:
+                # Don't fail the update if comment creation fails
+                print(f"Warning: Failed to add comment to task {task_id}: {e}")
         
         # Fetch the actual Task object for formatting
         async with db_manager.get_session() as session:
@@ -261,36 +283,6 @@ async def get_task_by_id_tool(task_id: str) -> str:
         return f"Task details: {json.dumps(formatted_task, indent=2)}"
 
 
-async def add_task_comment_tool(
-    task_id: str,
-    content: str,
-    author: str = "nova"
-) -> str:
-    """Add a comment to a task."""
-    async with db_manager.get_session() as session:
-        try:
-            task_id_uuid = UUID(task_id)
-        except ValueError:
-            return f"Error: Invalid task ID format: {task_id}"
-        
-        # Verify task exists
-        result = await session.execute(select(Task).where(Task.id == task_id_uuid))
-        task = result.scalar_one_or_none()
-        
-        if not task:
-            return f"Error: Task not found with ID: {task_id}"
-        
-        # Create comment
-        comment = TaskComment(
-            task_id=task_id_uuid,
-            content=content,
-            author=author
-        )
-        session.add(comment)
-        
-        await session.commit()
-        
-        return f"Comment added successfully to task '{task.title}'. Comment: {content}"
 
 
 def get_task_tools() -> List[StructuredTool]:
@@ -315,10 +307,5 @@ def get_task_tools() -> List[StructuredTool]:
             func=get_task_by_id_tool,
             name="get_task_by_id",
             coroutine=get_task_by_id_tool
-        ),
-        StructuredTool.from_function(
-            func=add_task_comment_tool,
-            name="add_task_comment",
-            coroutine=add_task_comment_tool
         ),
     ] 

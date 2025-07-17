@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 from agent.chat_agent import create_chat_agent
 from database.database import db_manager
 from models.models import Task, TaskStatus, TaskComment, AgentStatus, AgentStatusEnum
-from tools.task_tools import add_task_comment_tool, update_task_tool
+from tools.task_tools import update_task_tool
 
 logger = logging.getLogger(__name__)
 
@@ -455,16 +455,14 @@ class CoreAgent:
             # Add escalation comment
             if escalation_questions:
                 escalation_text = "\n\n".join(escalation_questions)
-                await add_task_comment_tool(
+                await update_task_tool(
                     task_id=str(task.id),
-                    content=f"Core Agent is requesting human input:\n\n{escalation_text}\n\n⏸️ Task paused - please respond to continue processing.",
-                    author="core_agent"
+                    comment=f"Core Agent is requesting human input:\n\n{escalation_text}\n\n⏸️ Task paused - please respond to continue processing."
                 )
             else:
-                await add_task_comment_tool(
+                await update_task_tool(
                     task_id=str(task.id),
-                    content="Core Agent is requesting human input. Please respond to continue processing.",
-                    author="core_agent"
+                    comment="Core Agent is requesting human input. Please respond to continue processing."
                 )
             
             logger.info(f"Moved task {task.id} ({task.title}) to NEEDS_REVIEW due to human escalation")
@@ -482,10 +480,9 @@ class CoreAgent:
             )
             
             # Add error comment
-            await add_task_comment_tool(
+            await update_task_tool(
                 task_id=str(task.id),
-                content=f"Core Agent encountered an error while processing this task:\n\n{error_message}",
-                author="core_agent"
+                comment=f"Core Agent encountered an error while processing this task:\n\n{error_message}"
             )
             
             logger.error(f"Moved task {task.id} ({task.title}) to FAILED due to error: {error_message}")

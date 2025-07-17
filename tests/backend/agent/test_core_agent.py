@@ -427,23 +427,19 @@ class TestCoreAgentTaskProcessing:
         
         error_msg = "Test error message"
         
-        with patch('agent.core_agent.update_task_tool') as mock_update, \
-             patch('agent.core_agent.add_task_comment_tool') as mock_comment:
+        with patch('agent.core_agent.update_task_tool') as mock_update:
             
             agent = CoreAgent(mock_pg_pool)
             await agent._handle_task_error(mock_task, error_msg)
             
-            # Should update task to failed
-            mock_update.assert_called_once_with(
+            # Should update task to failed and add error comment
+            mock_update.assert_any_call(
                 task_id=str(mock_task.id),
                 status="failed"
             )
-            
-            # Should add error comment
-            mock_comment.assert_called_once_with(
+            mock_update.assert_any_call(
                 task_id=str(mock_task.id),
-                content=f"Core Agent encountered an error while processing this task:\n\n{error_msg}",
-                author="core_agent"
+                comment=f"Core Agent encountered an error while processing this task:\n\n{error_msg}"
             )
 
 

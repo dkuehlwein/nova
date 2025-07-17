@@ -21,7 +21,9 @@ TASK_CONTEXT_TEMPLATE = """**Task ID:** {task_id}
 {memory_context}
 
 **Recent Comments:**
-{recent_comments}"""
+{recent_comments}
+
+🎯 **REMINDER: When this task is complete, you MUST call update_task with status="done" and a comment summarizing what was achieved**"""
 
 # Current Task Template - The actual task info (only for core agent)
 CURRENT_TASK_TEMPLATE = """**Current Task:**
