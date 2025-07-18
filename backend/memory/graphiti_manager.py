@@ -32,8 +32,11 @@ def create_graphiti_llm() -> GeminiClient:
     # Memory system requires Gemini models for GeminiClient and GeminiEmbedder
     # Check if user has a Gemini model configured, otherwise use default Gemini model
     from database.database import UserSettingsService
-    user_settings = UserSettingsService.get_llm_settings_sync()
-    model_name = user_settings.get("llm_model", "phi-4-Q4_K_M")
+    # user_settings = UserSettingsService.get_llm_settings_sync()
+    # model_name = user_settings.get("llm_model", "phi-4-Q4_K_M") 
+    # TOOD: migrate memory to use LiteLLM
+    # Graphiti requires a Gemini model, so we hardcode it here instead of using the user's model
+    model_name = "gemini-2.5-flash"        
     memory_settings = UserSettingsService.get_memory_settings_sync()
     max_tokens = memory_settings.get("memory_token_limit", 2048)  # Default from database schema
     
