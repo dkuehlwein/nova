@@ -41,12 +41,7 @@ export default function OnboardingGuard({ children }: OnboardingGuardProps) {
       setIsLoading(false);
     } catch (error) {
       console.error('Failed to check onboarding status:', error);
-      // On error, assume onboarding is needed
-      if (pathname !== '/onboarding') {
-        router.push('/onboarding');
-      } else {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     }
   }, [router, pathname]);
 

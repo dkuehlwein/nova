@@ -8,7 +8,6 @@ import {
   Clock
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import { useOverview } from "@/hooks/useOverview";
 import { useState, useEffect } from "react";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -26,28 +25,33 @@ interface PendingDecision {
   tags: string[];
 }
 
-interface RecentActivityItem {
-  id: string;
+interface ActivityItem {
+  type: string;
   title: string;
   description: string;
-  status: string;
-  updated_at: string;
-  tags: string[];
+  time: string;
+  timestamp: string;
+  related_task_id?: string;
+  related_chat_id?: string;
+}
+
+interface TaskDashboard {
+  task_counts: Record<string, number>;
+  total_tasks: number;
+  pending_decisions: number;
+  recent_activity: ActivityItem[];
+  system_status: string;
+  tasks_by_status?: Record<string, unknown[]>;
+  cache_info?: Record<string, unknown>;
 }
 
 export default function HomePage() {
-  const { loading, refreshing, refresh: handleRefresh } = useOverview();
-
-  // Extract data with safe defaults
-  const overviewRefreshing = refreshing;
-
-  // Use state variables instead of extracting from overview data
-  // since the overview data doesn't include recent_tasks/pending_decisions
+  const [refreshing, setRefreshing] = useState(false);
 
   const [pendingDecisions, setPendingDecisions] = useState<PendingDecision[]>([]);
-  const [recentTasks, setRecentTasks] = useState<RecentActivityItem[]>([]);
+  const [dashboardData, setDashboardData] = useState<TaskDashboard | null>(null);
   const [decisionsLoading, setDecisionsLoading] = useState(true);
-  const [recentTasksLoading, setRecentTasksLoading] = useState(true);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
 
   // Fetch pending decisions (input needed tasks)
   useEffect(() => {
@@ -58,6 +62,7 @@ export default function HomePage() {
         setPendingDecisions(decisions.slice(0, 4)); // Limit to 4 tasks
       } catch (error) {
         console.error('Failed to fetch pending decisions:', error);
+        setPendingDecisions([]);
       } finally {
         setDecisionsLoading(false);
       }
@@ -66,40 +71,34 @@ export default function HomePage() {
     fetchPendingDecisions();
   }, []);
 
-  // Fetch recent activity tasks
+  // Fetch dashboard data (including recent activities)
   useEffect(() => {
-    const fetchRecentTasks = async () => {
+    const fetchDashboard = async () => {
       try {
-        setRecentTasksLoading(true);
-        const tasksByStatus = await apiRequest<Record<string, RecentActivityItem[]>>(API_ENDPOINTS.tasksByStatus);
-        // Combine all tasks and sort by updated_at, then take first 4
-        const allTasks: RecentActivityItem[] = [];
-        Object.values(tasksByStatus).forEach((tasks) => {
-          if (Array.isArray(tasks)) {
-            allTasks.push(...tasks);
-          }
-        });
-        
-        const sortedTasks = allTasks
-          .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-          .slice(0, 4);
-        
-        setRecentTasks(sortedTasks);
+        setDashboardLoading(true);
+        const dashboard = await apiRequest<TaskDashboard>(API_ENDPOINTS.taskDashboard);
+        setDashboardData(dashboard);
       } catch (error) {
-        console.error('Failed to fetch recent tasks:', error);
+        console.error('Failed to fetch dashboard data:', error);
+        setDashboardData({
+          task_counts: {},
+          total_tasks: 0,
+          pending_decisions: 0,
+          recent_activity: [],
+          system_status: 'error'
+        });
       } finally {
-        setRecentTasksLoading(false);
+        setDashboardLoading(false);
       }
     };
 
-    fetchRecentTasks();
+    fetchDashboard();
   }, []);
 
   // Manual refresh function
   const handleRefreshManual = async () => {
-    handleRefresh(); // Refresh overview data
+    setRefreshing(true);
     
-    // Also refresh the other data
     try {
       setDecisionsLoading(true);
       const decisions = await apiRequest<PendingDecision[]>(API_ENDPOINTS.pendingDecisions);
@@ -111,25 +110,16 @@ export default function HomePage() {
     }
 
     try {
-      setRecentTasksLoading(true);
-      const tasksByStatus = await apiRequest<Record<string, RecentActivityItem[]>>(API_ENDPOINTS.tasksByStatus);
-      const allTasks: RecentActivityItem[] = [];
-      Object.values(tasksByStatus).forEach((tasks) => {
-        if (Array.isArray(tasks)) {
-          allTasks.push(...tasks);
-        }
-      });
-      
-      const sortedTasks = allTasks
-        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-        .slice(0, 4);
-      
-      setRecentTasks(sortedTasks);
+      setDashboardLoading(true);
+      const dashboard = await apiRequest<TaskDashboard>(API_ENDPOINTS.taskDashboard);
+      setDashboardData(dashboard);
     } catch (error) {
-      console.error('Failed to refresh recent tasks:', error);
+      console.error('Failed to refresh dashboard data:', error);
     } finally {
-      setRecentTasksLoading(false);
+      setDashboardLoading(false);
     }
+    
+    setRefreshing(false);
   };
 
   // Format time difference for display
@@ -159,12 +149,8 @@ export default function HomePage() {
     return 'medium';
   };
 
-  // Format status name for display
-  const formatStatusName = (status: string): string => {
-    return status.replace(/_/g, ' ').toUpperCase();
-  };
 
-  if (loading || decisionsLoading || recentTasksLoading) {
+  if (decisionsLoading || dashboardLoading) {
     return (
       <div className="min-h-screen bg-background">
         <Navbar />
@@ -199,10 +185,10 @@ export default function HomePage() {
                 onClick={handleRefreshManual}
                 variant="outline"
                 size="lg"
-                disabled={overviewRefreshing || decisionsLoading || recentTasksLoading}
+                disabled={refreshing || decisionsLoading || dashboardLoading}
                 className="flex items-center space-x-2"
               >
-                <RefreshCw className={`h-4 w-4 ${overviewRefreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
                 <span>Refresh</span>
               </Button>
               <Link href="/chat">
@@ -296,36 +282,43 @@ export default function HomePage() {
               <div className="bg-card border border-border rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Recent Activity</h3>
                 <div className="space-y-3">
-                  {recentTasks.length > 0 ? (
-                    recentTasks.map((task) => (
-                      <Link key={task.id} href={`/kanban?task=${task.id}`}>
-                        <div className="flex items-start space-x-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between mb-1 gap-2">
-                              <p className="text-sm font-medium text-foreground truncate flex-1">{task.title}</p>
-                              <Badge variant="secondary" className="text-xs flex-shrink-0">
-                                {formatStatusName(task.status)}
-                              </Badge>
+                  {dashboardData?.recent_activity && dashboardData.recent_activity.length > 0 ? (
+                    dashboardData.recent_activity.slice(0, 4).map((activity, index) => (
+                      <div key={index} className="flex items-start space-x-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                        {activity.related_task_id ? (
+                          <Link href={`/kanban?task=${activity.related_task_id}`} className="flex items-start space-x-3 w-full">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1 gap-2">
+                                <p className="text-sm font-medium text-foreground truncate flex-1">{activity.title}</p>
+                                <Badge variant="secondary" className="text-xs flex-shrink-0">
+                                  {activity.type.replace(/_/g, ' ').toUpperCase()}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground line-clamp-2 mb-1">
+                                <MarkdownMessage content={activity.description} className="text-xs" disableLinks={true} />
+                              </div>
+                              <p className="text-xs text-muted-foreground">{activity.time}</p>
                             </div>
-                            <div className="text-xs text-muted-foreground line-clamp-2 mb-1">
-                              <MarkdownMessage content={task.description} className="text-xs" disableLinks={true} />
+                          </Link>
+                        ) : (
+                          <>
+                            <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1 gap-2">
+                                <p className="text-sm font-medium text-foreground truncate flex-1">{activity.title}</p>
+                                <Badge variant="secondary" className="text-xs flex-shrink-0">
+                                  {activity.type.replace(/_/g, ' ').toUpperCase()}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground line-clamp-2 mb-1">
+                                <MarkdownMessage content={activity.description} className="text-xs" disableLinks={true} />
+                              </div>
+                              <p className="text-xs text-muted-foreground">{activity.time}</p>
                             </div>
-                            <div className="flex items-center justify-between">
-                              <p className="text-xs text-muted-foreground">{formatTimeAgo(task.updated_at)}</p>
-                              {task.tags.length > 0 && (
-                                <div className="flex gap-1">
-                                  {task.tags.slice(0, 2).map((tag) => (
-                                    <Badge key={tag} variant="outline" className="text-xs">
-                                      {tag}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </Link>
+                          </>
+                        )}
+                      </div>
                     ))
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">

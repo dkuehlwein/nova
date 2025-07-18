@@ -556,8 +556,8 @@ async def stream_chat(chat_request: ChatRequest):
                                         else:
                                             content = str(content)
                                     
-                                    # Skip empty messages to avoid displaying dots
-                                    if content and content.strip():
+                                    # Skip empty messages and single punctuation to avoid displaying dots
+                                    if content and content.strip() and not (content.strip() in ['.', '!', '?', ':', ';', ',']):
                                         event = {
                                             "type": "message",
                                             "data": {

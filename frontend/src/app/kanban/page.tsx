@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-import { useKanbanTasks, useCreateTask, useDeleteTask, formatStatusName, getStatusColor, type Task } from "@/hooks/useKanban";
+import { useKanbanTasks, useCreateTask, useDeleteTask, formatStatusName, getStatusColor, type Task } from "@/hooks/useNovaQueries";
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 

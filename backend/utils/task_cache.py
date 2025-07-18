@@ -144,10 +144,18 @@ async def set_cached_dashboard_data(data: Dict[str, Any]) -> bool:
             "cache_ttl": ttl
         }
         
+        # Custom serializer for proper handling of Pydantic models
+        def json_serializer(obj):
+            if hasattr(obj, 'model_dump'):
+                return obj.model_dump()
+            elif isinstance(obj, datetime):
+                return obj.isoformat()
+            return str(obj)
+        
         await redis_client.setex(
             cache_key,
             ttl,
-            json.dumps(cache_data, default=str)  # default=str handles datetime serialization
+            json.dumps(cache_data, default=json_serializer)
         )
         
         logger.debug(f"Cached dashboard data for {ttl} seconds")

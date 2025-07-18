@@ -780,27 +780,4 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
 
 
 
-# === Entity Management Endpoints ===
-# NOTE: Person/Project management now handled by memory system
-# These endpoints are deprecated in favor of memory-based operations
-
-# @router.get("/api/persons", response_model=List[PersonResponse])
-# async def get_persons():
-#     '''Get all persons - DEPRECATED: Use memory search instead'''
-#     pass
-
-# @router.post("/api/persons", response_model=PersonResponse) 
-# async def create_person(person_data: PersonCreate):
-#     '''Create a new person - DEPRECATED: Use memory add instead'''
-#     pass
-
-# @router.get("/api/projects", response_model=List[ProjectResponse])
-# async def get_projects():
-#     '''Get all projects - DEPRECATED: Use memory search instead'''
-#     pass
-
-# @router.post("/api/projects", response_model=ProjectResponse)
-# async def create_project(project_data: ProjectCreate):
-#     '''Create a new project - DEPRECATED: Use memory add instead'''
-#     pass
 

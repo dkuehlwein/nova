@@ -197,9 +197,8 @@ export async function apiRequest<T>(
  * Common API endpoints
  */
 export const API_ENDPOINTS = {
-  overview: '/api/overview',
+  taskDashboard: '/api/task-dashboard',
   pendingDecisions: '/api/pending-decisions',
-  tasksByStatus: '/api/tasks/by-status',
   tasks: '/api/tasks',
   taskById: (id: string) => `/api/tasks/${id}`,
   taskComments: (id: string) => `/api/tasks/${id}/comments`,
@@ -216,7 +215,4 @@ export const API_ENDPOINTS = {
   chatById: (id: string) => `/chat/conversations/${id}`,
   chatMessages: (id: string) => `/chat/conversations/${id}/messages`,
   taskChatData: (id: string) => `/chat/conversations/${id}/task-data`,
-  // Legacy endpoints - DEPRECATED, use /chat/conversations instead
-  // createChat: '/api/chats',
-  // addChatMessage: (id: string) => `/api/chats/${id}/messages`,
 } as const; 
