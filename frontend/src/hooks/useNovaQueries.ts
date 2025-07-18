@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import { apiRequest } from '../lib/api'
 
 // Type definitions for API responses
@@ -451,4 +452,162 @@ export function useDeletePromptBackup() {
       console.error('Failed to delete prompt backup:', error)
     }
   })
+}
+
+// Kanban and Task Queries
+export interface Task {
+  id: string
+  title: string
+  description: string
+  summary?: string
+  status: string
+  created_at: string
+  updated_at: string
+  due_date?: string
+  completed_at?: string
+  tags: string[]
+  needs_decision: boolean
+  decision_type?: string
+  persons: string[]
+  projects: string[]
+  comments_count: number
+}
+
+export interface TasksByStatus {
+  [status: string]: Task[]
+}
+
+export function useKanbanTasks() {
+  return useQuery({
+    queryKey: ['kanban-tasks'],
+    queryFn: async (): Promise<TasksByStatus> => {
+      return await apiRequest('/api/tasks/by-status')
+    },
+    staleTime: 0, // Real-time updates via WebSocket
+    refetchInterval: 30000, // Backup polling every 30 seconds
+    retry: 2,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  })
+}
+
+export function useCurrentTask() {
+  const { data: tasksByStatus } = useKanbanTasks()
+  
+  return useMemo(() => {
+    const inProgressTasks = tasksByStatus?.in_progress || []
+    return inProgressTasks.length > 0 ? inProgressTasks[0] : null
+  }, [tasksByStatus])
+}
+
+export function useCreateTask() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (taskData: {
+      title: string
+      description: string
+      status?: string
+      due_date?: string
+      tags?: string[]
+      person_ids?: string[]
+      project_ids?: string[]
+    }) => {
+      return await apiRequest('/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify(taskData),
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+    },
+    onSuccess: () => {
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: ['kanban-tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['task-counts'] })
+      queryClient.invalidateQueries({ queryKey: ['overview'] })
+    },
+    onError: (error) => {
+      console.error('Failed to create task:', error)
+    }
+  })
+}
+
+export function useUpdateTask() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ taskId, updates }: { taskId: string; updates: Partial<Task> }) => {
+      return await apiRequest(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+    },
+    onSuccess: () => {
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: ['kanban-tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['task-counts'] })
+      queryClient.invalidateQueries({ queryKey: ['overview'] })
+    },
+    onError: (error) => {
+      console.error('Failed to update task:', error)
+    }
+  })
+}
+
+export function useDeleteTask() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      return await apiRequest(`/api/tasks/${taskId}`, {
+        method: 'DELETE'
+      })
+    },
+    onSuccess: () => {
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: ['kanban-tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['task-counts'] })
+      queryClient.invalidateQueries({ queryKey: ['overview'] })
+    },
+    onError: (error) => {
+      console.error('Failed to delete task:', error)
+    }
+  })
+}
+
+export function useTaskById(taskId: string) {
+  return useQuery({
+    queryKey: ['task', taskId],
+    queryFn: async (): Promise<Task> => {
+      return await apiRequest(`/api/tasks/${taskId}`)
+    },
+    enabled: !!taskId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 2
+  })
+}
+
+// Helper functions for kanban display
+export function formatStatusName(status: string): string {
+  return status.replace(/_/g, ' ').toUpperCase()
+}
+
+export function getStatusColor(status: string): string {
+  switch (status) {
+    case 'new': return 'bg-blue-500'
+    case 'user_input_received': return 'bg-green-500'
+    case 'needs_review': return 'bg-red-500'
+    case 'waiting': return 'bg-orange-500'
+    case 'in_progress': return 'bg-purple-500'
+    case 'done': return 'bg-gray-500'
+    case 'failed': return 'bg-red-700'
+    default: return 'bg-gray-500'
+  }
 } 

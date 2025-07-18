@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest, API_ENDPOINTS } from '@/lib/api';
+import { useCurrentTask } from '@/hooks/useNovaQueries';
 
 interface TaskCounts {
   NEW: number;
@@ -32,11 +33,6 @@ interface ActivityItem {
   related_chat_id?: string;
 }
 
-interface CurrentTask {
-  id: string;
-  title: string;
-  priority: string;
-}
 
 interface OverviewData {
   task_counts: TaskCounts;
@@ -54,18 +50,6 @@ interface ApiOverviewResponse {
   system_status: string;
 }
 
-interface TasksByStatusResponse {
-  in_progress: Array<{
-    id: string;
-    title: string;
-    persons?: string[];
-  }>;
-  [key: string]: Array<{
-    id: string;
-    title: string;
-    persons?: string[];
-  }>;
-}
 
 // Function to transform API response to frontend format
 const transformTaskCounts = (apiCounts: ApiTaskCounts): TaskCounts => ({
@@ -83,28 +67,8 @@ export function useOverview() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentTask, setCurrentTask] = useState<CurrentTask | null>(null);
+  const currentTask = useCurrentTask();
 
-  const fetchCurrentTask = async () => {
-    try {
-      const tasksByStatus = await apiRequest<TasksByStatusResponse>(API_ENDPOINTS.tasksByStatus);
-      const inProgressTasks = tasksByStatus.in_progress || [];
-      
-      if (inProgressTasks.length > 0) {
-        const task = inProgressTasks[0];
-        setCurrentTask({
-          id: task.id,
-          title: task.title,
-          priority: 'high' // Could be derived from task data if needed
-        });
-      } else {
-        setCurrentTask(null);
-      }
-    } catch (err) {
-      console.error('Failed to fetch current task:', err);
-      setCurrentTask(null);
-    }
-  };
 
   const fetchOverview = useCallback(async (isRefresh = false) => {
     try {
@@ -122,10 +86,6 @@ export function useOverview() {
       };
       
       setData(transformedData);
-      
-      // Fetch current task details from kanban API
-      await fetchCurrentTask();
-      
       setError(null);
     } catch (err) {
       console.error('Failed to fetch overview data:', err);
@@ -192,7 +152,11 @@ export function useOverview() {
     loading,
     refreshing,
     error,
-    currentTask,
+    currentTask: currentTask ? {
+      id: currentTask.id,
+      title: currentTask.title,
+      priority: 'high' // Could be derived from task data if needed
+    } : null,
     activeTasks,
     refresh: () => fetchOverview(true)
   };

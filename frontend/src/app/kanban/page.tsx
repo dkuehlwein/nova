@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-import { useKanban, Task } from "@/hooks/useKanban";
+import { useKanbanTasks, useCreateTask, useDeleteTask, formatStatusName, getStatusColor, type Task } from "@/hooks/useKanban";
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
@@ -60,16 +60,9 @@ interface Activity {
 }
 
 function KanbanPage() {
-  const { 
-    tasksByStatus, 
-    loading, 
-    error, 
-    formatStatusName, 
-    getStatusColor, 
-    createTask,
-    deleteTask,
-    getTaskById
-  } = useKanban();
+  const { data: tasksByStatus, isLoading: loading, error } = useKanbanTasks()
+  const createTaskMutation = useCreateTask()
+  const deleteTaskMutation = useDeleteTask()
 
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -94,7 +87,8 @@ function KanbanPage() {
   const handleTaskClick = useCallback(async (task: Task) => {
     try {
       // Fetch latest task details
-      const taskDetails = await getTaskById(task.id);
+      const { apiRequest } = await import('@/lib/api')
+      const taskDetails = await apiRequest<Task>(`/api/tasks/${task.id}`)
       setSelectedTask(taskDetails);
       
       // Fetch comments and activity
@@ -112,7 +106,7 @@ function KanbanPage() {
       setTaskActivity([]);
       setIsTaskDetailOpen(true);
     }
-  }, [getTaskById]);
+  }, []);
 
   // Handle URL task parameter to auto-open task dialog
   useEffect(() => {
@@ -125,7 +119,7 @@ function KanbanPage() {
   }, [searchParams, loading, urlTaskProcessed, handleTaskClick]);
 
   // Convert API data to lanes format
-  const lanes: Lane[] = Object.entries(tasksByStatus).map(([status, tasks]) => ({
+  const lanes: Lane[] = Object.entries(tasksByStatus || {}).map(([status, tasks]) => ({
     id: status,
     title: formatStatusName(status),
     color: getStatusColor(status),
@@ -137,7 +131,7 @@ function KanbanPage() {
     
     try {
       setIsCreating(true);
-      await createTask({
+      await createTaskMutation.mutateAsync({
         title: newTask.title,
         description: newTask.description,
         status: 'new', // Always create tasks in "new" status
@@ -164,7 +158,7 @@ function KanbanPage() {
   const handleDeleteTask = async (taskId: string) => {
     try {
       setIsDeleting(taskId);
-      await deleteTask(taskId);
+      await deleteTaskMutation.mutateAsync(taskId);
       
       // Reset URL processing flag to allow future URL-based task openings
       setUrlTaskProcessed(false);
@@ -437,7 +431,7 @@ function KanbanPage() {
       <div className="min-h-screen bg-background">
         <Navbar />
         <div className="flex items-center justify-center h-96">
-          <div className="text-red-500">Error loading kanban board: {error}</div>
+          <div className="text-red-500">Error loading kanban board: {error.message}</div>
         </div>
       </div>
     );

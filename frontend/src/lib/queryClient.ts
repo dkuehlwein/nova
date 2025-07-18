@@ -101,6 +101,7 @@ export const invalidateQueriesByEvent = (eventType: string, data: EventData) => 
       // Invalidate task-related queries
       client.invalidateQueries({ queryKey: ['tasks'] })
       client.invalidateQueries({ queryKey: ['task-counts'] })
+      client.invalidateQueries({ queryKey: ['kanban-tasks'] })
       // Also invalidate overview data that includes task counts
       client.invalidateQueries({ queryKey: ['overview'] })
       break

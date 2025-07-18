@@ -14,17 +14,15 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useOverview as useOverviewQuery } from "@/hooks/useNovaQueries";
+import { useOverview as useOverviewQuery, useCurrentTask } from "@/hooks/useNovaQueries";
 import { useNavbarSystemStatus } from "@/hooks/useUnifiedSystemStatus";
 import { useNovaWebSocket } from "@/hooks/useNovaWebSocket";
-import { useKanban } from "@/hooks/useKanban";
 import { StatusIndicatorCompact } from "@/components/status";
 
 export default function Navbar() {
   const pathname = usePathname();
   const { data, isLoading: loading, isRefetching: refreshing } = useOverviewQuery();
-  const { getCurrentTask } = useKanban();
-  const currentTask = getCurrentTask();
+  const currentTask = useCurrentTask();
   const { data: systemStatus, isLoading: healthLoading } = useNavbarSystemStatus();
   
   // Subscribe to WebSocket events for real-time updates
