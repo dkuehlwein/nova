@@ -1,117 +1,67 @@
-# Nova - AI-Powered Kanban Task Manager
+# Nova: Your Private, On-Premise AI Secretary
 
-Nova is an intelligent kanban-style task management system that integrates with LangChain AI agents to provide autonomous task processing and human-in-the-loop capabilities.
+<br/>
+<p align="center">
+  <!-- TODO: Add a compelling GIF or video link here showing the Nova workflow -->
+  <img src="https://placehold.co/800x400?text=Nova+In+Action+(Video+Coming+Soon)" alt="Nova Workflow Demo"/>
+</p>
+<br/>
 
-## 🚀 Quick Start
+Most AI assistants require you to send your data to the cloud. Nova is built on a simple, powerful idea: **your AI should work for you, on your hardware, under your control.**
 
-1. **Install Dependencies & Start Services**
-   ```bash
-   cd nova
-   # Start backend dependencies
-   docker-compose up -d postgres redis
-   
-   # Install frontend dependencies
-   cd frontend && npm install && cd ..
-   
-   # Install backend dependencies  
-   cd backend && uv sync && cd ..
-   ```
+Nova is an open-source AI secretary that runs entirely on-premise. It brings the power of a dedicated assistant to your workflow while guaranteeing that your data remains private. Period.
 
-2. **Configure Environment**
-   Create a `.env` file in the root directory:
-   ```env
-   # Required: Google AI API Key
-   GOOGLE_API_KEY=your_google_api_key_here
-   
-   # Optional: LangSmith tracing
-   LANGCHAIN_API_KEY=your_langsmith_api_key
-   LANGCHAIN_PROJECT=nova-development
-   
-   # Development Logging (set to false for readable console output)
-   LOG_JSON=false
-   LOG_LEVEL=INFO
-   
-   # Other optional settings
-   ```
+---
 
-3. **Start Nova Services**
-   ```bash
-   # Terminal 1: Start backend (chat agent + API)
-   cd backend && uv run python start_website.py
-   
-   # Terminal 2: Start core agent (autonomous task processor)
-   cd backend && uv run python start_core_agent.py
-   
-   # Terminal 3: Start frontend
-   cd frontend && npm run dev
-   ```
+## How Nova Works
 
-4. **Access Nova**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8000
-   - Core Agent: http://localhost:8001
+Nova acts as a true secretary, with privacy as its most important duty.
 
-## 📋 Development Configuration
+*   🔒 **Private & On-Premise:** This is Nova's core promise. Run it on your own servers. Your data, conversations, and models never leave your infrastructure.
+*   👀 **Transparent & Autonomous:** Nova manages its own task list on a kanban board. You can watch it work, provide guidance, and have the final say, offering the perfect blend of autonomy and control.
+*   🧠 **Remembers & Improves:** With a persistent graph memory, Nova learns from your interactions. If it lacks a skill, it can request a new tool from its developers, creating a foundation for continuous improvement.
+*   🔌 **Adaptable Skills:** While it comes with core secretarial skills (task management, email processing), Nova can be extended with new abilities via MCPs to fit your specific needs.
 
-### Logging Configuration
-Nova supports both human-readable console output and structured JSON logging:
+<br/>
+<p align="center">
+  <!-- TODO: Add a clean screenshot of the Kanban UI -->
+  <img src="https://placehold.co/800x450?text=Nova+Kanban+UI" alt="Nova UI Screenshot"/>
+</p>
+<br/>
 
-- **Development**: Set `LOG_JSON=false` for readable console output
-- **Production**: Set `LOG_JSON=true` for structured JSON logs
-- **Log Level**: Set `LOG_LEVEL` to DEBUG, INFO, WARNING, ERROR, or CRITICAL
+---
 
-### Database Configuration
-- **Development**: Uses in-memory checkpointer by default
-- **Production**: PostgreSQL checkpointer is required
+## A Vision in Progress: Help Us Build the Future
 
-### Local LLM Setup (Optional)
-Nova supports local LLM inference using llama.cpp for reduced cloud dependencies:
+**This is a project driven by a vision, but it is still in its early stages.** Many of the features described here are under active development. We are looking for enthusiastic developers and contributors to help us turn this proof-of-concept into a robust, real-world application.
 
-1. **Start llama.cpp Service**: Use Docker Compose to run the local LLM
-   ```bash
-   # Start llama.cpp with GPU support (auto-downloads model)
-   docker-compose up -d llamacpp
-   ```
+If you are excited by the idea of a private, collaborative AI, we invite you to join us. Your contributions can help shape the future of Nova.
 
-2. **Configure LLM Provider**: Update your environment to use local models
-   ```env
-   LLM_PROVIDER=litellm
-   # Models are configured in configs/litellm_config.yaml
-   ```
+---
 
-The service automatically downloads the DeepSeek R1 Q8_K_XL model (~10GB) on first startup.
+## Try it Now
 
-See [models/README.md](models/README.md) for detailed setup instructions and model options.
+Get your own AI secretary running in under a minute.
 
-## 🛠️ Architecture
+1.  **Prerequisites:** Ensure you have `docker` and `docker-compose` installed.
+2.  **Run Nova:**
+    ```bash
+    docker-compose up -d
+    ```
+3.  **Open Your Browser:** Navigate to `http://localhost:3000` and give Nova your first task.
 
-Nova consists of three main components:
+---
 
-1. **Frontend** (Next.js): Web interface for task management and chat
-2. **Chat Agent Service** (FastAPI): Handles web requests and interactive chat
-3. **Core Agent Service** (FastAPI): Autonomous task processing loop
+## Dive Deeper
 
-## 📖 Documentation
+*   **Want to see how it works?** ➡️ Read our **[Architecture Deep Dive](docs/3_Architecture_Deep_Dive/3.1_System_Overview.md)**.
+*   **Want to contribute?** ➡️ Check out the **[Developer Setup Guide](docs/1_Setup_and_Installation.md)**.
+*   **Want to see the full vision?** ➡️ Explore our **[Documentation](docs/README.md)**.
 
-- [High-Level Architecture](docs/high-level-outline.md)
-- [Human-in-the-Loop Design](docs/human-in-the-loop-architecture.md)
-- [Settings Implementation](docs/settings_realization_work_packages.md)
-- [Docker Setup Guide](docs/docker-setup.md)
+---
 
-## 🧪 Testing
+## Tech Stack
 
-```bash
-# Backend tests
-cd backend && uv run pytest ../tests
-
-# Frontend tests (when available)
-cd frontend && npm test
-```
-
-## 🤝 Contributing
-
-Nova follows clean architecture principles with clear separation of concerns. See the architecture documentation for detailed information about the codebase structure and patterns.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+**Backend:** FastAPI, LangChain/LangGraph, SQLAlchemy, PostgreSQL, Redis
+**Frontend:** Next.js, React, TailwindCSS
+**AI:** Google (default), configurable for local models via LiteLLM
