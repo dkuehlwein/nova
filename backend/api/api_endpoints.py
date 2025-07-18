@@ -28,13 +28,20 @@ from models.models import (
     TaskStatus
 )
 from utils.redis_manager import publish
+from utils.task_cache import (
+    get_task_counts_with_cache, 
+    get_tasks_by_status_with_cache,
+    get_cached_dashboard_data,
+    set_cached_dashboard_data,
+    invalidate_task_cache
+)
 from models.events import create_task_updated_event
 
 
 # === Import Domain-Specific Pydantic Models ===
 from models.tasks import TaskCreate, TaskUpdate, TaskCommentCreate, TaskResponse
 from models.entities import ArtifactCreate, ArtifactResponse
-from models.admin import ActivityItem, OverviewStats
+from models.admin import ActivityItem, TaskDashboard
 from models.chat import TaskChatMessageCreate
 
 
@@ -45,32 +52,80 @@ router = APIRouter()
 
 # === Overview Dashboard Endpoints ===
 
-@router.get("/api/overview", response_model=OverviewStats)
-async def get_overview():
-    """Get dashboard overview with task counts, pending decisions, and recent activity."""
-    async with db_manager.get_session() as session:
-        # Get task counts by status
-        task_count_query = select(Task.status, func.count(Task.id)).group_by(Task.status)
-        result = await session.execute(task_count_query)
-        status_counts = dict(result.all())
+@router.get("/api/task-dashboard", response_model=TaskDashboard)
+async def get_task_dashboard(
+    include_tasks: bool = Query(False, description="Include full task data for kanban board"),
+    use_cache: bool = Query(True, description="Use Redis cache for performance")
+):
+    """
+    Get consolidated task dashboard data with optional full task details.
+    
+    This endpoint replaces both /api/overview and /api/tasks/by-status for better performance.
+    - include_tasks=false: Returns only counts and stats (for overview page)
+    - include_tasks=true: Returns full task data (for kanban board)
+    """
+    try:
+        # Try to get cached dashboard data first
+        cached_data = None
+        if use_cache and not include_tasks:
+            cached_data = await get_cached_dashboard_data()
         
-        # Convert enum keys to strings for frontend
-        task_counts = {status.value: count for status, count in status_counts.items()}
+        if cached_data:
+            return TaskDashboard(**cached_data)
+        
+        # Get task counts with caching
+        task_counts = await get_task_counts_with_cache() if use_cache else {}
+        if not task_counts:
+            # Fallback to direct database query
+            async with db_manager.get_session() as session:
+                task_count_query = select(Task.status, func.count(Task.id)).group_by(Task.status)
+                result = await session.execute(task_count_query)
+                status_counts = dict(result.all())
+                task_counts = {status.value: count for status, count in status_counts.items()}
+                
+                # Ensure all status types are represented
+                for status in TaskStatus:
+                    if status.value not in task_counts:
+                        task_counts[status.value] = 0
+        
         total_tasks = sum(task_counts.values())
-        
-        # Get pending decisions count
-        pending_decisions = task_counts.get("USER_INPUT_RECEIVED", 0) + task_counts.get("NEEDS_REVIEW", 0)
+        pending_decisions = task_counts.get("user_input_received", 0) + task_counts.get("needs_review", 0)
         
         # Get recent activity
-        recent_activity = await get_recent_activity_items(session)
+        async with db_manager.get_session() as session:
+            recent_activity = await get_recent_activity_items(session)
         
-        return OverviewStats(
-            task_counts=task_counts,
-            total_tasks=total_tasks,
-            pending_decisions=pending_decisions,
-            recent_activity=recent_activity,
-            system_status="operational"
-        )
+        # Get full task data if requested
+        tasks_by_status = None
+        if include_tasks:
+            tasks_by_status = await get_tasks_by_status_with_cache(use_cache)
+        
+        # Build response
+        dashboard_data = {
+            "task_counts": task_counts,
+            "total_tasks": total_tasks,
+            "pending_decisions": pending_decisions,
+            "recent_activity": recent_activity,
+            "system_status": "operational",
+            "tasks_by_status": tasks_by_status,
+            "cache_info": {
+                "cached": cached_data is not None,
+                "use_cache": use_cache,
+                "includes_tasks": include_tasks
+            }
+        }
+        
+        # Cache the result if appropriate
+        if use_cache and not include_tasks:
+            await set_cached_dashboard_data(dashboard_data)
+        
+        return TaskDashboard(**dashboard_data)
+        
+    except Exception as e:
+        logging.error(f"Error getting task dashboard: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get task dashboard")
+
+
 
 
 @router.get("/api/recent-activity", response_model=List[ActivityItem])
@@ -235,45 +290,6 @@ async def get_tasks(
         return response_tasks
 
 
-@router.get("/api/tasks/by-status", response_model=Dict[str, List[TaskResponse]])
-async def get_tasks_by_status():
-    """Get tasks organized by status for kanban board."""
-    async with db_manager.get_session() as session:
-        result = await session.execute(
-            select(Task)
-            .options(selectinload(Task.comments))
-            .order_by(Task.updated_at.desc())
-        )
-        tasks = result.scalars().all()
-        
-        tasks_by_status = {}
-        for status in TaskStatus:
-            tasks_by_status[status.value] = []
-        
-        for task in tasks:
-            needs_decision = task.status == TaskStatus.NEEDS_REVIEW
-            
-            task_response = TaskResponse(
-                id=task.id,
-                title=task.title,
-                description=task.description,
-                summary=task.summary,
-                status=task.status,
-                created_at=task.created_at,
-                updated_at=task.updated_at,
-                due_date=task.due_date,
-                completed_at=task.completed_at,
-                tags=task.tags or [],
-                needs_decision=needs_decision,
-                decision_type="task_review" if needs_decision else None,
-                persons=task.person_emails or [],
-                projects=task.project_names or [],
-                comments_count=len(task.comments)
-            )
-            
-            tasks_by_status[task.status.value].append(task_response)
-        
-        return tasks_by_status
 
 
 @router.post("/api/tasks", response_model=TaskResponse)
@@ -294,8 +310,9 @@ async def create_task(task_data: TaskCreate):
         session.add(task)
         await session.commit()
         
-        # Publish WebSocket event for real-time updates
+        # Invalidate cache and publish WebSocket event for real-time updates
         try:
+            await invalidate_task_cache()
             await publish(create_task_updated_event(
                 task_id=str(task.id),
                 status=task.status.value,
@@ -407,8 +424,9 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
         if task_data.status == TaskStatus.DONE and old_status != TaskStatus.DONE:
             await add_task_completion_to_memory(session, task.id)
         
-        # Publish WebSocket event for real-time updates
+        # Invalidate cache and publish WebSocket event for real-time updates
         try:
+            await invalidate_task_cache()
             status_changed = task_data.status and old_status != task.status
             await publish(create_task_updated_event(
                 task_id=str(task.id),
@@ -591,6 +609,18 @@ async def delete_task(task_id: UUID):
             # Log but don't fail the deletion if chat cleanup fails
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to cleanup chat data for task {task_id}: {e}")
+        
+        # Invalidate cache and publish WebSocket event for real-time updates
+        try:
+            await invalidate_task_cache()
+            await publish(create_task_updated_event(
+                task_id=str(task_id),
+                status="deleted",
+                action="deleted",
+                source="api-endpoint"
+            ))
+        except Exception as e:
+            logging.warning(f"Failed to publish task deletion event: {e}")
         
         return {"message": "Task and associated chat data deleted successfully"}
 

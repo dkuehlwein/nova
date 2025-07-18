@@ -60,12 +60,14 @@ def sample_task_data():
 class TestOverviewEndpoints:
     """Test overview and dashboard endpoints."""
     
+    @patch('backend.api.api_endpoints.get_cached_dashboard_data')
     @patch('backend.api.api_endpoints.db_manager.get_session')
-    def test_get_overview(self, mock_get_session, client, mock_session):
-        """Test GET /api/overview returns overview stats."""
+    def test_get_task_dashboard(self, mock_get_session, mock_get_cached_dashboard_data, client, mock_session):
+        """Test GET /api/task-dashboard returns dashboard data."""
         mock_get_session.return_value = mock_session
+        mock_get_cached_dashboard_data.return_value = None  # No cached data
         
-        # Mock task count query
+        # Mock task count query and recent activity query
         mock_result = MagicMock()
         mock_result.all.return_value = [
             (TaskStatus.NEW, 5),
@@ -73,9 +75,15 @@ class TestOverviewEndpoints:
             (TaskStatus.DONE, 10),
             (TaskStatus.NEEDS_REVIEW, 2)
         ]
-        mock_session.execute.return_value = mock_result
         
-        response = client.get("/api/overview")
+        # Mock recent activity query
+        mock_recent_result = MagicMock()
+        mock_recent_result.scalars.return_value.all.return_value = []
+        
+        # Configure the session to return different results for different queries
+        mock_session.execute.side_effect = [mock_result, mock_recent_result]
+        
+        response = client.get("/api/task-dashboard")
         
         assert response.status_code == 200
         data = response.json()
@@ -85,13 +93,19 @@ class TestOverviewEndpoints:
         assert "pending_decisions" in data
         assert "recent_activity" in data
         assert "system_status" in data
+        assert "tasks_by_status" in data
+        assert "cache_info" in data
         
         assert data["task_counts"]["new"] == 5
         assert data["task_counts"]["in_progress"] == 3
         assert data["total_tasks"] == 20
         # pending_decisions = needs_review + user_input_received (both 0 in our mock)
-        assert data["pending_decisions"] == 0  
+        assert data["pending_decisions"] == 2  # Only needs_review in our mock
         assert data["system_status"] == "operational"
+        assert data["tasks_by_status"] is None  # Default doesn't include tasks
+        assert data["cache_info"]["cached"] is False
+        assert data["cache_info"]["use_cache"] is True
+        assert data["cache_info"]["includes_tasks"] is False
     
     @patch('backend.api.api_endpoints.db_manager.get_session')
     def test_get_recent_activity(self, mock_get_session, client, mock_session):
@@ -205,30 +219,47 @@ class TestTaskEndpoints:
             assert "persons" in task  # API still returns this key for backward compatibility
             assert "projects" in task  # API still returns this key for backward compatibility
     
+    @patch('backend.api.api_endpoints.get_cached_dashboard_data')
     @patch('backend.api.api_endpoints.db_manager.get_session')
-    def test_get_tasks_by_status(self, mock_get_session, client, mock_session):
-        """Test GET /api/tasks/by-status returns tasks organized by status."""
+    def test_get_task_dashboard_with_tasks(self, mock_get_session, mock_get_cached_dashboard_data, client, mock_session):
+        """Test GET /api/task-dashboard?include_tasks=true returns tasks organized by status."""
         mock_get_session.return_value = mock_session
+        mock_get_cached_dashboard_data.return_value = None  # No cached data
         
-        # Mock empty result
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_session.execute.return_value = mock_result
+        # Mock task count query
+        mock_result_counts = MagicMock()
+        mock_result_counts.all.return_value = [
+            (TaskStatus.NEW, 0),
+            (TaskStatus.IN_PROGRESS, 0),
+            (TaskStatus.DONE, 0),
+            (TaskStatus.NEEDS_REVIEW, 0)
+        ]
         
-        response = client.get("/api/tasks/by-status")
+        # Mock empty tasks result
+        mock_result_tasks = MagicMock()
+        mock_result_tasks.scalars.return_value.all.return_value = []
+        
+        # Configure the session to return different results for different queries
+        mock_session.execute.side_effect = [mock_result_counts, mock_result_tasks, mock_result_tasks]
+        
+        response = client.get("/api/task-dashboard?include_tasks=true")
         
         assert response.status_code == 200
         data = response.json()
         
         assert isinstance(data, dict)
+        assert "tasks_by_status" in data
+        assert data["tasks_by_status"] is not None
+        
         # Should have all status keys
         for status in ["new", "user_input_received", "needs_review", "waiting", "in_progress", "done", "failed"]:
-            assert status in data
-            assert isinstance(data[status], list)
+            assert status in data["tasks_by_status"]
+            assert isinstance(data["tasks_by_status"][status], list)
     
+    @patch('backend.api.api_endpoints.invalidate_task_cache')
     @patch('backend.api.api_endpoints.publish')
     @patch('backend.api.api_endpoints.db_manager.get_session')
-    def test_create_task(self, mock_get_session, mock_publish, client, mock_session):
+    def test_create_task(self, mock_get_session, mock_publish, mock_invalidate_cache, client, mock_session):
         """Test POST /api/tasks creates a new task."""
         mock_get_session.return_value = mock_session
         mock_publish.return_value = None
@@ -332,9 +363,10 @@ class TestTaskEndpoints:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
     
+    @patch('backend.api.api_endpoints.invalidate_task_cache')
     @patch('backend.api.api_endpoints.publish')
     @patch('backend.api.api_endpoints.db_manager.get_session')
-    def test_update_task(self, mock_get_session, mock_publish, client, mock_session):
+    def test_update_task(self, mock_get_session, mock_publish, mock_invalidate_cache, client, mock_session):
         """Test PUT /api/tasks/{id} updates a task."""
         mock_get_session.return_value = mock_session
         mock_publish.return_value = None
@@ -374,9 +406,11 @@ class TestTaskEndpoints:
         # Task should have been updated (mocked)
         assert "id" in data
     
+    @patch('backend.api.api_endpoints.invalidate_task_cache')
+    @patch('backend.api.api_endpoints.publish')
     @patch('backend.api.api_endpoints.cleanup_task_chat_data')
     @patch('backend.api.api_endpoints.db_manager.get_session')
-    def test_delete_task(self, mock_get_session, mock_cleanup, client, mock_session):
+    def test_delete_task(self, mock_get_session, mock_cleanup, mock_publish, mock_invalidate_cache, client, mock_session):
         """Test DELETE /api/tasks/{id} deletes a task."""
         mock_get_session.return_value = mock_session
         mock_cleanup.return_value = None

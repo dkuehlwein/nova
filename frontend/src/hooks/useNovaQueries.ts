@@ -187,7 +187,7 @@ export function useTaskCounts() {
   return useQuery({
     queryKey: ['task-counts'],
     queryFn: async (): Promise<{ task_counts: Record<string, number>, total_tasks: number }> => {
-      return await apiRequest('/api/overview')
+      return await apiRequest('/api/task-dashboard')
     },
     staleTime: 0, // Real-time updates via WebSocket
     refetchInterval: 30000, // Backup polling
@@ -214,7 +214,7 @@ export function useOverview() {
   return useQuery({
     queryKey: ['overview'],
     queryFn: async (): Promise<OverviewData> => {
-      return await apiRequest('/api/overview')
+      return await apiRequest('/api/task-dashboard')
     },
     staleTime: 0, // Real-time updates via WebSocket
     refetchInterval: 30000, // Backup polling
@@ -481,7 +481,10 @@ export function useKanbanTasks() {
   return useQuery({
     queryKey: ['kanban-tasks'],
     queryFn: async (): Promise<TasksByStatus> => {
-      return await apiRequest('/api/tasks/by-status')
+      const response = await apiRequest('/api/task-dashboard?include_tasks=true') as {
+        tasks_by_status: TasksByStatus
+      }
+      return response.tasks_by_status
     },
     staleTime: 0, // Real-time updates via WebSocket
     refetchInterval: 30000, // Backup polling every 30 seconds

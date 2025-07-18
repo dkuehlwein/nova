@@ -7,7 +7,7 @@ All models follow latest Pydantic V2 patterns with proper validation and seriali
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -24,10 +24,13 @@ class ActivityItem(BaseModel):
     related_chat_id: Optional[UUID] = Field(None, description="Related chat ID if applicable")
 
 
-class OverviewStats(BaseModel):
-    """Overview dashboard statistics and recent activity."""
+
+class TaskDashboard(BaseModel):
+    """Consolidated task dashboard data with optional full task details."""
     task_counts: Dict[str, int] = Field(..., description="Task counts by status")
     total_tasks: int = Field(..., description="Total number of tasks")
     pending_decisions: int = Field(..., description="Number of tasks pending decisions")
     recent_activity: List[ActivityItem] = Field(..., description="Recent system activity")
-    system_status: str = Field(..., description="Overall system status") 
+    system_status: str = Field(..., description="Overall system status")
+    tasks_by_status: Optional[Dict[str, List[dict]]] = Field(None, description="Full task data by status (optional)")
+    cache_info: Optional[Dict[str, Union[str, bool]]] = Field(None, description="Cache metadata") 
