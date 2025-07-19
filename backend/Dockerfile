@@ -12,11 +12,14 @@ RUN apt-get update && apt-get install -y \
 # Install uv
 RUN pip install uv
 
-# Copy project files
+# Copy project files (but exclude .venv first)
 COPY pyproject.toml ./
 COPY . .
 
-# Install dependencies
+# Remove any existing venv from host to prevent path issues
+RUN rm -rf .venv
+
+# Install dependencies fresh in container
 RUN uv venv
 RUN uv pip install -e .
 
