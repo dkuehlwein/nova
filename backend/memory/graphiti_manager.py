@@ -30,13 +30,14 @@ def create_graphiti_llm() -> GeminiClient:
         raise ValueError("GOOGLE_API_KEY environment variable is required")
     
     # Memory system requires Gemini models for GeminiClient and GeminiEmbedder
-    # Check if user has a Gemini model configured, otherwise use default Gemini model
+    # Use the lite model to avoid rate limits - it has higher quotas than regular gemini-2.5-flash
+    # This matches the fallback strategy used by LiteLLM when the regular model hits limits
     from database.database import UserSettingsService
     # user_settings = UserSettingsService.get_llm_settings_sync()
     # model_name = user_settings.get("llm_model", "phi-4-Q4_K_M") 
-    # TOOD: migrate memory to use LiteLLM
-    # Graphiti requires a Gemini model, so we hardcode it here instead of using the user's model
-    model_name = "gemini-2.5-flash"        
+    # TODO: migrate memory to use LiteLLM
+    # Use lite model to avoid rate limit issues that regular gemini-2.5-flash encounters
+    model_name = "gemini-2.5-flash-lite-preview-06-17"        
     memory_settings = UserSettingsService.get_memory_settings_sync()
     max_tokens = memory_settings.get("memory_token_limit", 2048)  # Default from database schema
     
