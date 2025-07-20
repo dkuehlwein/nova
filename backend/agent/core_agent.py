@@ -422,7 +422,7 @@ class CoreAgent:
         # Return separate messages with proper metadata for task context
         return [
             HumanMessage(content=current_task),
-            AIMessage(
+            HumanMessage(
                 content=task_context_content,
                 additional_kwargs={
                     "metadata": {

@@ -331,8 +331,8 @@ function ChatPage() {
       );
     }
 
-    // Handle assistant messages with special metadata (like task context) using SystemMessage component
-    if (msg.role === "assistant" && msg.metadata?.is_collapsible) {
+    // Handle messages with special metadata (like task context) using SystemMessage component
+    if ((msg.role === "assistant" || msg.role === "user") && msg.metadata?.is_collapsible) {
       // For task_context messages, use clean metadata approach
       // Title from metadata, content goes in collapsible section
       return (

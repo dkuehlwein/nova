@@ -80,7 +80,7 @@ services:
       - GGML_CUDA=1
     command: >
       --server
-      --model /models/phi-4-Q6_K.gguf
+      --model /models/${LLAMACPP_MODEL_FILE:-phi-4-Q6_K.gguf}
       --host 0.0.0.0
       --port 8080
       --n-gpu-layers 42

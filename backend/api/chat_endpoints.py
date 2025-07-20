@@ -184,12 +184,19 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
             
             
             if isinstance(msg, HumanMessage):
+                # Check for explicit metadata (similar to AIMessage handling)
+                metadata = None
+                if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs.get('metadata'):
+                    metadata = msg.additional_kwargs['metadata']
+                    logger.debug(f"Found user message with explicit metadata type: {metadata.get('type', 'unknown')}")
+                
                 chat_messages.append(ChatMessageDetail(
                     id=f"{thread_id}-msg-{i}",
                     sender="user",
                     content=str(msg.content),
                     created_at=message_timestamp,
-                    needs_decision=False
+                    needs_decision=False,
+                    metadata=metadata
                 ))
                 logger.debug(f"Included user message: '{str(msg.content)[:50]}...' with timestamp: {message_timestamp}")
             elif isinstance(msg, AIMessage):

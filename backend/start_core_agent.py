@@ -20,7 +20,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
 from agent.core_agent import CoreAgent
-from utils.service_manager import ServiceManager, create_prompt_updated_handler
+from utils.service_manager import ServiceManager
+from utils.event_handlers import create_unified_event_handler
 from utils.logging import RequestLoggingMiddleware, configure_logging
 from config import settings
 
@@ -69,11 +70,14 @@ async def lifespan(app: FastAPI):
         core_agent = CoreAgent(pg_pool=service_manager.pg_pool)
         await core_agent.initialize()
         
-        # Create prompt update handler
+        # Create unified event handler for core agent
         async def reload_core_agent():
             await core_agent.reload_agent()
         
-        event_handler = await create_prompt_updated_handler(reload_core_agent)
+        event_handler = create_unified_event_handler(
+            service_name="core-agent",
+            reload_agent_func=reload_core_agent
+        )
         
         # Start Redis bridge for agent reloading
         await service_manager.start_redis_bridge(app, event_handler)

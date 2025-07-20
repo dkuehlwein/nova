@@ -28,7 +28,7 @@ from api.prompt_endpoints import router as prompt_router
 from api.memory_endpoints import router as memory_router
 from api.settings_endpoints import router as user_settings_router
 from api.llm_endpoints import router as llm_router
-from utils.service_manager import ServiceManager, create_prompt_updated_handler
+from utils.service_manager import ServiceManager
 from utils.logging import RequestLoggingMiddleware, configure_logging
 from config import settings
 
@@ -56,76 +56,13 @@ async def create_website_event_handler():
     """Create event handler for website service (WebSocket + chat agent reloading)."""
     from utils.websocket_manager import websocket_manager
     from agent.chat_agent import clear_chat_agent_cache
+    from utils.event_handlers import create_unified_event_handler
     
-    async def handle_event(event):
-        # Always broadcast to WebSocket clients
-        await websocket_manager.broadcast_event(event)
-        
-        # Handle agent reloading for prompt updates
-        if event.type == "prompt_updated":
-            try:
-                service_manager.logger.info(
-                    f"Prompt updated, reloading chat agent: {event.data.get('prompt_file')}",
-                    extra={
-                        "data": {
-                            "event_id": event.id,
-                            "prompt_file": event.data.get('prompt_file'),
-                            "source": event.source
-                        }
-                    }
-                )
-                # Clear the global agent cache (this also clears tools cache internally)
-                clear_chat_agent_cache()
-                
-                service_manager.logger.info("Chat agent cache cleared - all chats will use updated prompt")
-            except Exception as e:
-                service_manager.logger.error(f"Failed to reload chat agent: {e}")
-        
-        # Handle agent reloading for MCP server changes
-        elif event.type == "mcp_toggled":
-            try:
-                service_manager.logger.info(
-                    f"MCP server toggled, reloading chat agent: {event.data.get('server_name')} -> {event.data.get('enabled')}",
-                    extra={
-                        "data": {
-                            "event_id": event.id,
-                            "server_name": event.data.get('server_name'),
-                            "enabled": event.data.get('enabled'),
-                            "source": event.source
-                        }
-                    }
-                )
-                # Clear the chat agent cache - MCP client will fetch fresh tools automatically
-                clear_chat_agent_cache()
-                
-                service_manager.logger.info("Chat agent cache cleared - all chats will use updated MCP tools")
-            except Exception as e:
-                service_manager.logger.error(f"Failed to reload chat agent after MCP toggle: {e}")
-        
-        # Handle agent reloading for LLM settings changes
-        elif event.type == "llm_settings_updated":
-            try:
-                service_manager.logger.info(
-                    f"LLM settings updated, reloading chat agent: {event.data.get('model')} ({event.data.get('provider')})",
-                    extra={
-                        "data": {
-                            "event_id": event.id,
-                            "model": event.data.get('model'),
-                            "provider": event.data.get('provider'),
-                            "temperature": event.data.get('temperature'),
-                            "max_tokens": event.data.get('max_tokens'),
-                            "source": event.source
-                        }
-                    }
-                )
-                # Clear the chat agent cache - LLM will be recreated with fresh settings
-                clear_chat_agent_cache()
-                
-                service_manager.logger.info("Chat agent cache cleared - all chats will use updated LLM settings")
-            except Exception as e:
-                service_manager.logger.error(f"Failed to reload chat agent after LLM settings update: {e}")
-    
-    return handle_event
+    return create_unified_event_handler(
+        service_name="chat-agent",
+        clear_cache_func=clear_chat_agent_cache,
+        websocket_broadcast_func=websocket_manager.broadcast_event
+    )
 
 
 # PostgreSQL pool management is now handled by ServiceManager
@@ -267,6 +204,12 @@ async def health_check():
 
 async def main():
     """Run the backend server."""
+    
+    # Start container auto-start service
+    from utils.container_auto_start import monitor_and_start_containers
+    asyncio.create_task(monitor_and_start_containers())
+    service_manager.logger.info("Started container auto-start monitor")
+    
     config = uvicorn.Config(
         app,
         host="0.0.0.0",

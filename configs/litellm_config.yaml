@@ -13,7 +13,7 @@ model_list:
   # Phi-4 Q4_K_M (supports function calling) - ALTERNATIVE
   - model_name: phi-4-Q4_K_M
     litellm_params:
-      model: openai/phi-4-Q4_K_M
+      model: openai/phi-4-Q4_K_M.gguf
       api_base: http://llamacpp:8080/v1
       api_key: "not-required"
       max_tokens: 2048

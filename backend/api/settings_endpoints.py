@@ -21,12 +21,103 @@ from models.user_settings import (
     OnboardingStatusModel
 )
 from utils.logging import get_logger
+from services.llm_service import llm_service
+from utils.docker_manager import restart_llamacpp_container
 
 logger = get_logger("settings_api")
 
 router = APIRouter(prefix="/api/user-settings", tags=["user-settings"])
 
 
+async def _handle_model_change(model_name: str) -> None:
+    """
+    Handle LLM model changes by restarting llamacpp container if it's a local model.
+    
+    Args:
+        model_name: The new model name selected by the user
+    """
+    logger.info(f"Model change detected: {model_name}")
+    
+    try:
+        # Get available models to determine if this is local or cloud
+        available_models = await llm_service.get_available_models()
+        local_models = {model["model_name"] for model in available_models.get("local", [])}
+        
+        if model_name in local_models:
+            # This is a local model - need to restart llamacpp
+            logger.info(f"Local model selected: {model_name}, restarting llamacpp container")
+            
+            # Get the model file name from litellm config
+            model_file = await _get_model_file_from_config(model_name)
+            if model_file:
+                success = await restart_llamacpp_container(model_file)
+                if success:
+                    logger.info(f"Successfully restarted llamacpp for model: {model_name}")
+                else:
+                    logger.error(f"Failed to restart llamacpp for model: {model_name}")
+            else:
+                logger.warning(f"Could not find model file for: {model_name}")
+        else:
+            # This is a cloud model - no restart needed
+            logger.info(f"Cloud model selected: {model_name}, no llamacpp restart needed")
+            
+    except Exception as e:
+        logger.error(f"Error handling model change: {e}")
+
+
+async def _get_model_file_from_config(model_name: str) -> Optional[str]:
+    """
+    Get the GGUF file name for a model from litellm_config.yaml.
+    
+    Args:
+        model_name: The model name to look up
+        
+    Returns:
+        str: The GGUF file name, or None if not found
+    """
+    try:
+        import yaml
+        from pathlib import Path
+        
+        # Path to litellm config (try multiple locations)
+        possible_paths = [
+            Path(__file__).parent.parent.parent / "configs" / "litellm_config.yaml",  # Host path
+            Path("/app/configs/litellm_config.yaml"),  # Container mounted path
+        ]
+        
+        config_path = None
+        for path in possible_paths:
+            if path.exists():
+                config_path = path
+                break
+        
+        if not config_path:
+            logger.error(f"LiteLLM config not found at any of: {possible_paths}")
+            return None
+            
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+            
+        # Look for the model in the model_list
+        for model_config in config.get("model_list", []):
+            if model_config.get("model_name") == model_name:
+                # Extract the GGUF file name from the model path
+                model_path = model_config.get("litellm_params", {}).get("model", "")
+                if model_path.startswith("openai/"):
+                    # Remove "openai/" prefix to get the actual file name
+                    file_name = model_path[7:]  # Remove "openai/" (7 characters)
+                    # Add .gguf extension if not present
+                    if not file_name.endswith('.gguf'):
+                        file_name += '.gguf'
+                    return file_name
+                return model_path
+                
+        logger.warning(f"Model {model_name} not found in litellm_config.yaml")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error reading litellm config: {e}")
+        return None
 
 
 @router.get("/status", response_model=OnboardingStatusModel)
@@ -178,6 +269,10 @@ async def update_user_settings(
                     "Published LLM settings update event",
                     extra={"data": {"event_id": llm_event.id, "updated_fields": list(update_data.keys())}}
                 )
+                
+                # If model changed, check if it's a local model and restart llamacpp if needed
+                if "llm_model" in update_data:
+                    await _handle_model_change(settings.llm_model)
                 
             except Exception as e:
                 logger.warning(f"Failed to publish LLM settings event: {e}")

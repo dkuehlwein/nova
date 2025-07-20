@@ -25,7 +25,8 @@ ALLOWED_SERVICES = {
     "redis", 
     "postgres",
     "chat-agent",
-    "core-agent"
+    "core-agent",
+    "llamacpp"
 }
 
 
