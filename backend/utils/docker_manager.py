@@ -111,9 +111,8 @@ async def restart_llamacpp_container(model_file: str) -> bool:
         # Create new container with updated environment and proper network
         logger.info(f"Creating new container with updated environment on network: {network_to_use}")
         
-        # Two-phase creation: Create container without network, then connect to avoid alias issues
+        # Create container directly with the nova-network to avoid connection issues
         try:
-            # Phase 1: Create container with no network
             new_container = client.containers.create(
                 image=image,
                 command=cmd,
@@ -125,17 +124,12 @@ async def restart_llamacpp_container(model_file: str) -> bool:
                 device_requests=device_requests,
                 labels=labels,
                 name=container.name,
-                network_mode="none"
+                network=network_to_use  # Create directly with network instead of none + connect
             )
-            logger.info(f"Successfully created container (no network)")
-            
-            # Phase 2: Connect to nova-network without aliases
-            network = client.networks.get(network_to_use)
-            network.connect(new_container)
-            logger.info(f"Successfully connected container to {network_to_use}")
+            logger.info(f"Successfully created container with network: {network_to_use}")
             
         except Exception as e:
-            logger.error(f"Failed to create/connect container: {e}")
+            logger.error(f"Failed to create container: {e}")
             raise e
         
         # Start the container immediately after creation with retry logic
