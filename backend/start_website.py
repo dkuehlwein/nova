@@ -205,11 +205,6 @@ async def health_check():
 async def main():
     """Run the backend server."""
     
-    # Start container auto-start service
-    from utils.container_auto_start import monitor_and_start_containers
-    asyncio.create_task(monitor_and_start_containers())
-    service_manager.logger.info("Started container auto-start monitor")
-    
     config = uvicorn.Config(
         app,
         host="0.0.0.0",
