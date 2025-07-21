@@ -2,8 +2,9 @@
 
 <br/>
 <p align="center">
-  <!-- TODO: Add a compelling GIF or video link here showing the Nova workflow -->
-  <img src="https://placehold.co/800x400?text=Nova+In+Action+(Video+Coming+Soon)" alt="Nova Workflow Demo"/>
+  <video src="docs/media/nova_demo.mp4" controls title="Nova Workflow Demo">
+    Your browser does not support the video tag.
+  </video>
 </p>
 <br/>
 
@@ -24,8 +25,7 @@ Nova acts as a true secretary, with privacy as its most important duty.
 
 <br/>
 <p align="center">
-  <!-- TODO: Add a clean screenshot of the Kanban UI -->
-  <img src="https://placehold.co/800x450?text=Nova+Kanban+UI" alt="Nova UI Screenshot"/>
+  <img src="docs/media/nova_screenshot.jpg" alt="Nova UI Screenshot"/>
 </p>
 <br/>
 
