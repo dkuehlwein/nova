@@ -89,7 +89,6 @@ services:
       --cache-type-v q8_0
       --flash-attn
       --jinja
-      --verbose
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -113,6 +112,7 @@ services:
       LLAMACPP_BASE_URL: http://llamacpp:8080
       STORE_MODEL_IN_DB: "True"
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      HF_TOKEN: ${HF_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
