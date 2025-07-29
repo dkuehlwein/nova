@@ -408,11 +408,18 @@ The phased implementation ensures backward compatibility while progressively sim
 - [x] Design LiteLLM-first onboarding flow
 - [x] Update ADR with new architecture plan
 
-### 🔄 Next Phase: Memory System Migration
-- [ ] Replace `GeminiClient` with `OpenAIClient` in graphiti_manager.py
-- [ ] Replace `GeminiEmbedder` with `OpenAIEmbedder`
-- [ ] Add embedding models to LiteLLM configuration
-- [ ] Test memory system with LiteLLM routing
+### ✅ Completed: Phase 1 - Memory System Migration
+- [x] Replace `GeminiClient` with `OpenAIClient` in graphiti_manager.py
+- [x] Replace `GeminiEmbedder` with `OpenAIEmbedder` using `OpenAIEmbedderConfig`
+- [x] Add HuggingFace embedding models to LiteLLM configuration
+- [x] Test memory system with LiteLLM routing (✅ Successfully connects)
+- [x] Update environment configuration for HF_TOKEN support
+
+### 🔄 Current Phase: Phase 2 - Settings & Model Discovery
+- [ ] Update user settings model defaults to HuggingFace
+- [ ] Replace model discovery with LiteLLM API queries
+- [ ] Simplify settings interface for model selection
+- [ ] Remove Nova-specific model configuration logic
 
 ### 📋 Implementation Queue
 1. **Week 1**: Memory system migration (Phase 1)

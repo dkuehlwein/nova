@@ -219,8 +219,8 @@ class ServiceManager:
     async def cleanup_memory(self):
         """Clean up memory/Graphiti connections."""
         try:
-            from memory.graphiti_manager import graphiti_manager
-            await asyncio.wait_for(graphiti_manager.close(), timeout=5.0)
+            from memory.graphiti_manager import close_graphiti_client
+            await asyncio.wait_for(close_graphiti_client(), timeout=5.0)
             self.logger.info("Closed memory/Graphiti connection")
         except asyncio.TimeoutError:
             self.logger.warning("Memory cleanup timed out")

@@ -64,9 +64,13 @@ class UserSettingsService:
             "memory_search_limit": settings.memory_search_limit,
             "memory_token_limit": settings.memory_token_limit,
             "mcp_server_preferences": settings.mcp_server_preferences,
-            "llm_model": settings.llm_model,
-            "llm_temperature": settings.llm_temperature,
-            "llm_max_tokens": settings.llm_max_tokens,
+            "chat_llm_model": settings.chat_llm_model,
+            "chat_llm_temperature": settings.chat_llm_temperature,
+            "chat_llm_max_tokens": settings.chat_llm_max_tokens,
+            "memory_llm_model": settings.memory_llm_model,
+            "memory_llm_temperature": settings.memory_llm_temperature,
+            "memory_llm_max_tokens": settings.memory_llm_max_tokens,
+            "embedding_model": settings.embedding_model,
             "api_key_validation_status": settings.api_key_validation_status,
         }
     
@@ -78,9 +82,13 @@ class UserSettingsService:
             return {}
         
         return {
-            "llm_model": settings.llm_model,
-            "llm_temperature": settings.llm_temperature,
-            "llm_max_tokens": settings.llm_max_tokens,
+            "chat_llm_model": settings.chat_llm_model,
+            "chat_llm_temperature": settings.chat_llm_temperature,
+            "chat_llm_max_tokens": settings.chat_llm_max_tokens,
+            "memory_llm_model": settings.memory_llm_model,
+            "memory_llm_temperature": settings.memory_llm_temperature,
+            "memory_llm_max_tokens": settings.memory_llm_max_tokens,
+            "embedding_model": settings.embedding_model,
         }
     
     @staticmethod

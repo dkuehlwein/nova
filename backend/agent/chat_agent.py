@@ -13,7 +13,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import create_react_agent
 
 from tools import get_all_tools
-from .llm import create_llm
+from .chat_llm import create_chat_llm
 from .prompts import get_nova_system_prompt
 from mcp_client import mcp_manager
 
@@ -78,7 +78,7 @@ async def get_llm(use_cache=True):
         logger.info("LLM cache cleared for reload")
     
     if _cached_llm is None:
-        _cached_llm = create_llm()
+        _cached_llm = create_chat_llm()
         logger.debug("LLM created and cached for reuse")
     
     return _cached_llm

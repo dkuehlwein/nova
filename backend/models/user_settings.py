@@ -63,10 +63,21 @@ class UserSettings(Base):
     # MCP Server Preferences (which servers are enabled/disabled)
     mcp_server_preferences: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
     
-    # LLM Settings
-    llm_model: Mapped[str] = mapped_column(String(100), default="phi-4-Q4_K_M")
-    llm_temperature: Mapped[float] = mapped_column(Float, default=0.1)
-    llm_max_tokens: Mapped[int] = mapped_column(Integer, default=2048)
+    # Chat LLM Settings (Local-First HuggingFace Defaults)
+    chat_llm_model: Mapped[str] = mapped_column(String(100), default="qwen3-32b")  # HuggingFace via Cerebras
+    chat_llm_temperature: Mapped[float] = mapped_column(Float, default=0.7)  # Higher for creativity
+    chat_llm_max_tokens: Mapped[int] = mapped_column(Integer, default=2048)
+    
+    # Memory LLM Settings (Separate from Chat for Flexibility)
+    memory_llm_model: Mapped[str] = mapped_column(String(100), default="qwen3-32b")  # Same as chat for consistency
+    memory_llm_temperature: Mapped[float] = mapped_column(Float, default=0.1)  # Lower for factual accuracy
+    memory_llm_max_tokens: Mapped[int] = mapped_column(Integer, default=2048)  # Memory operations token limit
+    
+    # Embedding Model Settings
+    embedding_model: Mapped[str] = mapped_column(String(100), default="qwen3-embedding-4b")  # #1 MTEB leaderboard
+    
+    # LiteLLM Connection Settings
+    litellm_base_url: Mapped[str] = mapped_column(String(200), default="http://localhost:4000")
     
     # API Key Validation Status (Tier 3 - cached validation results)
     api_key_validation_status: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
@@ -113,10 +124,21 @@ class UserSettingsModel(BaseModel):
     # MCP Server Preferences
     mcp_server_preferences: Dict[str, Any] = Field(default_factory=dict)
     
-    # LLM Settings
-    llm_model: str = "phi-4-Q4_K_M"
-    llm_temperature: float = 0.1
-    llm_max_tokens: int = 2048
+    # Chat LLM Settings (Local-First HuggingFace Defaults)
+    chat_llm_model: str = "qwen3-32b"  # HuggingFace via Cerebras
+    chat_llm_temperature: float = 0.7  # Higher for creativity
+    chat_llm_max_tokens: int = 2048
+    
+    # Memory LLM Settings (Separate from Chat for Flexibility)
+    memory_llm_model: str = "qwen3-32b"  # Same as chat for consistency
+    memory_llm_temperature: float = 0.1  # Lower for factual accuracy
+    memory_llm_max_tokens: int = 2048  # Memory operations token limit
+    
+    # Embedding Model Settings
+    embedding_model: str = "qwen3-embedding-4b"  # #1 MTEB leaderboard
+    
+    # LiteLLM Connection Settings
+    litellm_base_url: str = "http://localhost:4000"
     
     # API Key Validation Status
     api_key_validation_status: Dict[str, Any] = Field(default_factory=dict)
@@ -166,10 +188,21 @@ class UserSettingsUpdateModel(BaseModel):
     # MCP Server Preferences
     mcp_server_preferences: Optional[Dict[str, Any]] = None
     
-    # LLM Settings
-    llm_model: Optional[str] = None
-    llm_temperature: Optional[float] = None
-    llm_max_tokens: Optional[int] = None
+    # Chat LLM Settings
+    chat_llm_model: Optional[str] = None
+    chat_llm_temperature: Optional[float] = None
+    chat_llm_max_tokens: Optional[int] = None
+    
+    # Memory LLM Settings
+    memory_llm_model: Optional[str] = None
+    memory_llm_temperature: Optional[float] = None
+    memory_llm_max_tokens: Optional[int] = None
+    
+    # Embedding Model Settings
+    embedding_model: Optional[str] = None
+    
+    # LiteLLM Connection Settings
+    litellm_base_url: Optional[str] = None
     
     # API Key Validation Status
     api_key_validation_status: Optional[Dict[str, Any]] = None

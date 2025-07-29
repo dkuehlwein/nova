@@ -170,9 +170,9 @@ class LLMModelService:
             
         return expected_models
     
-    def _is_cloud_model(self, model_name: str) -> bool:
-        """Determine if a model is a cloud model based on its name."""
-        return "gemini" in model_name.lower() or "gemma" in model_name.lower()
+    def _is_embedding_model(self, model_name: str) -> bool:
+        """Determine if a model is an embedding model based on its name."""
+        return "embedding" in model_name.lower()
     
     # ============= LiteLLM API Operations =============
     
@@ -309,32 +309,58 @@ class LLMModelService:
             return False
     
     async def get_available_models(self) -> Dict[str, List[Dict[str, str]]]:
-        """Get list of available models categorized by type."""
+        """
+        Get available models directly from LiteLLM API.
+        
+        Returns models categorized by type for UI display:
+        - chat_models: Models suitable for conversational AI
+        - embedding_models: Models for text embeddings 
+        - all_models: Complete list of available models
+        """
         try:
-            models = await self.get_existing_models()
+            # Use LiteLLM's /models endpoint directly
+            success, result = await self._make_litellm_request("GET", "models")
             
-            # Categorize models
-            local_models = []
-            cloud_models = []
+            if not success or not result:
+                logger.error("Failed to fetch models from LiteLLM API")
+                return {"chat_models": [], "embedding_models": [], "all_models": []}
             
-            for model in models:
-                model_name = model.get("model_name", "")
-                model_dict = {"model_name": model_name}
+            models_data = result.get("data", [])
+            
+            # Categorize models for UI
+            chat_models = []
+            embedding_models = []
+            all_models = []
+            
+            for model in models_data:
+                model_id = model.get("id", "")
+                model_dict = {
+                    "model_name": model_id,
+                    "id": model_id,
+                    "owned_by": model.get("owned_by", "unknown")
+                }
                 
-                if self._is_cloud_model(model_name):
-                    cloud_models.append(model_dict)
+                all_models.append(model_dict)
+                
+                # Categorize by model type
+                if "embedding" in model_id.lower():
+                    embedding_models.append(model_dict)
                 else:
-                    local_models.append(model_dict)
+                    chat_models.append(model_dict)
                     
+            logger.info(f"Retrieved {len(all_models)} models from LiteLLM: {len(chat_models)} chat, {len(embedding_models)} embedding")
+            
             return {
-                "local": local_models,
-                "cloud": cloud_models
+                "chat_models": chat_models,
+                "embedding_models": embedding_models, 
+                "all_models": all_models
             }
         
         except Exception as e:
-            logger.error(f"Error getting available models: {e}")
-            return {"local": [], "cloud": []}
+            logger.error(f"Error getting available models from LiteLLM: {e}")
+            return {"chat_models": [], "embedding_models": [], "all_models": []}
     
+    # Health checks now handled by system_endpoints.py - no duplication
     async def refresh_models_after_api_key_update(self, db: AsyncSession) -> bool:
         """Refresh available models after API keys are updated."""
         try:
@@ -351,6 +377,23 @@ class LLMModelService:
         except Exception as e:
             logger.error(f"Error refreshing models after API key update: {e}")
             return False
+    
+    def get_available_models_sync(self) -> Optional[dict]:
+        """Get available models synchronously for use in non-async contexts."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we're already in an async context, we need to use a new event loop
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, self.get_available_models())
+                    return future.result()
+            else:
+                return asyncio.run(self.get_available_models())
+        except Exception as e:
+            print(f"Warning: Could not get available models sync: {e}")
+            return None
 
 
 # Global service instance

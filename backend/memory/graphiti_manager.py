@@ -1,143 +1,131 @@
 """
-Nova Graphiti Manager
+Graphiti Memory Manager for Nova
 
-Global singleton manager for Graphiti client lifecycle (follows db_manager pattern).
-Provides centralized Neo4j connection management and error handling.
+Manages the integration between Nova and Graphiti's graph-based memory system,
+providing LLM and embedding services through LiteLLM routing.
 """
 
-import logging
-import os
-from typing import Optional
+from typing import List, Optional
+
 from graphiti_core import Graphiti
-from graphiti_core.llm_client.gemini_client import GeminiClient, LLMConfig
-from graphiti_core.embedder.gemini import GeminiEmbedder, GeminiEmbedderConfig
-from graphiti_core.cross_encoder.client import CrossEncoderClient
+from graphiti_core.llm_client import OpenAIClient
+from graphiti_core.llm_client.config import LLMConfig
+from graphiti_core.embedder import OpenAIEmbedder
+from graphiti_core.embedder.openai import OpenAIEmbedderConfig
+from graphiti_core.cross_encoder import CrossEncoderClient
 
-from config import settings
 
-logger = logging.getLogger(__name__)
-
-def create_graphiti_llm() -> GeminiClient:
+def create_graphiti_llm() -> OpenAIClient:
     """
-    Create Graphiti-compatible Gemini LLM client reusing Nova's existing configuration.
+    Create OpenAI-compatible LLM client that routes through LiteLLM for memory operations.
     
-    Note: We need Graphiti's GeminiClient instead of LangChain's ChatGoogleGenerativeAI
-    because they expect different interfaces, but we reuse all the same config values.
+    This enables Nova's memory system to leverage any LLM model available in LiteLLM
+    while maintaining the same interface that Graphiti expects.
     """
-    # Reuse Nova's existing LLM configuration values
-    api_key = settings.GOOGLE_API_KEY.get_secret_value() if settings.GOOGLE_API_KEY else os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise ValueError("GOOGLE_API_KEY environment variable is required")
+    from utils.llm_factory import get_memory_llm_config
     
-    # Memory system requires Gemini models for GeminiClient and GeminiEmbedder
-    # Use the lite model to avoid rate limits - it has higher quotas than regular gemini-2.5-flash
-    # This matches the fallback strategy used by LiteLLM when the regular model hits limits
-    from database.database import UserSettingsService
-    # user_settings = UserSettingsService.get_llm_settings_sync()
-    # model_name = user_settings.get("llm_model", "phi-4-Q4_K_M") 
-    # TODO: migrate memory to use LiteLLM
-    # Use lite model to avoid rate limit issues that regular gemini-2.5-flash encounters
-    model_name = "gemini-2.5-flash-lite-preview-06-17"        
-    memory_settings = UserSettingsService.get_memory_settings_sync()
-    max_tokens = memory_settings.get("memory_token_limit", 2048)  # Default from database schema
+    llm_config = get_memory_llm_config()
     
     config = LLMConfig(
-        model=model_name,
-        api_key=api_key,
-        temperature=0.1,  # Lower temperature for factual memory vs Nova's 0.7 default
-        max_tokens=max_tokens   # User-configurable token limit
+        model=llm_config["model"],
+        api_key=llm_config["api_key"],
+        base_url=llm_config["base_url"],
+        temperature=llm_config["temperature"],
+        max_tokens=llm_config["max_tokens"]
     )
-    return GeminiClient(config=config)
+    return OpenAIClient(config=config)
 
-def create_graphiti_embedder() -> GeminiEmbedder:
+
+def create_graphiti_embedder() -> OpenAIEmbedder:
     """
-    Create Graphiti-compatible Gemini embedder for semantic search.
+    Create OpenAI-compatible embedder that routes through LiteLLM for semantic search.
     
-    This is REQUIRED for Graphiti's search functionality - it creates vector embeddings
-    of the knowledge graph content for semantic matching.
+    This enables Nova's memory system to use state-of-the-art open source embedding models
+    like Qwen3-Embedding-4B (#1 MTEB multilingual leaderboard) via LiteLLM routing.
     """
-    # Reuse Nova's API key configuration
-    api_key = settings.GOOGLE_API_KEY.get_secret_value() if settings.GOOGLE_API_KEY else os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise ValueError("GOOGLE_API_KEY environment variable is required")
+    from utils.llm_factory import get_embedding_config
     
-    config = GeminiEmbedderConfig(
-        embedding_model="models/text-embedding-004",  # Google's latest embedding model
-        api_key=api_key
+    embedding_config = get_embedding_config()
+    
+    config = OpenAIEmbedderConfig(
+        embedding_model=embedding_config["embedding_model"],
+        api_key=embedding_config["api_key"],
+        base_url=embedding_config["base_url"],
+        embedding_dim=embedding_config["embedding_dim"]
     )
-    return GeminiEmbedder(config=config)
+    return OpenAIEmbedder(config=config)
+
 
 class NullCrossEncoder(CrossEncoderClient):
-    """Null cross encoder for MVP - no reranking needed."""
+    """
+    No-op cross encoder for development.
     
-    async def rank(self, query: str, passages: list[str]) -> list[tuple[str, float]]:
-        """Return passages with simple decreasing scores."""
-        return [(passage, 1.0 - (i * 0.01)) for i, passage in enumerate(passages)]
-
-
-class GraphitiManager:
-    """Global singleton manager for Graphiti client lifecycle (follows db_manager pattern)."""
+    In production, this could be replaced with a proper cross-encoder service
+    for enhanced relevance scoring.
+    """
     
-    def __init__(self):
-        self._client: Optional[Graphiti] = None
-        self._initialized: bool = False
+    def rank(self, query: str, messages: List[str]) -> List[int]:
+        """Return messages in original order (no reranking)."""
+        return list(range(len(messages)))
+
+
+def create_graphiti_cross_encoder() -> CrossEncoderClient:
+    """Create cross-encoder for message reranking (currently no-op)."""
+    return NullCrossEncoder()
+
+
+async def create_graphiti_client() -> Graphiti:
+    """
+    Create and configure Graphiti client for Nova's memory system.
     
-    async def get_client(self) -> Graphiti:
-        """Get or create global Graphiti client instance."""
-        if self._client is None:
-            try:
-                self._client = Graphiti(
-                    uri=settings.NEO4J_URI,
-                    user=settings.NEO4J_USER,
-                    password=settings.NEO4J_PASSWORD,
-                    llm_client=create_graphiti_llm(),
-                    embedder=create_graphiti_embedder(),
-                    cross_encoder=NullCrossEncoder(),
-                    store_raw_episode_content=True,
-                )
-                
-                # Build indices only once per manager instance
-                # Note: Graphiti uses IF NOT EXISTS, so Neo4j will handle duplicates gracefully
-                if not self._initialized:
-                    logger.info("Building Graphiti indices and constraints...")
-                    await self._client.build_indices_and_constraints()
-                    logger.info("Graphiti client initialized with Neo4j indices")
-                    self._initialized = True
-                
-            except Exception as e:
-                logger.error(f"Failed to initialize Graphiti client: {e}")
-                raise MemoryConnectionError(f"Cannot connect to Neo4j: {e}")
-                
-        return self._client
+    Returns:
+        Configured Graphiti client with LiteLLM-routed LLM and embedding services
+    """
+    # Get Neo4j connection from config settings (Tier 2)
+    from config import settings
+    neo4j_uri = settings.NEO4J_URI
+    neo4j_user = settings.NEO4J_USER  
+    neo4j_password = settings.NEO4J_PASSWORD
     
-    async def close(self):
-        """Close global Graphiti client connection."""
-        if self._client:
-            try:
-                await self._client.close()
-                logger.info("Graphiti client connection closed")
-            except Exception as e:
-                logger.warning(f"Error closing Graphiti client: {e}")
-            finally:
-                self._client = None
-                self._initialized = False
+    # Create Graphiti client with our LiteLLM-routed services
+    client = Graphiti(
+        uri=neo4j_uri,
+        user=neo4j_user,
+        password=neo4j_password,
+        llm_client=create_graphiti_llm(),
+        embedder=create_graphiti_embedder(),
+        cross_encoder=create_graphiti_cross_encoder()
+    )
+    
+    return client
 
 
-# Global singleton instance (like db_manager)
-graphiti_manager = GraphitiManager()
+# Global Graphiti client instance (lazy-loaded)
+_graphiti_client: Optional[Graphiti] = None
 
 
-# Custom exceptions for memory operations
-class MemoryConnectionError(Exception):
-    """Raised when cannot connect to Neo4j/Graphiti."""
-    pass
+async def get_graphiti_client() -> Graphiti:
+    """Get or create the global Graphiti client instance."""
+    global _graphiti_client
+    if _graphiti_client is None:
+        _graphiti_client = await create_graphiti_client()
+    return _graphiti_client
 
 
+async def close_graphiti_client():
+    """Clean up the global Graphiti client."""
+    global _graphiti_client
+    if _graphiti_client is not None:
+        await _graphiti_client.close()
+        _graphiti_client = None
+
+
+# Exception classes for memory operations
 class MemorySearchError(Exception):
-    """Raised when memory search fails."""
+    """Raised when memory search operations fail."""
     pass
 
 
 class MemoryAddError(Exception):
-    """Raised when adding memory fails."""
-    pass 
+    """Raised when memory add operations fail."""
+    pass

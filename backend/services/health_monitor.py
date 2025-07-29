@@ -234,10 +234,10 @@ class HealthMonitorService:
                     
             elif service_name == "neo4j":
                 # Test Neo4j connectivity via memory manager
-                from memory.graphiti_manager import graphiti_manager
+                from memory.graphiti_manager import get_graphiti_client
                 try:
                     # Test connectivity by getting the client (this will initialize connection)
-                    client = await graphiti_manager.get_client()
+                    client = await get_graphiti_client()
                     if client and client.driver:
                         # Simple connectivity test using the underlying driver
                         try:

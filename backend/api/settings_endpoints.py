@@ -6,10 +6,9 @@ NEVER exposes Tier 1 (config.py) or Tier 2 (.env) values for security.
 """
 
 from typing import Optional
-from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy import select
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -21,7 +20,6 @@ from models.user_settings import (
     OnboardingStatusModel
 )
 from utils.logging import get_logger
-from services.llm_service import llm_service
 from utils.docker_manager import restart_llamacpp_container
 
 logger = get_logger("settings_api")
@@ -29,9 +27,12 @@ logger = get_logger("settings_api")
 router = APIRouter(prefix="/api/user-settings", tags=["user-settings"])
 
 
-async def _handle_model_change(model_name: str) -> None:
+async def _handle_chat_model_change(model_name: str) -> None:
     """
-    Handle LLM model changes by restarting llamacpp container if it's a local model.
+    Handle LLM model changes in LiteLLM-first architecture.
+    
+    Most models route through LiteLLM and require no restart.
+    Only local GGUF models need llamacpp container restart.
     
     Args:
         model_name: The new model name selected by the user
@@ -39,13 +40,9 @@ async def _handle_model_change(model_name: str) -> None:
     logger.info(f"Model change detected: {model_name}")
     
     try:
-        # Get available models to determine if this is local or cloud
-        available_models = await llm_service.get_available_models()
-        local_models = {model["model_name"] for model in available_models.get("local", [])}
-        
-        if model_name in local_models:
-            # This is a local model - need to restart llamacpp
-            logger.info(f"Local model selected: {model_name}, restarting llamacpp container")
+        # Check if this is a local GGUF model that needs container restart
+        if await _is_local_gguf_model(model_name):
+            logger.info(f"Local GGUF model selected: {model_name}, restarting llamacpp container")
             
             # Get the model file name from litellm config
             model_file = await _get_model_file_from_config(model_name)
@@ -58,11 +55,58 @@ async def _handle_model_change(model_name: str) -> None:
             else:
                 logger.warning(f"Could not find model file for: {model_name}")
         else:
-            # This is a cloud model - no restart needed
-            logger.info(f"Cloud model selected: {model_name}, no llamacpp restart needed")
+            # This is a LiteLLM-routed model (HuggingFace, OpenAI, etc.) - no restart needed
+            logger.info(f"LiteLLM-routed model selected: {model_name}, no llamacpp restart needed")
             
     except Exception as e:
         logger.error(f"Error handling model change: {e}")
+
+
+async def _is_local_gguf_model(model_name: str) -> bool:
+    """
+    Check if a model is a local GGUF model that requires llamacpp container restart.
+    
+    In LiteLLM-first architecture, these are models that use llamacpp:8080 api_base.
+    
+    Args:
+        model_name: The model name to check
+        
+    Returns:
+        bool: True if this is a local GGUF model, False otherwise
+    """
+    try:
+        import yaml
+        from pathlib import Path
+        
+        # Path to litellm config
+        possible_paths = [
+            Path(__file__).parent.parent.parent / "configs" / "litellm_config.yaml",  # Host path
+            Path("/app/configs/litellm_config.yaml"),  # Container mounted path
+        ]
+        
+        config_path = None
+        for path in possible_paths:
+            if path.exists():
+                config_path = path
+                break
+        
+        if not config_path:
+            return False
+            
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+            
+        # Check if model uses llamacpp api_base (indicates local GGUF model)
+        for model in config.get("model_list", []):
+            if model.get("model_name") == model_name:
+                api_base = model.get("litellm_params", {}).get("api_base", "")
+                return "llamacpp:8080" in api_base or "localhost:8080" in api_base
+                
+        return False
+        
+    except Exception as e:
+        logger.warning(f"Error checking if model is local GGUF: {e}")
+        return False
 
 
 async def _get_model_file_from_config(model_name: str) -> Optional[str]:
@@ -248,7 +292,9 @@ async def update_user_settings(
         
         # If LLM-related settings were updated, publish Redis event for chat agent cache clearing
         llm_fields = {
-            "llm_model", "llm_temperature", "llm_max_tokens"
+            "chat_llm_model", "chat_llm_temperature", "chat_llm_max_tokens",
+            "memory_llm_model", "memory_llm_temperature", "memory_llm_max_tokens",
+            "embedding_model"
         }
         if any(field in update_data for field in llm_fields):
             try:
@@ -257,9 +303,9 @@ async def update_user_settings(
                 from utils.redis_manager import publish
                 
                 llm_event = create_llm_settings_updated_event(
-                    model=settings.llm_model,
-                    temperature=settings.llm_temperature,
-                    max_tokens=settings.llm_max_tokens,
+                    model=settings.chat_llm_model,
+                    temperature=settings.chat_llm_temperature,
+                    max_tokens=settings.chat_llm_max_tokens,
                     source="settings-api"
                 )
                 
@@ -270,9 +316,9 @@ async def update_user_settings(
                     extra={"data": {"event_id": llm_event.id, "updated_fields": list(update_data.keys())}}
                 )
                 
-                # If model changed, check if it's a local model and restart llamacpp if needed
-                if "llm_model" in update_data:
-                    await _handle_model_change(settings.llm_model)
+                # If chat model changed, check if it's a local model and restart llamacpp if needed
+                if "chat_llm_model" in update_data:
+                    await _handle_chat_model_change(settings.chat_llm_model)
                 
             except Exception as e:
                 logger.warning(f"Failed to publish LLM settings event: {e}")
@@ -294,10 +340,19 @@ async def update_user_settings(
         raise HTTPException(status_code=500, detail="Failed to update user settings")
 
 
+class OnboardingCompleteRequest(BaseModel):
+    """Request model for completing onboarding with model selection."""
+    chat_llm_model: Optional[str] = Field(default="qwen3-32b", description="Chat model selection")
+    memory_llm_model: Optional[str] = Field(default="qwen3-32b", description="Memory model selection") 
+    embedding_model: Optional[str] = Field(default="qwen3-embedding-4b", description="Embedding model selection")
+
 @router.post("/complete-onboarding")
-async def complete_onboarding(session: AsyncSession = Depends(get_db_session)):
+async def complete_onboarding(
+    request: OnboardingCompleteRequest = OnboardingCompleteRequest(),
+    session: AsyncSession = Depends(get_db_session)
+):
     """
-    Mark onboarding as complete.
+    Complete onboarding with optional model selection (LiteLLM-first approach).
     """
     try:
         from database.database import UserSettingsService
@@ -309,12 +364,25 @@ async def complete_onboarding(session: AsyncSession = Depends(get_db_session)):
             settings = UserSettings()
             session.add(settings)
         
+        # Mark onboarding complete and set selected models
         settings.onboarding_complete = True
+        settings.chat_llm_model = request.chat_llm_model
+        settings.memory_llm_model = request.memory_llm_model
+        settings.embedding_model = request.embedding_model
+        
         await session.commit()
         
-        logger.info("Onboarding marked as complete")
+        logger.info(f"Onboarding completed with models: chat={request.chat_llm_model}, memory={request.memory_llm_model}, embedding={request.embedding_model}")
         
-        return {"status": "success", "message": "Onboarding completed"}
+        return {
+            "status": "success", 
+            "message": "Onboarding completed with LiteLLM-first defaults",
+            "models": {
+                "chat_llm_model": request.chat_llm_model,
+                "memory_llm_model": request.memory_llm_model,
+                "embedding_model": request.embedding_model
+            }
+        }
         
     except Exception as e:
         logger.error("Failed to complete onboarding", exc_info=True)
