@@ -1150,3 +1150,180 @@ async def get_langsmith_api_status(
     except Exception as e:
         logger.error("Failed to get LangSmith API status", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get LangSmith API status")
+
+
+@router.get("/huggingface-api-status")
+async def get_huggingface_api_status(
+    force_refresh: bool = False,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """
+    Get the current status of HuggingFace API key and availability.
+    Uses cached validation status unless force_refresh=True.
+    """
+    try:
+        from config import settings as app_settings
+        from database.database import UserSettingsService
+        from datetime import datetime, timezone
+        import aiohttp
+        
+        # Check if API key is configured in environment
+        has_api_key = bool(app_settings.HF_TOKEN)
+        
+        # Get user settings to check cached validation status
+        settings = await UserSettingsService.get_user_settings(session)
+        if not settings:
+            # Create default settings if none exist
+            settings = await UserSettingsService.create_user_settings(session)
+        
+        cached_status = settings.api_key_validation_status.get("huggingface_api_key", {})
+        
+        # Use cached status unless force_refresh is requested or cache is empty
+        if not force_refresh and cached_status and has_api_key:
+            is_valid = cached_status.get("validated", False)
+            username = cached_status.get("username", "unknown")
+            last_check = cached_status.get("last_check", "Unknown")
+            
+            logger.info("Using cached HuggingFace API validation status", extra={"data": {
+                "cached": True,
+                "valid": is_valid,
+                "username": username,
+                "last_check": last_check
+            }})
+        else:
+            # Perform real-time validation
+            is_valid = False
+            username = "unknown"
+            
+            if has_api_key:
+                logger.info("Performing real-time HuggingFace API validation", extra={"data": {"force_refresh": force_refresh}})
+                try:
+                    # Test HuggingFace API using the models endpoint (more reliable than whoami)
+                    async with aiohttp.ClientSession() as client_session:
+                        async with client_session.get(
+                            "https://huggingface.co/api/models?limit=1",
+                            headers={"Authorization": f"Bearer {app_settings.HF_TOKEN}"},
+                            timeout=10
+                        ) as response:
+                            if response.status == 200:
+                                # If we can access the models API, the token is valid
+                                is_valid = True
+                                username = "valid"  # We can't get username from this endpoint
+                            else:
+                                is_valid = False
+                                username = "unknown"
+                except Exception as e:
+                    logger.warning(f"HuggingFace API validation failed: {e}")
+                    is_valid = False
+                    username = "unknown"
+                
+                # Cache the validation results
+                now = datetime.now(timezone.utc).isoformat()
+                new_status = {
+                    "validated": is_valid,
+                    "validated_at": now if is_valid else cached_status.get("validated_at"),
+                    "validation_error": None if is_valid else "API key validation failed",
+                    "last_check": now,
+                    "username": username
+                }
+                settings.api_key_validation_status["huggingface_api_key"] = new_status
+                flag_modified(settings, "api_key_validation_status")
+                await UserSettingsService.update_user_settings(session, settings)
+        
+        return {
+            "has_huggingface_api_key": has_api_key,
+            "huggingface_api_key_valid": is_valid,
+            "username": username,
+            "status": "ready" if is_valid else ("configured_invalid" if has_api_key else "not_configured"),
+            "cached": not force_refresh and bool(cached_status),
+            "last_check": cached_status.get("last_check", "Never") if not force_refresh else "Just now"
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get HuggingFace API status", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get HuggingFace API status")
+
+
+@router.get("/litellm-api-status") 
+async def get_litellm_api_status(
+    force_refresh: bool = False,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """
+    Get the current status of LiteLLM master key and availability.
+    Uses cached validation status unless force_refresh=True.
+    """
+    try:
+        from config import settings as app_settings
+        from database.database import UserSettingsService
+        from datetime import datetime, timezone
+        import aiohttp
+        
+        # Check if API key is configured in environment
+        has_api_key = bool(app_settings.LITELLM_MASTER_KEY)
+        
+        # Get user settings to check cached validation status
+        settings = await UserSettingsService.get_user_settings(session)
+        if not settings:
+            # Create default settings if none exist
+            settings = await UserSettingsService.create_user_settings(session)
+        
+        cached_status = settings.api_key_validation_status.get("litellm_master_key", {})
+        
+        # Use cached status unless force_refresh is requested or cache is empty
+        if not force_refresh and cached_status and has_api_key:
+            is_valid = cached_status.get("validated", False)
+            base_url = cached_status.get("base_url", app_settings.LITELLM_BASE_URL)
+            last_check = cached_status.get("last_check", "Unknown")
+            
+            logger.info("Using cached LiteLLM API validation status", extra={"data": {
+                "cached": True,
+                "valid": is_valid,
+                "base_url": base_url,
+                "last_check": last_check
+            }})
+        else:
+            # Perform real-time validation
+            is_valid = False
+            base_url = app_settings.LITELLM_BASE_URL
+            
+            if has_api_key:
+                logger.info("Performing real-time LiteLLM API validation", extra={"data": {"force_refresh": force_refresh}})
+                try:
+                    # Test LiteLLM health endpoint with authentication
+                    async with aiohttp.ClientSession() as client_session:
+                        async with client_session.get(
+                            f"{app_settings.LITELLM_BASE_URL}/health",
+                            headers={"Authorization": f"Bearer {app_settings.LITELLM_MASTER_KEY}"},
+                            timeout=10
+                        ) as response:
+                            is_valid = response.status == 200
+                except Exception as e:
+                    logger.warning(f"LiteLLM API validation failed: {e}")
+                    is_valid = False
+                
+                # Cache the validation results
+                now = datetime.now(timezone.utc).isoformat()
+                new_status = {
+                    "validated": is_valid,
+                    "validated_at": now if is_valid else cached_status.get("validated_at"),
+                    "validation_error": None if is_valid else "API key validation failed",
+                    "last_check": now,
+                    "base_url": base_url
+                }
+                settings.api_key_validation_status["litellm_master_key"] = new_status
+                flag_modified(settings, "api_key_validation_status")
+                await UserSettingsService.update_user_settings(session, settings)
+        
+        return {
+            "has_litellm_master_key": has_api_key,
+            "litellm_master_key_valid": is_valid,
+            "base_url": base_url,
+            "status": "ready" if is_valid else ("configured_invalid" if has_api_key else "not_configured"),
+            "cached": not force_refresh and bool(cached_status),
+            "last_check": cached_status.get("last_check", "Never") if not force_refresh else "Just now"
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get LiteLLM API status", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get LiteLLM API status")

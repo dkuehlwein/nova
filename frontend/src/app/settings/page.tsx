@@ -463,6 +463,22 @@ function APIKeysTab() {
     cached?: boolean;
     last_check?: string;
   } | null>(null);
+  const [huggingfaceApiStatus, setHuggingfaceApiStatus] = useState<{
+    has_huggingface_api_key: boolean;
+    huggingface_api_key_valid: boolean;
+    username: string;
+    status: string;
+    cached?: boolean;
+    last_check?: string;
+  } | null>(null);
+  const [litellmApiStatus, setLitellmApiStatus] = useState<{
+    has_litellm_master_key: boolean;
+    litellm_master_key_valid: boolean;
+    base_url: string;
+    status: string;
+    cached?: boolean;
+    last_check?: string;
+  } | null>(null);
   const [showApiKeyForm, setShowApiKeyForm] = useState(false);
   const [newApiKey, setNewApiKey] = useState('');
   const [validatingApiKey, setValidatingApiKey] = useState(false);
@@ -473,6 +489,8 @@ function APIKeysTab() {
     // These will use cached results by default
     fetchGoogleApiStatus();
     fetchLangsmithApiStatus();
+    fetchHuggingfaceApiStatus();
+    fetchLitellmApiStatus();
   }, []);
 
   const fetchGoogleApiStatus = async (forceRefresh: boolean = false) => {
@@ -512,6 +530,46 @@ function APIKeysTab() {
       setLangsmithApiStatus(data);
     } catch (error) {
       console.error('Failed to load LangSmith API status:', error);
+    }
+  };
+
+  const fetchHuggingfaceApiStatus = async (forceRefresh: boolean = false) => {
+    try {
+      const url = forceRefresh 
+        ? '/api/user-settings/huggingface-api-status?force_refresh=true'
+        : '/api/user-settings/huggingface-api-status';
+      
+      const data = await apiRequest(url) as {
+        has_huggingface_api_key: boolean;
+        huggingface_api_key_valid: boolean;
+        username: string;
+        status: string;
+        cached?: boolean;
+        last_check?: string;
+      };
+      setHuggingfaceApiStatus(data);
+    } catch (error) {
+      console.error('Failed to load HuggingFace API status:', error);
+    }
+  };
+
+  const fetchLitellmApiStatus = async (forceRefresh: boolean = false) => {
+    try {
+      const url = forceRefresh 
+        ? '/api/user-settings/litellm-api-status?force_refresh=true'
+        : '/api/user-settings/litellm-api-status';
+      
+      const data = await apiRequest(url) as {
+        has_litellm_master_key: boolean;
+        litellm_master_key_valid: boolean;
+        base_url: string;
+        status: string;
+        cached?: boolean;
+        last_check?: string;
+      };
+      setLitellmApiStatus(data);
+    } catch (error) {
+      console.error('Failed to load LiteLLM API status:', error);
     }
   };
 
@@ -572,7 +630,7 @@ function APIKeysTab() {
     }
   };
 
-  if (!googleApiStatus && !langsmithApiStatus) {
+  if (!googleApiStatus && !langsmithApiStatus && !huggingfaceApiStatus && !litellmApiStatus) {
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
@@ -723,6 +781,86 @@ function APIKeysTab() {
                 </div>
               )}
             </div>
+            
+            {/* HuggingFace API Key Section */}
+            <div className="border-t border-border pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">HuggingFace API Key <span className="text-xs text-muted-foreground">(Optional)</span></p>
+                  <p className="text-sm text-muted-foreground">For accessing HuggingFace models via LiteLLM</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {huggingfaceApiStatus?.status === 'ready' && (() => {
+                    const StatusIcon = getStatusIcon('operational');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('operational')}`} />;
+                  })()}
+                  {huggingfaceApiStatus?.status === 'configured_invalid' && (() => {
+                    const StatusIcon = getStatusIcon('critical');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
+                  })()}
+                  <Badge variant={huggingfaceApiStatus?.has_huggingface_api_key ? 
+                    (huggingfaceApiStatus?.huggingface_api_key_valid ? "default" : "destructive") : 
+                    "secondary"
+                  }>
+                    {huggingfaceApiStatus?.status === 'ready' ? `Valid (${huggingfaceApiStatus.username})` :
+                     huggingfaceApiStatus?.status === 'configured_invalid' ? 'Invalid' :
+                     'Not configured'}
+                  </Badge>
+                </div>
+              </div>
+              
+              {huggingfaceApiStatus?.has_huggingface_api_key && (
+                <div className="flex items-center space-x-2 mt-3">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => fetchHuggingfaceApiStatus(true)}
+                  >
+                    Refresh Status
+                  </Button>
+                </div>
+              )}
+            </div>
+            
+            {/* LiteLLM Master Key Section */}
+            <div className="border-t border-border pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">LiteLLM Master Key <span className="text-xs text-muted-foreground">(Required)</span></p>
+                  <p className="text-sm text-muted-foreground">Authentication key for your LiteLLM proxy service</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {litellmApiStatus?.status === 'ready' && (() => {
+                    const StatusIcon = getStatusIcon('operational');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('operational')}`} />;
+                  })()}
+                  {litellmApiStatus?.status === 'configured_invalid' && (() => {
+                    const StatusIcon = getStatusIcon('critical');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
+                  })()}
+                  <Badge variant={litellmApiStatus?.has_litellm_master_key ? 
+                    (litellmApiStatus?.litellm_master_key_valid ? "default" : "destructive") : 
+                    "secondary"
+                  }>
+                    {litellmApiStatus?.status === 'ready' ? `Valid (${litellmApiStatus.base_url})` :
+                     litellmApiStatus?.status === 'configured_invalid' ? 'Invalid' :
+                     'Not configured'}
+                  </Badge>
+                </div>
+              </div>
+              
+              {litellmApiStatus?.has_litellm_master_key && (
+                <div className="flex items-center space-x-2 mt-3">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => fetchLitellmApiStatus(true)}
+                  >
+                    Refresh Status
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -733,7 +871,7 @@ function APIKeysTab() {
 // AI Models & Infrastructure tab content
 function AIModelsTab() {
   const { data: userSettings, isLoading: loading } = useUserSettings();
-  const { data: availableModels, isLoading: modelsLoading, refetch: refetchModels } = useAvailableModels();
+  const { data: availableModels, isLoading: modelsLoading } = useAvailableModels();
   const updateUserSettings = useUpdateUserSettings();
   const [editingSettings, setEditingSettings] = useState<Record<string, unknown> | null>(null);
   const [litellmStatus, setLitellmStatus] = useState<{
@@ -749,39 +887,40 @@ function AIModelsTab() {
     }
   }, [userSettings, editingSettings]);
 
+  const checkLitellmStatus = React.useCallback(async (baseUrlOverride?: string) => {
+    const baseUrl = baseUrlOverride || (editingSettings?.litellm_base_url as string) || 'http://localhost:4000';
+    
+    try {
+      // Get model count via Nova backend (which handles authentication)
+      const models = await apiRequest('/llm/models/categorized') as {
+        models: {
+          chat_models: {model_name: string}[],
+          embedding_models: {model_name: string}[],
+          all_models: {model_name: string}[]
+        },
+        total: number
+      };
+      setLitellmStatus({
+        status: 'connected',
+        models_count: models.total || 0,
+        base_url: baseUrl || 'http://localhost:4000'
+      });
+    } catch (error) {
+      console.error('Failed to connect to LiteLLM via Nova backend:', error);
+      setLitellmStatus({
+        status: 'disconnected',
+        models_count: 0,
+        base_url: baseUrl || 'http://localhost:4000'
+      });
+    }
+  }, [editingSettings]);
+
   React.useEffect(() => {
     // Only check status after settings are loaded
     if (editingSettings) {
       checkLitellmStatus();
     }
-  }, [editingSettings]);
-
-  const checkLitellmStatus = async (baseUrlOverride?: string) => {
-    const baseUrl = baseUrlOverride || (editingSettings?.litellm_base_url as string) || 'http://localhost:4000';
-    
-    try {
-      // First check if LiteLLM service is reachable directly
-      const healthResponse = await fetch(`${baseUrl}/health`);
-      if (!healthResponse.ok) {
-        throw new Error(`LiteLLM health check failed: ${healthResponse.status}`);
-      }
-      
-      // Then get model count via Nova backend (which uses the configured URL)
-      const models = await apiRequest('/llm/models/categorized');
-      setLitellmStatus({
-        status: 'connected',
-        models_count: models.total_models || 0,
-        base_url: baseUrl
-      });
-    } catch (error) {
-      console.error('Failed to connect to LiteLLM:', error);
-      setLitellmStatus({
-        status: 'disconnected',
-        models_count: 0,
-        base_url: baseUrl
-      });
-    }
-  };
+  }, [editingSettings, checkLitellmStatus]);
 
   const handleSave = async () => {
     if (!editingSettings) return;
@@ -796,7 +935,7 @@ function AIModelsTab() {
         memory_llm_temperature: editingSettings.memory_llm_temperature as number,
         memory_llm_max_tokens: editingSettings.memory_llm_max_tokens as number,
         embedding_model: editingSettings.embedding_model as string,
-      });
+      } as Record<string, unknown>);
       // Refresh LiteLLM status after saving
       await checkLitellmStatus();
     } catch (error) {
@@ -821,24 +960,31 @@ function AIModelsTab() {
     
     setTestingConnection(true);
     try {
-      const baseUrl = editingSettings.litellm_base_url;
+      const baseUrl = (editingSettings.litellm_base_url as string) || 'http://localhost:4000';
       
       // Test via Nova backend (which handles authentication)
-      const models = await apiRequest('/llm/models/categorized');
+      const models = await apiRequest('/llm/models/categorized') as {
+        models: {
+          chat_models: {model_name: string}[],
+          embedding_models: {model_name: string}[],
+          all_models: {model_name: string}[]
+        },
+        total: number
+      };
       setLitellmStatus({
         status: 'connected',
-        models_count: models.total_models || 0,
+        models_count: models.total || 0,
         base_url: baseUrl
       });
-      alert(`Connection successful! LiteLLM is running at ${baseUrl} with ${models.total_models || 0} models available.`);
+      alert(`Connection successful! LiteLLM is running at ${baseUrl} with ${models.total || 0} models available.`);
     } catch (error) {
       console.error('Connection test failed:', error);
-      const baseUrl = editingSettings.litellm_base_url;
+      const baseUrl = (editingSettings.litellm_base_url as string) || 'http://localhost:4000';
       alert(`Connection failed: Unable to reach LiteLLM at ${baseUrl}\n\nError: ${error instanceof Error ? error.message : 'Network error'}\n\nMake sure LiteLLM is running and the master key is configured in your environment.`);
       setLitellmStatus({
         status: 'disconnected',
         models_count: 0,
-        base_url: baseUrl
+        base_url: baseUrl || 'http://localhost:4000'
       });
     } finally {
       setTestingConnection(false);
@@ -1285,7 +1431,7 @@ function AutomationTab() {
         <div className="space-y-4 border-t border-border pt-6">
           <h3 className="text-lg font-medium text-foreground">Core Agent Processing</h3>
           <p className="text-sm text-muted-foreground">
-            Configure Nova's autonomous task processing behavior and performance.
+            Configure Nova&apos;s autonomous task processing behavior and performance.
           </p>
           
           <div className="space-y-4 border border-muted rounded-lg p-4">
