@@ -294,7 +294,7 @@ async def update_user_settings(
         llm_fields = {
             "chat_llm_model", "chat_llm_temperature", "chat_llm_max_tokens",
             "memory_llm_model", "memory_llm_temperature", "memory_llm_max_tokens",
-            "embedding_model"
+            "embedding_model", "litellm_base_url", "litellm_master_key"
         }
         if any(field in update_data for field in llm_fields):
             try:
@@ -345,6 +345,8 @@ class OnboardingCompleteRequest(BaseModel):
     chat_llm_model: Optional[str] = Field(default="qwen3-32b", description="Chat model selection")
     memory_llm_model: Optional[str] = Field(default="qwen3-32b", description="Memory model selection") 
     embedding_model: Optional[str] = Field(default="qwen3-embedding-4b", description="Embedding model selection")
+    litellm_base_url: Optional[str] = Field(default="http://localhost:4000", description="LiteLLM base URL")
+    litellm_master_key: Optional[str] = Field(default="sk-1234", description="LiteLLM master key")
 
 @router.post("/complete-onboarding")
 async def complete_onboarding(
@@ -364,15 +366,17 @@ async def complete_onboarding(
             settings = UserSettings()
             session.add(settings)
         
-        # Mark onboarding complete and set selected models
+        # Mark onboarding complete and set selected models and connection settings
         settings.onboarding_complete = True
         settings.chat_llm_model = request.chat_llm_model
         settings.memory_llm_model = request.memory_llm_model
         settings.embedding_model = request.embedding_model
+        settings.litellm_base_url = request.litellm_base_url
+        settings.litellm_master_key = request.litellm_master_key
         
         await session.commit()
         
-        logger.info(f"Onboarding completed with models: chat={request.chat_llm_model}, memory={request.memory_llm_model}, embedding={request.embedding_model}")
+        logger.info(f"Onboarding completed with models: chat={request.chat_llm_model}, memory={request.memory_llm_model}, embedding={request.embedding_model}, litellm_url={request.litellm_base_url}")
         
         return {
             "status": "success", 
@@ -380,7 +384,9 @@ async def complete_onboarding(
             "models": {
                 "chat_llm_model": request.chat_llm_model,
                 "memory_llm_model": request.memory_llm_model,
-                "embedding_model": request.embedding_model
+                "embedding_model": request.embedding_model,
+                "litellm_base_url": request.litellm_base_url,
+                "litellm_master_key": request.litellm_master_key
             }
         }
         
@@ -670,6 +676,154 @@ async def validate_api_key(
                 logger.warning("LangSmith API key validation exception", extra={"data": {"error": str(e), "result": result}})
                 return result
         
+        elif key_type == "litellm_master_key":
+            # Validate LiteLLM master key by testing authentication
+            try:
+                import aiohttp
+                from config import settings as app_settings
+                
+                # Test LiteLLM health endpoint with the provided master key
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"{app_settings.LITELLM_BASE_URL}/health",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        timeout=10
+                    ) as response:
+                        now = datetime.now(timezone.utc).isoformat()
+                        
+                        if response.status == 200:
+                            # Cache successful validation
+                            settings.api_key_validation_status["litellm_master_key"] = {
+                                "validated": True,
+                                "validated_at": now,
+                                "validation_error": None,
+                                "last_check": now,
+                                "base_url": app_settings.LITELLM_BASE_URL
+                            }
+                            flag_modified(settings, "api_key_validation_status")
+                            await UserSettingsService.update_user_settings(session, settings)
+                            
+                            result = {
+                                "valid": True,
+                                "message": "LiteLLM master key is valid",
+                                "service": "litellm"
+                            }
+                            logger.info("LiteLLM master key validation successful", extra={"data": result})
+                            return result
+                        else:
+                            error_text = await response.text()
+                            # Cache failed validation
+                            settings.api_key_validation_status["litellm_master_key"] = {
+                                "validated": False,
+                                "validated_at": None,
+                                "validation_error": f"HTTP {response.status}: {error_text}",
+                                "last_check": now,
+                                "base_url": app_settings.LITELLM_BASE_URL
+                            }
+                            flag_modified(settings, "api_key_validation_status")
+                            await UserSettingsService.update_user_settings(session, settings)
+                            
+                            result = {
+                                "valid": False,
+                                "message": f"LiteLLM master key validation failed: HTTP {response.status}",
+                                "service": "litellm"
+                            }
+                            logger.warning("LiteLLM master key validation failed", extra={"data": {"status": response.status, "result": result}})
+                            return result
+            except Exception as e:
+                # Cache failed validation
+                now = datetime.now(timezone.utc).isoformat()
+                settings.api_key_validation_status["litellm_master_key"] = {
+                    "validated": False,
+                    "validated_at": None,
+                    "validation_error": str(e),
+                    "last_check": now,
+                    "base_url": app_settings.LITELLM_BASE_URL
+                }
+                flag_modified(settings, "api_key_validation_status")
+                await UserSettingsService.update_user_settings(session, settings)
+                
+                result = {
+                    "valid": False,
+                    "message": f"LiteLLM master key validation failed: {str(e)}",
+                    "service": "litellm"
+                }
+                logger.warning("LiteLLM master key validation exception", extra={"data": {"error": str(e), "result": result}})
+                return result
+        
+        elif key_type == "huggingface_api_key":
+            # Validate HuggingFace API key by testing API access
+            try:
+                import aiohttp
+                
+                # Test HuggingFace API using the whoami endpoint
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        "https://huggingface.co/api/whoami",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        timeout=10
+                    ) as response:
+                        now = datetime.now(timezone.utc).isoformat()
+                        
+                        if response.status == 200:
+                            user_info = await response.json()
+                            # Cache successful validation
+                            settings.api_key_validation_status["huggingface_api_key"] = {
+                                "validated": True,
+                                "validated_at": now,
+                                "validation_error": None,
+                                "last_check": now,
+                                "username": user_info.get("name", "unknown")
+                            }
+                            flag_modified(settings, "api_key_validation_status")
+                            await UserSettingsService.update_user_settings(session, settings)
+                            
+                            result = {
+                                "valid": True,
+                                "message": f"HuggingFace API key is valid (user: {user_info.get('name', 'unknown')})",
+                                "service": "huggingface"
+                            }
+                            logger.info("HuggingFace API key validation successful", extra={"data": result})
+                            return result
+                        else:
+                            error_text = await response.text()
+                            # Cache failed validation
+                            settings.api_key_validation_status["huggingface_api_key"] = {
+                                "validated": False,
+                                "validated_at": None,
+                                "validation_error": f"HTTP {response.status}: {error_text}",
+                                "last_check": now
+                            }
+                            flag_modified(settings, "api_key_validation_status")
+                            await UserSettingsService.update_user_settings(session, settings)
+                            
+                            result = {
+                                "valid": False,
+                                "message": f"HuggingFace API key validation failed: HTTP {response.status}",
+                                "service": "huggingface"
+                            }
+                            logger.warning("HuggingFace API key validation failed", extra={"data": {"status": response.status, "result": result}})
+                            return result
+            except Exception as e:
+                # Cache failed validation
+                now = datetime.now(timezone.utc).isoformat()
+                settings.api_key_validation_status["huggingface_api_key"] = {
+                    "validated": False,
+                    "validated_at": None,
+                    "validation_error": str(e),
+                    "last_check": now
+                }
+                flag_modified(settings, "api_key_validation_status")
+                await UserSettingsService.update_user_settings(session, settings)
+                
+                result = {
+                    "valid": False,
+                    "message": f"HuggingFace API key validation failed: {str(e)}",
+                    "service": "huggingface"
+                }
+                logger.warning("HuggingFace API key validation exception", extra={"data": {"error": str(e), "result": result}})
+                return result
+        
         else:
             raise HTTPException(status_code=400, detail=f"Unknown key_type: {key_type}")
             
@@ -734,7 +888,9 @@ async def save_api_keys(
         # Key mappings
         key_mappings = {
             "google_api_key": "GOOGLE_API_KEY",
-            "langsmith_api_key": "LANGCHAIN_API_KEY"
+            "langsmith_api_key": "LANGCHAIN_API_KEY",
+            "litellm_master_key": "LITELLM_MASTER_KEY",
+            "huggingface_api_key": "HF_TOKEN"
         }
         
         updated_keys = []

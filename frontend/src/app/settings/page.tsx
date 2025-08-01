@@ -447,7 +447,7 @@ function UserSettingsTab() {
   );
 }
 
-// API Keys and Model Settings tab content
+// API Keys tab content
 function APIKeysTab() {
   const [googleApiStatus, setGoogleApiStatus] = useState<{
     has_google_api_key: boolean;
@@ -467,10 +467,6 @@ function APIKeysTab() {
   const [newApiKey, setNewApiKey] = useState('');
   const [validatingApiKey, setValidatingApiKey] = useState(false);
   const [savingApiKey, setSavingApiKey] = useState(false);
-  const { data: userSettings, isLoading: loading } = useUserSettings();
-  const { data: availableModels, isLoading: modelsLoading, refetch: refetchModels } = useAvailableModels();
-  const updateUserSettings = useUpdateUserSettings();
-  const [editingSettings, setEditingSettings] = useState<Record<string, unknown> | null>(null);
 
   React.useEffect(() => {
     // Only fetch API status if we don't have cached status
@@ -478,13 +474,6 @@ function APIKeysTab() {
     fetchGoogleApiStatus();
     fetchLangsmithApiStatus();
   }, []);
-
-  React.useEffect(() => {
-    if (userSettings && !editingSettings) {
-      setEditingSettings(userSettings as unknown as Record<string, unknown>);
-    }
-  }, [userSettings, editingSettings]);
-
 
   const fetchGoogleApiStatus = async (forceRefresh: boolean = false) => {
     try {
@@ -523,20 +512,6 @@ function APIKeysTab() {
       setLangsmithApiStatus(data);
     } catch (error) {
       console.error('Failed to load LangSmith API status:', error);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!editingSettings) return;
-    
-    try {
-      await updateUserSettings.mutateAsync({
-        llm_model: editingSettings.llm_model as string,
-        llm_temperature: editingSettings.llm_temperature as number,
-        llm_max_tokens: editingSettings.llm_max_tokens as number,
-      });
-    } catch (error) {
-      console.error('Failed to save settings:', error);
     }
   };
 
@@ -581,9 +556,8 @@ function APIKeysTab() {
         })
       });
 
-      // Refresh status and models (force refresh to validate new key)
+      // Refresh status (force refresh to validate new key)
       await fetchGoogleApiStatus(true);
-      await refetchModels();
       
       // Reset form
       setNewApiKey('');
@@ -598,14 +572,7 @@ function APIKeysTab() {
     }
   };
 
-  const handleInputChange = (field: string, value: string | number) => {
-    setEditingSettings(prev => {
-      if (!prev) return null;
-      return { ...prev, [field]: value };
-    });
-  };
-
-  if (loading) {
+  if (!googleApiStatus && !langsmithApiStatus) {
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
@@ -756,25 +723,236 @@ function APIKeysTab() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// AI Models & Infrastructure tab content
+function AIModelsTab() {
+  const { data: userSettings, isLoading: loading } = useUserSettings();
+  const { data: availableModels, isLoading: modelsLoading, refetch: refetchModels } = useAvailableModels();
+  const updateUserSettings = useUpdateUserSettings();
+  const [editingSettings, setEditingSettings] = useState<Record<string, unknown> | null>(null);
+  const [litellmStatus, setLitellmStatus] = useState<{
+    status: string;
+    models_count: number;
+    base_url: string;
+  } | null>(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+
+  React.useEffect(() => {
+    if (userSettings && !editingSettings) {
+      setEditingSettings(userSettings as unknown as Record<string, unknown>);
+    }
+  }, [userSettings, editingSettings]);
+
+  React.useEffect(() => {
+    // Only check status after settings are loaded
+    if (editingSettings) {
+      checkLitellmStatus();
+    }
+  }, [editingSettings]);
+
+  const checkLitellmStatus = async (baseUrlOverride?: string) => {
+    const baseUrl = baseUrlOverride || (editingSettings?.litellm_base_url as string) || 'http://localhost:4000';
+    
+    try {
+      // First check if LiteLLM service is reachable directly
+      const healthResponse = await fetch(`${baseUrl}/health`);
+      if (!healthResponse.ok) {
+        throw new Error(`LiteLLM health check failed: ${healthResponse.status}`);
+      }
+      
+      // Then get model count via Nova backend (which uses the configured URL)
+      const models = await apiRequest('/llm/models/categorized');
+      setLitellmStatus({
+        status: 'connected',
+        models_count: models.total_models || 0,
+        base_url: baseUrl
+      });
+    } catch (error) {
+      console.error('Failed to connect to LiteLLM:', error);
+      setLitellmStatus({
+        status: 'disconnected',
+        models_count: 0,
+        base_url: baseUrl
+      });
+    }
+  };
+
+  const handleSave = async () => {
+    if (!editingSettings) return;
+    
+    try {
+      await updateUserSettings.mutateAsync({
+        litellm_base_url: editingSettings.litellm_base_url as string,
+        chat_llm_model: editingSettings.chat_llm_model as string,
+        chat_llm_temperature: editingSettings.chat_llm_temperature as number,
+        chat_llm_max_tokens: editingSettings.chat_llm_max_tokens as number,
+        memory_llm_model: editingSettings.memory_llm_model as string,
+        memory_llm_temperature: editingSettings.memory_llm_temperature as number,
+        memory_llm_max_tokens: editingSettings.memory_llm_max_tokens as number,
+        embedding_model: editingSettings.embedding_model as string,
+      });
+      // Refresh LiteLLM status after saving
+      await checkLitellmStatus();
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+    }
+  };
+
+  const handleInputChange = (field: string, value: string | number) => {
+    setEditingSettings(prev => {
+      if (!prev) return null;
+      return { ...prev, [field]: value };
+    });
+    
+    // If LiteLLM base URL changed, update the status display immediately
+    if (field === 'litellm_base_url' && typeof value === 'string') {
+      checkLitellmStatus(value);
+    }
+  };
+
+  const testLitellmConnection = async () => {
+    if (!editingSettings?.litellm_base_url) return;
+    
+    setTestingConnection(true);
+    try {
+      const baseUrl = editingSettings.litellm_base_url;
+      
+      // Test via Nova backend (which handles authentication)
+      const models = await apiRequest('/llm/models/categorized');
+      setLitellmStatus({
+        status: 'connected',
+        models_count: models.total_models || 0,
+        base_url: baseUrl
+      });
+      alert(`Connection successful! LiteLLM is running at ${baseUrl} with ${models.total_models || 0} models available.`);
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      const baseUrl = editingSettings.litellm_base_url;
+      alert(`Connection failed: Unable to reach LiteLLM at ${baseUrl}\n\nError: ${error instanceof Error ? error.message : 'Network error'}\n\nMake sure LiteLLM is running and the master key is configured in your environment.`);
+      setLitellmStatus({
+        status: 'disconnected',
+        models_count: 0,
+        base_url: baseUrl
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="space-y-2">
+            <div className="h-4 w-20 bg-muted rounded animate-pulse" />
+            <div className="h-10 w-full bg-muted rounded animate-pulse" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6">
+        {/* LiteLLM Connection Section */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium text-foreground">LiteLLM Connection</h3>
+          <p className="text-sm text-muted-foreground">
+            Configure your LiteLLM service connection. This is the central gateway for all AI model interactions.
+            Authentication is handled via environment configuration for security.
+          </p>
+          
+          <div className="space-y-4 border border-muted rounded-lg p-4">
+            {/* Connection Status */}
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <Brain className="h-4 w-4 text-primary" />
+                <div>
+                  <span className="text-sm font-medium text-foreground">LiteLLM Status</span>
+                  <p className="text-xs text-muted-foreground">{litellmStatus?.base_url || 'Loading...'}</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                {!litellmStatus ? (
+                  <>
+                    <div className="h-2 w-2 bg-gray-400 rounded-full animate-pulse"></div>
+                    <Badge variant="secondary">Checking...</Badge>
+                  </>
+                ) : litellmStatus.status === 'connected' ? (
+                  <>
+                    <div className="h-2 w-2 bg-green-500 rounded-full"></div>
+                    <Badge variant="default">{litellmStatus.models_count} models</Badge>
+                  </>
+                ) : (
+                  <>
+                    <div className="h-2 w-2 bg-red-500 rounded-full"></div>
+                    <Badge variant="destructive">Disconnected</Badge>
+                  </>
+                )}
+              </div>
+            </div>
             
+            {/* Base URL Configuration */}
+            <div className="space-y-2">
+              <Label htmlFor="litellm_base_url">LiteLLM Base URL</Label>
+              <Input
+                id="litellm_base_url"
+                value={String(editingSettings?.litellm_base_url || 'http://localhost:4000')}
+                onChange={(e) => handleInputChange('litellm_base_url', e.target.value)}
+                placeholder="http://localhost:4000"
+              />
+              <p className="text-xs text-muted-foreground">
+                URL of your LiteLLM proxy service. Change this if running LiteLLM on a different host or port.
+              </p>
+            </div>
+            
+            {/* Test Connection */}
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div>
+                <span className="text-sm font-medium text-foreground">Connection Test</span>
+                <p className="text-xs text-muted-foreground">Test your LiteLLM connection</p>
+              </div>
+              <Button 
+                variant="outline" 
+                onClick={testLitellmConnection}
+                disabled={testingConnection || !editingSettings?.litellm_base_url}
+              >
+                {testingConnection ? 'Testing...' : 'Test Connection'}
+              </Button>
+            </div>
+            
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs text-amber-800">
+                <strong>Note:</strong> LiteLLM master key is configured via environment variables (Tier 2) for security. 
+                Only the base URL can be changed here.
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Model Configuration Section */}
         <div className="space-y-4 border-t border-border pt-6">
-          <h3 className="text-lg font-medium text-foreground">AI Model Configuration</h3>
+          <h3 className="text-lg font-medium text-foreground">AI Model Selection</h3>
           <p className="text-sm text-muted-foreground">
-            Configure which AI models Nova uses for different tasks. Changes apply immediately.
+            Choose which AI models Nova uses for different tasks. All models are routed through LiteLLM.
           </p>
           
           <div className="space-y-4 border border-muted rounded-lg p-4">
             
+            {/* Chat Model Selection */}
             <div className="space-y-2">
-              <Label>Model</Label>
+              <Label>Chat Model</Label>
               {editingSettings ? (
                 <Select 
-                  value={String(editingSettings?.llm_model || '')} 
-                  onValueChange={(value) => handleInputChange('llm_model', value)}
+                  value={String(editingSettings?.chat_llm_model || editingSettings?.llm_model || '')} 
+                  onValueChange={(value) => handleInputChange('chat_llm_model', value)}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -785,26 +963,18 @@ function APIKeysTab() {
                     ) : (
                       <>
                         {/* Current user setting (always show this first) */}
-                        {editingSettings?.llm_model && (
-                          <SelectItem key={`current-${editingSettings.llm_model}`} value={String(editingSettings.llm_model)}>
-                            {String(editingSettings.llm_model)} (Current)
+                        {(editingSettings?.chat_llm_model || editingSettings?.llm_model) && (
+                          <SelectItem key={`current-chat-${editingSettings.chat_llm_model || editingSettings.llm_model}`} value={String(editingSettings.chat_llm_model || editingSettings.llm_model)}>
+                            {String(editingSettings.chat_llm_model || editingSettings.llm_model)} (Current)
                           </SelectItem>
                         )}
                         
                         {/* Available models */}
                         {availableModels?.models ? (
                           <>
-                            {/* Local Models */}
-                            {availableModels.models.local?.filter((model: {model_name: string}) => 
-                              model.model_name !== editingSettings?.llm_model
-                            ).map((model: {model_name: string}) => (
-                              <SelectItem key={model.model_name} value={model.model_name}>
-                                {model.model_name}
-                              </SelectItem>
-                            ))}
-                            {/* Cloud Models */}
-                            {availableModels.models.cloud?.filter((model: {model_name: string}) => 
-                              model.model_name !== editingSettings?.llm_model
+                            {/* Chat Models */}
+                            {availableModels.models.chat_models?.filter((model: {model_name: string}) => 
+                              model.model_name !== (editingSettings?.chat_llm_model || editingSettings?.llm_model)
                             ).map((model: {model_name: string}) => (
                               <SelectItem key={model.model_name} value={model.model_name}>
                                 {model.model_name}
@@ -820,43 +990,177 @@ function APIKeysTab() {
                 <div className="h-10 w-full bg-muted rounded animate-pulse" />
               )}
               <p className="text-xs text-muted-foreground">
-                Model used for chat responses and task generation
+                Primary model for conversations and task generation
               </p>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Temperature</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={String(editingSettings?.llm_temperature || 0.1)}
-                  onChange={(e) => handleInputChange('llm_temperature', parseFloat(e.target.value))}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Response randomness (0.0 - 1.0)
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Max Tokens</Label>
-                <Input
-                  type="number"
-                  min="100"
-                  max="32000"
-                  value={String(editingSettings?.llm_max_tokens || 2048)}
-                  onChange={(e) => handleInputChange('llm_max_tokens', parseInt(e.target.value))}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Maximum response length
-                </p>
+            {/* Memory Model Selection */}
+            <div className="space-y-2">
+              <Label>Memory Model</Label>
+              {editingSettings ? (
+                <Select 
+                  value={String(editingSettings?.memory_llm_model || editingSettings?.llm_model || '')} 
+                  onValueChange={(value) => handleInputChange('memory_llm_model', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelsLoading ? (
+                      <SelectItem value="loading" disabled>Loading models...</SelectItem>
+                    ) : (
+                      <>
+                        {/* Current user setting (always show this first) */}
+                        {editingSettings?.memory_llm_model && (
+                          <SelectItem key={`current-memory-${editingSettings.memory_llm_model}`} value={String(editingSettings.memory_llm_model)}>
+                            {String(editingSettings.memory_llm_model)} (Current)
+                          </SelectItem>
+                        )}
+                        
+                        {/* Available models */}
+                        {availableModels?.models ? (
+                          <>
+                            {/* Chat Models (can be used for memory) */}
+                            {availableModels.models.chat_models?.filter((model: {model_name: string}) => 
+                              model.model_name !== editingSettings?.memory_llm_model
+                            ).map((model: {model_name: string}) => (
+                              <SelectItem key={model.model_name} value={model.model_name}>
+                                {model.model_name}
+                              </SelectItem>
+                            ))}
+                          </>
+                        ) : null}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="h-10 w-full bg-muted rounded animate-pulse" />
+              )}
+              <p className="text-xs text-muted-foreground">
+                Model for memory processing and context analysis
+              </p>
+            </div>
+            
+            {/* Embedding Model Selection */}
+            <div className="space-y-2">
+              <Label>Embedding Model</Label>
+              {editingSettings ? (
+                <Select 
+                  value={String(editingSettings?.embedding_model || '')} 
+                  onValueChange={(value) => handleInputChange('embedding_model', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelsLoading ? (
+                      <SelectItem value="loading" disabled>Loading models...</SelectItem>
+                    ) : (
+                      <>
+                        {/* Current user setting (always show this first) */}
+                        {editingSettings?.embedding_model && (
+                          <SelectItem key={`current-embedding-${editingSettings.embedding_model}`} value={String(editingSettings.embedding_model)}>
+                            {String(editingSettings.embedding_model)} (Current)
+                          </SelectItem>
+                        )}
+                        
+                        {/* Available models */}
+                        {availableModels?.models ? (
+                          <>
+                            {/* Embedding Models */}
+                            {availableModels.models.embedding_models?.filter((model: {model_name: string}) => 
+                              model.model_name !== editingSettings?.embedding_model
+                            ).map((model: {model_name: string}) => (
+                              <SelectItem key={model.model_name} value={model.model_name}>
+                                {model.model_name}
+                              </SelectItem>
+                            ))}
+                          </>
+                        ) : null}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="h-10 w-full bg-muted rounded animate-pulse" />
+              )}
+              <p className="text-xs text-muted-foreground">
+                Model for document search and semantic matching
+              </p>
+            </div>
+            
+            {/* Chat Model Parameters */}
+            <div className="space-y-4 border-t border-border pt-4">
+              <h4 className="font-medium text-sm text-foreground">Chat Model Parameters</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Temperature</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={String(editingSettings?.chat_llm_temperature || editingSettings?.llm_temperature || 0.7)}
+                    onChange={(e) => handleInputChange('chat_llm_temperature', parseFloat(e.target.value))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Response creativity (0.0 = precise, 1.0 = creative)
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Max Tokens</Label>
+                  <Input
+                    type="number"
+                    min="100"
+                    max="32000"
+                    value={String(editingSettings?.chat_llm_max_tokens || editingSettings?.llm_max_tokens || 2048)}
+                    onChange={(e) => handleInputChange('chat_llm_max_tokens', parseInt(e.target.value))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Maximum response length
+                  </p>
+                </div>
               </div>
             </div>
             
-            <div className="flex justify-end">
+            {/* Memory Model Parameters */}
+            <div className="space-y-4 border-t border-border pt-4">
+              <h4 className="font-medium text-sm text-foreground">Memory Model Parameters</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Temperature</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={String(editingSettings?.memory_llm_temperature || 0.1)}
+                    onChange={(e) => handleInputChange('memory_llm_temperature', parseFloat(e.target.value))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Lower values for factual accuracy
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Max Tokens</Label>
+                  <Input
+                    type="number"
+                    min="100"
+                    max="32000"
+                    value={String(editingSettings?.memory_llm_max_tokens || 2048)}
+                    onChange={(e) => handleInputChange('memory_llm_max_tokens', parseInt(e.target.value))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Memory processing token limit
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end pt-4">
               <Button onClick={handleSave} disabled={updateUserSettings.isPending}>
-                {updateUserSettings.isPending ? 'Saving...' : 'Save Changes'}
+                {updateUserSettings.isPending ? 'Saving...' : 'Save Configuration'}
               </Button>
             </div>
           </div>
@@ -867,8 +1171,8 @@ function APIKeysTab() {
   );
 }
 
-// Agent and Email Settings tab content
-function AgentSettingsTab() {
+// Automation & Processing tab content
+function AutomationTab() {
   const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -904,9 +1208,9 @@ function AgentSettingsTab() {
           memory_token_limit: settings.memory_token_limit
         }),
       });
-      console.log('Agent settings updated successfully');
+      console.log('Automation settings updated successfully');
     } catch (error) {
-      console.error('Failed to update agent settings:', error);
+      console.error('Failed to update automation settings:', error);
     } finally {
       setSaving(false);
     }
@@ -929,7 +1233,7 @@ function AgentSettingsTab() {
     return (
       <div className="text-center py-8 text-muted-foreground">
         <Cog className="h-8 w-8 mx-auto mb-2" />
-        <p className="text-sm">Failed to load agent settings</p>
+        <p className="text-sm">Failed to load automation settings</p>
       </div>
     );
   }
@@ -937,100 +1241,119 @@ function AgentSettingsTab() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="space-y-6">
-        {/* Email Integration Section */}
+        {/* Email Processing Section */}
         <div className="space-y-4">
-          <h3 className="text-lg font-medium text-foreground">Email Integration</h3>
+          <h3 className="text-lg font-medium text-foreground">Email Processing</h3>
+          <p className="text-sm text-muted-foreground">
+            Configure how Nova monitors and processes your email for automatic task creation.
+          </p>
           
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>Email Polling</Label>
-              <p className="text-sm text-muted-foreground">
-                Automatically check for new emails to create tasks
-              </p>
+          <div className="space-y-4 border border-muted rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Enable Email Monitoring</Label>
+                <p className="text-sm text-muted-foreground">
+                  Automatically scan emails and create relevant tasks
+                </p>
+              </div>
+              <Switch
+                checked={Boolean(settings.email_polling_enabled)}
+                onCheckedChange={(checked) => setSettings({...settings, email_polling_enabled: checked})}
+              />
             </div>
-            <Switch
-              checked={Boolean(settings.email_polling_enabled)}
-              onCheckedChange={(checked) => setSettings({...settings, email_polling_enabled: checked})}
-            />
+            
+            {Boolean(settings.email_polling_enabled) && (
+              <div className="space-y-2 pt-4 border-t border-border">
+                <Label htmlFor="email_polling_interval">Monitoring Interval (seconds)</Label>
+                <Input
+                  id="email_polling_interval"
+                  type="number"
+                  min="60"
+                  max="3600"
+                  value={Number(settings.email_polling_interval) || 300}
+                  onChange={(e) => setSettings({...settings, email_polling_interval: parseInt(e.target.value)})}
+                />
+                <p className="text-xs text-muted-foreground">
+                  How frequently to check for new emails (minimum: 60 seconds, recommended: 300 seconds)
+                </p>
+              </div>
+            )}
           </div>
+        </div>
+
+        {/* Agent Processing Section */}
+        <div className="space-y-4 border-t border-border pt-6">
+          <h3 className="text-lg font-medium text-foreground">Core Agent Processing</h3>
+          <p className="text-sm text-muted-foreground">
+            Configure Nova's autonomous task processing behavior and performance.
+          </p>
           
-          {Boolean(settings.email_polling_enabled) && (
+          <div className="space-y-4 border border-muted rounded-lg p-4">
             <div className="space-y-2">
-              <Label htmlFor="email_polling_interval">Polling Interval (seconds)</Label>
+              <Label htmlFor="agent_polling_interval">Agent Processing Interval (seconds)</Label>
               <Input
-                id="email_polling_interval"
+                id="agent_polling_interval"
                 type="number"
-                min="60"
-                max="3600"
-                value={Number(settings.email_polling_interval) || 300}
-                onChange={(e) => setSettings({...settings, email_polling_interval: parseInt(e.target.value)})}
+                min="10"
+                max="300"
+                value={Number(settings.agent_polling_interval) || 30}
+                onChange={(e) => setSettings({...settings, agent_polling_interval: parseInt(e.target.value)})}
               />
               <p className="text-xs text-muted-foreground">
-                How often to check for new emails (minimum 60 seconds)
+                How often the core agent processes tasks (minimum: 10 seconds, recommended: 30 seconds)
               </p>
             </div>
-          )}
-        </div>
-
-        {/* Agent Settings Section */}
-        <div className="space-y-4 border-t border-border pt-6">
-          <h3 className="text-lg font-medium text-foreground">Agent Settings</h3>
-          
-          <div className="space-y-2">
-            <Label htmlFor="agent_polling_interval">Agent Polling Interval (seconds)</Label>
-            <Input
-              id="agent_polling_interval"
-              type="number"
-              min="10"
-              max="300"
-              value={Number(settings.agent_polling_interval) || 30}
-              onChange={(e) => setSettings({...settings, agent_polling_interval: parseInt(e.target.value)})}
-            />
-            <p className="text-xs text-muted-foreground">
-              How often the core agent checks for new tasks (minimum 10 seconds)
-            </p>
           </div>
         </div>
 
-        {/* Memory Settings Section */}
+        {/* Memory System Section */}
         <div className="space-y-4 border-t border-border pt-6">
-          <h3 className="text-lg font-medium text-foreground">Memory Settings</h3>
+          <h3 className="text-lg font-medium text-foreground">Memory System</h3>
+          <p className="text-sm text-muted-foreground">
+            Configure how Nova stores, searches, and processes contextual memory.
+          </p>
           
-          <div className="space-y-2">
-            <Label htmlFor="memory_search_limit">Memory Search Limit</Label>
-            <Input
-              id="memory_search_limit"
-              type="number"
-              min="1"
-              max="100"
-              value={Number(settings.memory_search_limit) || 10}
-              onChange={(e) => setSettings({...settings, memory_search_limit: parseInt(e.target.value)})}
-            />
-            <p className="text-xs text-muted-foreground">
-              Maximum number of memory results to return in searches
-            </p>
-          </div>
+          <div className="space-y-4 border border-muted rounded-lg p-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="memory_search_limit">Search Result Limit</Label>
+                <Input
+                  id="memory_search_limit"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={Number(settings.memory_search_limit) || 10}
+                  onChange={(e) => setSettings({...settings, memory_search_limit: parseInt(e.target.value)})}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Maximum memory results returned per search
+                </p>
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="memory_token_limit">Memory Token Limit</Label>
-            <Input
-              id="memory_token_limit"
-              type="number"
-              min="1000"
-              max="100000"
-              step="1000"
-              value={Number(settings.memory_token_limit) || 32000}
-              onChange={(e) => setSettings({...settings, memory_token_limit: parseInt(e.target.value)})}
-            />
-            <p className="text-xs text-muted-foreground">
-              Maximum tokens for memory processing (higher values allow more comprehensive analysis)
-            </p>
+              <div className="space-y-2">
+                <Label htmlFor="memory_token_limit">Processing Token Limit</Label>
+                <Input
+                  id="memory_token_limit"
+                  type="number"
+                  min="1000"
+                  max="100000"
+                  step="1000"
+                  value={Number(settings.memory_token_limit) || 32000}
+                  onChange={(e) => setSettings({...settings, memory_token_limit: parseInt(e.target.value)})}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Token limit for memory analysis (higher = more comprehensive)
+                </p>
+              </div>
+            </div>
           </div>
         </div>
         
-        <Button onClick={handleSave} disabled={saving} className="w-full">
-          {saving ? 'Saving...' : 'Save Changes'}
-        </Button>
+        <div className="flex justify-end pt-4">
+          <Button onClick={handleSave} disabled={saving} className="w-full">
+            {saving ? 'Saving Changes...' : 'Save Automation Settings'}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -1048,14 +1371,35 @@ export default function SettingsPage() {
             <p className="text-sm text-muted-foreground">Manage your preferences</p>
           </div>
           
-          <Tabs defaultValue="user-profile" orientation="vertical" className="w-full">
+          <Tabs defaultValue="ai-models" orientation="vertical" className="w-full">
             <TabsList className="w-full h-auto flex-col bg-transparent space-y-1 p-2">
               <TabsTrigger 
                 value="user-profile" 
                 className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <User className="h-4 w-4 mr-2" /> 
-                Personal Settings
+                Personal
+              </TabsTrigger>
+              <TabsTrigger 
+                value="ai-models" 
+                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <Brain className="h-4 w-4 mr-2" /> 
+                AI Models
+              </TabsTrigger>
+              <TabsTrigger 
+                value="api-keys" 
+                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <Key className="h-4 w-4 mr-2" /> 
+                API Keys
+              </TabsTrigger>
+              <TabsTrigger 
+                value="automation" 
+                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <Cog className="h-4 w-4 mr-2" /> 
+                Automation
               </TabsTrigger>
               <TabsTrigger 
                 value="system-prompt" 
@@ -1070,20 +1414,6 @@ export default function SettingsPage() {
               >
                 <ListChecks className="h-4 w-4 mr-2" /> 
                 MCP Servers
-              </TabsTrigger>
-              <TabsTrigger 
-                value="api-keys" 
-                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
-              >
-                <Key className="h-4 w-4 mr-2" /> 
-                API Keys & Models
-              </TabsTrigger>
-              <TabsTrigger 
-                value="agent-settings" 
-                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
-              >
-                <Cog className="h-4 w-4 mr-2" /> 
-                Agent & Email
               </TabsTrigger>
               <TabsTrigger 
                 value="system-status" 
@@ -1126,20 +1456,29 @@ export default function SettingsPage() {
                   </div>
                 </TabsContent>
 
+                <TabsContent value="ai-models" className="mt-0">
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <h2 className="text-lg font-semibold text-foreground mb-4">AI Models & Infrastructure</h2>
+                    <Suspense fallback={<TabContentLoader>AI Models</TabContentLoader>}>
+                      <AIModelsTab />
+                    </Suspense>
+                  </div>
+                </TabsContent>
+
                 <TabsContent value="api-keys" className="mt-0">
                   <div className="bg-card border border-border rounded-lg p-6">
-                    <h2 className="text-lg font-semibold text-foreground mb-4">API Keys & Models</h2>
-                    <Suspense fallback={<TabContentLoader>API Keys & Models</TabContentLoader>}>
+                    <h2 className="text-lg font-semibold text-foreground mb-4">External API Keys</h2>
+                    <Suspense fallback={<TabContentLoader>API Keys</TabContentLoader>}>
                       <APIKeysTab />
                     </Suspense>
                   </div>
                 </TabsContent>
 
-                <TabsContent value="agent-settings" className="mt-0">
+                <TabsContent value="automation" className="mt-0">
                   <div className="bg-card border border-border rounded-lg p-6">
-                    <h2 className="text-lg font-semibold text-foreground mb-4">Agent, Email & Memory Settings</h2>
-                    <Suspense fallback={<TabContentLoader>Agent Settings</TabContentLoader>}>
-                      <AgentSettingsTab />
+                    <h2 className="text-lg font-semibold text-foreground mb-4">Automation & Processing</h2>
+                    <Suspense fallback={<TabContentLoader>Automation</TabContentLoader>}>
+                      <AutomationTab />
                     </Suspense>
                   </div>
                 </TabsContent>

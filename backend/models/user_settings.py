@@ -76,7 +76,7 @@ class UserSettings(Base):
     # Embedding Model Settings
     embedding_model: Mapped[str] = mapped_column(String(100), default="qwen3-embedding-4b")  # #1 MTEB leaderboard
     
-    # LiteLLM Connection Settings
+    # LiteLLM Connection Settings (Base URL only - master key in Tier 2)
     litellm_base_url: Mapped[str] = mapped_column(String(200), default="http://localhost:4000")
     
     # API Key Validation Status (Tier 3 - cached validation results)
@@ -137,7 +137,7 @@ class UserSettingsModel(BaseModel):
     # Embedding Model Settings
     embedding_model: str = "qwen3-embedding-4b"  # #1 MTEB leaderboard
     
-    # LiteLLM Connection Settings
+    # LiteLLM Connection Settings (Base URL only - master key in Tier 2)
     litellm_base_url: str = "http://localhost:4000"
     
     # API Key Validation Status
@@ -201,7 +201,7 @@ class UserSettingsUpdateModel(BaseModel):
     # Embedding Model Settings
     embedding_model: Optional[str] = None
     
-    # LiteLLM Connection Settings
+    # LiteLLM Connection Settings (Base URL only - master key in Tier 2)
     litellm_base_url: Optional[str] = None
     
     # API Key Validation Status

@@ -50,8 +50,6 @@ class LLMModelService:
     }
     
     def __init__(self):
-        self.litellm_base_url = settings.LITELLM_BASE_URL
-        self.litellm_master_key = settings.LITELLM_MASTER_KEY
         self._config_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), 
             "configs", 
@@ -68,8 +66,11 @@ class LLMModelService:
     ) -> Tuple[bool, Optional[Dict]]:
         """Make authenticated request to LiteLLM API."""
         try:
-            url = f"{self.litellm_base_url}/{endpoint.lstrip('/')}"
-            headers = {"Authorization": f"Bearer {self.litellm_master_key}"}
+            # Get current LiteLLM connection settings
+            from utils.llm_factory import get_litellm_config
+            litellm_config = get_litellm_config()
+            url = f"{litellm_config['base_url']}/{endpoint.lstrip('/')}"
+            headers = {"Authorization": f"Bearer {litellm_config['api_key']}"}
             
             if data:
                 headers["Content-Type"] = "application/json"

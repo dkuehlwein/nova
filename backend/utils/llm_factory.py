@@ -31,6 +31,28 @@ def get_validated_model(model_name: str, fallback: str = "qwen3-32b") -> str:
         return model_name  # Continue with user selection - LiteLLM will handle the error
 
 
+def get_litellm_config() -> Dict[str, str]:
+    """
+    Get consolidated LiteLLM configuration from user settings and environment.
+    Base URL from user settings (Tier 3), master key from environment (Tier 2).
+    
+    Returns:
+        Dictionary with base_url and api_key
+    """
+    try:
+        from database.database import UserSettingsService
+        user_settings = UserSettingsService.get_user_settings_sync()
+        base_url = (user_settings.litellm_base_url if user_settings and user_settings.litellm_base_url 
+                   else settings.LITELLM_BASE_URL)
+    except Exception:
+        base_url = settings.LITELLM_BASE_URL
+    
+    return {
+        "base_url": base_url,
+        "api_key": settings.LITELLM_MASTER_KEY
+    }
+
+
 def get_litellm_base_url() -> str:
     """
     Get LiteLLM base URL from user settings or config fallback.
@@ -38,15 +60,27 @@ def get_litellm_base_url() -> str:
     Returns:
         LiteLLM base URL
     """
-    try:
-        from database.database import UserSettingsService
-        user_settings = UserSettingsService.get_user_settings_sync()
-        if user_settings and user_settings.litellm_base_url:
-            return user_settings.litellm_base_url
-    except Exception:
-        pass
+    return get_litellm_config()["base_url"]
+
+
+def get_litellm_master_key() -> str:
+    """
+    Get LiteLLM master key from environment configuration (ADR-008 Tier 2).
     
-    return settings.LITELLM_BASE_URL or "http://localhost:4000"
+    Returns:
+        LiteLLM master key from environment
+    """
+    return get_litellm_config()["api_key"]
+
+
+def get_litellm_master_key() -> str:
+    """
+    Get LiteLLM master key from environment configuration (ADR-008 Tier 2).
+    
+    Returns:
+        LiteLLM master key from environment
+    """
+    return settings.LITELLM_MASTER_KEY
 
 
 def get_chat_llm_config() -> Dict[str, Any]:
@@ -71,7 +105,7 @@ def get_chat_llm_config() -> Dict[str, Any]:
         "temperature": temperature,
         "max_tokens": max_tokens,
         "base_url": get_litellm_base_url(),
-        "api_key": settings.LITELLM_MASTER_KEY or "dummy-key"
+        "api_key": get_litellm_master_key()
     }
 
 
@@ -97,7 +131,7 @@ def get_memory_llm_config() -> Dict[str, Any]:
         "temperature": temperature,
         "max_tokens": max_tokens,
         "base_url": get_litellm_base_url(),
-        "api_key": settings.LITELLM_MASTER_KEY or "dummy-key"
+        "api_key": get_litellm_master_key()
     }
 
 
@@ -119,6 +153,6 @@ def get_embedding_config() -> Dict[str, Any]:
     return {
         "embedding_model": get_validated_model(model_name, "qwen3-embedding-4b"),
         "base_url": get_litellm_base_url(),
-        "api_key": settings.LITELLM_MASTER_KEY or "dummy-key",
+        "api_key": get_litellm_master_key(),
         "embedding_dim": 1024  # Qwen3-Embedding-4B output dimensions
     }

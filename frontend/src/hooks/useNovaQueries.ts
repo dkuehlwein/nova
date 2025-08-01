@@ -287,9 +287,18 @@ interface UserSettings {
   memory_search_limit: number
   memory_token_limit: number
   mcp_server_preferences: Record<string, unknown>
-  llm_model: string
-  llm_temperature: number
-  llm_max_tokens: number
+  // New LiteLLM-first model fields
+  chat_llm_model: string
+  chat_llm_temperature: number
+  chat_llm_max_tokens: number
+  memory_llm_model: string
+  memory_llm_temperature: number
+  memory_llm_max_tokens: number
+  embedding_model: string
+  // Legacy field for backward compatibility during transition
+  llm_model?: string
+  llm_temperature?: number
+  llm_max_tokens?: number
 }
 
 export function useUserSettings() {
@@ -311,8 +320,9 @@ export function useAvailableModels() {
       // Use the categorized endpoint that properly categorizes models on the backend
       const response = await apiRequest('/llm/models/categorized') as {
         models: {
-          local: {model_name: string}[],
-          cloud: {model_name: string}[]
+          chat_models: {model_name: string}[],
+          embedding_models: {model_name: string}[],
+          all_models: {model_name: string}[]
         },
         total: number
       }

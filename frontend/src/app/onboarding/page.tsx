@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, AlertCircle, Loader2, ArrowRight, ArrowLeft, Sparkles, Key, User, CheckSquare } from "lucide-react";
+import { CheckCircle, AlertCircle, Loader2, ArrowRight, ArrowLeft, Sparkles, Key, User, CheckSquare, Brain } from "lucide-react";
 import { apiRequest } from "@/lib/api";
 
 interface OnboardingStatus {
@@ -27,6 +28,15 @@ interface UserSettings {
 interface ApiKeyValidation {
   google_api_key?: boolean;
   [key: string]: boolean | undefined;
+}
+
+interface AvailableModels {
+  models: {
+    chat_models: { model_name: string; id: string; owned_by: string }[];
+    embedding_models: { model_name: string; id: string; owned_by: string }[];
+    all_models: { model_name: string; id: string; owned_by: string }[];
+  };
+  total_models: number;
 }
 
 const COMMON_TIMEZONES = [
@@ -57,11 +67,23 @@ export default function OnboardingPage() {
   
   const [apiKeys, setApiKeys] = useState({
     google_api_key: '',
-    langsmith_api_key: ''
+    langsmith_api_key: '',
+    litellm_master_key: '',
+    huggingface_api_key: ''
   });
   
   const [apiKeyValidation, setApiKeyValidation] = useState<ApiKeyValidation>({});
   const [validating, setValidating] = useState<string | null>(null);
+  
+  // Model selection data
+  const [availableModels, setAvailableModels] = useState<AvailableModels | null>(null);
+  const [modelSelection, setModelSelection] = useState({
+    chat_llm_model: 'qwen3-32b',
+    memory_llm_model: 'qwen3-32b', 
+    embedding_model: 'qwen3-embedding-4b',
+    litellm_base_url: 'http://localhost:4000'
+  });
+  const [modelsLoading, setModelsLoading] = useState(false);
 
   const steps = [
     {
@@ -75,6 +97,12 @@ export default function OnboardingPage() {
       title: 'Connect Services',
       description: 'Configure API keys for enhanced functionality',
       icon: Key
+    },
+    {
+      id: 'model-selection',
+      title: 'AI Models',
+      description: 'Choose your preferred AI models',
+      icon: Brain
     },
     {
       id: 'user-profile',
@@ -160,9 +188,41 @@ export default function OnboardingPage() {
     }, 500);
   };
 
+  const loadAvailableModels = async () => {
+    setModelsLoading(true);
+    try {
+      const models = await apiRequest('/llm/models/categorized') as AvailableModels;
+      setAvailableModels(models);
+      
+      // Auto-select first available models if defaults aren't available
+      if (models.models.chat_models.length > 0 && 
+          !models.models.chat_models.find(m => m.model_name === modelSelection.chat_llm_model)) {
+        setModelSelection(prev => ({
+          ...prev,
+          chat_llm_model: models.models.chat_models[0].model_name
+        }));
+      }
+      
+      if (models.models.embedding_models.length > 0 && 
+          !models.models.embedding_models.find(m => m.model_name === modelSelection.embedding_model)) {
+        setModelSelection(prev => ({
+          ...prev,
+          embedding_model: models.models.embedding_models[0].model_name,
+          memory_llm_model: models.models.chat_models[0]?.model_name || prev.memory_llm_model
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to load available models:', error);
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
   const canProceedFromStep = (step: number) => {
     switch (step) {
-      case 2: // User Profile - name and email required
+      case 2: // Model Selection - must have loaded models and selected them
+        return availableModels && modelSelection.chat_llm_model && modelSelection.embedding_model;
+      case 3: // User Profile - name and email required (was step 2, now step 3)
         return userSettings.full_name?.trim() && userSettings.email?.trim();
       default: return true; // All other steps can proceed
     }
@@ -170,6 +230,10 @@ export default function OnboardingPage() {
 
   const handleNext = () => {
     if (currentStep < steps.length - 1 && canProceedFromStep(currentStep)) {
+      // Load models when entering model selection step
+      if (currentStep === 1) { // Moving from API keys to model selection
+        loadAvailableModels();
+      }
       setCurrentStep(currentStep + 1);
     }
   };
@@ -203,9 +267,10 @@ export default function OnboardingPage() {
         body: JSON.stringify(userSettings)
       });
       
-      // Mark onboarding complete
+      // Mark onboarding complete with model selection
       await apiRequest('/api/user-settings/complete-onboarding', {
-        method: 'POST'
+        method: 'POST',
+        body: JSON.stringify(modelSelection)
       });
       
       // Force a full page reload to refresh OnboardingGuard status
@@ -335,7 +400,7 @@ export default function OnboardingPage() {
                 <div className="text-center mb-6">
                   <p className="text-muted-foreground">
                     Connect Nova to external services to unlock its full potential. 
-                    Your API keys are stored securely and never shared.
+                    Your API keys are stored securely in your local environment and never shared.
                   </p>
                 </div>
                 
@@ -397,12 +462,199 @@ export default function OnboardingPage() {
                       Optional: For advanced AI debugging and monitoring.
                     </p>
                   </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="litellm_master_key">LiteLLM Master Key</Label>
+                      <div className="flex items-center space-x-2">
+                        {validating === 'litellm_master_key' && (
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        )}
+                        {apiKeyValidation.litellm_master_key === true && (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        )}
+                        {apiKeyValidation.litellm_master_key === false && apiKeys.litellm_master_key && (
+                          <AlertCircle className="h-4 w-4 text-red-500" />
+                        )}
+                      </div>
+                    </div>
+                    <Input
+                      id="litellm_master_key"
+                      type="password"
+                      value={apiKeys.litellm_master_key}
+                      onChange={(e) => handleApiKeyChange('litellm_master_key', e.target.value)}
+                      placeholder="sk-1234"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Required: Authentication key for your LiteLLM proxy service.
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="huggingface_api_key">HuggingFace API Key</Label>
+                      <div className="flex items-center space-x-2">
+                        {validating === 'huggingface_api_key' && (
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        )}
+                        {apiKeyValidation.huggingface_api_key === true && (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        )}
+                        {apiKeyValidation.huggingface_api_key === false && apiKeys.huggingface_api_key && (
+                          <AlertCircle className="h-4 w-4 text-red-500" />
+                        )}
+                      </div>
+                    </div>
+                    <Input
+                      id="huggingface_api_key"
+                      type="password"
+                      value={apiKeys.huggingface_api_key}
+                      onChange={(e) => handleApiKeyChange('huggingface_api_key', e.target.value)}
+                      placeholder="Enter your HuggingFace API key"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional: For accessing HuggingFace models via LiteLLM. 
+                      <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" 
+                         className="text-primary hover:underline ml-1">
+                        Get your API key →
+                      </a>
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* User Profile Step */}
+            {/* Model Selection Step */}
             {currentStep === 2 && (
+              <div className="space-y-6 max-w-2xl mx-auto">
+                <div className="text-center mb-6">
+                  <p className="text-muted-foreground">
+                    Nova uses AI models for different tasks. Choose your preferred models for optimal performance.
+                    You can change these later in Settings.
+                  </p>
+                </div>
+                
+                {modelsLoading ? (
+                  <div className="text-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+                    <p className="text-muted-foreground">Loading available models...</p>
+                  </div>
+                ) : availableModels ? (
+                  <div className="space-y-6">
+                    {/* LiteLLM Connection Configuration */}
+                    <div className="space-y-4 p-4 border border-muted rounded-lg bg-muted/50">
+                      <h4 className="font-medium text-sm text-foreground">LiteLLM Connection</h4>
+                      
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="onboard-litellm-url">Base URL</Label>
+                          <Input
+                            id="onboard-litellm-url"
+                            value={modelSelection.litellm_base_url}
+                            onChange={(e) => setModelSelection(prev => ({ ...prev, litellm_base_url: e.target.value }))}
+                            placeholder="http://localhost:4000"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            URL of your LiteLLM proxy service. Master key is configured via environment for security.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* LiteLLM Status */}
+                    <div className="flex items-center justify-center p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                      <span className="text-green-800 font-medium">
+                        Connected to LiteLLM • {availableModels.total_models} models available
+                      </span>
+                    </div>
+                    
+                    {/* Chat Model Selection */}
+                    <div className="space-y-2">
+                      <Label>Chat Model</Label>
+                      <Select 
+                        value={modelSelection.chat_llm_model} 
+                        onValueChange={(value) => setModelSelection(prev => ({ ...prev, chat_llm_model: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select chat model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableModels.models.chat_models.map((model) => (
+                            <SelectItem key={model.model_name} value={model.model_name}>
+                              {model.model_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Used for conversations and task generation
+                      </p>
+                    </div>
+                    
+                    {/* Memory Model Selection */}
+                    <div className="space-y-2">
+                      <Label>Memory Model</Label>
+                      <Select 
+                        value={modelSelection.memory_llm_model} 
+                        onValueChange={(value) => setModelSelection(prev => ({ ...prev, memory_llm_model: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select memory model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableModels.models.chat_models.map((model) => (
+                            <SelectItem key={model.model_name} value={model.model_name}>
+                              {model.model_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Used for memory processing and context analysis
+                      </p>
+                    </div>
+                    
+                    {/* Embedding Model Selection */}
+                    <div className="space-y-2">
+                      <Label>Embedding Model</Label>
+                      <Select 
+                        value={modelSelection.embedding_model} 
+                        onValueChange={(value) => setModelSelection(prev => ({ ...prev, embedding_model: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select embedding model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableModels.models.embedding_models.map((model) => (
+                            <SelectItem key={model.model_name} value={model.model_name}>
+                              {model.model_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Used for document search and semantic matching
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <AlertCircle className="h-8 w-8 mx-auto mb-4 text-red-500" />
+                    <p className="text-red-600 font-medium mb-2">Unable to connect to LiteLLM</p>
+                    <p className="text-muted-foreground text-sm mb-4">
+                      Please ensure LiteLLM is running on localhost:4000
+                    </p>
+                    <Button variant="outline" onClick={loadAvailableModels}>
+                      Retry Connection
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* User Profile Step */}
+            {currentStep === 3 && (
               <div className="space-y-6 max-w-2xl mx-auto">
                 <div className="text-center mb-6">
                   <p className="text-muted-foreground">
@@ -465,7 +717,7 @@ export default function OnboardingPage() {
             )}
 
             {/* Complete Step */}
-            {currentStep === 3 && (
+            {currentStep === 4 && (
               <div className="text-center space-y-6">
                 <div className="max-w-2xl mx-auto">
                   <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
