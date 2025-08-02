@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[SecretStr] = None
     
     # HuggingFace API Token
-    HF_TOKEN: Optional[str] = None
+    HF_TOKEN: Optional[SecretStr] = None
 
     # PostgreSQL Database Configuration
     POSTGRES_DB: str = "nova_kanban"

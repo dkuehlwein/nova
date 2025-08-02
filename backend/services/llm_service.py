@@ -144,12 +144,12 @@ class LLMModelService:
     
     # ============= Model Management Operations =============
     
-    async def initialize_gemini_models(self) -> int:
+    async def initialize_gemini_models(self, session) -> int:
         """Initialize Gemini models if API key is valid. Returns count of successful additions."""
         from api.settings_endpoints import get_google_api_status
         
         try:
-            status_response = await get_google_api_status(force_refresh=True)
+            status_response = await get_google_api_status(force_refresh=True, session=session)
             if not status_response.get("google_api_key_valid", False):
                 logger.info("Google API key not valid - skipping Gemini model initialization")
                 return 0
@@ -171,12 +171,12 @@ class LLMModelService:
         
         return success_count
     
-    async def initialize_huggingface_models(self) -> int:
+    async def initialize_huggingface_models(self, session) -> int:
         """Initialize HuggingFace models if token is valid. Returns count of successful additions."""
         from api.settings_endpoints import get_huggingface_api_status
         
         try:
-            status_response = await get_huggingface_api_status(force_refresh=True)
+            status_response = await get_huggingface_api_status(force_refresh=True, session=session)
             if not status_response.get("huggingface_api_key_valid", False):
                 logger.info("HuggingFace token not valid - skipping HF model initialization")
                 return 0
@@ -208,11 +208,11 @@ class LLMModelService:
             total_models = 0
             
             # Initialize Gemini models
-            gemini_count = await self.initialize_gemini_models()
+            gemini_count = await self.initialize_gemini_models(db)
             total_models += gemini_count
             
             # Initialize HuggingFace models
-            hf_count = await self.initialize_huggingface_models()
+            hf_count = await self.initialize_huggingface_models(db)
             total_models += hf_count
             
             # Update fallback configuration if we have any models

@@ -1021,7 +1021,21 @@ async def get_google_api_status(
             
             if has_api_key:
                 logger.info("Performing real-time Google API validation", extra={"data": {"force_refresh": force_refresh}})
-                is_valid = await llm_service.is_google_api_key_valid()
+                try:
+                    # Test Google API using the models endpoint
+                    import google.generativeai as genai
+                    genai.configure(api_key=app_settings.GOOGLE_API_KEY.get_secret_value())
+                    
+                    model = genai.GenerativeModel("gemini-2.5-flash")
+                    response = model.generate_content("Hello", request_options={"timeout": 10})
+                    
+                    if response and response.text and len(response.text.strip()) > 0:
+                        is_valid = True
+                    else:
+                        is_valid = False
+                except Exception as e:
+                    logger.warning(f"Google API validation failed: {e}")
+                    is_valid = False
                 
                 # Get available models
                 available_models = await llm_service.get_available_models()
@@ -1202,7 +1216,7 @@ async def get_huggingface_api_status(
                     async with aiohttp.ClientSession() as client_session:
                         async with client_session.get(
                             "https://huggingface.co/api/models?limit=1",
-                            headers={"Authorization": f"Bearer {app_settings.HF_TOKEN}"},
+                            headers={"Authorization": f"Bearer {app_settings.HF_TOKEN.get_secret_value()}"},
                             timeout=10
                         ) as response:
                             if response.status == 200:
