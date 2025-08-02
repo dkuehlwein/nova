@@ -68,9 +68,7 @@ async def list_models_categorized():
         
         return {
             "models": available_models,
-            "total_local": len(available_models.get("local", [])),
-            "total_cloud": len(available_models.get("cloud", [])),
-            "total": len(available_models.get("local", [])) + len(available_models.get("cloud", []))
+            "total": len(available_models.get("all_models", []))
         }
     
     except Exception as e:
@@ -78,17 +76,3 @@ async def list_models_categorized():
         raise HTTPException(status_code=500, detail="Failed to list categorized models")
 
 
-@router.post("/models/cleanup")
-async def cleanup_orphaned_models():
-    """Clean up orphaned models that are no longer in configuration."""
-    try:
-        cleanup_count = await llm_service.cleanup_orphaned_models()
-        
-        return {
-            "message": f"Successfully cleaned up {cleanup_count} orphaned models",
-            "models_removed": cleanup_count
-        }
-    
-    except Exception as e:
-        logger.error(f"Error cleaning up orphaned models: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to cleanup orphaned models")

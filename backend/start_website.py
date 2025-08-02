@@ -98,6 +98,22 @@ async def lifespan(app: FastAPI):
         # Start Redis bridge
         await service_manager.start_redis_bridge(app, event_handler)
         
+        # Initialize LLM models
+        service_manager.logger.info("Initializing LLM models...")
+        try:
+            from services.llm_service import llm_service
+            from database.database import db_manager
+            
+            async with db_manager.get_session() as session:
+                success = await llm_service.initialize_default_models_in_litellm(session)
+                if success:
+                    service_manager.logger.info("Successfully initialized working LLM models")
+                else:
+                    service_manager.logger.warning("Model initialization completed with issues")
+        except Exception as e:
+            service_manager.logger.error(f"Failed to initialize LLM models: {e}")
+            # Don't fail startup if model initialization fails
+        
         service_manager.logger.info("Nova Backend Server started successfully")
         
     except Exception as e:

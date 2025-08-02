@@ -4,31 +4,9 @@ LLM Factory Utilities
 Centralized LLM creation logic to eliminate duplication between chat and memory systems.
 """
 
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from config import settings
 
-
-def get_validated_model(model_name: str, fallback: str = "qwen3-32b") -> str:
-    """
-    Validate that a model exists in LiteLLM and return it, or fallback.
-    
-    Args:
-        model_name: The model name to validate
-        fallback: Fallback model if validation fails
-        
-    Returns:
-        Validated model name or fallback
-    """
-    try:
-        from services.llm_service import llm_service
-        available_models = llm_service.get_available_models_sync()
-        if available_models and model_name not in [m["id"] for m in available_models.get("models", [])]:
-            print(f"Warning: Model '{model_name}' not available in LiteLLM, using fallback '{fallback}'")
-            return fallback
-        return model_name
-    except Exception as e:
-        print(f"Warning: Could not validate model availability: {e}")
-        return model_name  # Continue with user selection - LiteLLM will handle the error
 
 
 def get_litellm_config() -> Dict[str, str]:
@@ -96,12 +74,12 @@ def get_chat_llm_config() -> Dict[str, Any]:
     except Exception:
         user_settings = {}
     
-    model_name = user_settings.get("chat_llm_model", "qwen3-32b")
+    model_name = user_settings.get("chat_llm_model", "gemini-2.5-flash")
     temperature = user_settings.get("chat_llm_temperature", 0.7)
     max_tokens = user_settings.get("chat_llm_max_tokens", 2048)
     
     return {
-        "model": get_validated_model(model_name),
+        "model": model_name,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "base_url": get_litellm_base_url(),
@@ -122,12 +100,12 @@ def get_memory_llm_config() -> Dict[str, Any]:
     except Exception:
         user_settings = {}
     
-    model_name = user_settings.get("memory_llm_model", "qwen3-32b")
+    model_name = user_settings.get("memory_llm_model", "gemini-2.5-flash")
     temperature = user_settings.get("memory_llm_temperature", 0.1)
     max_tokens = user_settings.get("memory_llm_max_tokens", 2048)
     
     return {
-        "model": get_validated_model(model_name),
+        "model": model_name,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "base_url": get_litellm_base_url(),
@@ -148,11 +126,11 @@ def get_embedding_config() -> Dict[str, Any]:
     except Exception:
         user_settings = {}
     
-    model_name = user_settings.get("embedding_model", "qwen3-embedding-4b")
+    model_name = user_settings.get("embedding_model", "text-embedding-004")
     
     return {
-        "embedding_model": get_validated_model(model_name, "qwen3-embedding-4b"),
+        "embedding_model": model_name,
         "base_url": get_litellm_base_url(),
         "api_key": get_litellm_master_key(),
-        "embedding_dim": 1024  # Qwen3-Embedding-4B output dimensions
+        "embedding_dim": 768  # Google text-embedding-004 output dimensions
     }
