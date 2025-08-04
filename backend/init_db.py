@@ -8,13 +8,14 @@ Updated to work with the current system architecture including graphiti memory.
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from uuid import uuid4
 
-from database.database import db_manager
-from models.models import Task, TaskStatus, Chat, Artifact, AgentStatus, AgentStatusEnum
-from sqlalchemy import select
+from database.database import db_manager, UserSettingsService
+from models.models import AgentStatus, AgentStatusEnum
 from models.user_settings import UserSettings
+from sqlalchemy import select
+
+# Import all model modules to ensure tables are registered with Base.metadata
+from models import system_health  # noqa: F401 - Required for table creation
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -36,8 +37,7 @@ async def init_database():
         
     except Exception as e:
         logger.error(f"❌ Database initialization failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Database initialization failed with full traceback")
         raise
     finally:
         await db_manager.close()
@@ -46,37 +46,38 @@ async def init_database():
 async def add_sample_data():
     """Add minimal required data for system startup."""
     async with db_manager.get_session() as session:
-        # Note: No sample tasks added - keeping the database clean
-        
-        # Create initial agent status record if it doesn't exist
-        result = await session.execute(select(AgentStatus))
-        existing_status = result.scalar_one_or_none()
-        
-        if not existing_status:
-            agent_status = AgentStatus(
-                status=AgentStatusEnum.IDLE
-            )
-            
-            session.add(agent_status)
-            await session.commit()
-            logger.info("Added initial agent status record")
-        else:
-            logger.info("Agent status record already exists, skipping creation")
-        
-        # Create default user settings if they don't exist
-        from database.database import UserSettingsService
-        existing_settings = await UserSettingsService.get_user_settings()
-        
-        if not existing_settings:
-            user_settings = UserSettings(
-                full_name="Nova User",
-                email="user@nova.dev",
-                timezone="UTC",
-                notes="Default user settings created during database initialization"
-            )
-            session.add(user_settings)
-            await session.commit()
-            logger.info("Added default user settings")
+        await _ensure_agent_status_exists(session)
+        await _ensure_user_settings_exist(session)
+
+
+async def _ensure_agent_status_exists(session):
+    """Create initial agent status record if it doesn't exist."""
+    result = await session.execute(select(AgentStatus))
+    existing_status = result.scalar_one_or_none()
+    
+    if not existing_status:
+        agent_status = AgentStatus(status=AgentStatusEnum.IDLE)
+        session.add(agent_status)
+        await session.commit()
+        logger.info("Added initial agent status record")
+    else:
+        logger.info("Agent status record already exists, skipping creation")
+
+
+async def _ensure_user_settings_exist(session):
+    """Create default user settings if they don't exist."""
+    existing_settings = await UserSettingsService.get_user_settings(session)
+    
+    if not existing_settings:
+        user_settings = UserSettings(
+            full_name="Nova User",
+            email="user@nova.dev",
+            timezone="UTC",
+            notes="Default user settings created during database initialization"
+        )
+        session.add(user_settings)
+        await session.commit()
+        logger.info("Added default user settings")
 
 
 if __name__ == "__main__":
