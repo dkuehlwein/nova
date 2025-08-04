@@ -14,8 +14,8 @@ general_settings:
   # Enable UI for monitoring
   ui_access_mode: "admin_only"
   
-  # Disable database persistence for models and logs
-  store_model_in_db: false
+  # Enable database persistence for models during runtime but clear on restart
+  store_model_in_db: true
   
   # Default model fallback strategy (updated dynamically when Gemini models are available)
   fallbacks:
@@ -31,7 +31,5 @@ litellm_settings:
   # Retry settings
   num_retries: 3
   
-  # Use memory-only caching
-  cache: true
-  cache_params:
-    type: "memory"
+  # Disable caching to avoid startup issues
+  cache: false
