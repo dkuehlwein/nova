@@ -67,9 +67,9 @@ class LLMModelService:
     
     OPENROUTER_MODELS = [
         {
-            "model_name": "openrouter/horizon-beta",
+            "model_name": "horizon-beta",
             "litellm_params": {
-                "model": "openrouter/horizon-beta",
+                "model": "openrouter/openrouter/horizon-beta",
                 "api_base": "https://openrouter.ai/api/v1",
                 "temperature": 0.7,
                 "max_tokens": 2048
@@ -137,11 +137,17 @@ class LLMModelService:
     # ============= LiteLLM API Operations =============
     
     async def add_model_to_litellm(self, model_config: Dict) -> bool:
-        """Add a single model to LiteLLM via API if it doesn't already exist."""
+        """Add a single model to LiteLLM via API, overwriting existing OpenRouter models."""
         model_name = model_config['model_name']
         
         # Check if model already exists
-        if await self._model_exists_in_litellm(model_name):
+        model_exists = await self._model_exists_in_litellm(model_name)
+        is_openrouter_model = model_config.get('litellm_params', {}).get('model', '').startswith('openrouter/')
+        
+        if model_exists and is_openrouter_model:
+            logger.info(f"OpenRouter model {model_name} already exists - will overwrite with updated configuration")
+            # For OpenRouter models, we overwrite to ensure correct configuration
+        elif model_exists:
             logger.info(f"Model {model_name} already exists in LiteLLM - skipping")
             return True  # Return True since the model is available
         

@@ -14,8 +14,9 @@ general_settings:
   # Enable UI for monitoring
   ui_access_mode: "admin_only"
   
-  # Enable database persistence for models during runtime but clear on restart
-  store_model_in_db: true
+  # Disable database persistence to prevent duplicate accumulation
+  # Models are managed dynamically by Nova's LLM service
+  store_model_in_db: false
   
   # Default model fallback strategy (updated dynamically when Gemini models are available)
   fallbacks:
