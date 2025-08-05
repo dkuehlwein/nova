@@ -501,7 +501,9 @@ async def get_system_status():
             },
             "api_keys_configured": {
                 "google": bool(app_settings.GOOGLE_API_KEY),
-                "langsmith": bool(app_settings.LANGCHAIN_API_KEY)
+                "langsmith": bool(app_settings.LANGCHAIN_API_KEY),
+                "huggingface": bool(app_settings.HF_TOKEN),
+                "openrouter": bool(app_settings.OPENROUTER_API_KEY)
             },
             "google_models_available": bool(app_settings.GOOGLE_API_KEY)  # Indicates if Gemini models should be available
         }
@@ -515,10 +517,243 @@ async def get_system_status():
 
 
 
+async def _cache_validation_result(db_session: AsyncSession, settings, key_type: str, result_data: dict):
+    """Helper to cache validation results consistently."""
+    from database.database import UserSettingsService
+    settings.api_key_validation_status[key_type] = result_data
+    flag_modified(settings, "api_key_validation_status")
+    await UserSettingsService.update_user_settings(db_session, settings)
+
+
+async def _http_request(url: str, headers: dict, timeout: int = 10) -> tuple[int, dict]:
+    """Make HTTP request and return status code and response data."""
+    import aiohttp
+    async with aiohttp.ClientSession() as http_session:
+        async with http_session.get(url, headers=headers, timeout=timeout) as response:
+            try:
+                data = await response.json()
+            except:
+                data = {"error": await response.text()}
+            return response.status, data
+
+
+async def _validate_google_api_key(db_session: AsyncSession, api_key: str, settings) -> dict:
+    """Validate Google API key using Gemini API."""
+    from datetime import datetime, timezone
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        
+        model = genai.GenerativeModel("gemini-2.5-flash-lite-preview-06-17")
+        response = model.generate_content("Hello")
+        
+        now = datetime.now(timezone.utc).isoformat()
+        await _cache_validation_result(db_session, settings, "google_api_key", {
+            "validated": True,
+            "validated_at": now,
+            "validation_error": None,
+            "last_check": now,
+            "gemini_models_available": 0
+        })
+        
+        return {"valid": True, "message": "Google API key is valid", "service": "google"}
+    except Exception as e:
+        now = datetime.now(timezone.utc).isoformat()
+        await _cache_validation_result(db_session, settings, "google_api_key", {
+            "validated": False,
+            "validated_at": None,
+            "validation_error": str(e),
+            "last_check": now,
+            "gemini_models_available": 0
+        })
+        return {"valid": False, "message": f"Google API key validation failed: {str(e)}", "service": "google"}
+
+
+async def _validate_langsmith_api_key(db_session: AsyncSession, api_key: str, settings) -> dict:
+    """Validate LangSmith API key using requests (sync API)."""
+    from datetime import datetime, timezone
+    try:
+        import requests
+        response = requests.get(
+            "https://api.smith.langchain.com/info",
+            headers={"x-api-key": api_key},
+            timeout=10
+        )
+        
+        now = datetime.now(timezone.utc).isoformat()
+        if response.status_code == 200:
+            await _cache_validation_result(db_session, settings, "langsmith_api_key", {
+                "validated": True,
+                "validated_at": now,
+                "validation_error": None,
+                "last_check": now,
+                "features_available": ["tracing", "monitoring", "debugging"]
+            })
+            return {"valid": True, "message": "LangSmith API key is valid", "service": "langsmith"}
+        else:
+            await _cache_validation_result(db_session, settings, "langsmith_api_key", {
+                "validated": False,
+                "validated_at": None,
+                "validation_error": f"API returned status {response.status_code}",
+                "last_check": now,
+                "features_available": []
+            })
+            return {"valid": False, "message": f"LangSmith API key validation failed: {response.status_code}", "service": "langsmith"}
+    except Exception as e:
+        now = datetime.now(timezone.utc).isoformat()
+        await _cache_validation_result(db_session, settings, "langsmith_api_key", {
+            "validated": False,
+            "validated_at": None,
+            "validation_error": str(e),
+            "last_check": now,
+            "features_available": []
+        })
+        return {"valid": False, "message": f"LangSmith API key validation failed: {str(e)}", "service": "langsmith"}
+
+
+async def _validate_litellm_master_key(db_session: AsyncSession, api_key: str, settings) -> dict:
+    """Validate LiteLLM master key."""
+    from datetime import datetime, timezone
+    from config import settings as app_settings
+    try:
+        status, data = await _http_request(
+            f"{app_settings.LITELLM_BASE_URL}/health",
+            {"Authorization": f"Bearer {api_key}"}
+        )
+        
+        now = datetime.now(timezone.utc).isoformat()
+        if status == 200:
+            await _cache_validation_result(db_session, settings, "litellm_master_key", {
+                "validated": True,
+                "validated_at": now,
+                "validation_error": None,
+                "last_check": now,
+                "base_url": app_settings.LITELLM_BASE_URL
+            })
+            return {"valid": True, "message": "LiteLLM master key is valid", "service": "litellm"}
+        else:
+            await _cache_validation_result(db_session, settings, "litellm_master_key", {
+                "validated": False,
+                "validated_at": None,
+                "validation_error": f"HTTP {status}: {data.get('error', 'Unknown error')}",
+                "last_check": now,
+                "base_url": app_settings.LITELLM_BASE_URL
+            })
+            return {"valid": False, "message": f"LiteLLM master key validation failed: HTTP {status}", "service": "litellm"}
+    except Exception as e:
+        now = datetime.now(timezone.utc).isoformat()
+        await _cache_validation_result(db_session, settings, "litellm_master_key", {
+            "validated": False,
+            "validated_at": None,
+            "validation_error": str(e),
+            "last_check": now,
+            "base_url": "unknown"
+        })
+        return {"valid": False, "message": f"LiteLLM master key validation failed: {str(e)}", "service": "litellm"}
+
+
+async def _validate_huggingface_api_key(db_session: AsyncSession, api_key: str, settings) -> dict:
+    """Validate HuggingFace API key."""
+    from datetime import datetime, timezone
+    try:
+        status, data = await _http_request(
+            "https://huggingface.co/api/whoami",
+            {"Authorization": f"Bearer {api_key}"}
+        )
+        
+        now = datetime.now(timezone.utc).isoformat()
+        if status == 200:
+            username = data.get("name", "unknown")
+            await _cache_validation_result(db_session, settings, "huggingface_api_key", {
+                "validated": True,
+                "validated_at": now,
+                "validation_error": None,
+                "last_check": now,
+                "username": username
+            })
+            return {"valid": True, "message": f"HuggingFace API key is valid (user: {username})", "service": "huggingface"}
+        else:
+            await _cache_validation_result(db_session, settings, "huggingface_api_key", {
+                "validated": False,
+                "validated_at": None,
+                "validation_error": f"HTTP {status}: {data.get('error', 'Unknown error')}",
+                "last_check": now
+            })
+            return {"valid": False, "message": f"HuggingFace API key validation failed: HTTP {status}", "service": "huggingface"}
+    except Exception as e:
+        now = datetime.now(timezone.utc).isoformat()
+        await _cache_validation_result(db_session, settings, "huggingface_api_key", {
+            "validated": False,
+            "validated_at": None,
+            "validation_error": str(e),
+            "last_check": now
+        })
+        return {"valid": False, "message": f"HuggingFace API key validation failed: {str(e)}", "service": "huggingface"}
+
+
+async def _validate_openrouter_api_key(db_session: AsyncSession, api_key: str, settings) -> dict:
+    """Validate OpenRouter API key by testing a minimal completion request."""
+    from datetime import datetime, timezone
+    import aiohttp
+    try:
+        # OpenRouter allows anyone to see models, so we need to test with a completion request
+        test_payload = {
+            "model": "openrouter/horizon-beta",  # Free model for testing
+            "messages": [{"role": "user", "content": "test"}],
+            "max_tokens": 1
+        }
+        
+        async with aiohttp.ClientSession() as http_session:
+            async with http_session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=test_payload,
+                timeout=10
+            ) as response:
+                now = datetime.now(timezone.utc).isoformat()
+                
+                if response.status == 200:
+                    # Get models count for the success message
+                    models_status, models_data = await _http_request(
+                        "https://openrouter.ai/api/v1/models",
+                        {"Authorization": f"Bearer {api_key}"}
+                    )
+                    models_count = len(models_data.get("data", [])) if models_status == 200 else 0
+                    
+                    await _cache_validation_result(db_session, settings, "openrouter_api_key", {
+                        "validated": True,
+                        "validated_at": now,
+                        "validation_error": None,
+                        "last_check": now,
+                        "models_available": models_count
+                    })
+                    return {"valid": True, "message": f"OpenRouter API key is valid ({models_count} models available)", "service": "openrouter"}
+                else:
+                    error_data = await response.json() if response.content_type == "application/json" else {"error": await response.text()}
+                    error_msg = error_data.get("error", {}).get("message", "Unknown error") if isinstance(error_data.get("error"), dict) else str(error_data.get("error", "Unknown error"))
+                    
+                    await _cache_validation_result(db_session, settings, "openrouter_api_key", {
+                        "validated": False,
+                        "validated_at": None,
+                        "validation_error": f"HTTP {response.status}: {error_msg}",
+                        "last_check": now
+                    })
+                    return {"valid": False, "message": f"OpenRouter API key validation failed: {error_msg}", "service": "openrouter"}
+    except Exception as e:
+        now = datetime.now(timezone.utc).isoformat()
+        await _cache_validation_result(db_session, settings, "openrouter_api_key", {
+            "validated": False,
+            "validated_at": None,
+            "validation_error": str(e),
+            "last_check": now
+        })
+        return {"valid": False, "message": f"OpenRouter API key validation failed: {str(e)}", "service": "openrouter"}
+
+
 @router.post("/validate-api-key")
 async def validate_api_key(
     request: dict, 
-    session: AsyncSession = Depends(get_db_session)
+    db_session: AsyncSession = Depends(get_db_session)
 ):
     """
     Validate an API key by making a test call to the service.
@@ -544,288 +779,39 @@ async def validate_api_key(
         
         # Get user settings to store validation cache
         from database.database import UserSettingsService
-        from datetime import datetime, timezone
         
-        settings = await UserSettingsService.get_user_settings(session)
+        settings = await UserSettingsService.get_user_settings(db_session)
         if not settings:
-            # Create default settings if none exist
-            settings = await UserSettingsService.create_user_settings(session)
+            settings = await UserSettingsService.create_user_settings(db_session)
         
-        if key_type == "google_api_key":
-            # Validate Google API key by making a simple AI request
-            try:
-                import google.generativeai as genai
-                genai.configure(api_key=api_key)
-                
-                # Simple test request - use model from config
-                from config import settings
-                model_name = "gemini-2.5-flash-lite-preview-06-17" # TODO
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content("Hello")
-                
-                # Cache successful validation
-                now = datetime.now(timezone.utc).isoformat()
-                settings.api_key_validation_status["google_api_key"] = {
-                    "validated": True,
-                    "validated_at": now,
-                    "validation_error": None,
-                    "last_check": now,
-                    "gemini_models_available": 0  # Will be updated by google-api-status endpoint
-                }
-                flag_modified(settings, "api_key_validation_status")
-                await UserSettingsService.update_user_settings(session, settings)
-                
-                result = {
-                    "valid": True,
-                    "message": "Google API key is valid",
-                    "service": "google"
-                }
-                logger.info("Google API key validation successful", extra={"data": result})
-                return result
-            except Exception as e:
-                # Cache failed validation
-                now = datetime.now(timezone.utc).isoformat()
-                settings.api_key_validation_status["google_api_key"] = {
-                    "validated": False,
-                    "validated_at": None,
-                    "validation_error": str(e),
-                    "last_check": now,
-                    "gemini_models_available": 0
-                }
-                flag_modified(settings, "api_key_validation_status")
-                await UserSettingsService.update_user_settings(session, settings)
-                
-                result = {
-                    "valid": False,
-                    "message": f"Google API key validation failed: {str(e)}",
-                    "service": "google"
-                }
-                logger.warning("Google API key validation failed", extra={"data": {"error": str(e), "result": result}})
-                return result
-                
-        elif key_type == "langsmith_api_key":
-            # Validate LangSmith API key
-            try:
-                import requests
-                
-                # Test LangSmith API using minimal permissions endpoint
-                response = requests.get(
-                    "https://api.smith.langchain.com/info",
-                    headers={"x-api-key": api_key},
-                    timeout=10
-                )
-                
-                now = datetime.now(timezone.utc).isoformat()
-                
-                if response.status_code == 200:
-                    # Cache successful validation
-                    settings.api_key_validation_status["langsmith_api_key"] = {
-                        "validated": True,
-                        "validated_at": now,
-                        "validation_error": None,
-                        "last_check": now,
-                        "features_available": ["tracing", "monitoring", "debugging"]
-                    }
-                    flag_modified(settings, "api_key_validation_status")
-                    await UserSettingsService.update_user_settings(session, settings)
-                    
-                    result = {
-                        "valid": True,
-                        "message": "LangSmith API key is valid",
-                        "service": "langsmith"
-                    }
-                    logger.info("LangSmith API key validation successful", extra={"data": result})
-                    return result
-                else:
-                    # Cache failed validation
-                    settings.api_key_validation_status["langsmith_api_key"] = {
-                        "validated": False,
-                        "validated_at": None,
-                        "validation_error": f"API returned status {response.status_code}",
-                        "last_check": now,
-                        "features_available": []
-                    }
-                    flag_modified(settings, "api_key_validation_status")
-                    await UserSettingsService.update_user_settings(session, settings)
-                    
-                    result = {
-                        "valid": False,
-                        "message": f"LangSmith API key validation failed: {response.status_code}",
-                        "service": "langsmith"
-                    }
-                    logger.warning("LangSmith API key validation failed", extra={"data": {"status_code": response.status_code, "result": result}})
-                    return result
-            except Exception as e:
-                # Cache failed validation
-                now = datetime.now(timezone.utc).isoformat()
-                settings.api_key_validation_status["langsmith_api_key"] = {
-                    "validated": False,
-                    "validated_at": None,
-                    "validation_error": str(e),
-                    "last_check": now,
-                    "features_available": []
-                }
-                flag_modified(settings, "api_key_validation_status")
-                await UserSettingsService.update_user_settings(session, settings)
-                
-                result = {
-                    "valid": False,
-                    "message": f"LangSmith API key validation failed: {str(e)}",
-                    "service": "langsmith"
-                }
-                logger.warning("LangSmith API key validation exception", extra={"data": {"error": str(e), "result": result}})
-                return result
+        # Check if we have a cached validation for this exact API key
+        # Note: We should NOT return cached results for different API keys
+        cached_validation = settings.api_key_validation_status.get(key_type, {})
         
-        elif key_type == "litellm_master_key":
-            # Validate LiteLLM master key by testing authentication
-            try:
-                import aiohttp
-                from config import settings as app_settings
-                
-                # Test LiteLLM health endpoint with the provided master key
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        f"{app_settings.LITELLM_BASE_URL}/health",
-                        headers={"Authorization": f"Bearer {api_key}"},
-                        timeout=10
-                    ) as response:
-                        now = datetime.now(timezone.utc).isoformat()
-                        
-                        if response.status == 200:
-                            # Cache successful validation
-                            settings.api_key_validation_status["litellm_master_key"] = {
-                                "validated": True,
-                                "validated_at": now,
-                                "validation_error": None,
-                                "last_check": now,
-                                "base_url": app_settings.LITELLM_BASE_URL
-                            }
-                            flag_modified(settings, "api_key_validation_status")
-                            await UserSettingsService.update_user_settings(session, settings)
-                            
-                            result = {
-                                "valid": True,
-                                "message": "LiteLLM master key is valid",
-                                "service": "litellm"
-                            }
-                            logger.info("LiteLLM master key validation successful", extra={"data": result})
-                            return result
-                        else:
-                            error_text = await response.text()
-                            # Cache failed validation
-                            settings.api_key_validation_status["litellm_master_key"] = {
-                                "validated": False,
-                                "validated_at": None,
-                                "validation_error": f"HTTP {response.status}: {error_text}",
-                                "last_check": now,
-                                "base_url": app_settings.LITELLM_BASE_URL
-                            }
-                            flag_modified(settings, "api_key_validation_status")
-                            await UserSettingsService.update_user_settings(session, settings)
-                            
-                            result = {
-                                "valid": False,
-                                "message": f"LiteLLM master key validation failed: HTTP {response.status}",
-                                "service": "litellm"
-                            }
-                            logger.warning("LiteLLM master key validation failed", extra={"data": {"status": response.status, "result": result}})
-                            return result
-            except Exception as e:
-                # Cache failed validation
-                now = datetime.now(timezone.utc).isoformat()
-                settings.api_key_validation_status["litellm_master_key"] = {
-                    "validated": False,
-                    "validated_at": None,
-                    "validation_error": str(e),
-                    "last_check": now,
-                    "base_url": app_settings.LITELLM_BASE_URL
-                }
-                flag_modified(settings, "api_key_validation_status")
-                await UserSettingsService.update_user_settings(session, settings)
-                
-                result = {
-                    "valid": False,
-                    "message": f"LiteLLM master key validation failed: {str(e)}",
-                    "service": "litellm"
-                }
-                logger.warning("LiteLLM master key validation exception", extra={"data": {"error": str(e), "result": result}})
-                return result
+        # For validation endpoint, we always validate the provided key (no caching)
+        # This is different from status endpoints which can use cached results
+        logger.info(f"Performing fresh validation for {key_type} (validation endpoint always validates)")
         
-        elif key_type == "huggingface_api_key":
-            # Validate HuggingFace API key by testing API access
-            try:
-                import aiohttp
-                
-                # Test HuggingFace API using the whoami endpoint
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        "https://huggingface.co/api/whoami",
-                        headers={"Authorization": f"Bearer {api_key}"},
-                        timeout=10
-                    ) as response:
-                        now = datetime.now(timezone.utc).isoformat()
-                        
-                        if response.status == 200:
-                            user_info = await response.json()
-                            # Cache successful validation
-                            settings.api_key_validation_status["huggingface_api_key"] = {
-                                "validated": True,
-                                "validated_at": now,
-                                "validation_error": None,
-                                "last_check": now,
-                                "username": user_info.get("name", "unknown")
-                            }
-                            flag_modified(settings, "api_key_validation_status")
-                            await UserSettingsService.update_user_settings(session, settings)
-                            
-                            result = {
-                                "valid": True,
-                                "message": f"HuggingFace API key is valid (user: {user_info.get('name', 'unknown')})",
-                                "service": "huggingface"
-                            }
-                            logger.info("HuggingFace API key validation successful", extra={"data": result})
-                            return result
-                        else:
-                            error_text = await response.text()
-                            # Cache failed validation
-                            settings.api_key_validation_status["huggingface_api_key"] = {
-                                "validated": False,
-                                "validated_at": None,
-                                "validation_error": f"HTTP {response.status}: {error_text}",
-                                "last_check": now
-                            }
-                            flag_modified(settings, "api_key_validation_status")
-                            await UserSettingsService.update_user_settings(session, settings)
-                            
-                            result = {
-                                "valid": False,
-                                "message": f"HuggingFace API key validation failed: HTTP {response.status}",
-                                "service": "huggingface"
-                            }
-                            logger.warning("HuggingFace API key validation failed", extra={"data": {"status": response.status, "result": result}})
-                            return result
-            except Exception as e:
-                # Cache failed validation
-                now = datetime.now(timezone.utc).isoformat()
-                settings.api_key_validation_status["huggingface_api_key"] = {
-                    "validated": False,
-                    "validated_at": None,
-                    "validation_error": str(e),
-                    "last_check": now
-                }
-                flag_modified(settings, "api_key_validation_status")
-                await UserSettingsService.update_user_settings(session, settings)
-                
-                result = {
-                    "valid": False,
-                    "message": f"HuggingFace API key validation failed: {str(e)}",
-                    "service": "huggingface"
-                }
-                logger.warning("HuggingFace API key validation exception", extra={"data": {"error": str(e), "result": result}})
-                return result
+        # Dispatch to appropriate validation method
+        validation_methods = {
+            "google_api_key": _validate_google_api_key,
+            "langsmith_api_key": _validate_langsmith_api_key,
+            "litellm_master_key": _validate_litellm_master_key,
+            "huggingface_api_key": _validate_huggingface_api_key,
+            "openrouter_api_key": _validate_openrouter_api_key,
+        }
         
-        else:
+        if key_type not in validation_methods:
             raise HTTPException(status_code=400, detail=f"Unknown key_type: {key_type}")
+        
+        result = await validation_methods[key_type](db_session, api_key, settings)
+        
+        if result["valid"]:
+            logger.info(f"{result['service'].title()} API key validation successful", extra={"data": result})
+        else:
+            logger.warning(f"{result['service'].title()} API key validation failed", extra={"data": result})
+        
+        return result
             
     except HTTPException:
         raise
@@ -890,7 +876,8 @@ async def save_api_keys(
             "google_api_key": "GOOGLE_API_KEY",
             "langsmith_api_key": "LANGCHAIN_API_KEY",
             "litellm_master_key": "LITELLM_MASTER_KEY",
-            "huggingface_api_key": "HF_TOKEN"
+            "huggingface_api_key": "HF_TOKEN",
+            "openrouter_api_key": "OPENROUTER_API_KEY"
         }
         
         updated_keys = []
@@ -948,8 +935,11 @@ async def save_api_keys(
                 }
             )
             
-            # Refresh LiteLLM models if Google API key was updated
-            if "GOOGLE_API_KEY" in updated_keys:
+            # Refresh LiteLLM models if any provider API key was updated
+            provider_keys = {"GOOGLE_API_KEY", "HF_TOKEN", "OPENROUTER_API_KEY"}
+            should_refresh_models = bool(set(updated_keys) & provider_keys)
+            
+            if should_refresh_models:
                 try:
                     from services.llm_service import llm_service
                     from database.database import db_manager
@@ -957,7 +947,8 @@ async def save_api_keys(
                     async with db_manager.get_session() as session:
                         await llm_service.refresh_models_after_api_key_update(session)
                     
-                    logger.info("Triggered model refresh after Google API key update")
+                    updated_providers = [key for key in updated_keys if key in provider_keys]
+                    logger.info(f"Triggered model refresh after API key update for: {updated_providers}")
                 except Exception as e:
                     logger.warning(f"Failed to refresh models after API key update: {e}")
         
@@ -966,7 +957,7 @@ async def save_api_keys(
             "message": f"Saved {len(updated_keys)} API keys to .env file",
             "updated_keys": updated_keys,
             "env_file": str(env_file),
-            "models_refreshed": "GOOGLE_API_KEY" in updated_keys
+            "models_refreshed": should_refresh_models
         }
         
     except HTTPException:
@@ -1341,3 +1332,95 @@ async def get_litellm_api_status(
     except Exception as e:
         logger.error("Failed to get LiteLLM API status", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get LiteLLM API status")
+
+
+@router.get("/openrouter-api-status")
+async def get_openrouter_api_status(
+    force_refresh: bool = False,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """
+    Get the current status of OpenRouter API key and availability.
+    Uses cached validation status unless force_refresh=True.
+    """
+    try:
+        from config import settings as app_settings
+        from database.database import UserSettingsService
+        from datetime import datetime, timezone
+        import aiohttp
+        
+        # Check if API key is configured in environment
+        has_api_key = bool(app_settings.OPENROUTER_API_KEY)
+        
+        # Get user settings to check cached validation status
+        settings = await UserSettingsService.get_user_settings(session)
+        if not settings:
+            # Create default settings if none exist
+            settings = await UserSettingsService.create_user_settings(session)
+        
+        cached_status = settings.api_key_validation_status.get("openrouter_api_key", {})
+        
+        # Use cached status unless force_refresh is requested or cache is empty
+        if not force_refresh and cached_status and has_api_key:
+            is_valid = cached_status.get("validated", False)
+            models_count = cached_status.get("models_available", 0)
+            last_check = cached_status.get("last_check", "Unknown")
+            
+            logger.info("Using cached OpenRouter API validation status", extra={"data": {
+                "cached": True,
+                "valid": is_valid,
+                "models_count": models_count,
+                "last_check": last_check
+            }})
+        else:
+            # Perform real-time validation
+            is_valid = False
+            models_count = 0
+            
+            if has_api_key:
+                logger.info("Performing real-time OpenRouter API validation", extra={"data": {"force_refresh": force_refresh}})
+                try:
+                    # Test OpenRouter API using the models endpoint
+                    async with aiohttp.ClientSession() as client_session:
+                        async with client_session.get(
+                            "https://openrouter.ai/api/v1/models",
+                            headers={"Authorization": f"Bearer {app_settings.OPENROUTER_API_KEY.get_secret_value()}"},
+                            timeout=10
+                        ) as response:
+                            if response.status == 200:
+                                models_data = await response.json()
+                                models_count = len(models_data.get("data", []))
+                                is_valid = True
+                            else:
+                                is_valid = False
+                                models_count = 0
+                except Exception as e:
+                    logger.warning(f"OpenRouter API validation failed: {e}")
+                    is_valid = False
+                    models_count = 0
+                
+                # Cache the validation results
+                now = datetime.now(timezone.utc).isoformat()
+                new_status = {
+                    "validated": is_valid,
+                    "validated_at": now if is_valid else cached_status.get("validated_at"),
+                    "validation_error": None if is_valid else "API key validation failed",
+                    "last_check": now,
+                    "models_available": models_count
+                }
+                settings.api_key_validation_status["openrouter_api_key"] = new_status
+                flag_modified(settings, "api_key_validation_status")
+                await UserSettingsService.update_user_settings(session, settings)
+        
+        return {
+            "has_openrouter_api_key": has_api_key,
+            "openrouter_api_key_valid": is_valid,
+            "models_available": models_count,
+            "status": "ready" if is_valid else ("configured_invalid" if has_api_key else "not_configured"),
+            "cached": not force_refresh and bool(cached_status),
+            "last_check": cached_status.get("last_check", "Never") if not force_refresh else "Just now"
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get OpenRouter API status", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get OpenRouter API status")

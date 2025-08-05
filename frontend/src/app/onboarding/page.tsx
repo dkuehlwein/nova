@@ -69,7 +69,8 @@ export default function OnboardingPage() {
     google_api_key: '',
     langsmith_api_key: '',
     litellm_master_key: '',
-    huggingface_api_key: ''
+    huggingface_api_key: '',
+    openrouter_api_key: ''
   });
   
   const [apiKeyValidation, setApiKeyValidation] = useState<ApiKeyValidation>({});
@@ -515,6 +516,37 @@ export default function OnboardingPage() {
                     <p className="text-xs text-muted-foreground">
                       Optional: For accessing HuggingFace models via LiteLLM. 
                       <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" 
+                         className="text-primary hover:underline ml-1">
+                        Get your API key →
+                      </a>
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="openrouter_api_key">OpenRouter API Key</Label>
+                      <div className="flex items-center space-x-2">
+                        {validating === 'openrouter_api_key' && (
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        )}
+                        {apiKeyValidation.openrouter_api_key === true && (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        )}
+                        {apiKeyValidation.openrouter_api_key === false && apiKeys.openrouter_api_key && (
+                          <AlertCircle className="h-4 w-4 text-red-500" />
+                        )}
+                      </div>
+                    </div>
+                    <Input
+                      id="openrouter_api_key"
+                      type="password"
+                      value={apiKeys.openrouter_api_key}
+                      onChange={(e) => handleApiKeyChange('openrouter_api_key', e.target.value)}
+                      placeholder="sk-or-v1-..."
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional: For accessing OpenRouter models like Horizon Beta. 
+                      <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" 
                          className="text-primary hover:underline ml-1">
                         Get your API key →
                       </a>

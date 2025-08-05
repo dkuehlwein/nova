@@ -479,6 +479,14 @@ function APIKeysTab() {
     cached?: boolean;
     last_check?: string;
   } | null>(null);
+  const [openrouterApiStatus, setOpenrouterApiStatus] = useState<{
+    has_openrouter_api_key: boolean;
+    openrouter_api_key_valid: boolean;
+    models_available: number;
+    status: string;
+    cached?: boolean;
+    last_check?: string;
+  } | null>(null);
   const [showApiKeyForm, setShowApiKeyForm] = useState(false);
   const [newApiKey, setNewApiKey] = useState('');
   const [validatingApiKey, setValidatingApiKey] = useState(false);
@@ -491,6 +499,7 @@ function APIKeysTab() {
     fetchLangsmithApiStatus();
     fetchHuggingfaceApiStatus();
     fetchLitellmApiStatus();
+    fetchOpenrouterApiStatus();
   }, []);
 
   const fetchGoogleApiStatus = async (forceRefresh: boolean = false) => {
@@ -573,6 +582,26 @@ function APIKeysTab() {
     }
   };
 
+  const fetchOpenrouterApiStatus = async (forceRefresh: boolean = false) => {
+    try {
+      const url = forceRefresh 
+        ? '/api/user-settings/openrouter-api-status?force_refresh=true'
+        : '/api/user-settings/openrouter-api-status';
+      
+      const data = await apiRequest(url) as {
+        has_openrouter_api_key: boolean;
+        openrouter_api_key_valid: boolean;
+        models_available: number;
+        status: string;
+        cached?: boolean;
+        last_check?: string;
+      };
+      setOpenrouterApiStatus(data);
+    } catch (error) {
+      console.error('Failed to load OpenRouter API status:', error);
+    }
+  };
+
   const validateGoogleApiKey = async (apiKey: string) => {
     setValidatingApiKey(true);
     try {
@@ -630,7 +659,7 @@ function APIKeysTab() {
     }
   };
 
-  if (!googleApiStatus && !langsmithApiStatus && !huggingfaceApiStatus && !litellmApiStatus) {
+  if (!googleApiStatus && !langsmithApiStatus && !huggingfaceApiStatus && !litellmApiStatus && !openrouterApiStatus) {
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
@@ -855,6 +884,46 @@ function APIKeysTab() {
                     variant="outline" 
                     size="sm"
                     onClick={() => fetchLitellmApiStatus(true)}
+                  >
+                    Refresh Status
+                  </Button>
+                </div>
+              )}
+            </div>
+            
+            {/* OpenRouter API Key Section */}
+            <div className="border-t border-border pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">OpenRouter API Key <span className="text-xs text-muted-foreground">(Optional)</span></p>
+                  <p className="text-sm text-muted-foreground">For accessing OpenRouter models like Horizon Beta</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {openrouterApiStatus?.status === 'ready' && (() => {
+                    const StatusIcon = getStatusIcon('operational');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('operational')}`} />;
+                  })()}
+                  {openrouterApiStatus?.status === 'configured_invalid' && (() => {
+                    const StatusIcon = getStatusIcon('critical');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
+                  })()}
+                  <Badge variant={openrouterApiStatus?.has_openrouter_api_key ? 
+                    (openrouterApiStatus?.openrouter_api_key_valid ? "default" : "destructive") : 
+                    "secondary"
+                  }>
+                    {openrouterApiStatus?.status === 'ready' ? `Valid (${openrouterApiStatus.models_available} models)` :
+                     openrouterApiStatus?.status === 'configured_invalid' ? 'Invalid' :
+                     'Not configured'}
+                  </Badge>
+                </div>
+              </div>
+              
+              {openrouterApiStatus?.has_openrouter_api_key && (
+                <div className="flex items-center space-x-2 mt-3">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => fetchOpenrouterApiStatus(true)}
                   >
                     Refresh Status
                   </Button>

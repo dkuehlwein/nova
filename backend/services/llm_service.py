@@ -65,6 +65,18 @@ class LLMModelService:
         }
     ]
     
+    OPENROUTER_MODELS = [
+        {
+            "model_name": "openrouter/horizon-beta",
+            "litellm_params": {
+                "model": "openrouter/horizon-beta",
+                "api_base": "https://openrouter.ai/api/v1",
+                "temperature": 0.7,
+                "max_tokens": 2048
+            }
+        }
+    ]
+    
     FALLBACK_CONFIG = {
         "fallbacks": {
             "SmolLM3-3B-128K-BF16": ["gemini-2.5-flash"],
@@ -125,13 +137,32 @@ class LLMModelService:
     # ============= LiteLLM API Operations =============
     
     async def add_model_to_litellm(self, model_config: Dict) -> bool:
-        """Add a single model to LiteLLM via API."""
+        """Add a single model to LiteLLM via API if it doesn't already exist."""
+        model_name = model_config['model_name']
+        
+        # Check if model already exists
+        if await self._model_exists_in_litellm(model_name):
+            logger.info(f"Model {model_name} already exists in LiteLLM - skipping")
+            return True  # Return True since the model is available
+        
         success, _ = await self._make_litellm_request("POST", "/model/new", model_config)
         if success:
-            logger.info(f"Successfully added model {model_config['model_name']} to LiteLLM")
+            logger.info(f"Successfully added model {model_name} to LiteLLM")
         else:
-            logger.error(f"Failed to add model {model_config['model_name']} to LiteLLM")
+            logger.error(f"Failed to add model {model_name} to LiteLLM")
         return success
+    
+    async def _model_exists_in_litellm(self, model_name: str) -> bool:
+        """Check if a model already exists in LiteLLM."""
+        try:
+            success, result = await self._make_litellm_request("GET", "/models")
+            if success and result:
+                existing_models = [model.get("id", "") for model in result.get("data", [])]
+                return model_name in existing_models
+            return False
+        except Exception as e:
+            logger.warning(f"Failed to check if model {model_name} exists: {e}")
+            return False  # Assume it doesn't exist if we can't check
     
     async def update_fallback_config(self) -> bool:
         """Update LiteLLM fallback configuration when Gemini models are available."""
@@ -198,6 +229,33 @@ class LLMModelService:
         
         return success_count
     
+    async def initialize_openrouter_models(self, session) -> int:
+        """Initialize OpenRouter models if API key is valid. Returns count of successful additions."""
+        from api.settings_endpoints import get_openrouter_api_status
+        
+        try:
+            status_response = await get_openrouter_api_status(force_refresh=True, session=session)
+            if not status_response.get("openrouter_api_key_valid", False):
+                logger.info("OpenRouter API key not valid - skipping OpenRouter model initialization")
+                return 0
+        except Exception as e:
+            logger.info(f"OpenRouter API key validation failed: {e} - skipping OpenRouter model initialization")
+            return 0
+        
+        openrouter_api_key = settings.OPENROUTER_API_KEY.get_secret_value() if settings.OPENROUTER_API_KEY else None
+        
+        success_count = 0
+        for model_config in self.OPENROUTER_MODELS:
+            enhanced_config = model_config.copy()
+            enhanced_config["litellm_params"]["api_key"] = openrouter_api_key
+            
+            model_name = model_config["model_name"]
+            if await self.add_model_to_litellm(enhanced_config):
+                success_count += 1
+                logger.info(f"Added new model: {model_name}")
+        
+        return success_count
+    
     async def initialize_default_models_in_litellm(self, db: AsyncSession) -> bool:
         """
         Initialize working models in LiteLLM based on API key availability.
@@ -215,10 +273,14 @@ class LLMModelService:
             hf_count = await self.initialize_huggingface_models(db)
             total_models += hf_count
             
+            # Initialize OpenRouter models
+            openrouter_count = await self.initialize_openrouter_models(db)
+            total_models += openrouter_count
+            
             # Update fallback configuration if we have any models
             if total_models > 0:
                 await self.update_fallback_config()
-                logger.info(f"Successfully initialized {total_models} models: {gemini_count} Gemini, {hf_count} HuggingFace")
+                logger.info(f"Successfully initialized {total_models} models: {gemini_count} Gemini, {hf_count} HuggingFace, {openrouter_count} OpenRouter")
                 return True
             else:
                 logger.info("No working models available - check API keys")

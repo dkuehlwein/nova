@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     
     # HuggingFace API Token
     HF_TOKEN: Optional[SecretStr] = None
+    
+    # OpenRouter API Key
+    OPENROUTER_API_KEY: Optional[SecretStr] = None
 
     # PostgreSQL Database Configuration
     POSTGRES_DB: str = "nova_kanban"
