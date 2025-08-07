@@ -678,17 +678,64 @@ function APIKeysTab() {
         {/* API Keys Section */}
         <div className="space-y-4">
           <h3 className="text-lg font-medium text-foreground">External Services</h3>
-          <p className="text-sm text-muted-foreground">
-            Configure optional external services. All API keys are stored securely and never shared.
-          </p>
+          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
+            <p className="text-sm text-blue-800 dark:text-blue-200">
+              <strong>Required:</strong> LiteLLM Master Key is needed for Nova to function.
+              <br />
+              <strong>Optional:</strong> Add external API keys to enable additional AI models and integrations.
+            </p>
+          </div>
           
           <div className="space-y-4 border border-muted rounded-lg p-4">
-            {/* Google API Key Section */}
+            {/* LiteLLM Master Key Section - Required, shown first */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium">Google API Key <span className="text-xs text-muted-foreground">(Optional)</span></p>
-                  <p className="text-sm text-muted-foreground">For Google Workspace integration and Gemini cloud AI models</p>
+                  <p className="font-medium flex items-center gap-2">
+                    LiteLLM Master Key 
+                    <span className="bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-200 text-xs px-2 py-1 rounded-full font-semibold">Required</span>
+                  </p>
+                  <p className="text-sm text-muted-foreground">Authentication key for your LiteLLM proxy service</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {litellmApiStatus?.status === 'ready' && (() => {
+                    const StatusIcon = getStatusIcon('operational');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('operational')}`} />;
+                  })()}
+                  {litellmApiStatus?.status === 'configured_invalid' && (() => {
+                    const StatusIcon = getStatusIcon('critical');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
+                  })()}
+                  <Badge variant={litellmApiStatus?.has_litellm_master_key ? 
+                    (litellmApiStatus?.litellm_master_key_valid ? "default" : "destructive") : 
+                    "secondary"
+                  }>
+                    {litellmApiStatus?.status === 'ready' ? litellmApiStatus.base_url :
+                     litellmApiStatus?.status === 'configured_invalid' ? 'Invalid' :
+                     'Not configured'}
+                  </Badge>
+                </div>
+              </div>
+              
+              {litellmApiStatus?.has_litellm_master_key && (
+                <div className="flex items-center space-x-2 mt-3">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => fetchLitellmApiStatus(true)}
+                  >
+                    Refresh Status
+                  </Button>
+                </div>
+              )}
+            </div>
+            
+            {/* Google API Key Section */}
+            <div className="border-t border-border pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Google API Key <span className="text-xs text-muted-foreground font-normal">(Optional)</span></p>
+                  <p className="text-sm text-muted-foreground">Enables Gemini AI models and Google Workspace integration</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   {googleApiStatus?.status === 'ready' && (() => {
@@ -703,7 +750,7 @@ function APIKeysTab() {
                     (googleApiStatus?.google_api_key_valid ? "default" : "destructive") : 
                     "secondary"
                   }>
-                    {googleApiStatus?.status === 'ready' ? `Valid (${googleApiStatus.gemini_models_available} models)` :
+                    {googleApiStatus?.status === 'ready' ? `${googleApiStatus.gemini_models_available} models` :
                      googleApiStatus?.status === 'configured_invalid' ? 'Invalid' :
                      'Not configured'}
                   </Badge>
@@ -775,8 +822,8 @@ function APIKeysTab() {
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium">LangSmith API Key <span className="text-xs text-muted-foreground">(Optional)</span></p>
-                  <p className="text-sm text-muted-foreground">For AI debugging and monitoring</p>
+                  <p className="font-medium">LangSmith API Key <span className="text-xs text-muted-foreground font-normal">(Optional)</span></p>
+                  <p className="text-sm text-muted-foreground">Enables AI debugging, tracing, and monitoring</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   {langsmithApiStatus?.status === 'ready' && (() => {
@@ -791,7 +838,7 @@ function APIKeysTab() {
                     (langsmithApiStatus?.langsmith_api_key_valid ? "default" : "destructive") : 
                     "secondary"
                   }>
-                    {langsmithApiStatus?.status === 'ready' ? `Valid (${langsmithApiStatus.features_available} features)` :
+                    {langsmithApiStatus?.status === 'ready' ? `${langsmithApiStatus.features_available} features` :
                      langsmithApiStatus?.status === 'configured_invalid' ? 'Invalid' :
                      'Not configured'}
                   </Badge>
@@ -815,8 +862,8 @@ function APIKeysTab() {
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium">HuggingFace API Key <span className="text-xs text-muted-foreground">(Optional)</span></p>
-                  <p className="text-sm text-muted-foreground">For accessing HuggingFace models via LiteLLM</p>
+                  <p className="font-medium">HuggingFace API Key <span className="text-xs text-muted-foreground font-normal">(Optional)</span></p>
+                  <p className="text-sm text-muted-foreground">Enables access to HuggingFace models and embeddings</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   {huggingfaceApiStatus?.status === 'ready' && (() => {
@@ -831,7 +878,7 @@ function APIKeysTab() {
                     (huggingfaceApiStatus?.huggingface_api_key_valid ? "default" : "destructive") : 
                     "secondary"
                   }>
-                    {huggingfaceApiStatus?.status === 'ready' ? `Valid (${huggingfaceApiStatus.username})` :
+                    {huggingfaceApiStatus?.status === 'ready' ? huggingfaceApiStatus.username :
                      huggingfaceApiStatus?.status === 'configured_invalid' ? 'Invalid' :
                      'Not configured'}
                   </Badge>
@@ -851,52 +898,12 @@ function APIKeysTab() {
               )}
             </div>
             
-            {/* LiteLLM Master Key Section */}
-            <div className="border-t border-border pt-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">LiteLLM Master Key <span className="text-xs text-muted-foreground">(Required)</span></p>
-                  <p className="text-sm text-muted-foreground">Authentication key for your LiteLLM proxy service</p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {litellmApiStatus?.status === 'ready' && (() => {
-                    const StatusIcon = getStatusIcon('operational');
-                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('operational')}`} />;
-                  })()}
-                  {litellmApiStatus?.status === 'configured_invalid' && (() => {
-                    const StatusIcon = getStatusIcon('critical');
-                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
-                  })()}
-                  <Badge variant={litellmApiStatus?.has_litellm_master_key ? 
-                    (litellmApiStatus?.litellm_master_key_valid ? "default" : "destructive") : 
-                    "secondary"
-                  }>
-                    {litellmApiStatus?.status === 'ready' ? `Valid (${litellmApiStatus.base_url})` :
-                     litellmApiStatus?.status === 'configured_invalid' ? 'Invalid' :
-                     'Not configured'}
-                  </Badge>
-                </div>
-              </div>
-              
-              {litellmApiStatus?.has_litellm_master_key && (
-                <div className="flex items-center space-x-2 mt-3">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => fetchLitellmApiStatus(true)}
-                  >
-                    Refresh Status
-                  </Button>
-                </div>
-              )}
-            </div>
-            
             {/* OpenRouter API Key Section */}
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium">OpenRouter API Key <span className="text-xs text-muted-foreground">(Optional)</span></p>
-                  <p className="text-sm text-muted-foreground">For accessing OpenRouter models like Horizon Beta</p>
+                  <p className="font-medium">OpenRouter API Key <span className="text-xs text-muted-foreground font-normal">(Optional)</span></p>
+                  <p className="text-sm text-muted-foreground">Enables access to premium models like Horizon Beta</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   {openrouterApiStatus?.status === 'ready' && (() => {
@@ -911,7 +918,7 @@ function APIKeysTab() {
                     (openrouterApiStatus?.openrouter_api_key_valid ? "default" : "destructive") : 
                     "secondary"
                   }>
-                    {openrouterApiStatus?.status === 'ready' ? `Valid (${openrouterApiStatus.models_available} models)` :
+                    {openrouterApiStatus?.status === 'ready' ? `${openrouterApiStatus.models_available} models` :
                      openrouterApiStatus?.status === 'configured_invalid' ? 'Invalid' :
                      'Not configured'}
                   </Badge>
@@ -961,7 +968,7 @@ function AIModelsTab() {
     
     try {
       // Get model count via Nova backend (which handles authentication)
-      const models = await apiRequest('/llm/models/categorized') as {
+      const models = await apiRequest('/llm/models') as {
         models: {
           chat_models: {model_name: string}[],
           embedding_models: {model_name: string}[],
@@ -1033,7 +1040,7 @@ function AIModelsTab() {
       const baseUrl = (editingSettings.litellm_base_url as string) || 'http://localhost:4000';
       
       // Test via Nova backend (which handles authentication)
-      const models = await apiRequest('/llm/models/categorized') as {
+      const models = await apiRequest('/llm/models') as {
         models: {
           chat_models: {model_name: string}[],
           embedding_models: {model_name: string}[],

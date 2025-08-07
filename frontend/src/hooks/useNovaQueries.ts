@@ -318,8 +318,8 @@ export function useAvailableModels() {
   return useQuery({
     queryKey: ['available-models'],
     queryFn: async () => {
-      // Use the categorized endpoint that properly categorizes models on the backend
-      const response = await apiRequest('/llm/models/categorized') as {
+      // Use the main models endpoint that provides categorized models
+      const response = await apiRequest('/llm/models') as {
         models: {
           chat_models: {model_name: string}[],
           embedding_models: {model_name: string}[],

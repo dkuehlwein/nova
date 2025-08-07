@@ -187,9 +187,6 @@ async def get_onboarding_status(session: AsyncSession = Depends(get_db_session))
         if not settings.full_name or not settings.email:
             missing.append("user_profile")
         
-        # Google API key is optional but provide status info
-        # Users can choose to use only local models or add Google API key for cloud models
-        
         return OnboardingStatusModel(
             onboarding_complete=settings.onboarding_complete,
             missing_required_settings=missing,
@@ -612,34 +609,50 @@ async def _validate_langsmith_api_key(db_session: AsyncSession, api_key: str, se
 
 
 async def _validate_litellm_master_key(db_session: AsyncSession, api_key: str, settings) -> dict:
-    """Validate LiteLLM master key."""
+    """Validate LiteLLM master key by testing the models endpoint."""
     from datetime import datetime, timezone
     from config import settings as app_settings
     try:
+        # First try the models endpoint which requires authentication
         status, data = await _http_request(
-            f"{app_settings.LITELLM_BASE_URL}/health",
+            f"{app_settings.LITELLM_BASE_URL}/v1/models",
             {"Authorization": f"Bearer {api_key}"}
         )
         
         now = datetime.now(timezone.utc).isoformat()
-        if status == 200:
+        if status == 200 and isinstance(data, dict) and "data" in data:
+            # Successfully authenticated and got models list
+            models_count = len(data.get("data", []))
             await _cache_validation_result(db_session, settings, "litellm_master_key", {
                 "validated": True,
                 "validated_at": now,
                 "validation_error": None,
                 "last_check": now,
-                "base_url": app_settings.LITELLM_BASE_URL
+                "base_url": app_settings.LITELLM_BASE_URL,
+                "models_available": models_count
             })
-            return {"valid": True, "message": "LiteLLM master key is valid", "service": "litellm"}
-        else:
+            return {"valid": True, "message": f"LiteLLM master key is valid ({models_count} models available)", "service": "litellm"}
+        elif status == 401 or status == 403:
+            # Authentication failed - invalid key
             await _cache_validation_result(db_session, settings, "litellm_master_key", {
                 "validated": False,
                 "validated_at": None,
-                "validation_error": f"HTTP {status}: {data.get('error', 'Unknown error')}",
+                "validation_error": f"Authentication failed (HTTP {status})",
                 "last_check": now,
                 "base_url": app_settings.LITELLM_BASE_URL
             })
-            return {"valid": False, "message": f"LiteLLM master key validation failed: HTTP {status}", "service": "litellm"}
+            return {"valid": False, "message": "LiteLLM master key is invalid (authentication failed)", "service": "litellm"}
+        else:
+            # Other error
+            error_msg = data.get('error', 'Unknown error') if isinstance(data, dict) else str(data)
+            await _cache_validation_result(db_session, settings, "litellm_master_key", {
+                "validated": False,
+                "validated_at": None,
+                "validation_error": f"HTTP {status}: {error_msg}",
+                "last_check": now,
+                "base_url": app_settings.LITELLM_BASE_URL
+            })
+            return {"valid": False, "message": f"LiteLLM validation failed: HTTP {status}", "service": "litellm"}
     except Exception as e:
         now = datetime.now(timezone.utc).isoformat()
         await _cache_validation_result(db_session, settings, "litellm_master_key", {
@@ -1028,9 +1041,11 @@ async def get_google_api_status(
                     logger.warning(f"Google API validation failed: {e}")
                     is_valid = False
                 
-                # Get available models
+                # Get available Gemini models from all models
                 available_models = await llm_service.get_available_models()
-                gemini_models_count = len(available_models.get("cloud", []))
+                all_models = available_models.get("all_models", [])
+                # Count models that are Gemini models (contain "gemini" in model name)
+                gemini_models_count = len([m for m in all_models if "gemini" in m.get("model_name", "").lower()])
                 
                 # Cache the validation results
                 now = datetime.now(timezone.utc).isoformat()
@@ -1295,14 +1310,22 @@ async def get_litellm_api_status(
             if has_api_key:
                 logger.info("Performing real-time LiteLLM API validation", extra={"data": {"force_refresh": force_refresh}})
                 try:
-                    # Test LiteLLM health endpoint with authentication
+                    # Test LiteLLM models endpoint with authentication (requires valid auth)
                     async with aiohttp.ClientSession() as client_session:
                         async with client_session.get(
-                            f"{app_settings.LITELLM_BASE_URL}/health",
+                            f"{app_settings.LITELLM_BASE_URL}/v1/models",
                             headers={"Authorization": f"Bearer {app_settings.LITELLM_MASTER_KEY}"},
                             timeout=10
                         ) as response:
-                            is_valid = response.status == 200
+                            if response.status == 200:
+                                try:
+                                    data = await response.json()
+                                    # Check if response has the expected structure
+                                    is_valid = isinstance(data, dict) and "data" in data
+                                except:
+                                    is_valid = False
+                            else:
+                                is_valid = False
                 except Exception as e:
                     logger.warning(f"LiteLLM API validation failed: {e}")
                     is_valid = False

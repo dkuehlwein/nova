@@ -192,7 +192,7 @@ export default function OnboardingPage() {
   const loadAvailableModels = async () => {
     setModelsLoading(true);
     try {
-      const models = await apiRequest('/llm/models/categorized') as AvailableModels;
+      const models = await apiRequest('/llm/models') as AvailableModels;
       setAvailableModels(models);
       
       // Auto-select first available models if defaults aren't available
