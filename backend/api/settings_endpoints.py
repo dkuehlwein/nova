@@ -583,8 +583,7 @@ async def _validate_langsmith_api_key(db_session: AsyncSession, api_key: str, se
                 "validated": True,
                 "validated_at": now,
                 "validation_error": None,
-                "last_check": now,
-                "features_available": ["tracing", "monitoring", "debugging"]
+                "last_check": now
             })
             return {"valid": True, "message": "LangSmith API key is valid", "service": "langsmith"}
         else:
@@ -592,8 +591,7 @@ async def _validate_langsmith_api_key(db_session: AsyncSession, api_key: str, se
                 "validated": False,
                 "validated_at": None,
                 "validation_error": f"API returned status {response.status_code}",
-                "last_check": now,
-                "features_available": []
+                "last_check": now
             })
             return {"valid": False, "message": f"LangSmith API key validation failed: {response.status_code}", "service": "langsmith"}
     except Exception as e:
@@ -602,8 +600,7 @@ async def _validate_langsmith_api_key(db_session: AsyncSession, api_key: str, se
             "validated": False,
             "validated_at": None,
             "validation_error": str(e),
-            "last_check": now,
-            "features_available": []
+            "last_check": now
         })
         return {"valid": False, "message": f"LangSmith API key validation failed: {str(e)}", "service": "langsmith"}
 
@@ -1108,19 +1105,16 @@ async def get_langsmith_api_status(
         # Use cached status unless force_refresh is requested or cache is empty
         if not force_refresh and cached_status and has_api_key:
             is_valid = cached_status.get("validated", False)
-            features_available = cached_status.get("features_available", [])
             last_check = cached_status.get("last_check", "Unknown")
             
             logger.info("Using cached LangSmith API validation status", extra={"data": {
                 "cached": True,
                 "valid": is_valid,
-                "features_count": len(features_available),
                 "last_check": last_check
             }})
         else:
             # Perform real-time validation
             is_valid = False
-            features_available = []
             
             if has_api_key:
                 logger.info("Performing real-time LangSmith API validation", extra={"data": {"force_refresh": force_refresh}})
@@ -1133,11 +1127,9 @@ async def get_langsmith_api_status(
                     )
                     
                     is_valid = response.status_code == 200
-                    features_available = ["tracing", "monitoring", "debugging"] if is_valid else []
                 except Exception as e:
                     logger.warning(f"LangSmith API validation failed: {e}")
                     is_valid = False
-                    features_available = []
                 
                 # Cache the validation results
                 now = datetime.now(timezone.utc).isoformat()
@@ -1145,8 +1137,7 @@ async def get_langsmith_api_status(
                     "validated": is_valid,
                     "validated_at": now if is_valid else cached_status.get("validated_at"),
                     "validation_error": None if is_valid else "API key validation failed",
-                    "last_check": now,
-                    "features_available": features_available
+                    "last_check": now
                 }
                 
                 # Update cached status
@@ -1160,8 +1151,6 @@ async def get_langsmith_api_status(
         return {
             "has_langsmith_api_key": has_api_key,
             "langsmith_api_key_valid": is_valid,
-            "features_available": len(features_available) if isinstance(features_available, list) else 0,
-            "features": features_available,
             "status": "ready" if is_valid else ("configured_invalid" if has_api_key else "not_configured"),
             "cached": not force_refresh and bool(cached_status),
             "last_check": cached_status.get("last_check", "Never") if not force_refresh else "Just now"

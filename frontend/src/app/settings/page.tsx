@@ -12,8 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 import { useMCPServers, useToggleMCPServer, useRestartService, useUserSettings, useUpdateUserSettings, useAvailableModels } from "@/hooks/useNovaQueries";
 import { useSystemStatusPage, useRefreshAllServices } from "@/hooks/useUnifiedSystemStatus";
-import { useState, Suspense } from "react";
+import { useState, Suspense, useEffect } from "react";
 import React from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import SystemPromptEditor from "@/components/SystemPromptEditor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest } from "@/lib/api";
@@ -818,46 +819,6 @@ function APIKeysTab() {
               )}
             </div>
             
-            {/* LangSmith API Key Section */}
-            <div className="border-t border-border pt-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">LangSmith API Key <span className="text-xs text-muted-foreground font-normal">(Optional)</span></p>
-                  <p className="text-sm text-muted-foreground">Enables AI debugging, tracing, and monitoring</p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {langsmithApiStatus?.status === 'ready' && (() => {
-                    const StatusIcon = getStatusIcon('operational');
-                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('operational')}`} />;
-                  })()}
-                  {langsmithApiStatus?.status === 'configured_invalid' && (() => {
-                    const StatusIcon = getStatusIcon('critical');
-                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
-                  })()}
-                  <Badge variant={langsmithApiStatus?.has_langsmith_api_key ? 
-                    (langsmithApiStatus?.langsmith_api_key_valid ? "default" : "destructive") : 
-                    "secondary"
-                  }>
-                    {langsmithApiStatus?.status === 'ready' ? `${langsmithApiStatus.features_available} features` :
-                     langsmithApiStatus?.status === 'configured_invalid' ? 'Invalid' :
-                     'Not configured'}
-                  </Badge>
-                </div>
-              </div>
-              
-              {langsmithApiStatus?.has_langsmith_api_key && (
-                <div className="flex items-center space-x-2 mt-3">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => fetchLangsmithApiStatus(true)}
-                  >
-                    Refresh Status
-                  </Button>
-                </div>
-              )}
-            </div>
-            
             {/* HuggingFace API Key Section */}
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between">
@@ -874,14 +835,14 @@ function APIKeysTab() {
                     const StatusIcon = getStatusIcon('critical');
                     return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
                   })()}
-                  <Badge variant={huggingfaceApiStatus?.has_huggingface_api_key ? 
-                    (huggingfaceApiStatus?.huggingface_api_key_valid ? "default" : "destructive") : 
-                    "secondary"
-                  }>
-                    {huggingfaceApiStatus?.status === 'ready' ? huggingfaceApiStatus.username :
-                     huggingfaceApiStatus?.status === 'configured_invalid' ? 'Invalid' :
-                     'Not configured'}
-                  </Badge>
+                  {huggingfaceApiStatus?.status !== 'ready' && (
+                    <Badge variant={huggingfaceApiStatus?.has_huggingface_api_key ? 
+                      (huggingfaceApiStatus?.huggingface_api_key_valid ? "default" : "destructive") : 
+                      "secondary"
+                    }>
+                      {huggingfaceApiStatus?.status === 'configured_invalid' ? 'Invalid' : 'Not configured'}
+                    </Badge>
+                  )}
                 </div>
               </div>
               
@@ -931,6 +892,46 @@ function APIKeysTab() {
                     variant="outline" 
                     size="sm"
                     onClick={() => fetchOpenrouterApiStatus(true)}
+                  >
+                    Refresh Status
+                  </Button>
+                </div>
+              )}
+            </div>
+            
+            {/* LangSmith API Key Section */}
+            <div className="border-t border-border pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">LangSmith API Key <span className="text-xs text-muted-foreground font-normal">(Optional)</span></p>
+                  <p className="text-sm text-muted-foreground">Enables AI debugging, tracing, and monitoring</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {langsmithApiStatus?.status === 'ready' && (() => {
+                    const StatusIcon = getStatusIcon('operational');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('operational')}`} />;
+                  })()}
+                  {langsmithApiStatus?.status === 'configured_invalid' && (() => {
+                    const StatusIcon = getStatusIcon('critical');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
+                  })()}
+                  {langsmithApiStatus?.status !== 'ready' && (
+                    <Badge variant={langsmithApiStatus?.has_langsmith_api_key ? 
+                      (langsmithApiStatus?.langsmith_api_key_valid ? "default" : "destructive") : 
+                      "secondary"
+                    }>
+                      {langsmithApiStatus?.status === 'configured_invalid' ? 'Invalid' : 'Not configured'}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              
+              {langsmithApiStatus?.has_langsmith_api_key && (
+                <div className="flex items-center space-x-2 mt-3">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => fetchLangsmithApiStatus(true)}
                   >
                     Refresh Status
                   </Button>
@@ -1630,7 +1631,26 @@ function AutomationTab() {
   );
 }
 
-export default function SettingsPage() {
+function SettingsPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [currentTab, setCurrentTab] = useState("ai-models");
+
+  // Initialize current tab from URL or default
+  useEffect(() => {
+    const tabFromUrl = searchParams.get("tab");
+    if (tabFromUrl) {
+      setCurrentTab(tabFromUrl);
+    }
+  }, [searchParams]);
+
+  // Handle tab change and update URL
+  const handleTabChange = (newTab: string) => {
+    setCurrentTab(newTab);
+    const newUrl = `/settings?tab=${newTab}`;
+    router.push(newUrl, { scroll: false });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -1642,7 +1662,7 @@ export default function SettingsPage() {
             <p className="text-sm text-muted-foreground">Manage your preferences</p>
           </div>
           
-          <Tabs defaultValue="ai-models" orientation="vertical" className="w-full">
+          <Tabs value={currentTab} onValueChange={handleTabChange} orientation="vertical" className="w-full">
             <TabsList className="w-full h-auto flex-col bg-transparent space-y-1 p-2">
               <TabsTrigger 
                 value="user-profile" 
@@ -1759,5 +1779,20 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+          <div className="text-muted-foreground">Loading settings...</div>
+        </div>
+      </div>
+    }>
+      <SettingsPageContent />
+    </Suspense>
   );
 }
