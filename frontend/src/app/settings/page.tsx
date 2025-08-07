@@ -240,13 +240,6 @@ function SystemStatusTab() {
         emptyMessage="No infrastructure services configured"
       />
       
-      {/* External Services */}
-      <StatusGrid
-        title="External Services"
-        services={systemStatus?.external_services || []}
-        columns={2}
-        emptyMessage="No external services configured"
-      />
 
       {/* Quick Actions */}
       <div className="p-4 border border-border rounded-lg bg-muted/50">

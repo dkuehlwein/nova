@@ -165,7 +165,6 @@ async def get_unified_system_status(
         # Build service categories for response
         core_services = []
         infrastructure_services = []
-        external_services = []
         
         for service_name, config in health_monitor.SERVICES.items():
             cached_status = overall_status["all_statuses"].get(service_name)
@@ -195,8 +194,6 @@ async def get_unified_system_status(
                 core_services.append(service_data)
             elif config["type"] == "infrastructure":
                 infrastructure_services.append(service_data)
-            elif config["type"] == "external":
-                external_services.append(service_data)
         
         # Build unified response
         response = {
@@ -208,7 +205,6 @@ async def get_unified_system_status(
             # Service Categories
             "core_services": core_services,
             "infrastructure_services": infrastructure_services,
-            "external_services": external_services,
             
             # Quick Summary for Navbar
             "summary": overall_status["summary"]

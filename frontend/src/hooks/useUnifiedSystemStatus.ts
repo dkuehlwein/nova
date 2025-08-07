@@ -159,7 +159,7 @@ export function useRefreshService(serviceName: string) {
 /**
  * Hook to get filtered services by type
  */
-export function useServicesByType(serviceType: "core" | "infrastructure" | "external") {
+export function useServicesByType(serviceType: "core" | "infrastructure") {
   const { data: systemStatus } = useUnifiedSystemStatus();
   
   const services = React.useMemo(() => {
@@ -170,8 +170,6 @@ export function useServicesByType(serviceType: "core" | "infrastructure" | "exte
         return systemStatus.core_services;
       case "infrastructure":
         return systemStatus.infrastructure_services;
-      case "external":
-        return systemStatus.external_services;
       default:
         return [];
     }

@@ -67,24 +67,6 @@ class HealthMonitorService:
             "endpoint": "internal"
         },
         
-        # External Services (Optional, degrades functionality when down)
-        "mcp_servers": {
-            "type": "external",
-            "endpoint": "dynamic",  # Loaded from MCP configuration
-            "essential": False
-        },
-        "google_api": {
-            "type": "external",
-            "endpoint": "cached",  # Only refresh on startup/change/manual
-            "refresh_triggers": ["startup", "api_key_change", "manual_refresh"],
-            "essential": False
-        },
-        "langsmith_api": {
-            "type": "external", 
-            "endpoint": "cached",  # Only refresh on startup/change/manual
-            "refresh_triggers": ["startup", "api_key_change", "manual_refresh"],
-            "essential": False
-        }
     }
     
     CHECK_INTERVAL = 180  # seconds (3 minutes)
@@ -380,18 +362,11 @@ class HealthMonitorService:
         """Calculate overall system status based on service criticality."""
         core_services_down = []
         infrastructure_services_down = []
-        external_services_down = []
         
         all_statuses = {}
         
         for service_name, config in self.SERVICES.items():
             cached_status = await self.get_cached_status(service_name)
-            
-            # Handle cached services differently
-            if config["endpoint"] == "cached":
-                # Get API key validation status from user settings
-                if service_name in ["google_api", "langsmith_api"]:
-                    cached_status = await self._get_api_key_status(service_name)
             
             if not cached_status:
                 # No status available - treat as down
@@ -399,31 +374,23 @@ class HealthMonitorService:
                     core_services_down.append(service_name)
                 elif config["type"] == "infrastructure" and config.get("essential", False):
                     infrastructure_services_down.append(service_name)
-                elif config["type"] == "external":
-                    external_services_down.append(service_name)
             elif cached_status["status"] == "unhealthy":
                 if config["type"] == "core":
                     core_services_down.append(service_name)
                 elif config["type"] == "infrastructure" and config.get("essential", False):
                     infrastructure_services_down.append(service_name)
-                elif config["type"] == "external":
-                    external_services_down.append(service_name)
-            # Note: "unknown" status for external services like APIs is not considered "down"
-            # since they're optional and may not be configured
             
             all_statuses[service_name] = cached_status
         
         # Calculate overall status using binary criticality logic
         if core_services_down or infrastructure_services_down:
             overall_status = "critical"
-        elif external_services_down:
-            overall_status = "degraded"
         else:
             overall_status = "operational"
         
         # Calculate health percentage
         total_services = len(self.SERVICES)
-        unhealthy_services = len(core_services_down) + len(infrastructure_services_down) + len(external_services_down)
+        unhealthy_services = len(core_services_down) + len(infrastructure_services_down)
         health_percentage = max(0, ((total_services - unhealthy_services) / total_services) * 100)
         
         return {
@@ -432,90 +399,15 @@ class HealthMonitorService:
             "last_updated": datetime.now(timezone.utc).isoformat(),
             "core_services_down": core_services_down,
             "infrastructure_services_down": infrastructure_services_down,
-            "external_services_down": external_services_down,
             "all_statuses": all_statuses,
             "summary": {
                 "total_services": total_services,
                 "healthy_services": total_services - unhealthy_services,
-                "degraded_services": len(external_services_down),
+                "degraded_services": 0,  # No external services anymore
                 "critical_services": len(core_services_down) + len(infrastructure_services_down),
-                "top_issues": core_services_down + infrastructure_services_down + external_services_down[:3]
+                "top_issues": core_services_down + infrastructure_services_down
             }
         }
-    
-    async def _get_api_key_status(self, service_name: str) -> Optional[Dict[str, Any]]:
-        """Get API key validation status from user settings (cached data)."""
-        try:
-            from database.database import UserSettingsService
-            
-            # Get user settings with current database session
-            async with db_manager.get_session() as session:
-                user_settings = await UserSettingsService.get_user_settings(session)
-                
-                if not user_settings:
-                    return {
-                        "service_name": service_name,
-                        "status": "unknown",
-                        "checked_at": None,
-                        "error_message": "User settings not available",
-                        "metadata": {"type": "api_key", "validated": False}
-                    }
-                    
-                validation_status = user_settings.api_key_validation_status or {}
-                
-                if service_name == "google_api":
-                    google_status = validation_status.get("google_api_key", {})
-                    if google_status.get("validated"):
-                        return {
-                            "service_name": service_name,
-                            "status": "healthy",
-                            "checked_at": google_status.get("last_check"),
-                            "metadata": {"type": "api_key", "validated": True}
-                        }
-                    else:
-                        return {
-                            "service_name": service_name,
-                            "status": "unknown",
-                            "checked_at": google_status.get("last_check"),
-                            "error_message": google_status.get("validation_error", "API key not configured or validated"),
-                            "metadata": {"type": "api_key", "validated": False}
-                        }
-                
-                elif service_name == "langsmith_api":
-                    langsmith_status = validation_status.get("langsmith_api_key", {})
-                    if langsmith_status.get("validated"):
-                        return {
-                            "service_name": service_name,
-                            "status": "healthy",
-                            "checked_at": langsmith_status.get("last_check"),
-                            "metadata": {"type": "api_key", "validated": True}
-                        }
-                    else:
-                        return {
-                            "service_name": service_name,
-                            "status": "unknown",
-                            "checked_at": langsmith_status.get("last_check"),
-                            "error_message": langsmith_status.get("validation_error", "API key not configured or validated"),
-                            "metadata": {"type": "api_key", "validated": False}
-                        }
-                
-                return {
-                    "service_name": service_name,
-                    "status": "unknown",
-                    "checked_at": None,
-                    "error_message": "Unsupported API service",
-                    "metadata": {"type": "api_key", "validated": False}
-                }
-            
-        except Exception as e:
-            logger.error(f"Failed to get API key status for {service_name}: {e}")
-            return {
-                "service_name": service_name,
-                "status": "unknown",
-                "checked_at": None,
-                "error_message": f"Error getting API key status: {str(e)}",
-                "metadata": {"type": "api_key", "error": True}
-            }
     
     async def _subscribe_to_mcp_events(self):
         """Subscribe to MCP server toggle events to trigger immediate refresh."""

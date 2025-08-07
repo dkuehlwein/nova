@@ -256,7 +256,6 @@ export interface UnifiedSystemStatus {
   // Service Categories
   core_services: ServiceStatus[];
   infrastructure_services: ServiceStatus[];
-  external_services: ServiceStatus[];
   
   // Quick Summary for Navbar
   summary: {
@@ -282,7 +281,6 @@ export const STATUS_LOADING_STATES = {
     cached: false,
     core_services: [],
     infrastructure_services: [],
-    external_services: [],
     summary: {
       total_services: 0,
       healthy_services: 0,

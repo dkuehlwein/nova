@@ -162,7 +162,7 @@ class TestSystemEndpoints:
     def test_allowed_services_constant(self):
         """Test that ALLOWED_SERVICES contains expected services."""
         expected_services = {
-            "mcp_gmail", "redis", "postgres", "chat-agent", "core-agent"
+            "mcp_gmail", "redis", "postgres", "chat-agent", "core-agent", "llamacpp"
         }
         
         assert ALLOWED_SERVICES == expected_services
@@ -177,8 +177,8 @@ class TestSystemEndpoints:
             "overall_health_percentage": 100.0,
             "last_updated": "2024-01-01T00:00:00Z",
             "summary": {
-                "total_services": 5,
-                "healthy_services": 5,
+                "total_services": 3,
+                "healthy_services": 3,
                 "degraded_services": 0,
                 "critical_services": 0,
                 "top_issues": []
@@ -205,9 +205,7 @@ class TestSystemEndpoints:
         mock_health_monitor.SERVICES = {
             "database": {"type": "infrastructure", "essential": True},
             "redis": {"type": "infrastructure", "essential": True},
-            "core_agent": {"type": "core", "essential": True},
-            "google_api": {"type": "external", "essential": False},
-            "mcp_servers": {"type": "external", "essential": False}
+            "core_agent": {"type": "core", "essential": True}
         }
         
         response = client.get("/api/system/system-health")
@@ -222,13 +220,12 @@ class TestSystemEndpoints:
         assert data["cached"] is True  # Default behavior
         assert "core_services" in data
         assert "infrastructure_services" in data
-        assert "external_services" in data
         assert "summary" in data
         
         # Verify summary structure
         summary = data["summary"]
-        assert summary["total_services"] == 5
-        assert summary["healthy_services"] == 5
+        assert summary["total_services"] == 3
+        assert summary["healthy_services"] == 3
         assert summary["degraded_services"] == 0
         assert summary["critical_services"] == 0
         assert summary["top_issues"] == []
@@ -243,11 +240,11 @@ class TestSystemEndpoints:
             "overall_health_percentage": 75.0,
             "last_updated": "2024-01-01T00:00:00Z",
             "summary": {
-                "total_services": 4,
-                "healthy_services": 3,
-                "degraded_services": 1,
-                "critical_services": 0,
-                "top_issues": ["mcp_servers"]
+                "total_services": 3,
+                "healthy_services": 2,
+                "degraded_services": 0,
+                "critical_services": 1,
+                "top_issues": ["core_agent"]
             },
             "all_statuses": {}
         })
@@ -255,8 +252,7 @@ class TestSystemEndpoints:
         mock_health_monitor.SERVICES = {
             "database": {"type": "infrastructure", "essential": True},
             "redis": {"type": "infrastructure", "essential": True},
-            "core_agent": {"type": "core", "essential": True},
-            "mcp_servers": {"type": "external", "essential": False}
+            "core_agent": {"type": "core", "essential": True}
         }
         
         response = client.get("/api/system/system-health?force_refresh=true")
