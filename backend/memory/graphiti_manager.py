@@ -28,6 +28,7 @@ def create_graphiti_llm() -> OpenAIClient:
     
     config = LLMConfig(
         model=llm_config["model"],
+        small_model=llm_config["small_model"],  # Use user-configured small model
         api_key=llm_config["api_key"],
         base_url=llm_config["base_url"],
         temperature=llm_config["temperature"],

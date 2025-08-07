@@ -1001,6 +1001,7 @@ function AIModelsTab() {
         chat_llm_temperature: editingSettings.chat_llm_temperature as number,
         chat_llm_max_tokens: editingSettings.chat_llm_max_tokens as number,
         memory_llm_model: editingSettings.memory_llm_model as string,
+        memory_small_llm_model: editingSettings.memory_small_llm_model as string,
         memory_llm_temperature: editingSettings.memory_llm_temperature as number,
         memory_llm_max_tokens: editingSettings.memory_llm_max_tokens as number,
         embedding_model: editingSettings.embedding_model as string,
@@ -1254,6 +1255,54 @@ function AIModelsTab() {
               )}
               <p className="text-xs text-muted-foreground">
                 Model for memory processing and context analysis
+              </p>
+            </div>
+            
+            {/* Memory Small Model Selection */}
+            <div className="space-y-2">
+              <Label>Memory Small Model</Label>
+              {editingSettings ? (
+                <Select 
+                  value={String(editingSettings?.memory_small_llm_model || editingSettings?.memory_llm_model || '')} 
+                  onValueChange={(value) => handleInputChange('memory_small_llm_model', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelsLoading ? (
+                      <SelectItem value="loading" disabled>Loading models...</SelectItem>
+                    ) : (
+                      <>
+                        {/* Current user setting (always show this first) */}
+                        {editingSettings?.memory_small_llm_model && (
+                          <SelectItem key={`current-memory-small-${editingSettings.memory_small_llm_model}`} value={String(editingSettings.memory_small_llm_model)}>
+                            {String(editingSettings.memory_small_llm_model)} (Current)
+                          </SelectItem>
+                        )}
+                        
+                        {/* Available models */}
+                        {availableModels?.models ? (
+                          <>
+                            {/* Chat Models (can be used for memory) */}
+                            {availableModels.models.chat_models?.filter((model: {model_name: string}) => 
+                              model.model_name !== editingSettings?.memory_small_llm_model
+                            ).map((model: {model_name: string}) => (
+                              <SelectItem key={model.model_name} value={model.model_name}>
+                                {model.model_name}
+                              </SelectItem>
+                            ))}
+                          </>
+                        ) : null}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="h-10 w-full bg-muted rounded animate-pulse" />
+              )}
+              <p className="text-xs text-muted-foreground">
+                Lightweight model for quick memory operations and classification
               </p>
             </div>
             

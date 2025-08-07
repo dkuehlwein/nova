@@ -92,7 +92,7 @@ def get_memory_llm_config() -> Dict[str, Any]:
     Get validated memory LLM configuration from user settings.
     
     Returns:
-        Dictionary with memory LLM configuration
+        Dictionary with memory LLM configuration including small model
     """
     try:
         from database.database import UserSettingsService
@@ -101,11 +101,13 @@ def get_memory_llm_config() -> Dict[str, Any]:
         user_settings = {}
     
     model_name = user_settings.get("memory_llm_model", "gemini-2.5-flash")
+    small_model_name = user_settings.get("memory_small_llm_model", model_name)  # Default to main model
     temperature = user_settings.get("memory_llm_temperature", 0.1)
     max_tokens = user_settings.get("memory_llm_max_tokens", 2048)
     
     return {
         "model": model_name,
+        "small_model": small_model_name,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "base_url": get_litellm_base_url(),

@@ -70,6 +70,7 @@ class UserSettings(Base):
     
     # Memory LLM Settings (Separate from Chat for Flexibility)
     memory_llm_model: Mapped[str] = mapped_column(String(100), default="qwen3-32b")  # Same as chat for consistency
+    memory_small_llm_model: Mapped[str] = mapped_column(String(100), default="qwen3-32b")  # Small model for quick operations
     memory_llm_temperature: Mapped[float] = mapped_column(Float, default=0.1)  # Lower for factual accuracy
     memory_llm_max_tokens: Mapped[int] = mapped_column(Integer, default=2048)  # Memory operations token limit
     
@@ -131,6 +132,7 @@ class UserSettingsModel(BaseModel):
     
     # Memory LLM Settings (Separate from Chat for Flexibility)
     memory_llm_model: str = "qwen3-32b"  # Same as chat for consistency
+    memory_small_llm_model: str = "qwen3-32b"  # Small model for quick operations
     memory_llm_temperature: float = 0.1  # Lower for factual accuracy
     memory_llm_max_tokens: int = 2048  # Memory operations token limit
     
@@ -195,6 +197,7 @@ class UserSettingsUpdateModel(BaseModel):
     
     # Memory LLM Settings
     memory_llm_model: Optional[str] = None
+    memory_small_llm_model: Optional[str] = None
     memory_llm_temperature: Optional[float] = None
     memory_llm_max_tokens: Optional[int] = None
     

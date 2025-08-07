@@ -28,7 +28,7 @@ class TestSearchMemory:
     @pytest.mark.asyncio
     async def test_search_memory_success(self, mock_edge_result):
         """Test successful memory search."""
-        with patch('memory.memory_functions.graphiti_manager') as mock_manager, \
+        with patch('memory.memory_functions.get_graphiti_client') as mock_get_client, \
              patch('memory.memory_functions.settings') as mock_settings:
             
             mock_settings.MEMORY_SEARCH_LIMIT = 10
@@ -36,7 +36,7 @@ class TestSearchMemory:
             
             mock_client = AsyncMock()
             mock_client.search.return_value = [mock_edge_result]
-            mock_manager.get_client = AsyncMock(return_value=mock_client)
+            mock_get_client.return_value = mock_client
             
             from memory.memory_functions import search_memory
             

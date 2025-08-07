@@ -34,3 +34,6 @@ litellm_settings:
   
   # Disable caching to avoid startup issues
   cache: false
+  
+  # Drop unsupported parameters (fixes Gemini embedding compatibility)
+  drop_params: true
