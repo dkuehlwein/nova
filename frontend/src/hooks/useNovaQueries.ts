@@ -292,6 +292,7 @@ interface UserSettings {
   chat_llm_temperature: number
   chat_llm_max_tokens: number
   memory_llm_model: string
+  memory_small_llm_model: string
   memory_llm_temperature: number
   memory_llm_max_tokens: number
   embedding_model: string

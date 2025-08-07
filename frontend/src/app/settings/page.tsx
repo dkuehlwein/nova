@@ -1178,10 +1178,10 @@ function AIModelsTab() {
                       <SelectItem value="loading" disabled>Loading models...</SelectItem>
                     ) : (
                       <>
-                        {/* Current user setting (always show this first) */}
-                        {(editingSettings?.chat_llm_model || editingSettings?.llm_model) && (
-                          <SelectItem key={`current-chat-${editingSettings.chat_llm_model || editingSettings.llm_model}`} value={String(editingSettings.chat_llm_model || editingSettings.llm_model)}>
-                            {String(editingSettings.chat_llm_model || editingSettings.llm_model)} (Current)
+                        {/* Current saved setting (only show "Current" for actually saved value) */}
+                        {(userSettings?.chat_llm_model || userSettings?.llm_model) && (
+                          <SelectItem key={`current-chat-${userSettings.chat_llm_model || userSettings.llm_model}`} value={String(userSettings.chat_llm_model || userSettings.llm_model)}>
+                            {String(userSettings.chat_llm_model || userSettings.llm_model)} (Current)
                           </SelectItem>
                         )}
                         
@@ -1190,7 +1190,7 @@ function AIModelsTab() {
                           <>
                             {/* Chat Models */}
                             {availableModels.models.chat_models?.filter((model: {model_name: string}) => 
-                              model.model_name !== (editingSettings?.chat_llm_model || editingSettings?.llm_model)
+                              model.model_name !== (userSettings?.chat_llm_model || userSettings?.llm_model)
                             ).map((model: {model_name: string}) => (
                               <SelectItem key={model.model_name} value={model.model_name}>
                                 {model.model_name}
@@ -1226,10 +1226,10 @@ function AIModelsTab() {
                       <SelectItem value="loading" disabled>Loading models...</SelectItem>
                     ) : (
                       <>
-                        {/* Current user setting (always show this first) */}
-                        {editingSettings?.memory_llm_model && (
-                          <SelectItem key={`current-memory-${editingSettings.memory_llm_model}`} value={String(editingSettings.memory_llm_model)}>
-                            {String(editingSettings.memory_llm_model)} (Current)
+                        {/* Current saved setting (only show "Current" for actually saved value) */}
+                        {userSettings?.memory_llm_model && (
+                          <SelectItem key={`current-memory-${userSettings.memory_llm_model}`} value={String(userSettings.memory_llm_model)}>
+                            {String(userSettings.memory_llm_model)} (Current)
                           </SelectItem>
                         )}
                         
@@ -1238,7 +1238,7 @@ function AIModelsTab() {
                           <>
                             {/* Chat Models (can be used for memory) */}
                             {availableModels.models.chat_models?.filter((model: {model_name: string}) => 
-                              model.model_name !== editingSettings?.memory_llm_model
+                              model.model_name !== userSettings?.memory_llm_model
                             ).map((model: {model_name: string}) => (
                               <SelectItem key={model.model_name} value={model.model_name}>
                                 {model.model_name}
@@ -1274,10 +1274,10 @@ function AIModelsTab() {
                       <SelectItem value="loading" disabled>Loading models...</SelectItem>
                     ) : (
                       <>
-                        {/* Current user setting (always show this first) */}
-                        {editingSettings?.memory_small_llm_model && (
-                          <SelectItem key={`current-memory-small-${editingSettings.memory_small_llm_model}`} value={String(editingSettings.memory_small_llm_model)}>
-                            {String(editingSettings.memory_small_llm_model)} (Current)
+                        {/* Current saved setting (only show "Current" for actually saved value) */}
+                        {userSettings?.memory_small_llm_model && (
+                          <SelectItem key={`current-memory-small-${userSettings.memory_small_llm_model}`} value={String(userSettings.memory_small_llm_model)}>
+                            {String(userSettings.memory_small_llm_model)} (Current)
                           </SelectItem>
                         )}
                         
@@ -1286,7 +1286,7 @@ function AIModelsTab() {
                           <>
                             {/* Chat Models (can be used for memory) */}
                             {availableModels.models.chat_models?.filter((model: {model_name: string}) => 
-                              model.model_name !== editingSettings?.memory_small_llm_model
+                              model.model_name !== userSettings?.memory_small_llm_model
                             ).map((model: {model_name: string}) => (
                               <SelectItem key={model.model_name} value={model.model_name}>
                                 {model.model_name}
@@ -1322,10 +1322,10 @@ function AIModelsTab() {
                       <SelectItem value="loading" disabled>Loading models...</SelectItem>
                     ) : (
                       <>
-                        {/* Current user setting (always show this first) */}
-                        {editingSettings?.embedding_model && (
-                          <SelectItem key={`current-embedding-${editingSettings.embedding_model}`} value={String(editingSettings.embedding_model)}>
-                            {String(editingSettings.embedding_model)} (Current)
+                        {/* Current saved setting (only show "Current" for actually saved value) */}
+                        {userSettings?.embedding_model && (
+                          <SelectItem key={`current-embedding-${userSettings.embedding_model}`} value={String(userSettings.embedding_model)}>
+                            {String(userSettings.embedding_model)} (Current)
                           </SelectItem>
                         )}
                         
@@ -1334,7 +1334,7 @@ function AIModelsTab() {
                           <>
                             {/* Embedding Models */}
                             {availableModels.models.embedding_models?.filter((model: {model_name: string}) => 
-                              model.model_name !== editingSettings?.embedding_model
+                              model.model_name !== userSettings?.embedding_model
                             ).map((model: {model_name: string}) => (
                               <SelectItem key={model.model_name} value={model.model_name}>
                                 {model.model_name}
