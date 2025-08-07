@@ -14,19 +14,29 @@ def get_litellm_config() -> Dict[str, str]:
     Get consolidated LiteLLM configuration from user settings and environment.
     Base URL from user settings (Tier 3), master key from environment (Tier 2).
     
+    Automatically resolves localhost URLs for Docker environments using 
+    host.docker.internal routing.
+    
     Returns:
         Dictionary with base_url and api_key
     """
     try:
         from database.database import UserSettingsService
+        from utils.docker_detection import resolve_docker_localhost_url
+        
         user_settings = UserSettingsService.get_user_settings_sync()
         base_url = (user_settings.litellm_base_url if user_settings and user_settings.litellm_base_url 
                    else settings.LITELLM_BASE_URL)
+        
+        # Resolve Docker networking for localhost URLs
+        resolved_url = resolve_docker_localhost_url(base_url)
+        
     except Exception:
-        base_url = settings.LITELLM_BASE_URL
+        from utils.docker_detection import resolve_docker_localhost_url
+        resolved_url = resolve_docker_localhost_url(settings.LITELLM_BASE_URL)
     
     return {
-        "base_url": base_url,
+        "base_url": resolved_url,
         "api_key": settings.LITELLM_MASTER_KEY
     }
 
