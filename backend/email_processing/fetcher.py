@@ -26,11 +26,7 @@ class EmailFetcher:
             List of email dictionaries
         """
         try:
-            # Check if email processing is enabled
-            if not settings.EMAIL_ENABLED:
-                logger.info("Email processing is disabled in global configuration")
-                return []
-            
+            # Check if email processing is enabled in user settings (Tier 3 configuration)
             if not user_settings.email_polling_enabled:
                 logger.info("Email polling is disabled in user settings")
                 return []
