@@ -236,7 +236,7 @@ class TestRealCalendarConflictE2E:
                             print(f"🔄 Task status after {elapsed_time}s: {current_task['status']}")
                             
                             # Check if task has been processed (status changed from NEW)
-                            if current_task['status'] in ['done', 'waiting_for_review', 'failed']:
+                            if current_task['status'] in ['done']:
                                 processed_task = current_task
                                 print(f"✅ Task processed! Final status: {current_task['status']}")
                                 break
