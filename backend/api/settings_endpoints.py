@@ -708,7 +708,7 @@ async def _validate_openrouter_api_key(db_session: AsyncSession, api_key: str, s
     try:
         # OpenRouter allows anyone to see models, so we need to test with a completion request
         test_payload = {
-            "model": "openrouter/horizon-beta",  # Free model for testing
+            "model": "openai/gpt-oss-20b:free",  # Free model for testing
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 1
         }

@@ -67,9 +67,36 @@ class LLMModelService:
     
     OPENROUTER_MODELS = [
         {
-            "model_name": "horizon-beta",
+            "model_name": "openai/gpt-oss-20b:free",
             "litellm_params": {
-                "model": "openrouter/openrouter/horizon-beta",
+                "model": "openrouter/openai/gpt-oss-20b:free",
+                "api_base": "https://openrouter.ai/api/v1",
+                "temperature": 0.7,
+                "max_tokens": 2048
+            }
+        },
+        {
+            "model_name": "z-ai/glm-4.5-air:free",
+            "litellm_params": {
+                "model": "openrouter/z-ai/glm-4.5-air:free",
+                "api_base": "https://openrouter.ai/api/v1",
+                "temperature": 0.7,
+                "max_tokens": 2048
+            }
+        },
+        {
+            "model_name": "moonshotai/kimi-k2:free",
+            "litellm_params": {
+                "model": "openrouter/moonshotai/kimi-k2:free",
+                "api_base": "https://openrouter.ai/api/v1",
+                "temperature": 0.7,
+                "max_tokens": 2048
+            }
+        },
+        {
+            "model_name": "mistralai/mistral-small-3.2-24b-instruct:free",
+            "litellm_params": {
+                "model": "openrouter/mistralai/mistral-small-3.2-24b-instruct:free",
                 "api_base": "https://openrouter.ai/api/v1",
                 "temperature": 0.7,
                 "max_tokens": 2048
