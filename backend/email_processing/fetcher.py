@@ -3,6 +3,8 @@ Email fetching and MCP communication for Nova.
 
 Handles all MCP tool interactions for email retrieval.
 """
+import os
+from contextlib import contextmanager
 from typing import List, Dict, Any
 from config import settings
 from mcp_client import mcp_manager
@@ -10,6 +12,28 @@ from models.user_settings import UserSettings
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+@contextmanager
+def disable_langsmith_tracing():
+    """
+    Temporarily disable LangSmith tracing to prevent email polling from polluting traces.
+    
+    Email fetching happens frequently via Celery and doesn't need to be traced.
+    """
+    # Store original value
+    original_tracing = os.environ.get("LANGCHAIN_TRACING_V2")
+    
+    try:
+        # Disable tracing
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+        yield
+    finally:
+        # Restore original value
+        if original_tracing is not None:
+            os.environ["LANGCHAIN_TRACING_V2"] = original_tracing
+        else:
+            os.environ.pop("LANGCHAIN_TRACING_V2", None)
 
 
 class EmailFetcher:
@@ -171,8 +195,9 @@ class EmailFetcher:
             mapped_kwargs[mapped_key] = param_value
         
         try:
-            # Call the tool with the mapped arguments
-            result = await tool.arun(mapped_kwargs)
+            # Call the tool with the mapped arguments (disable tracing to prevent LangSmith pollution)
+            with disable_langsmith_tracing():
+                result = await tool.arun(mapped_kwargs)
             
             # Parse the result if it's a string (some MCP tools return JSON strings)
             if isinstance(result, str):
