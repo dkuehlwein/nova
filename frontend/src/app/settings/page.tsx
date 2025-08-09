@@ -1168,7 +1168,7 @@ function AIModelsTab() {
               <Label>Chat Model</Label>
               {editingSettings ? (
                 <Select 
-                  value={String(editingSettings?.chat_llm_model || editingSettings?.llm_model || '')} 
+                  value={String(editingSettings?.chat_llm_model || '')} 
                   onValueChange={(value) => handleInputChange('chat_llm_model', value)}
                 >
                   <SelectTrigger>
@@ -1180,9 +1180,9 @@ function AIModelsTab() {
                     ) : (
                       <>
                         {/* Current saved setting (only show "Current" for actually saved value) */}
-                        {(userSettings?.chat_llm_model || userSettings?.llm_model) && (
-                          <SelectItem key={`current-chat-${userSettings.chat_llm_model || userSettings.llm_model}`} value={String(userSettings.chat_llm_model || userSettings.llm_model)}>
-                            {String(userSettings.chat_llm_model || userSettings.llm_model)} (Current)
+                        {userSettings?.chat_llm_model && (
+                          <SelectItem key={`current-chat-${userSettings.chat_llm_model}`} value={String(userSettings.chat_llm_model)}>
+                            {String(userSettings.chat_llm_model)} (Current)
                           </SelectItem>
                         )}
                         
@@ -1191,7 +1191,7 @@ function AIModelsTab() {
                           <>
                             {/* Chat Models */}
                             {availableModels.models.chat_models?.filter((model: {model_name: string}) => 
-                              model.model_name !== (userSettings?.chat_llm_model || userSettings?.llm_model)
+                              model.model_name !== userSettings?.chat_llm_model
                             ).map((model: {model_name: string}) => (
                               <SelectItem key={model.model_name} value={model.model_name}>
                                 {model.model_name}
@@ -1216,7 +1216,7 @@ function AIModelsTab() {
               <Label>Memory Model</Label>
               {editingSettings ? (
                 <Select 
-                  value={String(editingSettings?.memory_llm_model || editingSettings?.llm_model || '')} 
+                  value={String(editingSettings?.memory_llm_model || '')} 
                   onValueChange={(value) => handleInputChange('memory_llm_model', value)}
                 >
                   <SelectTrigger>
@@ -1264,7 +1264,7 @@ function AIModelsTab() {
               <Label>Memory Small Model</Label>
               {editingSettings ? (
                 <Select 
-                  value={String(editingSettings?.memory_small_llm_model || editingSettings?.memory_llm_model || '')} 
+                  value={String(editingSettings?.memory_small_llm_model || '')} 
                   onValueChange={(value) => handleInputChange('memory_small_llm_model', value)}
                 >
                   <SelectTrigger>

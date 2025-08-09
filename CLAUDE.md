@@ -193,18 +193,18 @@ Change the LLM model via API:
 curl -X PATCH "http://localhost:8000/api/user-settings/" \
   -H "Content-Type: application/json" \
   -d '{
-    "llm_model": "phi-4-Q4_K_M",
-    "llm_temperature": 0.1,
-    "llm_max_tokens": 2048
+    "chat_llm_model": "phi-4-Q4_K_M",
+    "chat_llm_temperature": 0.1,
+    "chat_llm_max_tokens": 2048
   }'
 
 # Update user settings to use SmolLM3-3B model
 curl -X PATCH "http://localhost:8000/api/user-settings/" \
   -H "Content-Type: application/json" \
   -d '{
-    "llm_model": "smollm3-3b-Q4_K_M",
-    "llm_temperature": 0.6,
-    "llm_max_tokens": 2048
+    "chat_llm_model": "smollm3-3b-Q4_K_M",
+    "chat_llm_temperature": 0.6,
+    "chat_llm_max_tokens": 2048
   }'
 ```
 

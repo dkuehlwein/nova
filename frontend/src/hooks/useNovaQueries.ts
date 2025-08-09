@@ -296,10 +296,6 @@ interface UserSettings {
   memory_llm_temperature: number
   memory_llm_max_tokens: number
   embedding_model: string
-  // Legacy field for backward compatibility during transition
-  llm_model?: string
-  llm_temperature?: number
-  llm_max_tokens?: number
 }
 
 export function useUserSettings() {
