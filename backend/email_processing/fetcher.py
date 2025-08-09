@@ -21,19 +21,33 @@ def disable_langsmith_tracing():
     
     Email fetching happens frequently via Celery and doesn't need to be traced.
     """
-    # Store original value
+    # Store original values
     original_tracing = os.environ.get("LANGCHAIN_TRACING_V2")
+    original_langsmith = os.environ.get("LANGSMITH_TRACING")
+    original_api_key = os.environ.get("LANGCHAIN_API_KEY")
     
     try:
-        # Disable tracing
+        # Disable tracing by setting invalid API key and disabling tracing
         os.environ["LANGCHAIN_TRACING_V2"] = "false"
+        os.environ["LANGSMITH_TRACING"] = "false"
+        os.environ["LANGCHAIN_API_KEY"] = "disabled-for-email-fetching"
         yield
     finally:
-        # Restore original value
+        # Restore original values
         if original_tracing is not None:
             os.environ["LANGCHAIN_TRACING_V2"] = original_tracing
         else:
             os.environ.pop("LANGCHAIN_TRACING_V2", None)
+            
+        if original_langsmith is not None:
+            os.environ["LANGSMITH_TRACING"] = original_langsmith
+        else:
+            os.environ.pop("LANGSMITH_TRACING", None)
+            
+        if original_api_key is not None:
+            os.environ["LANGCHAIN_API_KEY"] = original_api_key
+        else:
+            os.environ.pop("LANGCHAIN_API_KEY", None)
 
 
 class EmailFetcher:
