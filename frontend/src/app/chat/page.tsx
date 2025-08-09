@@ -595,7 +595,7 @@ function ChatPage() {
               <div className="flex items-center space-x-2">
                 {userSettings && (
                   <Badge variant="outline" className="text-xs">
-                    {userSettings.llm_model}
+                    {userSettings.chat_llm_model}
                   </Badge>
                 )}
                 {taskInfo && (
