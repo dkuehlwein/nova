@@ -163,27 +163,29 @@ class LLMModelService:
     
     # ============= LiteLLM API Operations =============
     
-    async def add_model_to_litellm(self, model_config: Dict) -> bool:
-        """Add a single model to LiteLLM via API, overwriting existing OpenRouter models."""
+    async def add_model_to_litellm(self, model_config: Dict) -> tuple[bool, bool]:
+        """
+        Add a single model to LiteLLM via API, skipping if it already exists.
+        
+        Returns:
+            (success: bool, was_added: bool) - success indicates model is available,
+            was_added indicates whether it was actually added (False if skipped)
+        """
         model_name = model_config['model_name']
         
         # Check if model already exists
         model_exists = await self._model_exists_in_litellm(model_name)
-        is_openrouter_model = model_config.get('litellm_params', {}).get('model', '').startswith('openrouter/')
         
-        if model_exists and is_openrouter_model:
-            logger.info(f"OpenRouter model {model_name} already exists - will overwrite with updated configuration")
-            # For OpenRouter models, we overwrite to ensure correct configuration
-        elif model_exists:
+        if model_exists:
             logger.info(f"Model {model_name} already exists in LiteLLM - skipping")
-            return True  # Return True since the model is available
+            return True, False  # Available but not added
         
         success, _ = await self._make_litellm_request("POST", "/model/new", model_config)
         if success:
             logger.info(f"Successfully added model {model_name} to LiteLLM")
         else:
             logger.error(f"Failed to add model {model_name} to LiteLLM")
-        return success
+        return success, success  # If successful, it was added
     
     async def _model_exists_in_litellm(self, model_name: str) -> bool:
         """Check if a model already exists in LiteLLM."""
@@ -191,7 +193,10 @@ class LLMModelService:
             success, result = await self._make_litellm_request("GET", "/models")
             if success and result:
                 existing_models = [model.get("id", "") for model in result.get("data", [])]
-                return model_name in existing_models
+                exists = model_name in existing_models
+                logger.debug(f"Model existence check for '{model_name}': {exists} (found {len(existing_models)} total models)")
+                return exists
+            logger.warning(f"Failed to get model list for existence check of {model_name}")
             return False
         except Exception as e:
             logger.warning(f"Failed to check if model {model_name} exists: {e}")
@@ -229,9 +234,12 @@ class LLMModelService:
             enhanced_config["litellm_params"]["api_key"] = google_api_key
             
             model_name = model_config["model_name"]
-            if await self.add_model_to_litellm(enhanced_config):
-                success_count += 1
-                logger.info(f"Added new model: {model_name}")
+            success, was_added = await self.add_model_to_litellm(enhanced_config)
+            if success:
+                if was_added:
+                    success_count += 1
+                    logger.info(f"Added new model: {model_name}")
+                # If not added, it already existed (logged by add_model_to_litellm)
         
         return success_count
     
@@ -256,9 +264,12 @@ class LLMModelService:
             enhanced_config["litellm_params"]["api_key"] = hf_token
             
             model_name = model_config["model_name"]
-            if await self.add_model_to_litellm(enhanced_config):
-                success_count += 1
-                logger.info(f"Added new model: {model_name}")
+            success, was_added = await self.add_model_to_litellm(enhanced_config)
+            if success:
+                if was_added:
+                    success_count += 1
+                    logger.info(f"Added new model: {model_name}")
+                # If not added, it already existed (logged by add_model_to_litellm)
         
         return success_count
     
@@ -283,9 +294,12 @@ class LLMModelService:
             enhanced_config["litellm_params"]["api_key"] = openrouter_api_key
             
             model_name = model_config["model_name"]
-            if await self.add_model_to_litellm(enhanced_config):
-                success_count += 1
-                logger.info(f"Added new model: {model_name}")
+            success, was_added = await self.add_model_to_litellm(enhanced_config)
+            if success:
+                if was_added:
+                    success_count += 1
+                    logger.info(f"Added new model: {model_name}")
+                # If not added, it already existed (logged by add_model_to_litellm)
         
         return success_count
     
