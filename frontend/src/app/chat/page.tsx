@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Send, AlertTriangle, MessageSquare, Bot, User, Loader2, StopCircle } from "lucide-react";
+import { Send, AlertTriangle, MessageSquare, Bot, Loader2, StopCircle, Copy, RotateCcw, Check, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -63,46 +63,20 @@ function ChatPage() {
   } = useChat();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const chatHistoryContainerRef = useRef<HTMLDivElement>(null);
-  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [ratedMessages, setRatedMessages] = useState<Record<string, 'up' | 'down'>>({});
   const { data: userSettings } = useUserSettings();
-
 
   // Memoize the stable data to prevent unnecessary re-renders
   const memoizedPendingDecisions = useMemo(() => pendingDecisions, [pendingDecisions]);
   const memoizedChatHistory = useMemo(() => chatHistory, [chatHistory]);
 
-  // Simple scroll logic for chat switching
+  // Simple autoscroll effect - scroll to bottom when messages change
   useEffect(() => {
-    if (!messagesContainerRef.current || !messagesEndRef.current) {
-      return;
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-
-    if (!currentChatId) {
-      return;
-    }
-
-    // Check if this is a new chat with messages
-    if (messages.length > 0) {
-      // Force scroll to bottom - ensure it's instant and not animated
-      setTimeout(() => {
-        if (messagesContainerRef.current) {
-          // Temporarily disable smooth scrolling
-          const container = messagesContainerRef.current;
-          const originalScrollBehavior = container.style.scrollBehavior;
-          container.style.scrollBehavior = 'auto';
-          
-          // Force immediate scroll to bottom
-          container.scrollTo({
-            top: container.scrollHeight,
-            behavior: 'auto'
-          });
-          
-          // Restore original scroll behavior
-          container.style.scrollBehavior = originalScrollBehavior;
-        }
-      }, 0);
-    }
-  }, [messages, currentChatId, taskInfo]);
+  }, [messages, isLoading]);
 
   // Load more chats
   const loadMoreChats = useCallback(async () => {
@@ -288,9 +262,6 @@ function ChatPage() {
   }, [memoizedChatHistory]);
 
   const handleChatSelect = useCallback(async (chatItem: ChatHistoryItem) => {
-    // Clear current chat ID while loading to prevent premature scrolling
-    setCurrentChatId(null);
-    
     try {
       if (chatItem.task_id) {
         // Task-specific chat
@@ -301,9 +272,6 @@ function ChatPage() {
         setTaskInfo(null);
         await loadChat(chatItem.id);
       }
-      
-      // Set the current chat ID only AFTER messages are loaded
-      setCurrentChatId(chatItem.id);
     } catch (error) {
       console.error('Failed to load chat:', error);
       // Fallback: set a message to continue the conversation
@@ -314,6 +282,42 @@ function ChatPage() {
       }
     }
   }, [loadChat, loadTaskChat]);
+
+  // Handle copy message
+  const handleCopyMessage = useCallback(async (messageId: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy message:', err);
+    }
+  }, []);
+
+  // Handle regenerate message
+  const handleRegenerateMessage = useCallback(async (messageIndex: number) => {
+    if (messageIndex === 0) return; // Can't regenerate if no previous user message
+    
+    // Find the user message that prompted this response
+    const userMessage = messages[messageIndex - 1];
+    if (userMessage && userMessage.role === 'user') {
+      await sendMessage(userMessage.content, true);
+    }
+  }, [messages, sendMessage]);
+
+  // Handle rating messages
+  const handleRateMessage = useCallback((messageId: string, rating: 'up' | 'down') => {
+    setRatedMessages(prev => {
+      const newRatings = { ...prev };
+      if (prev[messageId] === rating) {
+        delete newRatings[messageId];
+      } else {
+        newRatings[messageId] = rating;
+      }
+      return newRatings;
+    });
+    // TODO: Send rating to backend for analytics
+  }, []);
 
   const renderMessage = useCallback((msg: ChatMessage) => {
     // Handle system messages separately
@@ -349,57 +353,110 @@ function ChatPage() {
     }
 
     // Handle regular user/assistant messages
+    const messageIndex = messages.findIndex(m => m.id === msg.id);
+    
     return (
       <div
         key={msg.id}
-        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} mb-4`}
+        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} mb-6 group`}
       >
         <div
-          className={`max-w-[80%] min-w-[200px] ${
+          className={`max-w-[85%] min-w-[250px] ${
             msg.role === "user"
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted border"
-          } rounded-lg p-4`}
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "bg-card border shadow-sm"
+          } rounded-xl p-4 pb-8 relative transition-shadow hover:shadow-md`}
         >
-          <div className="flex items-start space-x-3">
-            <div className="flex-shrink-0">
-              {msg.role === "assistant" ? (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-                  <Bot className="h-4 w-4 text-white" />
-                </div>
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
-                  <User className="h-4 w-4 text-white" />
-                </div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm font-semibold">
+                {msg.role === "assistant" ? "Nova" : "You"}
+              </span>
+              {msg.isStreaming && (
+                <Loader2 className="h-3 w-3 animate-spin opacity-60" />
               )}
             </div>
-            
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center space-x-2 mb-1">
-                <span className="text-sm font-medium">
-                  {msg.role === "assistant" ? "Nova" : "You"}
-                </span>
-                <span className="text-xs opacity-60">
-                  {formatTimestamp(msg.timestamp)}
-                </span>
-                {msg.isStreaming && (
-                  <Loader2 className="h-3 w-3 animate-spin opacity-60" />
-                )}
-              </div>
-              
-              <div className="text-sm break-words min-h-[1.25rem]">
-                {msg.content || msg.toolCalls ? (
-                  <MarkdownMessage content={msg.content || ''} toolCalls={msg.toolCalls} />
-                ) : (msg.isStreaming ? (
-                  <span className="opacity-60">Thinking...</span>
-                ) : '')}
-              </div>
-            </div>
+            <span className="text-xs text-muted-foreground">
+              {formatTimestamp(msg.timestamp)}
+            </span>
           </div>
+          
+          <div className="text-sm break-words min-h-[1.25rem]">
+            {msg.content || msg.toolCalls ? (
+              <MarkdownMessage content={msg.content || ''} toolCalls={msg.toolCalls} />
+            ) : (msg.isStreaming ? (
+              <div className="flex items-center space-x-2 opacity-60">
+                <div className="flex space-x-1">
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce"></div>
+                </div>
+                <span>Nova is thinking...</span>
+              </div>
+            ) : '')}
+          </div>
+          
+          {/* Message Actions - Positioned in the bottom padding area */}
+          {!msg.isStreaming && msg.content && (
+            <div className="absolute bottom-2 right-2 flex items-center space-x-1 bg-background/90 backdrop-blur-sm border border-border/50 rounded-lg px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-1.5 text-xs hover:bg-muted"
+                onClick={() => handleCopyMessage(msg.id, msg.content)}
+                disabled={copiedMessageId === msg.id}
+              >
+                {copiedMessageId === msg.id ? (
+                  <Check className="h-3 w-3" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+              </Button>
+              
+              {msg.role === "assistant" && messageIndex > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-1.5 text-xs hover:bg-muted"
+                  onClick={() => handleRegenerateMessage(messageIndex)}
+                  disabled={isLoading}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </Button>
+              )}
+              
+              {/* Rating buttons for assistant messages */}
+              {msg.role === "assistant" && (
+                <>
+                  <div className="w-px h-4 bg-border mx-1" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-6 px-1.5 text-xs hover:bg-muted ${
+                      ratedMessages[msg.id] === 'up' ? 'text-green-600' : ''
+                    }`}
+                    onClick={() => handleRateMessage(msg.id, 'up')}
+                  >
+                    <ThumbsUp className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-6 px-1.5 text-xs hover:bg-muted ${
+                      ratedMessages[msg.id] === 'down' ? 'text-red-600' : ''
+                    }`}
+                    onClick={() => handleRateMessage(msg.id, 'down')}
+                  >
+                    <ThumbsDown className="h-3 w-3" />
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
-  }, [formatTimestamp]);
+  }, [formatTimestamp, handleCopyMessage, handleRegenerateMessage, handleRateMessage, messages, copiedMessageId, isLoading, ratedMessages]);
 
   return (
     <div className="chat-page bg-background">
@@ -429,7 +486,6 @@ function ChatPage() {
                 variant="outline" 
                 size="sm" 
                 onClick={() => {
-                  setCurrentChatId(null);
                   clearChat();
                 }}
                 className="w-full"
