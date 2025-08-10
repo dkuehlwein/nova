@@ -33,11 +33,12 @@ CURRENT_TASK_TEMPLATE = """**Current Task:**
 {description}"""
 
 # Function to get the current system prompt (for dynamic reloading)
-async def get_nova_system_prompt(use_cache: bool = True) -> str:
+async def get_nova_system_prompt(use_cache: bool = False) -> str:
     """Get the current Nova system prompt with live reload support.
     
     Args:
         use_cache: If True, use cached prompt; if False, reload from file
+        Default is False to ensure current time is always fresh
     """
     global NOVA_SYSTEM_PROMPT
     
