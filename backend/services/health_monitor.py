@@ -51,10 +51,10 @@ class HealthMonitorService:
             "essential": True,  # Critical infrastructure
             "endpoint": "internal"
         },
-        "llamacpp": {
+        "ai_models": {
             "type": "infrastructure",
-            "essential": True,  # Required for local AI inference
-            "endpoint": f"http://{'nova-llamacpp-1' if settings.POSTGRES_HOST != 'localhost' else 'localhost'}:8080/health"
+            "essential": True,  # Required for AI functionality (chat + memory)
+            "endpoint": "model_availability"  # Special endpoint type for model availability check
         },
         "litellm": {
             "type": "infrastructure",
@@ -144,6 +144,9 @@ class HealthMonitorService:
             elif config["endpoint"] == "internal":
                 # Handle internal services (database, redis, neo4j)
                 tasks.append(self._check_internal_service(service_name, config))
+            elif config["endpoint"] == "model_availability":
+                # Handle AI model availability check
+                tasks.append(self._check_ai_model_availability(service_name, config))
             else:
                 # HTTP endpoint check
                 tasks.append(self._check_http_service(service_name, config))
@@ -251,6 +254,72 @@ class HealthMonitorService:
                 response_time_ms=response_time_ms,
                 error_message=str(e),
                 metadata={"type": "internal"}
+            )
+            return False
+    
+    async def _check_ai_model_availability(self, service_name: str, config: Dict) -> bool:
+        """Check AI model availability via existing LLM service (chat + embedding models)."""
+        start_time = time.time()
+        
+        try:
+            # Import here to avoid circular imports
+            from services.llm_service import llm_service
+            
+            # Get available models using existing service
+            available_models = await llm_service.get_available_models()
+            
+            chat_models = available_models.get("chat_models", [])
+            embedding_models = available_models.get("embedding_models", [])
+            all_models = available_models.get("all_models", [])
+            
+            chat_count = len(chat_models)
+            embedding_count = len(embedding_models)
+            total_count = len(all_models)
+            
+            response_time_ms = int((time.time() - start_time) * 1000)
+            
+            # Determine status based on model availability (binary: healthy or unhealthy)
+            if chat_count > 0 and embedding_count > 0:
+                status = "healthy"
+                message = f"Both chat and embedding models available"
+            else:
+                status = "unhealthy"
+                if chat_count == 0 and embedding_count == 0:
+                    message = "No AI models available - check API keys"
+                elif chat_count == 0:
+                    message = f"Chat models unavailable (have {embedding_count} embedding models)"
+                else:
+                    message = f"Embedding models unavailable (have {chat_count} chat models)"
+            
+            # Cache the status with detailed metadata
+            await self._cache_health_status(
+                service_name=service_name,
+                status=status,
+                response_time_ms=response_time_ms,
+                metadata={
+                    "chat_models_count": chat_count,
+                    "embedding_models_count": embedding_count,
+                    "total_models_count": total_count,
+                    "chat_models": [m.get("model_name", "") for m in chat_models],
+                    "embedding_models": [m.get("model_name", "") for m in embedding_models],
+                    "message": message,
+                    "type": "ai_models"
+                }
+            )
+            
+            return status == "healthy"
+            
+        except Exception as e:
+            response_time_ms = int((time.time() - start_time) * 1000)
+            await self._cache_health_status(
+                service_name=service_name,
+                status="unhealthy",
+                response_time_ms=response_time_ms,
+                error_message=str(e),
+                metadata={
+                    "type": "ai_models",
+                    "message": "Failed to check model availability"
+                }
             )
             return False
     

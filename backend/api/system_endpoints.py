@@ -33,7 +33,7 @@ ALLOWED_SERVICES = {
 
 
 @router.post("/restart/{service_name}", response_model=ServiceRestartResponse)
-async def restart_service(service_name: str, request: ServiceRestartRequest = ServiceRestartRequest()):
+async def restart_service(service_name: str):
     """
     Restart a specific service using docker-compose.
     
@@ -42,7 +42,6 @@ async def restart_service(service_name: str, request: ServiceRestartRequest = Se
     
     Args:
         service_name: Name of the service to restart (must be in ALLOWED_SERVICES)
-        request: Optional request parameters (currently unused)
     
     Returns:
         ServiceRestartResponse with operation details and output
@@ -253,6 +252,9 @@ async def get_service_status(
             if config["endpoint"] == "cached":
                 # For cached services, we can't force refresh here
                 pass
+            elif config["endpoint"] == "model_availability":
+                # AI model availability - trigger individual check
+                await health_monitor._check_ai_model_availability(service_name, config)
             elif config["endpoint"] != "dynamic" and config["endpoint"] != "internal":
                 # HTTP service - trigger individual check
                 await health_monitor._check_http_service(service_name, config)

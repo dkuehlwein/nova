@@ -15,6 +15,11 @@ import {
   formatResponseTime,
   type ServiceStatus 
 } from "@/lib/status-utils";
+import { 
+  getServiceDisplayName, 
+  getAIModelFeatures, 
+  getAIModelMessage 
+} from "@/lib/service-utils";
 
 interface StatusIndicatorProps {
   status: string;
@@ -24,7 +29,6 @@ interface StatusIndicatorProps {
   features?: string[];
   lastCheck?: string;
   errorMessage?: string;
-  essential?: boolean;
   showDetails?: boolean;
   size?: "sm" | "md" | "lg";
   layout?: "horizontal" | "vertical";
@@ -39,7 +43,6 @@ export function StatusIndicator({
   features, 
   lastCheck,
   errorMessage,
-  essential = false,
   showDetails = true,
   size = "md",
   layout = "horizontal",
@@ -104,34 +107,13 @@ export function StatusIndicator({
           
           {service && (
             <div className={isVertical ? "text-center" : ""}>
-              <h3 className={config.title}>{service}</h3>
+              <h3 className={config.title}>{getServiceDisplayName(service)}</h3>
               
-              {showDetails && (
-                <div className={cn(
-                  "flex flex-wrap gap-1 mt-1",
-                  isVertical ? "justify-center" : ""
-                )}>
-                  {/* Service Type Badge */}
-                  {serviceType && (
-                    <Badge variant="outline" className="text-xs">
-                      {serviceType}
-                    </Badge>
-                  )}
-                  
-                  {/* Essential Badge */}
-                  {essential && (
-                    <Badge variant="destructive" className="text-xs">
-                      Essential
-                    </Badge>
-                  )}
-                  
-                  {/* Last Check Time */}
-                  {lastCheck && (
-                    <p className={cn("text-muted-foreground", config.subtitle)}>
-                      Last check: {formatRelativeTime(lastCheck)}
-                    </p>
-                  )}
-                </div>
+              {/* Last Check Time */}
+              {showDetails && lastCheck && (
+                <p className={cn("text-muted-foreground mt-1", config.subtitle)}>
+                  Last check: {formatRelativeTime(lastCheck)}
+                </p>
               )}
             </div>
           )}
@@ -157,10 +139,12 @@ export function StatusIndicator({
               </Badge>
             )}
             
-            {/* Status Badge */}
-            <Badge variant={theme.badgeVariant} className="text-xs">
-              {theme.description}
-            </Badge>
+            {/* Status Badge - only show for non-healthy states */}
+            {status !== "healthy" && status !== "operational" && (
+              <Badge variant={theme.badgeVariant} className="text-xs">
+                {theme.description}
+              </Badge>
+            )}
           </div>
         )}
       </div>
@@ -205,7 +189,7 @@ export function StatusIndicatorCompact({
       />
       {showText && (
         <span className="text-sm font-medium">
-          {service ? `${service}: ${theme.description}` : theme.description}
+          {service ? `${getServiceDisplayName(service)}: ${theme.description}` : theme.description}
         </span>
       )}
     </div>
@@ -226,19 +210,33 @@ export function ServiceStatusIndicator({
   size?: "sm" | "md" | "lg";
   className?: string;
 }) {
+  // Use utilities to extract AI model information if available
+  const isAIModels = service.name === "ai_models";
+  const aiFeatures = isAIModels ? getAIModelFeatures(service.metadata) : null;
+  const aiMessage = isAIModels ? getAIModelMessage(service.metadata) : null;
+  
+  const features = aiFeatures || service.features_available;
+  
   return (
-    <StatusIndicator
-      status={service.status}
-      service={service.name}
-      serviceType={service.type}
-      responseTime={service.response_time_ms}
-      features={service.features_available}
-      lastCheck={service.last_check}
-      errorMessage={service.error_message}
-      essential={service.essential}
-      showDetails={showDetails}
-      size={size}
-      className={className}
-    />
+    <div className={className}>
+      <StatusIndicator
+        status={service.status}
+        service={service.name}
+        serviceType={service.type}
+        responseTime={service.response_time_ms}
+        features={features}
+        lastCheck={service.last_check}
+        errorMessage={service.error_message}
+        showDetails={showDetails}
+        size={size}
+      />
+      
+      {/* AI Models specific information */}
+      {isAIModels && showDetails && aiMessage && (
+        <div className="mt-2 p-2 bg-muted rounded text-sm text-muted-foreground">
+          {aiMessage}
+        </div>
+      )}
+    </div>
   );
 }

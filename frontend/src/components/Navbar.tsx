@@ -178,12 +178,42 @@ export default function Navbar() {
           <Link 
             href="/settings?tab=system-status" 
             className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
-            title={systemStatus?.summary?.top_issues?.join(", ") || "View system status"}
+            title={(() => {
+              if (!systemStatus) return "View system status";
+              
+              // Check if AI models are in the issues
+              const aiIssues = systemStatus.summary.top_issues?.includes("ai_models");
+              const topIssues = systemStatus.summary.top_issues || [];
+              
+              if (aiIssues) {
+                // Find AI models service to get specific details
+                const aiService = [...systemStatus.core_services, ...systemStatus.infrastructure_services]
+                  .find(s => s.name === "ai_models");
+                
+                if (aiService?.metadata) {
+                  const metadata = aiService.metadata as any;
+                  const chatCount = metadata.chat_models_count || 0;
+                  const embeddingCount = metadata.embedding_models_count || 0;
+                  
+                  if (chatCount === 0 && embeddingCount === 0) {
+                    return "AI models unavailable - check API keys in Settings → AI Models";
+                  } else if (chatCount === 0) {
+                    return "Chat AI unavailable - check API keys for conversation models";
+                  } else if (embeddingCount === 0) {
+                    return "Memory AI unavailable - check API keys for embedding models";
+                  } else {
+                    return `AI partially available: ${chatCount} chat, ${embeddingCount} embedding models`;
+                  }
+                }
+                return "AI models issues - check Settings → AI Models";
+              }
+              
+              return topIssues.length > 0 ? topIssues.join(", ") : "All systems operational";
+            })()}
           >
             <StatusIndicatorCompact
               status={systemStatus?.overall_status || (healthLoading ? "loading" : "unknown")}
-              service={systemStatus ? `${systemStatus.summary.healthy_services}/${systemStatus.summary.total_services} healthy` : "System Status"}
-              showText={true}
+              showText={false}
               className="text-sm font-medium"
             />
             
@@ -191,7 +221,7 @@ export default function Navbar() {
             {systemStatus && systemStatus.overall_status !== "loading" && (
               <Badge 
                 variant={systemStatus.overall_status === "operational" ? "default" : "destructive"}
-                className="text-xs ml-2"
+                className="text-xs"
               >
                 {systemStatus.overall_health_percentage.toFixed(0)}%
               </Badge>

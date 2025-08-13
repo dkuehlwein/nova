@@ -189,9 +189,14 @@ function MCPServersTab() {
 function SystemStatusTab() {
   const { data: systemStatus, error: systemError } = useSystemStatusPage();
   const refreshMutation = useRefreshAllServices();
+  const router = useRouter();
 
   const handleRefreshAll = () => {
     refreshMutation.mutate();
+  };
+
+  const handleNavigateToAIModels = () => {
+    router.push('/settings?tab=ai-models');
   };
 
   if (systemError) {
@@ -250,43 +255,22 @@ function SystemStatusTab() {
           </div>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* LiteLLM Admin UI */}
-          <div className="flex items-center justify-between p-3 border border-border rounded-lg">
-            <div className="flex items-center space-x-2">
-              <Brain className="h-4 w-4 text-primary" />
-              <div>
-                <span className="text-sm font-medium text-foreground">LiteLLM Admin UI</span>
-                <p className="text-xs text-muted-foreground">Monitor LLM usage and costs</p>
-              </div>
+        {/* LiteLLM Admin UI */}
+        <div className="flex items-center justify-between p-3 border border-border rounded-lg">
+          <div className="flex items-center space-x-2">
+            <Brain className="h-4 w-4 text-primary" />
+            <div>
+              <span className="text-sm font-medium text-foreground">LiteLLM Admin UI</span>
+              <p className="text-xs text-muted-foreground">Monitor LLM usage and costs</p>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => window.open('http://localhost:4000', '_blank')}
-            >
-              Open UI
-            </Button>
           </div>
-
-          {/* Refresh All Services */}
-          <div className="flex items-center justify-between p-3 border border-border rounded-lg">
-            <div className="flex items-center space-x-2">
-              <Server className="h-4 w-4 text-primary" />
-              <div>
-                <span className="text-sm font-medium text-foreground">Refresh All Services</span>
-                <p className="text-xs text-muted-foreground">Force health check update</p>
-              </div>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleRefreshAll}
-              disabled={refreshMutation.isPending}
-            >
-              {refreshMutation.isPending ? "Refreshing..." : "Refresh"}
-            </Button>
-          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => window.open('http://localhost:4000', '_blank')}
+          >
+            Open UI
+          </Button>
         </div>
       </div>
     </div>
