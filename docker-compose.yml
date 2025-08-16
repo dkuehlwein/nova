@@ -328,8 +328,8 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
     volumes:
-      - ./mcp_servers/google-workspace/token.json:/app/token.json
-      - ./mcp_servers/google-workspace/credentials.json:/app/credentials.json:ro
+      # Mount credentials directory instead of individual files
+      - ./mcp_servers/google-workspace/credentials:/app/credentials
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

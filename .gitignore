@@ -224,6 +224,8 @@ mcp_servers/gmail/credentials.json
 # Nova backup files
 *.bak
 **/backups/
+# Google Workspace MCP Server credentials (now in credentials/ directory)
+mcp_servers/google-workspace/credentials/
 mcp_servers/google-workspace/token.json
 mcp_servers/google-workspace/credentials.json
 
