@@ -8,25 +8,23 @@ when she encounters limitations or needs new capabilities.
 
 import os
 from dotenv import load_dotenv
-import google.generativeai as genai
 from fastmcp import FastMCP
 
 from src.linear_client import LinearClient
 from src.feature_analyzer import FeatureRequestAnalyzer
 from src.mcp_tools import create_request_feature_tool
+from src.llm_factory import validate_configuration
 
 # Load environment variables
 load_dotenv()
 
 # Configuration
 LINEAR_API_KEY = os.getenv("LINEAR_API_KEY")
-GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY") 
 LINEAR_API_URL = os.getenv("LINEAR_API_URL", "https://api.linear.app/graphql")
-GOOGLE_MODEL_NAME = "gemini-2.5-flash"
+ANALYZER_MODEL_NAME = os.getenv("ANALYZER_MODEL_NAME", "gemini-2.5-flash")
 
-# Configure Gemini
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+# Validate LiteLLM configuration
+litellm_config = validate_configuration()
 
 # Initialize FastMCP server
 mcp = FastMCP(name="FeatureRequestServer")
@@ -35,9 +33,9 @@ mcp = FastMCP(name="FeatureRequestServer")
 linear_client = None
 analyzer = None
 
-if LINEAR_API_KEY and GEMINI_API_KEY:
+if LINEAR_API_KEY and litellm_config["valid"]:
     linear_client = LinearClient(LINEAR_API_KEY, LINEAR_API_URL)
-    analyzer = FeatureRequestAnalyzer(GOOGLE_MODEL_NAME)
+    analyzer = FeatureRequestAnalyzer(ANALYZER_MODEL_NAME)
 
 # Register the request_feature tool
 request_feature = create_request_feature_tool(mcp, linear_client, analyzer)
@@ -55,10 +53,23 @@ if __name__ == "__main__":
     print(f"Starting Feature Request MCP server on http://{args.host}:{args.port}")
     print(f"MCP endpoint: http://{args.host}:{args.port}/mcp")
     
+    # Configuration status
     if not LINEAR_API_KEY:
         print("WARNING: LINEAR_API_KEY not configured")
-    if not GEMINI_API_KEY:
-        print("WARNING: GOOGLE_API_KEY not configured")
+    else:
+        print("✅ Linear API configured")
+    
+    if not litellm_config["valid"]:
+        print(f"❌ LiteLLM configuration FAILED: {litellm_config.get('error', 'Unknown error')}")
+        print("🔧 To fix this:")
+        print("   1. Generate a virtual key: python scripts/generate_feature_request_key.py")
+        print("   2. Set FEATURE_REQUEST_LITELLM_KEY in your environment")
+        print("   3. Restart the service")
+        print("\n⚠️  Service will not function without a dedicated virtual key!")
+    else:
+        print(f"✅ LiteLLM configured: {litellm_config['base_url']}")
+        print(f"🔒 Using dedicated service API key: {litellm_config.get('service_key_prefix', 'unknown')}")
+        print(f"📊 Available models: {', '.join(litellm_config['available_models'])}")
     
     # Run the server
     mcp.run(transport="streamable-http", host=args.host, port=args.port, path="/mcp") 

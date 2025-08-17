@@ -347,6 +347,13 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=8000
+      - LITELLM_BASE_URL=http://litellm:4000
+      - FEATURE_REQUEST_LITELLM_KEY=${FEATURE_REQUEST_LITELLM_KEY:-}
+      - LINEAR_API_KEY=${LINEAR_API_KEY:-}
+      - ANALYZER_MODEL_NAME=${ANALYZER_MODEL_NAME:-gemini-2.5-flash}
+    depends_on:
+      litellm:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

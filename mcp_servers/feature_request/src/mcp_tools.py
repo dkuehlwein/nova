@@ -27,7 +27,7 @@ async def request_feature_impl(
         return {
             "success": False,
             "error": "Feature request system not configured - missing API keys",
-            "message": "Please configure LINEAR_API_KEY and GOOGLE_API_KEY environment variables"
+            "message": "Please configure LINEAR_API_KEY and ensure FEATURE_REQUEST_LITELLM_KEY is set with a valid virtual key"
         }
     
     try:

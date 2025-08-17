@@ -14,9 +14,15 @@ general_settings:
   # Enable UI for monitoring
   ui_access_mode: "admin_only"
   
-  # Disable database persistence to prevent duplicate accumulation
-  # Models are managed dynamically by Nova's LLM service
-  store_model_in_db: false
+  # Enable database persistence for virtual key management
+  # Required for proper service authentication and spend tracking
+  store_model_in_db: true
+  
+  # Enable virtual key management for service authentication
+  enable_key_management: true
+  
+  # Database URL for virtual key storage (set via environment)
+  database_url: null  # Set via DATABASE_URL environment variable
   
   # Default model fallback strategy (updated dynamically when Gemini models are available)
   fallbacks:
