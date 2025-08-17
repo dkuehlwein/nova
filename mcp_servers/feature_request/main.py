@@ -36,6 +36,13 @@ analyzer = None
 if LINEAR_API_KEY and litellm_config["valid"]:
     linear_client = LinearClient(LINEAR_API_KEY, LINEAR_API_URL)
     analyzer = FeatureRequestAnalyzer(ANALYZER_MODEL_NAME)
+    print("✅ Feature request system fully configured and ready")
+else:
+    print("⚠️  Feature request system partially configured:")
+    if not LINEAR_API_KEY:
+        print("   - Missing Linear API key (service will not function)")
+    if not litellm_config["valid"]:
+        print("   - Invalid LiteLLM configuration (AI analysis will not work)")
 
 # Register the request_feature tool
 request_feature = create_request_feature_tool(mcp, linear_client, analyzer)
@@ -55,7 +62,8 @@ if __name__ == "__main__":
     
     # Configuration status
     if not LINEAR_API_KEY:
-        print("WARNING: LINEAR_API_KEY not configured")
+        print("❌ LINEAR_API_KEY not configured - REQUIRED for feature request functionality")
+        print("   Without Linear API access, the service cannot create or update issues")
     else:
         print("✅ Linear API configured")
     

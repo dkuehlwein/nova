@@ -24,12 +24,19 @@ from src.feature_analyzer import FeatureRequestAnalyzer
 from src.mcp_tools import request_feature_impl
 from src.llm_factory import validate_configuration
 
-# Load environment variables from project root
+# Load environment variables from feature_request service directory
 from pathlib import Path
-project_root = Path(__file__).parent.parent.parent
-env_path = project_root / '.env'
-load_dotenv(env_path)
+service_root = Path(__file__).parent
+env_path = service_root / '.env'
+loaded = load_dotenv(env_path)
 print(f"📁 Loading environment from: {env_path}")
+print(f"📋 Environment loaded successfully: {loaded}")
+
+# Debug: Check if .env file exists
+if env_path.exists():
+    print(f"✅ .env file exists ({env_path.stat().st_size} bytes)")
+else:
+    print(f"❌ .env file not found at: {env_path}")
 
 async def test_litellm_security():
     """Test LiteLLM virtual key security and configuration."""
@@ -89,10 +96,17 @@ async def test_linear_integration():
     # Check API keys
     linear_api_key = os.getenv("LINEAR_API_KEY")
     
-    if not linear_api_key:
-        print("⚠️  LINEAR_API_KEY not found - skipping Linear API tests")
-        print("   (This is optional - Linear integration requires a valid API key)")
-        return True  # Return True since this is optional
+    if not linear_api_key or linear_api_key.strip() == "":
+        print("❌ LINEAR_API_KEY not configured or empty")
+        print("   This is REQUIRED - the feature request system cannot function without Linear API access")
+        print("   The service can authenticate with LiteLLM but cannot create or update issues")
+        print(f"   Current value: '{linear_api_key}' (from environment)")
+        print("\n🔧 To get a Linear API key:")
+        print("   1. Go to https://linear.app/settings/api")
+        print("   2. Create a new API key")
+        print("   3. Set LINEAR_API_KEY=your_key_here in .env")
+        print("   4. Restart the test")
+        return False
     
     print("✅ Linear API key found")
     
@@ -227,11 +241,13 @@ async def main():
     else:
         print("❌ Some integration tests FAILED. Check the errors above.")
         print("\n🔧 Troubleshooting:")
-        print("   1. Verify FEATURE_REQUEST_LITELLM_KEY is set and valid")
-        print("   2. Verify LINEAR_API_KEY is valid")  
-        print("   3. Check LiteLLM service is running (port 4000)")
-        print("   4. Check Linear workspace permissions")
-        print("   5. Ensure internet connectivity")
+        print("   1. Generate virtual key: python scripts/generate_feature_request_key.py")
+        print("   2. Set FEATURE_REQUEST_LITELLM_KEY in environment")
+        print("   3. Set LINEAR_API_KEY with valid Linear API token")  
+        print("   4. Check LiteLLM service is running (port 4000)")
+        print("   5. Check Linear workspace permissions")
+        print("   6. Ensure internet connectivity")
+        print("\n❗ Both LiteLLM virtual key AND Linear API key are REQUIRED")
     
     return total_passed == total_tests
 
