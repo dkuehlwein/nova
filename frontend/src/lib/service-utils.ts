@@ -25,11 +25,11 @@ export function getServiceDisplayName(serviceName: string): string {
 /**
  * Extract AI model features from service metadata
  */
-export function getAIModelFeatures(metadata: any): string[] | null {
+export function getAIModelFeatures(metadata: Record<string, unknown> | undefined): string[] | null {
   if (!metadata) return null;
   
-  const chatCount = metadata.chat_models_count || 0;
-  const embeddingCount = metadata.embedding_models_count || 0;
+  const chatCount = (metadata.chat_models_count as number) || 0;
+  const embeddingCount = (metadata.embedding_models_count as number) || 0;
   
   return [
     `${chatCount} chat model${chatCount !== 1 ? 's' : ''}`,
@@ -40,6 +40,6 @@ export function getAIModelFeatures(metadata: any): string[] | null {
 /**
  * Get AI model status message from metadata
  */
-export function getAIModelMessage(metadata: any): string | null {
-  return metadata?.message || null;
+export function getAIModelMessage(metadata: Record<string, unknown> | undefined): string | null {
+  return (metadata?.message as string) || null;
 }

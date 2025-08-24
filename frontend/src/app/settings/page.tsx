@@ -189,15 +189,11 @@ function MCPServersTab() {
 function SystemStatusTab() {
   const { data: systemStatus, error: systemError } = useSystemStatusPage();
   const refreshMutation = useRefreshAllServices();
-  const router = useRouter();
 
   const handleRefreshAll = () => {
     refreshMutation.mutate();
   };
 
-  const handleNavigateToAIModels = () => {
-    router.push('/settings?tab=ai-models');
-  };
 
   if (systemError) {
     return (

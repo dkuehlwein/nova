@@ -24,7 +24,6 @@ import {
 interface StatusIndicatorProps {
   status: string;
   service?: string;
-  serviceType?: "core" | "infrastructure" | "external";
   responseTime?: number;
   features?: string[];
   lastCheck?: string;
@@ -38,7 +37,6 @@ interface StatusIndicatorProps {
 export function StatusIndicator({ 
   status, 
   service, 
-  serviceType,
   responseTime, 
   features, 
   lastCheck,
@@ -222,7 +220,6 @@ export function ServiceStatusIndicator({
       <StatusIndicator
         status={service.status}
         service={service.name}
-        serviceType={service.type}
         responseTime={service.response_time_ms}
         features={features}
         lastCheck={service.last_check}

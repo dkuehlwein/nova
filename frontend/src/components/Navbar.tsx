@@ -191,7 +191,7 @@ export default function Navbar() {
                   .find(s => s.name === "ai_models");
                 
                 if (aiService?.metadata) {
-                  const metadata = aiService.metadata as any;
+                  const metadata = aiService.metadata as { chat_models_count?: number; embedding_models_count?: number; [key: string]: unknown };
                   const chatCount = metadata.chat_models_count || 0;
                   const embeddingCount = metadata.embedding_models_count || 0;
                   
