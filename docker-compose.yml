@@ -1,6 +1,7 @@
 services:
   # PostgreSQL Database for Nova Kanban
   postgres:
+    container_name: nova-postgres
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-nova_kanban}
@@ -21,6 +22,7 @@ services:
 
   # Neo4j Database for Memory/Knowledge Graph
   neo4j:
+    container_name: nova-neo4j
     image: neo4j:5.26
     environment:
       NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}
@@ -41,6 +43,7 @@ services:
 
   # Redis for pub/sub events, caching, and service coordination
   redis:
+    container_name: nova-redis
     image: redis:7-alpine
     ports:
       - "${REDIS_PORT:-6379}:6379"
@@ -56,6 +59,7 @@ services:
 
   # llama.cpp for local LLM inference with GPU support
   llamacpp:
+    container_name: nova-llamacpp
     # Use latest official CUDA image with full tools (newer than server-cuda)
     image: ghcr.io/ggml-org/llama.cpp:full-cuda
     # Alternative: build custom for absolute latest (has CUDA linking issues)
@@ -99,6 +103,7 @@ services:
 
   # LiteLLM Gateway for unified LLM API
   litellm:
+    container_name: nova-litellm
     image: ghcr.io/berriai/litellm:main-latest
     command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
     ports:
@@ -126,6 +131,7 @@ services:
 
   # Nova Backend (Core data services: API + Agent)
   nova-backend:
+    container_name: nova-backend
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -174,6 +180,7 @@ services:
 
   # Nova Core Agent (Autonomous task processing)
   nova-core-agent:
+    container_name: nova-core-agent
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -223,6 +230,7 @@ services:
 
   # Nova Frontend (Next.js)
   nova-frontend:
+    container_name: nova-frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -244,6 +252,7 @@ services:
 
   # Celery Worker for email processing
   celery-worker:
+    container_name: nova-celery-worker
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -278,6 +287,7 @@ services:
 
   # Celery Beat for scheduling
   celery-beat:
+    container_name: nova-celery-beat
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -303,6 +313,7 @@ services:
 
   # Flower for Celery monitoring (optional)
   flower:
+    container_name: nova-flower
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -319,6 +330,7 @@ services:
 
   # Google-workspace MCP Server
   google-workspace:
+    container_name: nova-google-workspace
     build:
       context: ./mcp_servers/google-workspace
       dockerfile: Dockerfile
@@ -339,6 +351,7 @@ services:
 
   # Feature Request MCP Server
   feature-request:
+    container_name: nova-feature-request
     build:
       context: ./mcp_servers/feature_request
       dockerfile: Dockerfile

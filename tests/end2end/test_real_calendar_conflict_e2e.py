@@ -4,7 +4,7 @@ Use Case: Real end-to-end test for calendar conflict detection and escalation.
 Tags: calendar, email-integration, conflict-resolution, p1-critical, real-api
 
 Given (The Pre-conditions):
-- The user's calendar for [Date_6_Months_From_Now] has one event:
+- The user's calendar for [Tomorrow] has one event:
   - Title: "Project Sync E2E Test"
   - Time: 10:00 AM - 11:00 AM
 - Nova receives a new email about kindergarten closure for the same day
@@ -12,14 +12,15 @@ Given (The Pre-conditions):
 When (The Action):
 - Send email to ourselves about kindergarten closure
 - Wait for core agent to process the email task
-- Core agent should create calendar event and detect conflict
+- Core agent should create calendar event, detect conflict, and call ask_user tool
 
 Then (The Expected Outcome):
-- ✔️ A new all-day event is created in the user's calendar for [Date_6_Months_From_Now]
+- ✔️ A new all-day event is created in the user's calendar for [Tomorrow]
   - Title: contains "Kindergarten" or "Closure"
-- ✔️ The ask_user tool is triggered due to scheduling conflict
+- ✔️ The ask_user tool is triggered due to scheduling conflict (verified in chat logs)
 - ✔️ Task moves to waiting_for_review status
 - ✔️ Original "Project Sync E2E Test" event remains unchanged
+- ✔️ A new memory entry is created about the conflict
 
 Notes:
 This is a REAL test - no mocks. It tests the complete flow from email sending
@@ -36,9 +37,9 @@ from backend.mcp_client import mcp_manager
 
 
 @pytest.fixture
-def future_date():
-    """Generate a date 6 months from now for testing."""
-    return datetime.now() + timedelta(days=180)
+def test_date():
+    """Generate tomorrow's date for testing."""
+    return datetime.now() + timedelta(days=1)
 
 
 @pytest.fixture
@@ -61,13 +62,15 @@ class TestRealCalendarConflictE2E:
     @pytest.mark.slow  # Mark as slow test since it uses real APIs
     async def test_real_calendar_conflict_escalation_flow(
         self,
-        future_date,
+        test_date,
         test_event_title,
         api_base_url
     ):
         """Test complete real flow: send email -> core agent -> calendar conflict -> escalation."""
         
-        # Step 0: Check if Nova API is running
+        # =============================================================================
+        # STEP 0: ENVIRONMENT SETUP - Check if Nova API is running
+        # =============================================================================
         try:
             async with httpx.AsyncClient() as client:
                 health_response = await client.get(f"{api_base_url}/api/system/health", timeout=5.0)
@@ -76,8 +79,10 @@ class TestRealCalendarConflictE2E:
         except Exception:
             pytest.skip(f"Nova API not available at {api_base_url} - requires full environment setup")
         
-        # Step 1: Create the initial "Project Sync" event in real calendar
-        date_str = future_date.strftime("%Y-%m-%d")
+        # =============================================================================
+        # STEP 1: CALENDAR SETUP - Create initial "Project Sync" event
+        # =============================================================================
+        date_str = test_date.strftime("%Y-%m-%d")
         start_time = f"{date_str}T10:00:00+02:00"
         end_time = f"{date_str}T11:00:00+02:00"
         
@@ -111,26 +116,33 @@ class TestRealCalendarConflictE2E:
         assert "success" in str(initial_event_result).lower()
         print(f"✅ Created initial calendar event: {test_event_title}")
         
+        # Store event ID for cleanup
+        initial_event_id = None
+        if hasattr(initial_event_result, 'get') and 'id' in initial_event_result:
+            initial_event_id = initial_event_result.get('id')
+        
         try:
             async with httpx.AsyncClient() as client:
-                # Step 2: Send email to ourselves about kindergarten closure
+                # =============================================================================
+                # STEP 2: EMAIL TRIGGER - Send kindergarten closure email
+                # =============================================================================
                 send_email_tool = next((t for t in all_tools if t.name == "send_email"), None)
                 if not send_email_tool:
                     pytest.skip("send_email tool not available - check MCP configuration")
                 
                 email_subject = f"URGENT: Kindergarten Closure E2E Test {int(time.time())}"
                 email_body = f"""
-    Dear Parents,
+Dear Parents,
 
-    The kindergarten will be closed for the entire day on {date_str} due to maintenance work.
+IMPORTANT NOTICE: The kindergarten will be CLOSED ALL DAY on {date_str} due to maintenance work.
 
-    Please make alternative arrangements for your children.
+This is a FULL DAY closure from morning until evening. Please make alternative arrangements for your children for the entire day.
 
-    Thank you for your understanding.
+Thank you for your understanding.
 
-    Best regards,
-    Kindergarten Management
-    """
+Best regards,
+Kindergarten Management
+"""
                 
                 try:
                     email_result = await asyncio.wait_for(
@@ -148,159 +160,173 @@ class TestRealCalendarConflictE2E:
                 
                 assert "message_id" in str(email_result).lower()
                 print(f"✅ Sent test email: {email_subject}")
-            
-                # Step 3: Configure fast email polling for the test using API
-                print("⚙️ Configuring fast email polling for test...")
-                print("ℹ️ Note: Beat schedule updates require container restart to take effect")
                 
-                # Get current settings via API
-                settings_response = await client.get(f"{api_base_url}/api/user-settings/")
-                if settings_response.status_code != 200:
-                    pytest.skip("Could not get user settings via API")
+                # =============================================================================
+                # STEP 3: TASK CREATION - Wait for email processing and task creation
+                # =============================================================================
+                print("⏳ Waiting for Celery to fetch email and create task...")
+                email_task = None
+                max_wait_time = 180  # 3 minutes max wait
+                wait_interval = 5    # Check every 5 seconds
+                elapsed_time = 0
                 
-                current_settings = settings_response.json()
-                original_interval = current_settings.get("email_polling_interval", 300)
-                print(f"📧 Current email polling interval: {original_interval}s")
-                
-                # Update settings to 30 seconds for test via API
-                update_response = await client.patch(
-                    f"{api_base_url}/api/user-settings/",
-                    json={"email_polling_interval": 30}
-                )
-                
-                if update_response.status_code != 200:
-                    pytest.skip("Could not update user settings via API")
-                
-                print("✅ Set email polling to 30 seconds via API")
-                print("⚠️ Beat container restart required for schedule to take effect")
-                
-                try:
-                    # Step 4: Wait for Celery to fetch email and create task
-                    print("⏳ Waiting for Celery to fetch email and create task...")
-                    email_task = None
-                    max_wait_time = 360  # 6 minutes max wait (due to Beat schedule not updating automatically)
-                    wait_interval = 5    # Check every 5 seconds
-                    elapsed_time = 0
+                while elapsed_time < max_wait_time and not email_task:
+                    await asyncio.sleep(wait_interval)
+                    elapsed_time += wait_interval
                     
-                    while elapsed_time < max_wait_time and not email_task:
-                        await asyncio.sleep(wait_interval)
-                        elapsed_time += wait_interval
-                        
-                        # Check for task via API
-                        tasks_response = await client.get(f"{api_base_url}/api/tasks")
-                        if tasks_response.status_code == 200:
-                            tasks = tasks_response.json()
-                            # Look for our email task
-                            for task in tasks:
-                                if email_subject in task.get("title", ""):
-                                    email_task = task
-                                    print(f"✅ Found email task after {elapsed_time}s: {task['title']}")
-                                    break
-                        
-                        if not email_task:
-                            print(f"⏳ No task found yet... waiting ({elapsed_time}s elapsed)")
+                    # Check for task via API
+                    tasks_response = await client.get(f"{api_base_url}/api/tasks")
+                    if tasks_response.status_code == 200:
+                        tasks = tasks_response.json()
+                        # Look for our email task
+                        for task in tasks:
+                            if email_subject in task.get("title", ""):
+                                email_task = task
+                                print(f"✅ Found email task after {elapsed_time}s: {task['title']}")
+                                break
                     
                     if not email_task:
-                        # Restore original settings before failing
-                        await client.patch(
-                            f"{api_base_url}/api/user-settings/",
-                            json={"email_polling_interval": original_interval}
-                        )
-                        
-                        pytest.fail(f"Email task not created within {max_wait_time}s. Check:\n"
-                                   "1. Celery worker is running\n"
-                                   "2. Celery beat is running\n"
-                                   "3. Email polling is enabled\n"
-                                   "4. MCP email server is configured\n"
-                                   "5. Nova backend is running on {api_base_url}\n"
-                                   "6. KNOWN ISSUE: Beat schedule updates require 'docker restart nova-celery-beat-1'")
+                        print(f"⏳ No task found yet... waiting ({elapsed_time}s elapsed)")
+                    
+                if not email_task:
+                    pytest.fail(f"Email task not created within {max_wait_time}s. Check:\n"
+                               "1. Celery worker is running\n"
+                               "2. Celery beat is running\n"
+                               "3. Email polling is enabled\n"
+                               "4. MCP email server is configured\n"
+                               f"5. Nova backend is running on {api_base_url}")
             
-                    # Step 5: Wait for core agent to process the task automatically
-                    # In production, core agent runs continuously and picks up NEW tasks
-                    print("🤖 Waiting for core agent to process the email task...")
-                    print(f"📋 Task status: {email_task['status']}")
-                    
-                    # Wait for the core agent to process the task and change its status
-                    processed_task = None
-                    agent_wait_time = 60   # 60 seconds for agent processing (testing)
-                    elapsed_time = 0
-                    
-                    while elapsed_time < agent_wait_time:
-                        await asyncio.sleep(10)  # Check every 10 seconds
-                        elapsed_time += 10
-                        
-                        # Get updated task status via API
-                        task_response = await client.get(f"{api_base_url}/api/tasks/{email_task['id']}")
-                        if task_response.status_code == 200:
-                            current_task = task_response.json()
-                            print(f"🔄 Task status after {elapsed_time}s: {current_task['status']}")
-                            
-                            # Check if task has been processed (status changed from NEW)
-                            if current_task['status'] in ['done']:
-                                processed_task = current_task
-                                print(f"✅ Task processed! Final status: {current_task['status']}")
-                                break
-                        
-                        print(f"⏳ Still waiting for agent processing... ({elapsed_time}s elapsed)")
-                    
-                    if not processed_task:
-                        pytest.fail(f"Core agent did not process task within {agent_wait_time}s. "
-                                   "Check that core agent is running and functioning properly.")
+                # =============================================================================
+                # STEP 4: CORE AGENT PROCESSING - Wait for agent to process the task
+                # =============================================================================
+                # Core agent runs continuously and picks up NEW tasks
+                print("🤖 Waiting for core agent to process the email task...")
+                print(f"📋 Task status: {email_task['status']}")
                 
-                    # Step 6: Verify the results
-                    print("🔍 Verifying test results...")
+                # Wait for the core agent to process the task and change its status
+                processed_task = None
+                agent_wait_time = 120   # 2 minutes for agent processing
+                elapsed_time = 0
+                
+                while elapsed_time < agent_wait_time:
+                    await asyncio.sleep(10)  # Check every 10 seconds
+                    elapsed_time += 10
                     
-                    # Check if calendar event was created
+                    # Get updated task status via API
+                    task_response = await client.get(f"{api_base_url}/api/tasks/{email_task['id']}")
+                    if task_response.status_code == 200:
+                        current_task = task_response.json()
+                        print(f"🔄 Task status after {elapsed_time}s: {current_task['status']}")
+                        
+                        # Check if task has been processed (status changed to waiting_for_review)
+                        if current_task['status'] in ['waiting_for_review']:
+                            processed_task = current_task
+                            print(f"✅ Task processed! Final status: {current_task['status']}")
+                            break
+                    
+                    print(f"⏳ Still waiting for agent processing... ({elapsed_time}s elapsed)")
+                
+                if not processed_task:
+                    pytest.fail(f"Core agent did not process task within {agent_wait_time}s. "
+                               "Check that core agent is running and functioning properly.")
+                
+                # =============================================================================
+                # STEP 5: VERIFICATION - Check results and ask_user tool usage
+                # =============================================================================
+                print("🔍 Verifying test results...")
+                
+                # Check if calendar event was created
+                list_result = await list_events_tool.arun({
+                        "calendar_id": "primary",
+                        "time_min": f"{date_str}T00:00:00+02:00"
+                    })
+                
+                events_found = []
+                if "Project Sync E2E Test" in str(list_result):
+                    events_found.append("Project Sync E2E Test")
+                if "kindergarten" in str(list_result).lower() or "closure" in str(list_result).lower():
+                    events_found.append("Kindergarten Closure")
+                
+                print(f"📅 Calendar events found: {events_found}")
+                    
+                # Check for ask_user tool usage in task chat
+                print("🔍 Checking for ask_user tool usage in task chat...")
+                task_chat_response = await client.get(f"{api_base_url}/chat/conversations/core_agent_task_{processed_task['id']}/task-data")
+                ask_user_called = False
+                escalation_found = False
+                if task_chat_response.status_code == 200:
+                    task_chat_data = task_chat_response.json()
+                    messages = task_chat_data.get('messages', [])
+                    # Look for ask_user tool calls in the conversation
+                    for message in messages:
+                        if message.get('tool_calls'):
+                            for tool_call in message['tool_calls']:
+                                if tool_call.get('tool') == 'ask_user' and 'conflict' in tool_call.get('args', {}).get('question', '').lower():
+                                    ask_user_called = True
+                                    break
+                        if ask_user_called:
+                            break
+                    
+                    # Check if there's a pending escalation
+                    if task_chat_data.get('pending_escalation'):
+                        escalation_found = True
+                        ask_user_called = True  # If there's pending escalation, ask_user was definitely called
+                
+                # Note: escalation_found is now set above when checking task chat
+                
+                # Check memory entries for conflict information
+                memory_response = await client.get(f"{api_base_url}/api/memory/search", 
+                                                 params={"query": "kindergarten conflict calendar"})
+                memory_entry_found = False
+                if memory_response.status_code == 200:
+                    memory_results = memory_response.json()
+                    memory_entry_found = len(memory_results.get('results', [])) > 0
+                    
+                print(f"📋 Final task status: {processed_task['status']}")
+                print(f"🎆 Ask_user tool called: {ask_user_called}")
+                print(f"🔄 Escalation evidence in comments: {escalation_found}")
+                print(f"🧠 Memory entry created: {memory_entry_found}")
+                
+                # Assertions
+                assert len(events_found) >= 1, f"Expected to find events, but found: {events_found}"
+                assert processed_task['status'] == 'waiting_for_review', \
+                    f"Expected task to be in waiting_for_review, but was: {processed_task['status']}"
+                assert ask_user_called, "Expected ask_user tool to be called due to calendar conflict"
+                assert memory_entry_found, "Expected memory entry to be created about the conflict"
+                
+                # Test completed successfully
+                print("✅ All verifications passed!")
+                
+        finally:
+            # =============================================================================
+            # STEP 6: CLEANUP - Clean up test data
+            # =============================================================================
+            try:
+                print("🧹 Cleaning up test data...")
+                
+                # Clean up calendar events first
+                if initial_event_id:
+                    try:
+                        delete_tool = next((t for t in all_tools if t.name == "delete_calendar_event"), None)
+                        if delete_tool:
+                            await delete_tool.arun({
+                                "calendar_id": "primary",
+                                "event_id": initial_event_id
+                            })
+                            print(f"✅ Deleted initial calendar event: {test_event_title}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to delete initial calendar event: {e}")
+                
+                # Try to find and delete kindergarten event
+                try:
                     list_result = await list_events_tool.arun({
                         "calendar_id": "primary",
                         "time_min": f"{date_str}T00:00:00+02:00"
                     })
-                    
-                    events_found = []
-                    if "Project Sync E2E Test" in str(list_result):
-                        events_found.append("Project Sync E2E Test")
-                    if "kindergarten" in str(list_result).lower() or "closure" in str(list_result).lower():
-                        events_found.append("Kindergarten Closure")
-                    
-                    print(f"📅 Calendar events found: {events_found}")
-                    
-                    # Get task comments via API to check for escalation
-                    comments_response = await client.get(f"{api_base_url}/api/tasks/{processed_task['id']}/comments")
-                    escalation_found = False
-                    if comments_response.status_code == 200:
-                        comments = comments_response.json()
-                        escalation_found = any(
-                            "conflict" in comment.get("content", "").lower() or 
-                            "escalat" in comment.get("content", "").lower()
-                            for comment in comments
-                        )
-                    
-                    print(f"📋 Final task status: {processed_task['status']}")
-                    print(f"🔄 Escalation evidence in comments: {escalation_found}")
-                    
-                    # Assertions
-                    assert len(events_found) >= 1, f"Expected to find events, but found: {events_found}"
-                    assert processed_task['status'] in ['waiting_for_review', 'done'], \
-                        f"Expected task to be in waiting_for_review or done, but was: {processed_task['status']}"
-                    
-                    print("✅ E2E test completed successfully!")
-                    
-                finally:
-                    # Step 7: Always restore original email polling interval via API
-                    print(f"🔄 Restoring original email polling interval: {original_interval}s")
-                    restore_response = await client.patch(
-                        f"{api_base_url}/api/user-settings/",
-                        json={"email_polling_interval": original_interval}
-                    )
-                    if restore_response.status_code == 200:
-                        print("✅ Email polling interval restored via API")
-                    else:
-                        print("⚠️ Failed to restore email polling interval")
-                
-        finally:
-            # Step 8: Cleanup - clean up test tasks (calendar events need manual cleanup)
-            try:
-                print("🧹 Cleaning up test data...")
+                    if "kindergarten" in str(list_result).lower():
+                        print("⚠️ Kindergarten event may need manual cleanup - check calendar")
+                except Exception as e:
+                    print(f"⚠️ Failed to check for kindergarten event: {e}")
                 
                 # Clean up any tasks created during the test
                 async with httpx.AsyncClient() as cleanup_client:
@@ -330,9 +356,7 @@ class TestRealCalendarConflictE2E:
                     except Exception as e:
                         print(f"⚠️ Failed to clean up test tasks: {e}")
                 
-                # Note: Calendar events with timestamped names will remain for manual cleanup
-                # This is acceptable for e2e tests as they use unique timestamps to avoid conflicts
-                print("ℹ️ Calendar events remain for manual cleanup (timestamped for safety)")
+                print("✅ Cleanup completed")
                     
             except Exception as e:
                 print(f"⚠️ Cleanup failed: {e}")
