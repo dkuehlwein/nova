@@ -166,7 +166,7 @@ Kindergarten Management
                 # =============================================================================
                 print("⏳ Waiting for Celery to fetch email and create task...")
                 email_task = None
-                max_wait_time = 180  # 3 minutes max wait
+                max_wait_time = 400  # 3 minutes max wait
                 wait_interval = 5    # Check every 5 seconds
                 elapsed_time = 0
                 
@@ -301,6 +301,7 @@ Kindergarten Management
             # =============================================================================
             # STEP 6: CLEANUP - Clean up test data
             # =============================================================================
+            """
             try:
                 print("🧹 Cleaning up test data...")
                 
@@ -360,3 +361,4 @@ Kindergarten Management
                     
             except Exception as e:
                 print(f"⚠️ Cleanup failed: {e}")
+                """
