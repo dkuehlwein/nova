@@ -218,8 +218,8 @@ Kindergarten Management
                         current_task = task_response.json()
                         print(f"🔄 Task status after {elapsed_time}s: {current_task['status']}")
                         
-                        # Check if task has been processed (status changed to waiting_for_review)
-                        if current_task['status'] in ['waiting_for_review']:
+                        # Check if task has been processed (status changed to needs_review)
+                        if current_task['status'] in ['needs_review']:
                             processed_task = current_task
                             print(f"✅ Task processed! Final status: {current_task['status']}")
                             break
@@ -289,8 +289,8 @@ Kindergarten Management
                 
                 # Assertions
                 assert len(events_found) >= 1, f"Expected to find events, but found: {events_found}"
-                assert processed_task['status'] == 'waiting_for_review', \
-                    f"Expected task to be in waiting_for_review, but was: {processed_task['status']}"
+                assert processed_task['status'] == 'needs_review', \
+                    f"Expected task to be in needs_review, but was: {processed_task['status']}"
                 assert ask_user_called, "Expected ask_user tool to be called due to calendar conflict"
                 assert memory_entry_found, "Expected memory entry to be created about the conflict"
                 
@@ -301,7 +301,7 @@ Kindergarten Management
             # =============================================================================
             # STEP 6: CLEANUP - Clean up test data
             # =============================================================================
-            """
+            #"""
             try:
                 print("🧹 Cleaning up test data...")
                 
@@ -361,4 +361,4 @@ Kindergarten Management
                     
             except Exception as e:
                 print(f"⚠️ Cleanup failed: {e}")
-                """
+            #"""
