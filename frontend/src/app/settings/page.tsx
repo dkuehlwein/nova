@@ -1359,7 +1359,7 @@ function AIModelsTab() {
                     type="number"
                     min="100"
                     max="32000"
-                    value={String(editingSettings?.chat_llm_max_tokens || editingSettings?.llm_max_tokens || 2048)}
+                    value={String(editingSettings?.chat_llm_max_tokens || editingSettings?.llm_max_tokens || 4096)}
                     onChange={(e) => handleInputChange('chat_llm_max_tokens', parseInt(e.target.value))}
                   />
                   <p className="text-xs text-muted-foreground">

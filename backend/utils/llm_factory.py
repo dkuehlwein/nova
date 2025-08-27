@@ -86,7 +86,7 @@ def get_chat_llm_config() -> Dict[str, Any]:
     
     model_name = user_settings.get("chat_llm_model", "gemini-2.5-flash")
     temperature = user_settings.get("chat_llm_temperature", 0.7)
-    max_tokens = user_settings.get("chat_llm_max_tokens", 2048)
+    max_tokens = user_settings.get("chat_llm_max_tokens", 4096)
     
     return {
         "model": model_name,

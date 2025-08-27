@@ -66,7 +66,7 @@ class UserSettings(Base):
     # Chat LLM Settings (Local-First HuggingFace Defaults)
     chat_llm_model: Mapped[str] = mapped_column(String(100), default="qwen3-32b")  # HuggingFace via Cerebras
     chat_llm_temperature: Mapped[float] = mapped_column(Float, default=0.7)  # Higher for creativity
-    chat_llm_max_tokens: Mapped[int] = mapped_column(Integer, default=2048)
+    chat_llm_max_tokens: Mapped[int] = mapped_column(Integer, default=4096)
     
     # Memory LLM Settings (Separate from Chat for Flexibility)
     memory_llm_model: Mapped[str] = mapped_column(String(100), default="qwen3-32b")  # Same as chat for consistency
@@ -128,7 +128,7 @@ class UserSettingsModel(BaseModel):
     # Chat LLM Settings (Local-First HuggingFace Defaults)
     chat_llm_model: str = "qwen3-32b"  # HuggingFace via Cerebras
     chat_llm_temperature: float = 0.7  # Higher for creativity
-    chat_llm_max_tokens: int = 2048
+    chat_llm_max_tokens: int = 4096
     
     # Memory LLM Settings (Separate from Chat for Flexibility)
     memory_llm_model: str = "qwen3-32b"  # Same as chat for consistency
