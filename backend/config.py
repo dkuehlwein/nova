@@ -103,14 +103,11 @@ class Settings(BaseSettings):
         else:
             # In local/WSL: convert Docker internal URLs to localhost
             url_mappings = {
-                "http://google-workspace:8000/mcp": "http://localhost:8002/mcp",
-                "http://feature-request:8000/mcp": "http://localhost:8003/mcp",
-                # Full container names from Docker Compose
-                "http://nova-google-workspace-1:8000/mcp": "http://localhost:8002/mcp",
-                "http://nova-feature-request-1:8000/mcp": "http://localhost:8003/mcp",
-                # With trailing slash (for backward compatibility)
-                "http://nova-google-workspace-1:8000/mcp/": "http://localhost:8002/mcp",
-                "http://nova-feature-request-1:8000/mcp/": "http://localhost:8003/mcp"
+                # Current container names from Docker Compose
+                "http://nova-google-workspace:8000/mcp": "http://localhost:8002/mcp",
+                "http://nova-feature-request:8000/mcp": "http://localhost:8003/mcp",
+                "http://nova-google-workspace:8000/mcp/": "http://localhost:8002/mcp/",
+                "http://nova-feature-request:8000/mcp/": "http://localhost:8003/mcp/",
             }
             return url_mappings.get(url, url)
 

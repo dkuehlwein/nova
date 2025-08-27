@@ -4,18 +4,76 @@ Contains all Calendar-related functionality for event and calendar operations.
 """
 
 import asyncio
-from datetime import datetime
-from typing import List, Dict, Union, Optional, Any
-from googleapiclient.errors import HttpError
 import logging
+from datetime import datetime
+from typing import List, Dict, Union, Optional, Any, Tuple
+
+import dateutil.parser
+from dateutil import tz
+from googleapiclient.errors import HttpError
 
 logger = logging.getLogger(__name__)
 
 class CalendarTools:
     """Calendar tools for the Google Workspace MCP server."""
     
+    DEFAULT_TIMEZONE = 'Europe/Berlin'
+    DEFAULT_MAX_RESULTS = 50
+    
     def __init__(self, calendar_service):
         self.calendar_service = calendar_service
+        self._berlin_tz = tz.gettz(self.DEFAULT_TIMEZONE)
+    
+    def _handle_http_error(self, error: HttpError, operation: str) -> Dict[str, str]:
+        """Centralized HTTP error handling."""
+        logger.error(f"Error {operation}: {error}")
+        return {
+            "status": "error", 
+            "error_message": f"An HttpError occurred {operation}: {str(error)}"
+        }
+    
+    def _normalize_datetime(self, dt_string: str) -> datetime:
+        """Parse datetime string and ensure timezone awareness."""
+        parsed_dt = dateutil.parser.parse(dt_string)
+        if parsed_dt.tzinfo is None:
+            parsed_dt = parsed_dt.replace(tzinfo=self._berlin_tz)
+        return parsed_dt
+    
+    def _format_event_info(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and format standard event information."""
+        start = event['start'].get('dateTime', event['start'].get('date'))
+        end = event['end'].get('dateTime', event['end'].get('date'))
+        
+        return {
+            'id': event['id'],
+            'summary': event.get('summary', 'No Title'),
+            'start': start,
+            'end': end,
+            'description': event.get('description', ''),
+            'location': event.get('location', ''),
+            'html_link': event.get('htmlLink', ''),
+            'status': event.get('status', ''),
+            'creator': event.get('creator', {}),
+            'organizer': event.get('organizer', {}),
+            'attendees': event.get('attendees', [])
+        }
+    
+    def _create_conflict_response(self, event: Dict[str, Any], conflicts: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Create standardized response with conflict information."""
+        response = {
+            "status": "success",
+            "event_id": event['id'],
+            "html_link": event.get('htmlLink', ''),
+            "summary": event.get('summary', ''),
+            "conflicts_detected": len(conflicts) > 0,
+            "conflicts": conflicts
+        }
+        
+        if conflicts:
+            logger.warning(f"Event operation completed with {len(conflicts)} scheduling conflicts: {event['id']}")
+            response["conflict_summary"] = f"This event conflicts with {len(conflicts)} existing event(s)"
+        
+        return response
     
     async def list_calendars(self) -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Lists all calendars accessible to the user."""
@@ -25,9 +83,8 @@ class CalendarTools:
             )
             calendars = calendars_result.get('items', [])
             
-            calendar_list = []
-            for calendar in calendars:
-                calendar_info = {
+            return [
+                {
                     'id': calendar['id'],
                     'summary': calendar.get('summary', ''),
                     'description': calendar.get('description', ''),
@@ -35,34 +92,24 @@ class CalendarTools:
                     'access_role': calendar.get('accessRole', ''),
                     'selected': calendar.get('selected', False)
                 }
-                calendar_list.append(calendar_info)
-            
-            return calendar_list
+                for calendar in calendars
+            ]
         except HttpError as error:
-            logger.error(f"Error listing calendars: {error}")
-            return {"status": "error", "error_message": f"An HttpError occurred listing calendars: {str(error)}"}
+            return self._handle_http_error(error, "listing calendars")
 
     async def create_event(self, calendar_id: str, summary: str, start_datetime: str,
                           end_datetime: str, description: str = "", location: str = "",
-                          attendees: Optional[List[str]] = None, timezone: str = 'Europe/Berlin') -> Dict[str, Any]:
+                          attendees: Optional[List[str]] = None, timezone: str = DEFAULT_TIMEZONE) -> Dict[str, Any]:
         """Creates a new calendar event and reports any scheduling conflicts."""
         try:
-            # Check for conflicts BEFORE creating the event
             conflicts = await self._check_conflicts(calendar_id, start_datetime, end_datetime)
             
-            # Create the event regardless of conflicts (as requested)
             event = {
                 'summary': summary,
                 'location': location,
                 'description': description,
-                'start': {
-                    'dateTime': start_datetime,
-                    'timeZone': timezone,
-                },
-                'end': {
-                    'dateTime': end_datetime,
-                    'timeZone': timezone,
-                },
+                'start': {'dateTime': start_datetime, 'timeZone': timezone},
+                'end': {'dateTime': end_datetime, 'timeZone': timezone},
             }
             
             if attendees:
@@ -73,33 +120,17 @@ class CalendarTools:
             )
             
             logger.info(f"Calendar event created: {created_event['id']}")
-            
-            # Prepare response with conflict information
-            response = {
-                "status": "success",
-                "event_id": created_event['id'],
-                "html_link": created_event.get('htmlLink', ''),
-                "summary": created_event.get('summary', ''),
-                "conflicts_detected": len(conflicts) > 0,
-                "conflicts": conflicts
-            }
-            
-            if conflicts:
-                logger.warning(f"Event created with {len(conflicts)} scheduling conflicts: {created_event['id']}")
-                response["conflict_summary"] = f"This event conflicts with {len(conflicts)} existing event(s)"
-            
-            return response
+            return self._create_conflict_response(created_event, conflicts)
             
         except HttpError as error:
-            logger.error(f"Error creating calendar event: {error}")
-            return {"status": "error", "error_message": f"An HttpError occurred creating event: {str(error)}"}
+            return self._handle_http_error(error, "creating event")
 
-    async def list_events(self, calendar_id: str = 'primary', max_results: int = 50,
+    async def list_events(self, calendar_id: str = 'primary', max_results: int = DEFAULT_MAX_RESULTS,
                          time_min: Optional[str] = None, time_max: Optional[str] = None) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """Lists upcoming events from a calendar."""
         try:
             if time_min is None:
-                time_min = datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
+                time_min = datetime.utcnow().isoformat() + 'Z'
             
             list_params = {
                 'calendarId': calendar_id,
@@ -117,31 +148,10 @@ class CalendarTools:
             )
             
             events = events_result.get('items', [])
-            event_list = []
+            return [self._format_event_info(event) for event in events]
             
-            for event in events:
-                start = event['start'].get('dateTime', event['start'].get('date'))
-                end = event['end'].get('dateTime', event['end'].get('date'))
-                
-                event_info = {
-                    'id': event['id'],
-                    'summary': event.get('summary', 'No Title'),
-                    'start': start,
-                    'end': end,
-                    'description': event.get('description', ''),
-                    'location': event.get('location', ''),
-                    'html_link': event.get('htmlLink', ''),
-                    'status': event.get('status', ''),
-                    'creator': event.get('creator', {}),
-                    'organizer': event.get('organizer', {}),
-                    'attendees': event.get('attendees', [])
-                }
-                event_list.append(event_info)
-            
-            return event_list
         except HttpError as error:
-            logger.error(f"Error listing calendar events: {error}")
-            return {"status": "error", "error_message": f"An HttpError occurred listing events: {str(error)}"}
+            return self._handle_http_error(error, "listing events")
 
     async def get_event(self, calendar_id: str, event_id: str) -> Union[Dict[str, Any], Dict[str, str]]:
         """Gets details of a specific calendar event."""
@@ -150,22 +160,9 @@ class CalendarTools:
                 self.calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute
             )
             
-            return {
-                'id': event['id'],
-                'summary': event.get('summary', ''),
-                'description': event.get('description', ''),
-                'location': event.get('location', ''),
-                'start': event['start'],
-                'end': event['end'],
-                'html_link': event.get('htmlLink', ''),
-                'status': event.get('status', ''),
-                'creator': event.get('creator', {}),
-                'organizer': event.get('organizer', {}),
-                'attendees': event.get('attendees', [])
-            }
+            return self._format_event_info(event)
         except HttpError as error:
-            logger.error(f"Error getting calendar event {event_id}: {error}")
-            return {"status": "error", "error_message": f"An HttpError occurred getting event: {str(error)}"}
+            return self._handle_http_error(error, f"getting event {event_id}")
 
     async def update_event(self, calendar_id: str, event_id: str, 
                           summary: Optional[str] = None,
@@ -173,43 +170,39 @@ class CalendarTools:
                           location: Optional[str] = None,
                           start_datetime: Optional[str] = None,
                           end_datetime: Optional[str] = None,
-                          timezone: str = 'Europe/Berlin') -> Dict[str, Any]:
+                          timezone: str = DEFAULT_TIMEZONE) -> Dict[str, Any]:
         """Updates an existing calendar event and reports any scheduling conflicts."""
         try:
-            # First get the existing event
             event = await asyncio.to_thread(
                 self.calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute
             )
             
-            # Update fields that were provided
-            if summary is not None:
-                event['summary'] = summary
-            if description is not None:
-                event['description'] = description
-            if location is not None:
-                event['location'] = location
+            # Update provided fields
+            updates = {
+                'summary': summary,
+                'description': description, 
+                'location': location
+            }
+            
+            for field, value in updates.items():
+                if value is not None:
+                    event[field] = value
+            
+            # Update datetime fields
             if start_datetime is not None:
-                event['start'] = {
-                    'dateTime': start_datetime,
-                    'timeZone': timezone
-                }
+                event['start'] = {'dateTime': start_datetime, 'timeZone': timezone}
             if end_datetime is not None:
-                event['end'] = {
-                    'dateTime': end_datetime,
-                    'timeZone': timezone
-                }
+                event['end'] = {'dateTime': end_datetime, 'timeZone': timezone}
             
             # Check for conflicts if time was changed
             conflicts = []
             if start_datetime is not None or end_datetime is not None:
-                # Get the final start/end times for conflict checking
-                final_start = start_datetime if start_datetime else event['start'].get('dateTime', event['start'].get('date'))
-                final_end = end_datetime if end_datetime else event['end'].get('dateTime', event['end'].get('date'))
+                final_start = start_datetime or event['start'].get('dateTime', event['start'].get('date'))
+                final_end = end_datetime or event['end'].get('dateTime', event['end'].get('date'))
                 
                 if final_start and final_end:
                     conflicts = await self._check_conflicts(calendar_id, final_start, final_end, exclude_event_id=event_id)
             
-            # Update the event regardless of conflicts
             updated_event = await asyncio.to_thread(
                 self.calendar_service.events().update(
                     calendarId=calendar_id, eventId=event_id, body=event
@@ -217,26 +210,10 @@ class CalendarTools:
             )
             
             logger.info(f"Calendar event updated: {event_id}")
-            
-            # Prepare response with conflict information
-            response = {
-                "status": "success",
-                "event_id": updated_event['id'],
-                "html_link": updated_event.get('htmlLink', ''),
-                "summary": updated_event.get('summary', ''),
-                "conflicts_detected": len(conflicts) > 0,
-                "conflicts": conflicts
-            }
-            
-            if conflicts:
-                logger.warning(f"Event updated with {len(conflicts)} scheduling conflicts: {event_id}")
-                response["conflict_summary"] = f"This event now conflicts with {len(conflicts)} existing event(s)"
-            
-            return response
+            return self._create_conflict_response(updated_event, conflicts)
             
         except HttpError as error:
-            logger.error(f"Error updating calendar event {event_id}: {error}")
-            return {"status": "error", "error_message": f"An HttpError occurred updating event: {str(error)}"}
+            return self._handle_http_error(error, f"updating event {event_id}")
 
     async def delete_event(self, calendar_id: str, event_id: str) -> Union[str, Dict[str, str]]:
         """Deletes a calendar event."""
@@ -248,20 +225,18 @@ class CalendarTools:
             logger.info(f"Calendar event deleted: {event_id}")
             return f"Calendar event {event_id} deleted successfully."
         except HttpError as error:
-            logger.error(f"Error deleting calendar event {event_id}: {error}")
-            return {"status": "error", "error_message": f"An HttpError occurred deleting event: {str(error)}"}
+            return self._handle_http_error(error, f"deleting event {event_id}")
 
     async def create_quick_event(self, calendar_id: str, text: str) -> Dict[str, Any]:
         """Creates an event using natural language and reports any scheduling conflicts."""
         try:
-            # Create the event first (Google handles the natural language parsing)
             event = await asyncio.to_thread(
                 self.calendar_service.events().quickAdd(calendarId=calendar_id, text=text).execute
             )
             
             logger.info(f"Quick calendar event created: {event['id']}")
             
-            # Check for conflicts after creation (since we need Google to parse the time)
+            # Check for conflicts after creation (Google parses the time for us)
             conflicts = []
             if 'start' in event and 'end' in event:
                 start_time = event['start'].get('dateTime', event['start'].get('date'))
@@ -270,25 +245,10 @@ class CalendarTools:
                 if start_time and end_time:
                     conflicts = await self._check_conflicts(calendar_id, start_time, end_time, exclude_event_id=event['id'])
             
-            # Prepare response with conflict information
-            response = {
-                "status": "success",
-                "event_id": event['id'],
-                "html_link": event.get('htmlLink', ''),
-                "summary": event.get('summary', text),
-                "conflicts_detected": len(conflicts) > 0,
-                "conflicts": conflicts
-            }
-            
-            if conflicts:
-                logger.warning(f"Quick event created with {len(conflicts)} scheduling conflicts: {event['id']}")
-                response["conflict_summary"] = f"This event conflicts with {len(conflicts)} existing event(s)"
-            
-            return response
+            return self._create_conflict_response(event, conflicts)
             
         except HttpError as error:
-            logger.error(f"Error creating quick calendar event: {error}")
-            return {"status": "error", "error_message": f"An HttpError occurred creating quick event: {str(error)}"}
+            return self._handle_http_error(error, "creating quick event")
 
     async def _check_conflicts(self, calendar_id: str, start_datetime: str, end_datetime: str, 
                               exclude_event_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -304,52 +264,45 @@ class CalendarTools:
         Returns:
             List of conflicting events with details
         """
-        conflicts = []
-        
         try:
-            # Query events in the time range
+            new_start = self._normalize_datetime(start_datetime)
+            new_end = self._normalize_datetime(end_datetime)
+            
+            api_time_min = new_start.isoformat()
+            api_time_max = new_end.isoformat()
+            
+            logger.info(f"Querying calendar events from {api_time_min} to {api_time_max}")
+            
             events_result = await asyncio.to_thread(
                 self.calendar_service.events().list(
                     calendarId=calendar_id,
-                    timeMin=start_datetime,
-                    timeMax=end_datetime,
+                    timeMin=api_time_min,
+                    timeMax=api_time_max,
                     singleEvents=True,
                     orderBy='startTime'
                 ).execute
             )
             
             events = events_result.get('items', [])
-            
-            # Parse input times for comparison
-            from datetime import datetime
-            import dateutil.parser
-            
-            new_start = dateutil.parser.parse(start_datetime)
-            new_end = dateutil.parser.parse(end_datetime)
+            conflicts = []
             
             for event in events:
-                # Skip the event we're updating
-                if exclude_event_id and event.get('id') == exclude_event_id:
+                if self._should_skip_event(event, exclude_event_id):
                     continue
                 
-                # Skip declined events
-                if event.get('status') == 'cancelled':
-                    continue
-                
-                # Get event times
                 event_start_str = event['start'].get('dateTime', event['start'].get('date'))
                 event_end_str = event['end'].get('dateTime', event['end'].get('date'))
                 
                 if not event_start_str or not event_end_str:
                     continue
                 
-                # Parse event times
-                event_start = dateutil.parser.parse(event_start_str)
-                event_end = dateutil.parser.parse(event_end_str)
+                event_start = self._normalize_datetime(event_start_str)
+                event_end = self._normalize_datetime(event_end_str)
                 
-                # Check for overlap: new event overlaps if it starts before existing ends 
-                # and ends after existing starts
-                if new_start < event_end and new_end > event_start:
+                logger.info(f"Checking conflict: New event ({new_start} to {new_end}) vs Existing '{event.get('summary')}' ({event_start} to {event_end})")
+                
+                # Check for overlap: events overlap if one starts before the other ends
+                if self._events_overlap(new_start, new_end, event_start, event_end):
                     conflict = {
                         'id': event.get('id'),
                         'summary': event.get('summary', 'No Title'),
@@ -360,11 +313,24 @@ class CalendarTools:
                         'html_link': event.get('htmlLink', '')
                     }
                     conflicts.append(conflict)
+                    logger.info("Conflict detected")
+                else:
+                    logger.info("No conflict")
             
             logger.info(f"Conflict check completed: found {len(conflicts)} conflicts")
             return conflicts
             
         except Exception as error:
             logger.error(f"Error checking calendar conflicts: {error}")
-            # Return empty list on error - don't block event creation
-            return []
+            return []  # Return empty list on error - don't block event creation
+    
+    def _should_skip_event(self, event: Dict[str, Any], exclude_event_id: Optional[str]) -> bool:
+        """Check if an event should be skipped during conflict checking."""
+        return (
+            (exclude_event_id and event.get('id') == exclude_event_id) or
+            event.get('status') == 'cancelled'
+        )
+    
+    def _events_overlap(self, start1: datetime, end1: datetime, start2: datetime, end2: datetime) -> bool:
+        """Check if two time ranges overlap."""
+        return start1 < end2 and end1 > start2

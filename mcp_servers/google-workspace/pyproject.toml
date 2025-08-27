@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.104.0",
     "google-api-python-client>=2.169.0",
     "google-auth-oauthlib>=1.2.2",
+    "python-dateutil>=2.8.0",
 ]
 
 [dependency-groups]
