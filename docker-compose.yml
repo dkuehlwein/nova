@@ -84,7 +84,7 @@ services:
       - GGML_CUDA=1
     command: >
       --server
-      --model /models/${LLAMACPP_MODEL_FILE:-phi-4-Q6_K.gguf}
+      --model /models/${LLAMACPP_MODEL_FILE:-gpt-oss-20b-Q8_0.gguf}
       --host 0.0.0.0
       --port 8080
       --n-gpu-layers 42
@@ -114,7 +114,7 @@ services:
       DATABASE_URL: postgresql://${LITELLM_USER:-litellm}:${LITELLM_PASSWORD:-litellm_dev_password}@postgres:5432/${LITELLM_DB:-litellm}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-salt-1234}
-      LLAMACPP_BASE_URL: http://llamacpp:8080
+      LLAMACPP_BASE_URL: http://nova-llamacpp:8080
       STORE_MODEL_IN_DB: "True"
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       HF_TOKEN: ${HF_TOKEN}
