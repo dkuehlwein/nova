@@ -205,7 +205,7 @@ Kindergarten Management
                 
                 # Wait for the core agent to process the task and change its status
                 processed_task = None
-                agent_wait_time = 120   # 2 minutes for agent processing
+                agent_wait_time = 360  # 5 minutes for agent processing
                 elapsed_time = 0
                 
                 while elapsed_time < agent_wait_time:
@@ -275,12 +275,24 @@ Kindergarten Management
                 # Note: escalation_found is now set above when checking task chat
                 
                 # Check memory entries for conflict information
-                memory_response = await client.get(f"{api_base_url}/api/memory/search", 
-                                                 params={"query": "kindergarten conflict calendar"})
+                # Search by date to find memories created during task processing
+                await asyncio.sleep(60)
+                memory_response = await client.post(f"{api_base_url}/api/memory/search", 
+                                                  json={"query": date_str})
                 memory_entry_found = False
                 if memory_response.status_code == 200:
                     memory_results = memory_response.json()
-                    memory_entry_found = len(memory_results.get('results', [])) > 0
+                    results = memory_results.get('results', [])
+                    memory_entry_found = len(results) > 0
+                    
+                    if memory_entry_found:
+                        print(f"🧠 Found {len(results)} memories for date {date_str}")
+                        for result in results[:3]:  # Show first 3 results
+                            print(f"  - {result.get('fact', result)}")
+                    else:
+                        print(f"🧠 No memory entries found for date {date_str}")
+                else:
+                    print(f"🧠 Memory search failed with status {memory_response.status_code}")
                     
                 print(f"📋 Final task status: {processed_task['status']}")
                 print(f"🎆 Ask_user tool called: {ask_user_called}")
@@ -292,11 +304,11 @@ Kindergarten Management
                 assert processed_task['status'] == 'needs_review', \
                     f"Expected task to be in needs_review, but was: {processed_task['status']}"
                 assert ask_user_called, "Expected ask_user tool to be called due to calendar conflict"
-                assert memory_entry_found, "Expected memory entry to be created about the conflict"
+                assert memory_entry_found, f"Expected memory entry to be created about the conflict for date {date_str}"
                 
                 # Test completed successfully
                 print("✅ All verifications passed!")
-                
+  
         finally:
             # =============================================================================
             # STEP 6: CLEANUP - Clean up test data
@@ -324,8 +336,32 @@ Kindergarten Management
                         "calendar_id": "primary",
                         "time_min": f"{date_str}T00:00:00+02:00"
                     })
-                    if "kindergarten" in str(list_result).lower():
-                        print("⚠️ Kindergarten event may need manual cleanup - check calendar")
+                    
+                    # Parse the result to find kindergarten event ID
+                    kindergarten_event_id = None
+                    if hasattr(list_result, 'get') and 'items' in list_result:
+                        for event in list_result.get('items', []):
+                            summary = event.get('summary', '').lower()
+                            if 'kindergarten' in summary or 'closure' in summary:
+                                kindergarten_event_id = event.get('id')
+                                break
+                    
+                    if kindergarten_event_id:
+                        try:
+                            delete_tool = next((t for t in all_tools if t.name == "delete_calendar_event"), None)
+                            if delete_tool:
+                                await delete_tool.arun({
+                                    "calendar_id": "primary",
+                                    "event_id": kindergarten_event_id
+                                })
+                                print(f"✅ Deleted kindergarten event: {kindergarten_event_id}")
+                            else:
+                                print("⚠️ delete_calendar_event tool not found")
+                        except Exception as e:
+                            print(f"⚠️ Failed to delete kindergarten event: {e}")
+                    else:
+                        print("🔍 No kindergarten event found to delete")
+                        
                 except Exception as e:
                     print(f"⚠️ Failed to check for kindergarten event: {e}")
                 

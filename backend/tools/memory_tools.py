@@ -55,7 +55,10 @@ async def add_memory_tool(content: str, source_description: str = "Agent Memory"
             return "Failed to store memory."
             
     except MemoryAddError as e:
-        logger.warning(f"Memory add failed: {e}")
+        logger.error(f"Memory add failed with MemoryAddError: {e}")
+        return "Memory storage is currently unavailable. Information not persisted."
+    except Exception as e:
+        logger.error(f"Memory add failed with unexpected error: {type(e).__name__}: {e}")
         return "Memory storage is currently unavailable. Information not persisted."
 
 
