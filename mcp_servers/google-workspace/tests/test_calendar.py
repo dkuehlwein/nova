@@ -1,7 +1,9 @@
 import pytest
-import asyncio
 from unittest.mock import Mock, patch
 from datetime import datetime
+
+from googleapiclient.errors import HttpError
+import httplib2
 
 import sys
 from pathlib import Path
@@ -50,7 +52,6 @@ class TestGoogleCalendarIntegration:
     @pytest.mark.asyncio
     async def test_list_calendars(self, mock_workspace_service_dependencies):
         """Test listing calendars."""
-        mocks = mock_workspace_service_dependencies
         
         # Mock calendar list response
         mock_response = {
@@ -83,7 +84,6 @@ class TestGoogleCalendarIntegration:
     @pytest.mark.asyncio
     async def test_create_event(self, mock_workspace_service_dependencies):
         """Test creating a calendar event."""
-        mocks = mock_workspace_service_dependencies
         
         # Mock event creation response
         mock_response = {
@@ -115,7 +115,6 @@ class TestGoogleCalendarIntegration:
     @pytest.mark.asyncio
     async def test_list_events(self, mock_workspace_service_dependencies):
         """Test listing calendar events."""
-        mocks = mock_workspace_service_dependencies
         
         # Mock events list response
         mock_response = {
@@ -155,7 +154,6 @@ class TestGoogleCalendarIntegration:
     @pytest.mark.asyncio
     async def test_create_quick_event(self, mock_workspace_service_dependencies):
         """Test creating an event using natural language."""
-        mocks = mock_workspace_service_dependencies
         
         # Mock quick add response
         mock_response = {
@@ -182,10 +180,6 @@ class TestGoogleCalendarIntegration:
     @pytest.mark.asyncio
     async def test_calendar_error_handling(self, mock_workspace_service_dependencies):
         """Test calendar error handling."""
-        mocks = mock_workspace_service_dependencies
-        
-        from googleapiclient.errors import HttpError
-        import httplib2
         
         # Mock HTTP error
         mock_error = HttpError(
@@ -252,7 +246,6 @@ class TestGoogleCalendarIntegration:
         assert daniel_timezone == 'Europe/Berlin'
         
         # Test date formatting
-        from datetime import datetime
         now = datetime.now()
         iso_format = now.isoformat()
         

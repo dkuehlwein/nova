@@ -5,8 +5,8 @@ Contains all Calendar-related functionality for event and calendar operations.
 
 import asyncio
 import logging
-from datetime import datetime
-from typing import List, Dict, Union, Optional, Any, Tuple
+from datetime import datetime, timedelta
+from typing import List, Dict, Union, Optional, Any
 
 import dateutil.parser
 from dateutil import tz
@@ -104,13 +104,43 @@ class CalendarTools:
         try:
             conflicts = await self._check_conflicts(calendar_id, start_datetime, end_datetime)
             
-            event = {
-                'summary': summary,
-                'location': location,
-                'description': description,
-                'start': {'dateTime': start_datetime, 'timeZone': timezone},
-                'end': {'dateTime': end_datetime, 'timeZone': timezone},
-            }
+            # Check if this should be an all-day event
+            start_dt = self._normalize_datetime(start_datetime)
+            end_dt = self._normalize_datetime(end_datetime)
+            
+            is_all_day = self._is_all_day_event(start_dt, end_dt)
+            
+            if is_all_day:
+                # All-day events use date field and end date should be the next day
+                start_date = start_dt.date().isoformat()
+                
+                # For all-day events, if end time is 23:59:59 of same day, 
+                # the end date should be the next day
+                if (end_dt.hour == 23 and end_dt.minute == 59 and end_dt.second == 59 and
+                    end_dt.date() == start_dt.date()):
+                    # Add one day for Google Calendar all-day event format
+                    end_date = (end_dt.date() + timedelta(days=1)).isoformat()
+                else:
+                    end_date = end_dt.date().isoformat()
+                
+                event = {
+                    'summary': summary,
+                    'location': location,
+                    'description': description,
+                    'start': {'date': start_date},
+                    'end': {'date': end_date},
+                }
+                logger.info(f"Creating all-day event from {start_date} to {end_date}")
+            else:
+                # Timed events use dateTime field
+                event = {
+                    'summary': summary,
+                    'location': location,
+                    'description': description,
+                    'start': {'dateTime': start_datetime, 'timeZone': timezone},
+                    'end': {'dateTime': end_datetime, 'timeZone': timezone},
+                }
+                logger.info(f"Creating timed event from {start_datetime} to {end_datetime}")
             
             if attendees:
                 event['attendees'] = [{'email': email} for email in attendees]
@@ -130,7 +160,7 @@ class CalendarTools:
         """Lists upcoming events from a calendar."""
         try:
             if time_min is None:
-                time_min = datetime.utcnow().isoformat() + 'Z'
+                time_min = datetime.now(tz=tz.UTC).isoformat().replace('+00:00', 'Z')
             
             list_params = {
                 'calendarId': calendar_id,
@@ -334,3 +364,31 @@ class CalendarTools:
     def _events_overlap(self, start1: datetime, end1: datetime, start2: datetime, end2: datetime) -> bool:
         """Check if two time ranges overlap."""
         return start1 < end2 and end1 > start2
+    
+    def _is_all_day_event(self, start_dt: datetime, end_dt: datetime) -> bool:
+        """
+        Determine if the given start and end datetime represent an all-day event.
+        
+        An all-day event is detected when:
+        1. Start time is at 00:00:00 (midnight)
+        2. End time is either:
+           - 00:00:00 of the next day, OR 
+           - 23:59:59 of the same day
+        """
+        # Check if start is at midnight (00:00:00)
+        start_is_midnight = (start_dt.hour == 0 and start_dt.minute == 0 and start_dt.second == 0)
+        
+        if not start_is_midnight:
+            return False
+            
+        # Check if end is at midnight of next day
+        if end_dt.hour == 0 and end_dt.minute == 0 and end_dt.second == 0:
+            # Should be exactly one day later
+            return (end_dt.date() - start_dt.date()).days == 1
+            
+        # Check if end is at 23:59:59 of the same day
+        if (end_dt.hour == 23 and end_dt.minute == 59 and end_dt.second == 59 and
+            end_dt.date() == start_dt.date()):
+            return True
+            
+        return False
