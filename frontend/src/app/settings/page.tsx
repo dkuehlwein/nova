@@ -1446,8 +1446,6 @@ function AutomationTab() {
       await apiRequest('/api/user-settings/', {
         method: 'PATCH',
         body: JSON.stringify({
-          email_polling_enabled: settings.email_polling_enabled,
-          email_polling_interval: settings.email_polling_interval,
           agent_polling_interval: settings.agent_polling_interval,
           memory_search_limit: settings.memory_search_limit,
           memory_token_limit: settings.memory_token_limit
@@ -1486,48 +1484,9 @@ function AutomationTab() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="space-y-6">
-        {/* Email Processing Section */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-medium text-foreground">Email Processing</h3>
-          <p className="text-sm text-muted-foreground">
-            Configure how Nova monitors and processes your email for automatic task creation.
-          </p>
-          
-          <div className="space-y-4 border border-muted rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Enable Email Monitoring</Label>
-                <p className="text-sm text-muted-foreground">
-                  Automatically scan emails and create relevant tasks
-                </p>
-              </div>
-              <Switch
-                checked={Boolean(settings.email_polling_enabled)}
-                onCheckedChange={(checked) => setSettings({...settings, email_polling_enabled: checked})}
-              />
-            </div>
-            
-            {Boolean(settings.email_polling_enabled) && (
-              <div className="space-y-2 pt-4 border-t border-border">
-                <Label htmlFor="email_polling_interval">Monitoring Interval (seconds)</Label>
-                <Input
-                  id="email_polling_interval"
-                  type="number"
-                  min="60"
-                  max="3600"
-                  value={Number(settings.email_polling_interval) || 300}
-                  onChange={(e) => setSettings({...settings, email_polling_interval: parseInt(e.target.value)})}
-                />
-                <p className="text-xs text-muted-foreground">
-                  How frequently to check for new emails (minimum: 60 seconds, recommended: 300 seconds)
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* Agent Processing Section */}
-        <div className="space-y-4 border-t border-border pt-6">
+        <div className="space-y-4">
           <h3 className="text-lg font-medium text-foreground">Core Agent Processing</h3>
           <p className="text-sm text-muted-foreground">
             Configure Nova&apos;s autonomous task processing behavior and performance.

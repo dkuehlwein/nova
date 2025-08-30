@@ -1,8 +1,12 @@
 # Nova Email Integration Architecture
 
+**Status**: SUPERSEDED by [ADR-012: Multi-Input Hook Architecture Design](./012-multi-input-hook-architecture-design.md)
+
 ## Overview
 
 Nova will integrate email processing capabilities to automatically create tasks from incoming emails. This document outlines the architecture using Celery for robust background job processing with comprehensive error handling and deduplication.
+
+**Note**: This ADR has been superseded by ADR-012's Registry-Based Hook Architecture. The email integration is now implemented as an `EmailInputHook` within the broader multi-input system. The core patterns and components described here remain valid but are now part of the generalized hook system.
 
 ## Architecture Components
 
@@ -63,12 +67,12 @@ graph TD
 - **Granular Controls**: Enable/disable processing, polling intervals, label filters
 - **Beat Schedule Updates**: Dynamic task scheduling based on config
 
-**Configuration Options:**
-- Polling interval (default: 5 minutes)
-- Gmail label filter (default: "INBOX") 
-- Enable/disable auto-processing toggle
-- Maximum emails per fetch
-- Task creation toggle
+**Configuration Options (Legacy - now in ADR-012's hook system):**
+- Polling interval (default: 5 minutes) → `configs/input_hooks.yaml:hooks.email.polling_interval`
+- Gmail label filter (default: "INBOX") → `configs/input_hooks.yaml:hooks.email.hook_settings.label_filter`
+- Enable/disable auto-processing toggle → `configs/input_hooks.yaml:hooks.email.enabled`
+- Maximum emails per fetch → `configs/input_hooks.yaml:hooks.email.hook_settings.max_per_fetch`
+- Task creation toggle → `configs/input_hooks.yaml:hooks.email.create_tasks`
 
 ### 5. Dead Letter Queue Handling
 
@@ -107,8 +111,9 @@ backend/
 
 ### 2. Database Schema
 
-**ProcessedEmail Table:**
+**ProcessedEmail Table (Legacy - replaced by ADR-012's processed_items):**
 ```sql
+-- Legacy table - replaced by processed_items in ADR-012
 CREATE TABLE processed_emails (
     id UUID PRIMARY KEY,
     email_id VARCHAR(255) NOT NULL UNIQUE,  -- Gmail message ID
@@ -117,6 +122,18 @@ CREATE TABLE processed_emails (
     sender VARCHAR(500) NOT NULL,           -- For auditing
     processed_at TIMESTAMP DEFAULT NOW(),   -- Processing timestamp
     task_id UUID REFERENCES tasks(id)       -- Created task (nullable)
+);
+
+-- New generalized table from ADR-012
+CREATE TABLE processed_items (
+    id SERIAL PRIMARY KEY,
+    source_type VARCHAR NOT NULL,  -- 'email', 'calendar', 'slack'
+    source_id VARCHAR NOT NULL,    -- Original item ID from source
+    source_metadata JSONB,         -- Flexible metadata storage
+    task_id VARCHAR,               -- Associated Nova task ID
+    processed_at TIMESTAMP DEFAULT NOW(),
+    last_updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(source_type, source_id)
 );
 ```
 
@@ -225,9 +242,18 @@ CREATE TABLE processed_emails (
 
 ## Migration Strategy
 
+**Legacy Migration Path (replaced by ADR-012's approach):**
 1. **Phase 1**: Deploy enhanced Celery infrastructure ✅
 2. **Phase 2**: Run database migration for ProcessedEmail table
 3. **Phase 3**: Enable email processing with configuration management (WP3)
 4. **Phase 4**: Add frontend integration and monitoring (WP4-6)
 
-This architecture provides a solid, production-ready foundation for email integration while addressing all major concerns around deduplication, dynamic configuration, and error handling. 
+**New Migration Strategy (per ADR-012):**
+1. **Phase 1**: Foundation Layer - Build InputHookRegistry and BaseInputHook
+2. **Phase 2**: Email System Wrapper - Create EmailInputHook wrapping existing components
+3. **Phase 3**: Celery Integration Enhancement - Generic hook tasks
+4. **Phase 4**: Database Schema Evolution - processed_items table
+5. **Phase 5**: Zero-Downtime Migration - Dual-mode operation with feature flags
+6. **Phase 6**: New Input Types - Calendar, IMAP, etc.
+
+This architecture provides a solid, production-ready foundation for email integration while addressing all major concerns around deduplication, dynamic configuration, and error handling. The approach has been generalized in ADR-012 to support multiple input sources through the Registry-Based Hook Architecture. 

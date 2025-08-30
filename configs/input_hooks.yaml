@@ -1,0 +1,61 @@
+# Nova Input Hooks Configuration
+# 
+# This file defines all input sources (email, calendar, etc.) that Nova monitors
+# and converts into tasks. Each hook can have its own polling schedule, task
+# creation settings, and source-specific configuration.
+
+# Global hook system settings
+default_polling_interval: 300  # 5 minutes
+default_queue_name: "hooks"
+enable_task_updates: true
+
+# Hook definitions
+hooks:
+  # Email hook - wraps existing email processing system
+  email:
+    name: "email"
+    hook_type: "email"
+    enabled: true
+    polling_interval: 300  # 5 minutes
+    queue_name: "email"    # Keep existing email queue for compatibility
+    create_tasks: true
+    update_existing_tasks: false  # Emails don't support updates yet
+    
+    # Email-specific settings
+    hook_settings:
+      max_per_fetch: 50
+      label_filter: null  # No label filtering by default
+      create_tasks: true  # Duplicate of above, for email processor compatibility
+
+  # Calendar hook - placeholder for future implementation
+  # calendar:
+  #   name: "calendar"
+  #   hook_type: "calendar"
+  #   enabled: false  # Not implemented yet
+  #   polling_interval: 600  # 10 minutes
+  #   queue_name: "calendar"
+  #   create_tasks: true
+  #   update_existing_tasks: true  # Calendar events can be updated
+  #   
+  #   hook_settings:
+  #     calendar_ids: ["primary"]
+  #     look_ahead_days: 7
+  #     event_types: ["meeting", "appointment"]
+  #     include_all_day_events: true
+  #     include_recurring_events: true
+
+  # Slack hook - placeholder for future implementation  
+  # slack:
+  #   name: "slack"
+  #   hook_type: "slack"
+  #   enabled: false  # Not implemented yet
+  #   polling_interval: 180  # 3 minutes
+  #   queue_name: "slack"
+  #   create_tasks: true
+  #   update_existing_tasks: false
+  #   
+  #   hook_settings:
+  #     channels: []
+  #     include_dms: false
+  #     include_mentions_only: true
+  #     message_types: ["message", "reminder"]
