@@ -582,9 +582,10 @@ async def delete_task(task_id: UUID):
         
         # Handle foreign key references first
         try:
-            # Set task_id to NULL in processed_emails (don't delete - we don't want to reprocess emails)
+           
+            # Set task_id to NULL in processed_items (don't delete - we don't want to reprocess items)
             await session.execute(
-                text("UPDATE processed_emails SET task_id = NULL WHERE task_id = :task_id"),
+                text("UPDATE processed_items SET task_id = NULL WHERE task_id = :task_id"),
                 {"task_id": task_id}
             )
             
