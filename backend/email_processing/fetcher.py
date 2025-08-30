@@ -8,7 +8,6 @@ from contextlib import contextmanager
 from typing import List, Dict, Any
 from config import settings
 from mcp_client import mcp_manager
-from models.user_settings import UserSettings
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -56,17 +55,20 @@ class EmailFetcher:
     def __init__(self):
         self.mcp_tools = None
     
-    async def fetch_new_emails(self, user_settings: UserSettings) -> List[Dict[str, Any]]:
+    async def fetch_new_emails(self, hook_config) -> List[Dict[str, Any]]:
         """
-        Fetch new emails from email provider with dynamic configuration.
+        Fetch new emails from email provider using hook configuration.
+        
+        Args:
+            hook_config: EmailHookConfig containing email processing settings
         
         Returns:
             List of email dictionaries
         """
         try:
-            # Check if email processing is enabled in user settings (Tier 3 configuration)
-            if not user_settings.email_polling_enabled:
-                logger.info("Email polling is disabled in user settings")
+            # Check if email processing is enabled in hook config
+            if not hook_config.enabled:
+                logger.info("Email hook is disabled")
                 return []
             
             # Test MCP connection health
@@ -74,13 +76,14 @@ class EmailFetcher:
             
             # Fetch emails using MCP client
             logger.info(
-                "Fetching emails from email provider",
+                "Fetching emails from email provider via hook system",
                 extra={"data": {
-                    "max_results": user_settings.email_max_per_fetch,
-                    "label_filter": user_settings.email_label_filter,
-                    "polling_enabled": user_settings.email_polling_enabled,
-                    "polling_interval": user_settings.email_polling_interval,
-                    "create_tasks": user_settings.email_create_tasks
+                    "hook_name": hook_config.name,
+                    "max_results": hook_config.hook_settings.max_per_fetch,
+                    "label_filter": hook_config.hook_settings.label_filter,
+                    "enabled": hook_config.enabled,
+                    "polling_interval": hook_config.polling_interval,
+                    "create_tasks": hook_config.create_tasks
                 }}
             )
             
@@ -95,7 +98,7 @@ class EmailFetcher:
             messages = self._parse_message_list(result)
             
             logger.info(
-                "Fetched message list from email provider",
+                "Fetched message list from email provider via hook system",
                 extra={"data": {"message_count": len(messages)}}
             )
             
@@ -103,9 +106,10 @@ class EmailFetcher:
             emails = []
             for message_info in messages:
                 try:
-                    message_id = message_info["id"]
+                    message_id = message_info.get("id")
+                    if not message_id:
+                        continue
                     
-                    # Get full message details
                     message_result = await self._call_email_tool(
                         "get_email",
                         message_id=message_id
@@ -116,27 +120,39 @@ class EmailFetcher:
                         
                 except Exception as e:
                     logger.error(
-                        "Failed to fetch individual email details",
+                        "Failed to fetch individual email details via hook system",
                         extra={"data": {
                             "message_id": message_info.get("id"),
+                            "hook_name": hook_config.name,
                             "error": str(e)
                         }}
                     )
                     continue
             
+            # Limit results based on hook configuration
+            max_emails = hook_config.hook_settings.max_per_fetch
+            if len(emails) > max_emails:
+                logger.info(
+                    f"Limiting emails to {max_emails} (found {len(emails)})",
+                    extra={"data": {"hook_name": hook_config.name, "limit": max_emails}}
+                )
+                emails = emails[:max_emails]
+            
             logger.info(
-                "Successfully fetched email details",
-                extra={"data": {"email_count": len(emails)}}
+                f"Successfully fetched {len(emails)} emails via hook system",
+                extra={"data": {"hook_name": hook_config.name, "email_count": len(emails)}}
             )
             
             return emails
             
         except Exception as e:
             logger.error(
-                "Failed to fetch emails",
-                extra={"data": {"error": str(e)}}
+                "Failed to fetch emails via hook system",
+                exc_info=True,
+                extra={"data": {"hook_name": hook_config.name, "error": str(e)}}
             )
             raise
+    
     
     async def _health_check(self) -> None:
         """Test MCP connection health by checking available tools."""

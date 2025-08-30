@@ -274,6 +274,17 @@ class ConfigRegistry:
             )
             self.register("system_prompt", system_prompt_manager)
             
+            # 3. Input Hooks Configuration
+            from input_hooks.models import InputHooksConfig
+            
+            input_hooks_manager = YamlConfigManager(
+                config_path=configs_path / "input_hooks.yaml",
+                config_name="input_hooks",
+                config_model=InputHooksConfig,
+                default_config=InputHooksConfig()  # Use default empty config if file doesn't exist
+            )
+            self.register("input_hooks", input_hooks_manager)
+            
             self._initialized = True
             logger.info("Standard Nova configurations initialized successfully")
             

@@ -8,7 +8,6 @@ from typing import List, Dict, Any
 from sqlalchemy import select
 from database.database import db_manager
 from models.models import ProcessedEmail
-from models.user_settings import UserSettings
 from models.email import EmailMetadata
 from utils.logging import get_logger
 from .normalizer import EmailNormalizer
@@ -26,19 +25,19 @@ class EmailProcessor:
         self.fetcher = EmailFetcher()
         self.task_creator = EmailTaskCreator()
     
-    async def fetch_new_emails(self) -> List[Dict[str, Any]]:
+    async def fetch_new_emails(self, hook_config) -> List[Dict[str, Any]]:
         """
         Fetch new emails from email provider and filter out already processed ones.
+        
+        Args:
+            hook_config: EmailHookConfig from the hook system
         
         Returns:
             List of normalized email dictionaries
         """
         try:
-            # Get current user settings
-            user_settings = await self._get_user_settings()
-            
-            # Fetch emails from MCP
-            raw_emails = await self.fetcher.fetch_new_emails(user_settings)
+            # Fetch emails from MCP using hook configuration
+            raw_emails = await self.fetcher.fetch_new_emails(hook_config)
             
             if not raw_emails:
                 return []
@@ -77,12 +76,13 @@ class EmailProcessor:
             )
             raise
     
-    async def process_email(self, normalized_email: Dict[str, Any]) -> bool:
+    async def process_email(self, normalized_email: Dict[str, Any], hook_config) -> bool:
         """
         Process a single normalized email and create a task if needed.
         
         Args:
             normalized_email: Email data in normalized format
+            hook_config: EmailHookConfig from the hook system
             
         Returns:
             True if task was created, False otherwise
@@ -91,14 +91,11 @@ class EmailProcessor:
         email_id = normalized_email.get("id", "unknown")
         
         try:
-            # Get user settings for task creation preference
-            user_settings = await self._get_user_settings()
-            
             # Check if task creation from emails is enabled
-            if not user_settings.email_create_tasks:
+            if not hook_config.create_tasks:
                 logger.info(
-                    "Task creation from emails is disabled in user settings",
-                    extra={"data": {"email_id": email_id}}
+                    "Task creation from emails is disabled in hook config",
+                    extra={"data": {"email_id": email_id, "hook_name": hook_config.name}}
                 )
                 return False
             
@@ -120,7 +117,7 @@ class EmailProcessor:
                 return False
             
             # Create task from email
-            task_id = await self.task_creator.create_task_from_email(normalized_email, user_settings)
+            task_id = await self.task_creator.create_task_from_email(normalized_email, hook_config)
             
             if task_id:
                 # Create metadata for database record
@@ -161,17 +158,6 @@ class EmailProcessor:
             )
             raise
     
-    async def _get_user_settings(self) -> UserSettings:
-        """Get current user settings from database."""
-        from database.database import UserSettingsService
-        
-        settings = await UserSettingsService.get_user_settings()
-        
-        if not settings:
-            logger.error("No user settings found in database - this should never happen in production")
-            raise RuntimeError("User settings not configured. Please complete onboarding first.")
-        
-        return settings
     
     async def _filter_new_emails(self, normalized_emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Filter out already processed emails using database lookup."""
