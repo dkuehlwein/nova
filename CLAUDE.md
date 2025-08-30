@@ -227,6 +227,6 @@ curl http://localhost:8000/api/user-settings/
 
 ### Common Issues
 - **Tool calling fails**: Ensure llama.cpp has `--jinja` flag (required for function calling)
-- **Model loading slow**: Phi-4 Q4_K_M (~8GB) takes 30-60 seconds to load
-- **CUDA not detected**: Check `docker logs nova-llamacpp-1` for GPU initialization
+
 - **Settings not persisting**: Restart Nova backend after changing LLM settings
+- Use uv run to run python code, uv run pytest for tests. The venv is in the backend folder!
