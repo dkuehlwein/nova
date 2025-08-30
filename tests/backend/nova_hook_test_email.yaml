@@ -1,0 +1,11 @@
+# Test configuration file for EmailInputHook testing
+name: "test_email"
+hook_type: "email"
+enabled: true
+polling_interval: 300
+create_tasks: true
+update_existing_tasks: false
+hook_settings:
+  max_per_fetch: 50
+  label_filter: "INBOX"
+  create_tasks: true
