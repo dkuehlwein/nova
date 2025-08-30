@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 from sqlalchemy import select
 from database.database import db_manager
-from models.models import ProcessedEmail
+from models.models import ProcessedItem
 from models.email import EmailMetadata
 from utils.logging import get_logger
 from .normalizer import EmailNormalizer
@@ -121,7 +121,7 @@ class EmailProcessor:
             
             if task_id:
                 # Create metadata for database record
-                metadata = self.task_creator._create_metadata(normalized_email)
+                metadata = await self.task_creator._create_metadata(normalized_email)
                 
                 # Mark as processed in database
                 await self._mark_email_processed(email_id, metadata, task_id)
@@ -178,9 +178,10 @@ class EmailProcessor:
             email_ids.append(email_id)
         
         async with db_manager.get_session() as session:
-            # Query for already processed emails
-            stmt = select(ProcessedEmail.email_id).where(
-                ProcessedEmail.email_id.in_(email_ids)
+            # Query for already processed emails (now in ProcessedItem table)
+            stmt = select(ProcessedItem.source_id).where(
+                ProcessedItem.source_type == "email",
+                ProcessedItem.source_id.in_(email_ids)
             )
             result = await session.execute(stmt)
             processed_ids = {row[0] for row in result.fetchall()}
@@ -202,7 +203,10 @@ class EmailProcessor:
     async def _is_email_processed(self, email_id: str) -> bool:
         """Check if email has already been processed."""
         async with db_manager.get_session() as session:
-            stmt = select(ProcessedEmail).where(ProcessedEmail.email_id == email_id)
+            stmt = select(ProcessedItem).where(
+                ProcessedItem.source_type == "email",
+                ProcessedItem.source_id == email_id
+            )
             result = await session.execute(stmt)
             return result.first() is not None
     
@@ -214,11 +218,14 @@ class EmailProcessor:
     ) -> None:
         """Mark email as processed in database."""
         async with db_manager.get_session() as session:
-            processed_email = ProcessedEmail(
-                email_id=email_id,
-                thread_id=metadata.thread_id,
-                subject=metadata.subject,
-                sender=metadata.sender,
+            processed_email = ProcessedItem(
+                source_type="email",
+                source_id=email_id,
+                source_metadata={
+                    "thread_id": metadata.thread_id,
+                    "subject": metadata.subject,
+                    "sender": metadata.sender
+                },
                 processed_at=datetime.utcnow(),
                 task_id=task_id
             )

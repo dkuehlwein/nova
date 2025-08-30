@@ -24,10 +24,11 @@ class NovaEvent(BaseModel):
         "config_validated",
         "config_changed",
         "user_profile_updated",
-        "email_processing_started",
-        "email_processing_completed",
-        "email_settings_updated",
-        "llm_settings_updated"
+        "llm_settings_updated",
+        "hook_processing_started",
+        "hook_processing_completed", 
+        "hook_processing_failed",
+        "hook_task_dead_letter"
     ]
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     data: Dict[str, Any]

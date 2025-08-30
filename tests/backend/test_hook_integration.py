@@ -115,12 +115,13 @@ def test_email_hook_wrapper():
 
 def test_database_model():
     """Test database model integration."""
-    from models.models import ProcessedEmail
+    from models.models import ProcessedItem
     
-    # Test email model attributes exist (hook system still uses existing processed_emails table)
-    assert hasattr(ProcessedEmail, 'email_id')
-    assert hasattr(ProcessedEmail, 'task_id')
-    assert hasattr(ProcessedEmail, 'processed_at')
+    # Test ProcessedItem model attributes exist (hook system uses generalized processed_items table)
+    assert hasattr(ProcessedItem, 'source_type')
+    assert hasattr(ProcessedItem, 'source_id')
+    assert hasattr(ProcessedItem, 'task_id')
+    assert hasattr(ProcessedItem, 'processed_at')
 
 
 def test_hook_tasks_import():

@@ -251,7 +251,7 @@ class EmailInputHook(BaseInputHook):
             # Use existing EmailTaskCreator metadata creation
             self._ensure_email_components()
             
-            metadata = self._email_task_creator._create_metadata(item.content)
+            metadata = await self._email_task_creator._create_metadata(item.content)
             
             # Use existing EmailProcessor method for marking as processed
             await self._email_processor._mark_email_processed(

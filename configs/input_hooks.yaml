@@ -17,7 +17,7 @@ hooks:
     hook_type: "email"
     enabled: true
     polling_interval: 300  # 5 minutes
-    queue_name: "email"    # Keep existing email queue for compatibility
+    queue_name: "hooks"    # Use hooks queue for new architecture
     create_tasks: true
     update_existing_tasks: false  # Emails don't support updates yet
     

@@ -52,11 +52,6 @@ class UserSettingsService:
             "email": settings.email,
             "timezone": settings.timezone,
             "notes": settings.notes,
-            "email_polling_enabled": settings.email_polling_enabled,
-            "email_polling_interval": settings.email_polling_interval,
-            "email_create_tasks": settings.email_create_tasks,
-            "email_max_per_fetch": settings.email_max_per_fetch,
-            "email_label_filter": settings.email_label_filter,
             "notification_preferences": settings.notification_preferences,
             "task_defaults": settings.task_defaults,
             "agent_polling_interval": settings.agent_polling_interval,
@@ -91,21 +86,7 @@ class UserSettingsService:
             "embedding_model": settings.embedding_model,
         }
     
-    @staticmethod
-    async def get_email_settings() -> dict:
-        """Get only email-related settings from database."""
-        settings = await UserSettingsService.get_user_settings()
-        if not settings:
-            return {}
-        
-        return {
-            "email_polling_enabled": settings.email_polling_enabled,
-            "email_polling_interval": settings.email_polling_interval,
-            "email_create_tasks": settings.email_create_tasks,
-            "email_max_per_fetch": settings.email_max_per_fetch,
-            "email_label_filter": settings.email_label_filter,
-        }
-    
+
     @staticmethod
     async def get_memory_settings() -> dict:
         """Get only memory-related settings from database."""

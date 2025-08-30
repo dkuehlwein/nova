@@ -13,7 +13,7 @@ import inspect
 from utils.config_registry import ConfigRegistry  
 from utils.logging import get_logger
 from .base_hook import BaseInputHook
-from .models import InputHooksConfig, HookConfig, AnyHookConfig, EmailHookConfig, CalendarHookConfig, SlackHookConfig
+from .models import InputHooksConfig, HookConfig, AnyHookConfig, EmailHookConfig, CalendarHookConfig
 
 logger = get_logger("input_hook_registry")
 

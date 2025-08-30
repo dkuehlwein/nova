@@ -4,7 +4,7 @@ Email to task conversion for Nova.
 Handles converting normalized email data into Nova tasks with proper formatting.
 """
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from models.email import EmailMetadata
 from tools.task_tools import create_task_tool
@@ -32,7 +32,7 @@ class EmailTaskCreator:
         """
         try:
             # Extract metadata from normalized email
-            metadata = self._create_metadata(normalized_email)
+            metadata = await self._create_metadata(normalized_email)
             
             # Create task title and description
             task_title = f"Read Email: {metadata.subject}"
@@ -73,7 +73,7 @@ class EmailTaskCreator:
             )
             raise
     
-    def _create_metadata(self, normalized_email: Dict[str, Any]) -> EmailMetadata:
+    async def _create_metadata(self, normalized_email: Dict[str, Any]) -> EmailMetadata:
         """Create EmailMetadata from normalized email data."""
         # Generate email ID if missing
         email_id = normalized_email.get("id") or self._generate_email_id(normalized_email)
@@ -84,7 +84,7 @@ class EmailTaskCreator:
             subject=normalized_email.get("subject", "No Subject"),
             sender=normalized_email.get("from", "Unknown Sender"),
             recipient=normalized_email.get("to", ""),
-            date=normalized_email.get("date"),
+            date=await self._parse_email_date(normalized_email.get("date")),
             has_attachments=normalized_email.get("has_attachments", False),
             labels=normalized_email.get("labels", [])
         )
@@ -95,6 +95,60 @@ class EmailTaskCreator:
         content = f"{normalized_email.get('subject', '')}{normalized_email.get('from', '')}{normalized_email.get('date', '')}"
         content_hash = hashlib.md5(content.encode()).hexdigest()[:12]
         return f"email_{content_hash}"
+    
+    async def _parse_email_date(self, date_str: str = None) -> datetime:
+        """Parse email date string - handles various email date formats and user timezone."""
+        if not date_str:
+            return datetime.now(timezone.utc).replace(tzinfo=None)
+        
+        try:
+            # Use email.utils to parse RFC 2822 date format (like 'Sat, 30 Aug 2025 17:46:08 +0200')
+            from email.utils import parsedate_to_datetime
+            import zoneinfo
+            
+            parsed_date = parsedate_to_datetime(date_str)
+            
+            # Get user's timezone setting
+            user_timezone_str = await self._get_user_timezone()
+            
+            if parsed_date.tzinfo is not None:
+                # Convert to user's timezone first, then store as naive for database
+                try:
+                    user_tz = zoneinfo.ZoneInfo(user_timezone_str)
+                    user_date = parsed_date.astimezone(user_tz)
+                    return user_date.replace(tzinfo=None)  # Store as naive in user's timezone
+                except Exception as tz_error:
+                    logger.warning(f"Failed to convert to user timezone '{user_timezone_str}': {tz_error}, falling back to UTC")
+                    utc_date = parsed_date.astimezone(timezone.utc)
+                    return utc_date.replace(tzinfo=None)  # Fallback to UTC
+            else:
+                return parsed_date
+                
+        except Exception as e:
+            logger.warning(f"Failed to parse email date '{date_str}': {e}")
+            return datetime.now(timezone.utc).replace(tzinfo=None)
+    
+    async def _get_user_timezone(self) -> str:
+        """Get user's timezone setting from database."""
+        try:
+            from database.database import db_manager
+            from models.user_settings import UserSettings
+            from sqlalchemy import select
+            
+            async with db_manager.get_session() as session:
+                stmt = select(UserSettings.timezone).limit(1)
+                result = await session.execute(stmt)
+                timezone_row = result.first()
+                
+                if timezone_row and timezone_row[0]:
+                    return timezone_row[0]
+                else:
+                    logger.info("No user timezone found, defaulting to UTC")
+                    return "UTC"
+                    
+        except Exception as e:
+            logger.error(f"Failed to get user timezone: {e}")
+            return "UTC"  # Safe fallback
     
     def _format_task_description(
         self, 

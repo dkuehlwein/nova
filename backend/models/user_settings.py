@@ -39,12 +39,6 @@ class UserSettings(Base):
     timezone: Mapped[str] = mapped_column(String(50), default="UTC")
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
-    # Email Integration Settings
-    email_polling_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    email_polling_interval: Mapped[int] = mapped_column(Integer, default=300)  # seconds
-    email_create_tasks: Mapped[bool] = mapped_column(Boolean, default=True)
-    email_max_per_fetch: Mapped[int] = mapped_column(Integer, default=10)
-    email_label_filter: Mapped[str] = mapped_column(String(100), default="INBOX")
     
     # Notification Preferences
     notification_preferences: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
@@ -101,12 +95,6 @@ class UserSettingsModel(BaseModel):
     timezone: str = "UTC"
     notes: Optional[str] = None
     
-    # Email Integration
-    email_polling_enabled: bool = True
-    email_polling_interval: int = 300
-    email_create_tasks: bool = True
-    email_max_per_fetch: int = 10
-    email_label_filter: str = "INBOX"
     
     # Notifications
     notification_preferences: Dict[str, Any] = Field(default_factory=dict)
@@ -166,12 +154,6 @@ class UserSettingsUpdateModel(BaseModel):
     timezone: Optional[str] = None
     notes: Optional[str] = None
     
-    # Email Integration
-    email_polling_enabled: Optional[bool] = None
-    email_polling_interval: Optional[int] = None
-    email_create_tasks: Optional[bool] = None
-    email_max_per_fetch: Optional[int] = None
-    email_label_filter: Optional[str] = None
     
     # Notifications
     notification_preferences: Optional[Dict[str, Any]] = None

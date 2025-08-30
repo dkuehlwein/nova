@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel
 from sqlalchemy import (
     Boolean, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text, Table,
-    Column, func
+    Column, func, UniqueConstraint
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
@@ -149,23 +149,36 @@ class Artifact(Base):
     tasks: Mapped[List["Task"]] = relationship("Task", secondary=task_artifact_association, back_populates="artifacts")
 
 
-class ProcessedEmail(Base):
-    """Model to track processed emails for deduplication."""
-    __tablename__ = 'processed_emails'
+class ProcessedItem(Base):
+    """
+    Generalized model to track processed items from all input sources.
+    
+    This table supports the new hook system, providing deduplication
+    and tracking for emails, calendar events, Slack messages, etc.
+    """
+    __tablename__ = 'processed_items'
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     
-    # Email identifiers
-    email_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
-    thread_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    # Source identification
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # 'email', 'calendar', 'slack'
+    source_id: Mapped[str] = mapped_column(String(500), nullable=False, index=True)   # Original ID from source system
     
-    # Email metadata for debugging/auditing
-    subject: Mapped[str] = mapped_column(String(1000), nullable=False)
-    sender: Mapped[str] = mapped_column(String(500), nullable=False)
+    # Flexible metadata storage for source-specific data
+    source_metadata: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     
     # Processing information
     processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     task_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey('tasks.id'))
+    
+    # Composite unique constraint to prevent duplicate processing
+    __table_args__ = (
+        UniqueConstraint('source_type', 'source_id', name='uq_processed_items_source'),
+    )
+    
+    def __repr__(self):
+        return f"<ProcessedItem(source_type='{self.source_type}', source_id='{self.source_id}', task_id='{self.task_id}')>"
     
     # Relationship to created task (optional, task might be deleted later)
     task: Mapped[Optional["Task"]] = relationship("Task")
