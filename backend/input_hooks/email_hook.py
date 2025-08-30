@@ -209,17 +209,11 @@ class EmailInputHook(BaseInputHook):
         try:
             self._ensure_email_components()
             
-            # Get user settings for task creation
-            user_settings = await self._email_processor._get_user_settings()
-            
             # Use existing EmailTaskCreator which handles:
             # - Task title formatting ("Read Email: {subject}")
             # - Task description with email metadata  
-            # - Timezone-aware date formatting
             # - Email-specific content parsing
-            task_id = await self._email_task_creator.create_task_from_email(
-                item.content, user_settings
-            )
+            task_id = await self._email_task_creator.create_task_from_email(item.content)
             
             if task_id:
                 logger.info(

@@ -117,7 +117,7 @@ class EmailProcessor:
                 return False
             
             # Create task from email
-            task_id = await self.task_creator.create_task_from_email(normalized_email, hook_config)
+            task_id = await self.task_creator.create_task_from_email(normalized_email)
             
             if task_id:
                 # Create metadata for database record
