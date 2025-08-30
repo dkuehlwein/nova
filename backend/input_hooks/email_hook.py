@@ -41,10 +41,10 @@ class EmailInputHook(BaseInputHook):
         """Lazy initialization of email processing components."""
         if self._email_processor is None:
             try:
-                from email_processing.processor import EmailProcessor
-                from email_processing.fetcher import EmailFetcher
-                from email_processing.normalizer import EmailNormalizer
-                from email_processing.task_creator import EmailTaskCreator
+                from input_hooks.email_processing.processor import EmailProcessor
+                from input_hooks.email_processing.fetcher import EmailFetcher
+                from input_hooks.email_processing.normalizer import EmailNormalizer
+                from input_hooks.email_processing.task_creator import EmailTaskCreator
                 
                 self._email_processor = EmailProcessor()
                 self._email_fetcher = EmailFetcher()

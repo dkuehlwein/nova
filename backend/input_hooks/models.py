@@ -80,16 +80,45 @@ class EmailHookConfig(HookConfig):
 class CalendarHookSettings(BaseModel):
     """Calendar-specific hook settings."""
     calendar_ids: List[str] = ["primary"]
-    look_ahead_days: int = Field(default=7, gt=0)
+    look_ahead_days: int = Field(default=1, gt=0)
     event_types: List[str] = ["meeting", "appointment", "reminder"]
-    include_all_day_events: bool = True
+    include_all_day_events: bool = False
     include_recurring_events: bool = True
+    min_meeting_duration: int = Field(default=15, gt=0)  # Minimum minutes for prep
+    prep_time_minutes: int = Field(default=15, gt=0)  # Minutes before meeting for prep
 
 
 class CalendarHookConfig(HookConfig):
     """Configuration for calendar input hooks."""
     hook_type: Literal["calendar"] = "calendar"
     hook_settings: CalendarHookSettings = Field(default_factory=CalendarHookSettings)
+
+
+class CalendarMeetingInfo(BaseModel):
+    """Information about a calendar meeting for memo generation."""
+    meeting_id: str
+    title: str
+    attendees: List[str] = []
+    start_time: datetime
+    end_time: datetime
+    duration_minutes: int
+    location: str = ""
+    description: str = ""
+    organizer: str = ""
+    calendar_id: str = "primary"
+    
+    @property
+    def attendee_emails(self) -> List[str]:
+        """Extract email addresses from attendees."""
+        emails = []
+        for attendee in self.attendees:
+            if isinstance(attendee, dict):
+                email = attendee.get('email', '')
+                if email:
+                    emails.append(email)
+            elif isinstance(attendee, str) and '@' in attendee:
+                emails.append(attendee)
+        return emails
 
 
 # Union type for all possible hook configs

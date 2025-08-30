@@ -69,8 +69,8 @@ class InputHookRegistry(ConfigRegistry):
         # Import hook classes dynamically to avoid circular imports
         hook_types = {
             "email": "input_hooks.email_hook.EmailInputHook",
+            "calendar": "input_hooks.calendar_hook.CalendarInputHook",
             # Future hook types will be added here:
-            # "calendar": "input_hooks.calendar_hook.CalendarInputHook",
             # "slack": "input_hooks.slack_hook.SlackInputHook",
         }
         
