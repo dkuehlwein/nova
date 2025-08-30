@@ -275,11 +275,6 @@ interface UserSettings {
   email?: string
   timezone: string
   notes?: string
-  email_polling_enabled: boolean
-  email_polling_interval: number
-  email_create_tasks: boolean
-  email_max_per_fetch: number
-  email_label_filter: string
   notification_preferences: Record<string, unknown>
   task_defaults: Record<string, unknown>
   agent_polling_interval: number

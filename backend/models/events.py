@@ -102,20 +102,50 @@ class UserProfileUpdatedEventData(BaseModel):
     notes: Optional[str] = None
 
 
-class EmailSettingsUpdatedEventData(BaseModel):
-    """Data structure for email settings update events."""
-    enabled: bool
-    polling_interval_minutes: int
-    email_label_filter: str
-    max_emails_per_fetch: int
-    create_tasks_from_emails: bool
-
-
 class LLMSettingsUpdatedEventData(BaseModel):
     """Data structure for LLM settings update events."""
     model: str
     temperature: float
     max_tokens: int
+
+
+class HookProcessingStartedEventData(BaseModel):
+    """Data structure for hook processing started events."""
+    hook_name: str
+    task_id: str
+    timestamp: str
+
+
+class HookProcessingCompletedEventData(BaseModel):
+    """Data structure for hook processing completed events."""
+    hook_name: str
+    task_id: str
+    items_processed: int
+    tasks_created: int
+    tasks_updated: int
+    errors: int
+    execution_time_seconds: float
+    timestamp: str
+
+
+class HookProcessingFailedEventData(BaseModel):
+    """Data structure for hook processing failed events."""
+    hook_name: str
+    task_id: str
+    error: str
+    retry_count: Optional[int] = None
+    is_final_failure: Optional[bool] = None
+    timestamp: str
+
+
+class HookTaskDeadLetterEventData(BaseModel):
+    """Data structure for hook task dead letter events."""
+    hook_name: str
+    task_id: str
+    error_message: str
+    retry_count: int
+    failed_at: str
+    task_type: str
 
 
 # Helper functions for creating typed events
@@ -225,27 +255,6 @@ def create_user_profile_updated_event(
     )
 
 
-def create_email_settings_updated_event(
-    enabled: bool,
-    polling_interval_minutes: int,
-    email_label_filter: str,
-    max_emails_per_fetch: int,
-    create_tasks_from_emails: bool,
-    source: str = "settings-service"
-) -> NovaEvent:
-    """Create a typed email settings update event."""
-    return NovaEvent(
-        type="email_settings_updated",
-        data=EmailSettingsUpdatedEventData(
-            enabled=enabled,
-            polling_interval_minutes=polling_interval_minutes,
-            email_label_filter=email_label_filter,
-            max_emails_per_fetch=max_emails_per_fetch,
-            create_tasks_from_emails=create_tasks_from_emails
-        ).model_dump(),
-        source=source
-    )
-
 
 def create_llm_settings_updated_event(
     model: str,
@@ -260,6 +269,100 @@ def create_llm_settings_updated_event(
             model=model,
             temperature=temperature,
             max_tokens=max_tokens
+        ).model_dump(),
+        source=source
+    )
+
+
+def create_hook_processing_started_event(
+    hook_name: str,
+    task_id: str,
+    timestamp: str,
+    source: str = "celery-worker"
+) -> NovaEvent:
+    """Create a typed hook processing started event."""
+    return NovaEvent(
+        type="hook_processing_started",
+        data=HookProcessingStartedEventData(
+            hook_name=hook_name,
+            task_id=task_id,
+            timestamp=timestamp
+        ).model_dump(),
+        source=source
+    )
+
+
+def create_hook_processing_completed_event(
+    hook_name: str,
+    task_id: str,
+    items_processed: int,
+    tasks_created: int,
+    tasks_updated: int,
+    errors: int,
+    execution_time_seconds: float,
+    timestamp: str,
+    source: str = "celery-worker"
+) -> NovaEvent:
+    """Create a typed hook processing completed event."""
+    return NovaEvent(
+        type="hook_processing_completed",
+        data=HookProcessingCompletedEventData(
+            hook_name=hook_name,
+            task_id=task_id,
+            items_processed=items_processed,
+            tasks_created=tasks_created,
+            tasks_updated=tasks_updated,
+            errors=errors,
+            execution_time_seconds=execution_time_seconds,
+            timestamp=timestamp
+        ).model_dump(),
+        source=source
+    )
+
+
+def create_hook_processing_failed_event(
+    hook_name: str,
+    task_id: str,
+    error: str,
+    timestamp: str,
+    retry_count: Optional[int] = None,
+    is_final_failure: Optional[bool] = None,
+    source: str = "celery-worker"
+) -> NovaEvent:
+    """Create a typed hook processing failed event."""
+    return NovaEvent(
+        type="hook_processing_failed",
+        data=HookProcessingFailedEventData(
+            hook_name=hook_name,
+            task_id=task_id,
+            error=error,
+            retry_count=retry_count,
+            is_final_failure=is_final_failure,
+            timestamp=timestamp
+        ).model_dump(),
+        source=source
+    )
+
+
+def create_hook_task_dead_letter_event(
+    hook_name: str,
+    task_id: str,
+    error_message: str,
+    retry_count: int,
+    failed_at: str,
+    task_type: str,
+    source: str = "celery-worker"
+) -> NovaEvent:
+    """Create a typed hook task dead letter event."""
+    return NovaEvent(
+        type="hook_task_dead_letter",
+        data=HookTaskDeadLetterEventData(
+            hook_name=hook_name,
+            task_id=task_id,
+            error_message=error_message,
+            retry_count=retry_count,
+            failed_at=failed_at,
+            task_type=task_type
         ).model_dump(),
         source=source
     )

@@ -15,7 +15,12 @@ from celery_app import celery_app
 from utils.logging import get_logger
 from utils.redis_manager import publish_sync
 from input_hooks.hook_registry import input_hook_registry
-from models.events import NovaEvent
+from models.events import (
+    create_hook_processing_started_event,
+    create_hook_processing_completed_event,
+    create_hook_processing_failed_event,
+    create_hook_task_dead_letter_event
+)
 from input_hooks.models import ProcessingResult
 
 logger = get_logger(__name__)
@@ -93,17 +98,13 @@ def process_hook_items(self, hook_name: str) -> Dict[str, Any]:
         
         # Publish failure event for monitoring
         try:
-            event = NovaEvent(
-                type="hook_processing_failed",
-                source="celery-worker",
-                data={
-                    "hook_name": hook_name,
-                    "task_id": task_id,
-                    "error": str(e),
-                    "retry_count": retry_count,
-                    "is_final_failure": retry_count >= max_retries,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+            event = create_hook_processing_failed_event(
+                hook_name=hook_name,
+                task_id=task_id,
+                error=str(e),
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                retry_count=retry_count,
+                is_final_failure=retry_count >= max_retries
             )
             publish_sync(event)
         except Exception as publish_error:
@@ -155,14 +156,10 @@ async def _process_hook_items_async(hook_name: str, task_id: str) -> Dict[str, A
             raise ValueError(f"Hook '{hook_name}' not found. Available hooks: {available_hooks}")
         
         # Publish processing start event
-        event = NovaEvent(
-            type="hook_processing_started",
-            source="celery-worker",
-            data={
-                "hook_name": hook_name,
-                "task_id": task_id,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
+        event = create_hook_processing_started_event(
+            hook_name=hook_name,
+            task_id=task_id,
+            timestamp=datetime.now(timezone.utc).isoformat()
         )
         publish_sync(event)
         
@@ -194,10 +191,15 @@ async def _process_hook_items_async(hook_name: str, task_id: str) -> Dict[str, A
         }
         
         # Publish completion event
-        event = NovaEvent(
-            type="hook_processing_completed",
-            source="celery-worker",
-            data=result_dict
+        event = create_hook_processing_completed_event(
+            hook_name=result.hook_name,
+            task_id=task_id,
+            items_processed=result.items_processed,
+            tasks_created=result.tasks_created,
+            tasks_updated=result.tasks_updated,
+            errors=len(result.errors),
+            execution_time_seconds=result.processing_time_seconds,
+            timestamp=result.timestamp.isoformat()
         )
         publish_sync(event)
         
@@ -205,15 +207,11 @@ async def _process_hook_items_async(hook_name: str, task_id: str) -> Dict[str, A
         
     except Exception as e:
         # Publish failure event
-        event = NovaEvent(
-            type="hook_processing_failed",
-            source="celery-worker",
-            data={
-                "hook_name": hook_name,
-                "task_id": task_id,
-                "error": str(e),
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
+        event = create_hook_processing_failed_event(
+            hook_name=hook_name,
+            task_id=task_id,
+            error=str(e),
+            timestamp=datetime.now(timezone.utc).isoformat()
         )
         publish_sync(event)
         raise
@@ -443,10 +441,13 @@ async def _store_failed_hook_task_info(hook_name: str, task_id: str, error: str,
         }
         
         # Publish to dead letter queue monitoring
-        event = NovaEvent(
-            type="hook_task_dead_letter",
-            source="celery-worker",
-            data=failed_task_data
+        event = create_hook_task_dead_letter_event(
+            hook_name=hook_name,
+            task_id=task_id,
+            error_message=error,
+            retry_count=retry_count,
+            failed_at=datetime.now(timezone.utc).isoformat(),
+            task_type="hook_processing"
         )
         publish_sync(event)
         

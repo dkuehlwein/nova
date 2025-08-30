@@ -253,40 +253,6 @@ async def update_user_settings(
         await session.commit()
         await session.refresh(settings)  # Refresh to ensure all attributes are loaded
         
-        # If email-related settings were updated, publish Redis event and trigger beat schedule update
-        email_fields = {
-            "email_polling_enabled", "email_polling_interval", "email_label_filter", 
-            "email_max_per_fetch", "email_create_tasks"
-        }
-        if any(field in update_data for field in email_fields):
-            try:
-                # Publish Redis event for real-time updates
-                from models.events import create_email_settings_updated_event
-                from utils.redis_manager import publish
-                
-                email_event = create_email_settings_updated_event(
-                    enabled=settings.email_polling_enabled,
-                    polling_interval_minutes=settings.email_polling_interval,
-                    email_label_filter=settings.email_label_filter,
-                    max_emails_per_fetch=settings.email_max_per_fetch,
-                    create_tasks_from_emails=settings.email_create_tasks,
-                    source="settings-api"
-                )
-                
-                await publish(email_event)
-                
-                logger.info(
-                    "Published email settings update event",
-                    extra={"data": {"event_id": email_event.id, "updated_fields": list(update_data.keys())}}
-                )
-                
-                # Also trigger traditional Celery Beat schedule update as fallback
-                from celery_app import update_beat_schedule_task
-                update_beat_schedule_task.delay()
-                
-            except Exception as e:
-                logger.warning(f"Failed to publish email settings event or trigger beat schedule update: {e}")
-        
         # If LLM-related settings were updated, publish Redis event for chat agent cache clearing
         llm_fields = {
             "chat_llm_model", "chat_llm_temperature", "chat_llm_max_tokens",
