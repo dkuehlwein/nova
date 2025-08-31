@@ -37,6 +37,15 @@ def parse_datetime(
     Returns:
         Parsed datetime object, current time (if fallback_to_now=True), or None
     """
+    return _parse_datetime_impl(datetime_input, source_type, fallback_to_now)
+
+
+def _parse_datetime_impl(
+    datetime_input: Union[str, Dict[str, Any], None], 
+    source_type: str = "generic",
+    fallback_to_now: bool = True
+) -> Optional[datetime]:
+    """Internal implementation for datetime parsing."""
     if datetime_input is None:
         if fallback_to_now:
             return datetime.now(timezone.utc)

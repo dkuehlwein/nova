@@ -284,7 +284,10 @@ class MeetingCreator:
             header = f"MEETING PREPARATION\n{'=' * 50}\n"
             header += f"For: {original_meeting.title}\n"
             header += f"Original Time: {original_meeting.start_time.strftime('%I:%M %p')}\n"
-            header += f"Duration: {original_meeting.duration_minutes} minutes\n\n"
+            header += f"Duration: {original_meeting.duration_minutes} minutes\n"
+            if original_meeting.location:
+                header += f"Location: {original_meeting.location}\n"
+            header += "\n"
             
             # Add the memo content
             formatted_description = header + memo_text

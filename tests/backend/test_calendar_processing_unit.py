@@ -95,10 +95,10 @@ class TestMeetingAnalyzerUnit:
     
     def test_parse_event_datetime_mcp_format(self):
         """Test parsing MCP server datetime format (direct strings)."""
-        from backend.input_hooks.datetime_utils import parse_event_datetime
+        from backend.input_hooks.datetime_utils import parse_datetime
         
         # Test timed event (ISO format string)
-        timed_dt = parse_event_datetime("2025-08-31T10:00:00+02:00")
+        timed_dt = parse_datetime("2025-08-31T10:00:00+02:00", source_type="calendar")
         assert timed_dt is not None
         assert timed_dt.year == 2025
         assert timed_dt.month == 8
@@ -106,7 +106,7 @@ class TestMeetingAnalyzerUnit:
         assert timed_dt.hour == 10
         
         # Test all-day event (date-only string) 
-        allday_dt = parse_event_datetime("2025-08-31")
+        allday_dt = parse_datetime("2025-08-31", source_type="calendar")
         assert allday_dt is not None
         assert allday_dt.year == 2025
         assert allday_dt.month == 8
@@ -115,17 +115,17 @@ class TestMeetingAnalyzerUnit:
     
     def test_parse_event_datetime_google_api_format(self):
         """Test parsing Google Calendar API format (nested objects)."""
-        from backend.input_hooks.datetime_utils import parse_event_datetime
+        from backend.input_hooks.datetime_utils import parse_datetime
         
         # Test timed event (nested format)
         timed_event = {"dateTime": "2025-08-31T10:00:00+02:00", "timeZone": "Europe/Berlin"}
-        timed_dt = parse_event_datetime(timed_event)
+        timed_dt = parse_datetime(timed_event, source_type="calendar")
         assert timed_dt is not None
         assert timed_dt.hour == 10
         
         # Test all-day event (nested format)
         allday_event = {"date": "2025-08-31"}
-        allday_dt = parse_event_datetime(allday_event)
+        allday_dt = parse_datetime(allday_event, source_type="calendar")
         assert allday_dt is not None
         assert allday_dt.hour == 0
     
@@ -352,7 +352,7 @@ class TestMeetingCreatorUnit:
             
             result = await creator.create_prep_meeting(sample_meeting_info, memo)
             
-            assert result == True
+            assert result == "prep_123"  # Should return the event ID, not boolean
             
             # Verify create tool was called with correct parameters
             call_args = mock_create_tool.ainvoke.call_args[0][0]
@@ -379,7 +379,7 @@ class TestMeetingCreatorUnit:
             
             result = await creator.create_prep_meeting(sample_meeting_info, memo)
             
-            assert result == False
+            assert result is None  # Should return None when no tools available
     
     def test_format_memo_for_description(self, sample_meeting_info):
         """Test memo formatting for calendar description."""
@@ -405,7 +405,7 @@ class TestCalendarProcessorUnit:
             hook_type="calendar",
             enabled=True,
             polling_interval=86400,
-            create_tasks=False,
+            create_tasks=True,
             hook_settings=CalendarHookSettings(
                 calendar_ids=["primary"],
                 look_ahead_days=1,
@@ -449,7 +449,7 @@ class TestCalendarProcessorUnit:
             
             # Mock meeting creator
             mock_creator.check_prep_meeting_exists = AsyncMock(return_value=None)
-            mock_creator.create_prep_meeting = AsyncMock(return_value=True)
+            mock_creator.create_prep_meeting = AsyncMock(return_value="mock_prep_event_id")
             
             # Process meetings
             result = await processor.process_daily_meetings(sample_config)

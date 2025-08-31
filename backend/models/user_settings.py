@@ -25,6 +25,7 @@ class UserSettings(Base):
     These are runtime-configurable preferences that can be updated via API.
     """
     __tablename__ = 'user_settings'
+    __table_args__ = {'extend_existing': True}
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

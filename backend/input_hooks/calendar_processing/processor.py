@@ -163,6 +163,7 @@ class CalendarProcessor:
                 calendar_ids = ["primary"]
             
             all_events = []
+            fetch_errors = []
             
             # Fetch events from each configured calendar
             for calendar_id in calendar_ids:
@@ -182,8 +183,14 @@ class CalendarProcessor:
                     )
                     
                 except Exception as e:
-                    logger.error(f"Failed to fetch from calendar {calendar_id}: {e}")
+                    error_msg = f"Failed to fetch from calendar {calendar_id}: {e}"
+                    logger.error(error_msg)
+                    fetch_errors.append(error_msg)
                     continue
+            
+            # If all calendars failed to fetch, raise an exception
+            if fetch_errors and len(fetch_errors) == len(calendar_ids):
+                raise Exception(f"Failed to fetch from all calendars: {'; '.join(fetch_errors)}")
             
             logger.info(
                 f"Fetched {len(all_events)} total events from {len(calendar_ids)} calendars",
@@ -197,7 +204,8 @@ class CalendarProcessor:
             
         except Exception as e:
             logger.error(f"Error fetching today's events: {e}")
-            return []
+            # Re-raise the exception so the main method can handle it
+            raise
     
     async def _analyze_meetings(self, raw_events: List[Dict[str, Any]], 
                               config: CalendarHookConfig) -> List[CalendarMeetingInfo]:
