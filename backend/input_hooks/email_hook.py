@@ -6,11 +6,11 @@ to work with the new hook architecture while preserving all existing functionali
 """
 
 from typing import Dict, Any, List
-from datetime import datetime
 
 from utils.logging import get_logger
 from .base_hook import BaseInputHook
 from .models import EmailHookConfig, NormalizedItem
+from .datetime_utils import parse_datetime
 
 logger = get_logger(__name__)
 
@@ -115,7 +115,7 @@ class EmailInputHook(BaseInputHook):
                 source_id=email_id,
                 title=f"Read Email: {subject}",
                 content=raw_item,
-                created_at=self._parse_email_date(raw_item.get("date")),
+                created_at=parse_datetime(raw_item.get("date"), source_type="email"),
                 should_create_task=True,  # Emails always create tasks
                 should_update_existing=False  # Emails don't update (for now)
             )
@@ -176,29 +176,6 @@ class EmailInputHook(BaseInputHook):
         """
         # Email hooks don't support task updates currently
         return False
-    
-    def _parse_email_date(self, date_str: str = None) -> datetime:
-        """Parse email date string - reuses logic from EmailTaskCreator."""
-        from datetime import timezone
-        
-        if not date_str:
-            return datetime.now(timezone.utc).replace(tzinfo=None)
-        
-        try:
-            # Reuse existing email date parsing logic
-            from email.utils import parsedate_to_datetime
-            
-            parsed_date = parsedate_to_datetime(date_str)
-            
-            if parsed_date.tzinfo is not None:
-                utc_date = parsed_date.astimezone(timezone.utc)
-                return utc_date.replace(tzinfo=None)  # Store as naive UTC
-            else:
-                return parsed_date
-                
-        except Exception as e:
-            logger.warning(f"Failed to parse email date '{date_str}': {e}")
-            return datetime.now(timezone.utc).replace(tzinfo=None)
     
     async def _create_task_from_item(self, item: NormalizedItem) -> str:
         """

@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 from models.email import EmailMetadata
 from tools.task_tools import create_task_tool
 from utils.logging import get_logger
+from ..datetime_utils import parse_datetime
 
 logger = get_logger(__name__)
 
@@ -84,7 +85,7 @@ class EmailTaskCreator:
             subject=normalized_email.get("subject", "No Subject"),
             sender=normalized_email.get("from", "Unknown Sender"),
             recipient=normalized_email.get("to", ""),
-            date=await self._parse_email_date(normalized_email.get("date")),
+            date=self._ensure_naive_datetime(parse_datetime(normalized_email.get("date"), source_type="email")),
             has_attachments=normalized_email.get("has_attachments", False),
             labels=normalized_email.get("labels", [])
         )
@@ -96,37 +97,11 @@ class EmailTaskCreator:
         content_hash = hashlib.md5(content.encode()).hexdigest()[:12]
         return f"email_{content_hash}"
     
-    async def _parse_email_date(self, date_str: str = None) -> datetime:
-        """Parse email date string - handles various email date formats and user timezone."""
-        if not date_str:
-            return datetime.now(timezone.utc).replace(tzinfo=None)
-        
-        try:
-            # Use email.utils to parse RFC 2822 date format (like 'Sat, 30 Aug 2025 17:46:08 +0200')
-            from email.utils import parsedate_to_datetime
-            import zoneinfo
-            
-            parsed_date = parsedate_to_datetime(date_str)
-            
-            # Get user's timezone setting
-            user_timezone_str = await self._get_user_timezone()
-            
-            if parsed_date.tzinfo is not None:
-                # Convert to user's timezone first, then store as naive for database
-                try:
-                    user_tz = zoneinfo.ZoneInfo(user_timezone_str)
-                    user_date = parsed_date.astimezone(user_tz)
-                    return user_date.replace(tzinfo=None)  # Store as naive in user's timezone
-                except Exception as tz_error:
-                    logger.warning(f"Failed to convert to user timezone '{user_timezone_str}': {tz_error}, falling back to UTC")
-                    utc_date = parsed_date.astimezone(timezone.utc)
-                    return utc_date.replace(tzinfo=None)  # Fallback to UTC
-            else:
-                return parsed_date
-                
-        except Exception as e:
-            logger.warning(f"Failed to parse email date '{date_str}': {e}")
-            return datetime.now(timezone.utc).replace(tzinfo=None)
+    def _ensure_naive_datetime(self, dt: datetime) -> datetime:
+        """Convert datetime to naive (no timezone) for database storage."""
+        if dt and dt.tzinfo:
+            return dt.replace(tzinfo=None)
+        return dt
     
     async def _get_user_timezone(self) -> str:
         """Get user's timezone setting from database."""
