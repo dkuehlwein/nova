@@ -67,12 +67,25 @@ class InputHookRegistry(ConfigRegistry):
     def _register_builtin_hook_types(self) -> None:
         """Register built-in hook types."""
         # Import hook classes dynamically to avoid circular imports
-        hook_types = {
-            "email": "backend.input_hooks.email_hook.EmailInputHook",
-            "calendar": "backend.input_hooks.calendar_hook.CalendarInputHook",
-            # Future hook types will be added here:
-            # "slack": "backend.input_hooks.slack_hook.SlackInputHook",
-        }
+        # Use relative imports when running from within backend directory (Docker containers)
+        # Use absolute imports when running from project root (local development)
+        import os
+        if os.getcwd().endswith('backend') or os.path.exists('/.dockerenv'):
+            # Running in Docker container or from backend directory
+            hook_types = {
+                "email": "input_hooks.email_hook.EmailInputHook",
+                "calendar": "input_hooks.calendar_hook.CalendarInputHook",
+                # Future hook types will be added here:
+                # "slack": "input_hooks.slack_hook.SlackInputHook",
+            }
+        else:
+            # Running from project root (local development)
+            hook_types = {
+                "email": "backend.input_hooks.email_hook.EmailInputHook",
+                "calendar": "backend.input_hooks.calendar_hook.CalendarInputHook",
+                # Future hook types will be added here:
+                # "slack": "backend.input_hooks.slack_hook.SlackInputHook",
+            }
         
         for hook_type, class_path in hook_types.items():
             try:
@@ -90,8 +103,19 @@ class InputHookRegistry(ConfigRegistry):
             module = importlib.import_module(module_path)
             hook_class = getattr(module, class_name)
             
+            # Import BaseInputHook dynamically to avoid module identity issues
+            # Use same import strategy as hook classes to ensure same module context
+            import os
+            if os.getcwd().endswith('backend') or os.path.exists('/.dockerenv'):
+                base_module_path = "input_hooks.base_hook"
+            else:
+                base_module_path = "backend.input_hooks.base_hook"
+            
+            base_module = importlib.import_module(base_module_path)
+            BaseInputHookDynamic = getattr(base_module, "BaseInputHook")
+            
             # Validate it's a proper hook class
-            if not issubclass(hook_class, BaseInputHook):
+            if not issubclass(hook_class, BaseInputHookDynamic):
                 raise ValueError(f"Class {class_name} is not a subclass of BaseInputHook")
             
             self._hook_classes[hook_type] = hook_class

@@ -286,11 +286,12 @@ class TestCalendarEndToEnd:
             from tasks.hook_tasks import _process_hook_items_async
             result = await _process_hook_items_async("calendar", "test-task-id")
             
-            # Verify the processing completed successfully
-            assert result.get('success', False), f"Calendar hook processing should succeed. Result: {result}"
+            # Verify the processing completed successfully (no 'success' field, success means no errors)
+            has_errors = len(result.get('errors', [])) > 0
+            assert not has_errors, f"Calendar hook processing should not have errors. Result: {result}"
             
             print(f"✅ Hook System Integration Results:")
-            print(f"   - Processing successful: {result.get('success', False)}")
+            print(f"   - Processing successful: {not has_errors}")
             print(f"   - Hook registered: {'calendar' in input_hook_registry.list_hooks()}")
             print(f"   - Hook enabled: {calendar_hook.config.enabled}")
             print(f"   - Items processed: {result.get('items_processed', 0)}")
