@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     CHAT_AGENT_PORT: int = 8000
     CORE_AGENT_PORT: int = 8001
     
+    # Frontend Configuration
+    FRONTEND_BASE_URL: str = "http://localhost:3000"  # Base URL for Nova frontend chat links
+    
     # Logging Configuration
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = True  # Set to False for human-readable console output during development

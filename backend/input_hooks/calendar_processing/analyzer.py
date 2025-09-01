@@ -191,6 +191,13 @@ class MeetingAnalyzer:
             title_lower = meeting.title.lower()
             description_lower = meeting.description.lower()
             
+            # Skip meetings that are already prep meetings (avoid double-prep)
+            if title_lower.startswith('prep:'):
+                logger.debug(
+                    f"Skipping meeting {meeting.meeting_id} - already a prep meeting"
+                )
+                return False
+            
             # Skip meetings with skip keywords
             for skip_word in self.skip_keywords:
                 if skip_word in title_lower or skip_word in description_lower:

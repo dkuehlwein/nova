@@ -6,7 +6,8 @@ Creates plain text memos with context about attendees, projects, and talking poi
 """
 
 from datetime import datetime
-from typing import List
+from typing import List, Tuple
+import uuid
 
 from utils.logging import get_logger
 from tools.memory_tools import search_memory_tool
@@ -57,15 +58,16 @@ If no relevant context is found in memory, focus on the meeting title and descri
     def __init__(self):
         pass
     
-    async def generate_meeting_memo(self, meeting: CalendarMeetingInfo) -> str:
+    async def generate_meeting_memo(self, meeting: CalendarMeetingInfo, pg_pool=None) -> Tuple[str, str]:
         """
         Generate a comprehensive meeting preparation memo.
         
         Args:
             meeting: CalendarMeetingInfo object with meeting details
+            pg_pool: Optional PostgreSQL connection pool to reuse
             
         Returns:
-            Plain text memo for meeting preparation
+            Tuple of (memo_text, thread_id) for chat link generation
         """
         try:
             logger.info(
@@ -102,17 +104,18 @@ If no relevant context is found in memory, focus on the meeting title and descri
             )
             
             # Generate memo using Nova's chat agent (no fallback - fail if LLM unavailable)
-            memo_text = await self._generate_memo_with_chat_agent(memo_prompt)
+            memo_text, thread_id = await self._generate_memo_with_chat_agent(memo_prompt, meeting.meeting_id, pg_pool)
             
             logger.info(
                 f"Successfully generated memo for meeting {meeting.meeting_id}",
                 extra={"data": {
                     "meeting_id": meeting.meeting_id,
+                    "thread_id": thread_id,
                     "memo_length": len(memo_text)
                 }}
             )
             
-            return memo_text
+            return memo_text, thread_id
             
         except Exception as e:
             logger.error(
@@ -210,30 +213,52 @@ If no relevant context is found in memory, focus on the meeting title and descri
             logger.error(f"Error gathering project context: {e}")
             return "**Project Context:** Error retrieving project information from memory."
     
-    async def _generate_memo_with_chat_agent(self, prompt: str) -> str:
+    async def _generate_memo_with_chat_agent(self, prompt: str, meeting_id: str, pg_pool=None) -> Tuple[str, str]:
         """
         Generate memo using Nova's chat agent.
         
         Args:
             prompt: Formatted prompt for memo generation
+            meeting_id: Meeting ID for thread_id generation
+            pg_pool: Optional PostgreSQL connection pool to reuse
             
         Returns:
-            Generated memo text (raises exception if LLM unavailable)
+            Tuple of (generated_memo_text, thread_id) for chat link generation
         """
         logger.debug("Generating memo with Nova chat agent")
         
-        # Create chat agent and generate memo
-        chat_agent = await create_chat_agent()
+        # Use provided pool or create our own
+        if pg_pool is None:
+            from utils.service_manager import ServiceManager
+            service_manager = ServiceManager("calendar-memo")
+            if service_manager.pg_pool is None:
+                await service_manager.init_pg_pool()
+            pg_pool = service_manager.pg_pool
         
-        messages = [{"role": "user", "content": prompt}]
-        response = await chat_agent.ainvoke({"messages": messages})
+        chat_agent = await create_chat_agent(pg_pool=pg_pool)
         
-        # Extract the content from the response
-        if hasattr(response, 'get') and "messages" in response:
-            last_message = response["messages"][-1]
-            if hasattr(last_message, 'content'):
-                return last_message.content
-            else:
-                return str(last_message)
-        else:
-            return str(response)
+        from langchain_core.messages import HumanMessage
+        
+        messages = [HumanMessage(content=prompt)]
+        
+        # Generate thread_id for checkpointer (required for LangGraph state management)
+        thread_id = f"memo-{meeting_id}-{uuid.uuid4()}"
+        config = {"configurable": {"thread_id": thread_id}}
+        
+        # Use astream like chat endpoints to ensure conversation is saved to checkpointer
+        stream_input = {"messages": messages}
+        memo_text = ""
+        
+        async for chunk in chat_agent.astream(stream_input, config=config, stream_mode="updates"):
+            # Process chunk data to extract AI response
+            for node_name, node_output in chunk.items():
+                if "messages" in node_output:
+                    for message in node_output["messages"]:
+                        if hasattr(message, 'content') and message.content:
+                            # Accumulate the AI response content
+                            if hasattr(message, 'type') and message.type == 'ai':
+                                memo_text += message.content
+        
+        logger.info(f"Generated memo with length: {len(memo_text)}, thread_id: {thread_id}")
+        
+        return memo_text, thread_id

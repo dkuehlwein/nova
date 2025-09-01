@@ -106,9 +106,9 @@ def setup_tools(workspace_service: GoogleWorkspaceService):
 
     @mcp.tool()
     async def list_calendar_events(calendar_id: str = 'primary', max_results: int = 50, 
-                                 time_min: Optional[str] = None) -> Union[List[Dict[str, Any]], Dict[str, str]]:
+                                 time_min: Optional[str] = None, time_max: Optional[str] = None) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """Lists upcoming events from a calendar. If time_min not provided, uses current time."""
-        return await workspace_service.calendar_tools.list_events(calendar_id, max_results, time_min)
+        return await workspace_service.calendar_tools.list_events(calendar_id, max_results, time_min, time_max)
 
     '''
     @mcp.tool()

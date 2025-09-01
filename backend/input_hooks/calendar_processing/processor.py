@@ -35,6 +35,11 @@ class CalendarProcessor:
         self.analyzer = MeetingAnalyzer()
         self.memo_generator = MemoGenerator()
         self.meeting_creator = None  # Will be initialized with config
+        self._pg_pool = None  # Optional PostgreSQL pool for shared connections
+    
+    def set_pg_pool(self, pg_pool):
+        """Set PostgreSQL connection pool for shared connections across components."""
+        self._pg_pool = pg_pool
     
     async def process_daily_meetings(self, config: CalendarHookConfig) -> Dict[str, Any]:
         """
@@ -277,15 +282,15 @@ class CalendarProcessor:
             # Check if prep meeting already exists
             prep_exists = await self.meeting_creator.check_prep_meeting_exists(meeting)
             
-            # Generate memo for the meeting
-            memo_text = await self.memo_generator.generate_meeting_memo(meeting)
+            # Generate memo for the meeting (pass pg_pool to ensure same connection)
+            memo_text, thread_id = await self.memo_generator.generate_meeting_memo(meeting, pg_pool=getattr(self, '_pg_pool', None))
             
             if not memo_text:
                 process_result["error"] = f"Failed to generate memo for meeting {meeting.meeting_id}"
                 return process_result
             
-            # Format memo for calendar description
-            formatted_memo = self.meeting_creator.format_memo_for_description(memo_text, meeting)
+            # Format memo for calendar description (including chat link)
+            formatted_memo = self.meeting_creator.format_memo_for_description(memo_text, meeting, thread_id)
             
             if prep_exists and config.update_existing_tasks:
                 # Update existing prep meeting

@@ -61,7 +61,23 @@ def process_hook_items(self, hook_name: str) -> Dict[str, Any]:
     
     try:
         # Run async hook processing in sync context
-        result = asyncio.run(_process_hook_items_async(hook_name, task_id))
+        # Check if we're already in an async context (e.g., pytest)
+        try:
+            asyncio.get_running_loop()
+            # We're in an event loop, use a different approach
+            # Create a new thread to run the async function
+            import concurrent.futures
+            import threading
+            
+            def run_in_new_thread():
+                return asyncio.run(_process_hook_items_async(hook_name, task_id))
+                
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(run_in_new_thread)
+                result = future.result()
+        except RuntimeError:
+            # No event loop running, safe to use asyncio.run()
+            result = asyncio.run(_process_hook_items_async(hook_name, task_id))
         
         logger.info(
             f"Hook processing task completed: {hook_name}",

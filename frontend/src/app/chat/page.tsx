@@ -158,26 +158,30 @@ function ChatPage() {
   useEffect(() => {
     if (dataLoaded) return; // Prevent double loading
 
-    // Handle URL parameters for task-specific chats
+    // Handle URL parameters for any chat conversation
     const threadParam = searchParams.get('thread');
     const taskParam = searchParams.get('task');
     
-    if (threadParam && taskParam) {
-      // Load the task information
-      const fetchTaskInfo = async () => {
-        try {
-          const task = await apiRequest<{ id: string; title: string }>(`/api/tasks/${taskParam}`);
-          setTaskInfo({ id: task.id, title: task.title });
-        } catch (error) {
-          console.error('Failed to fetch task info:', error);
-          setTaskInfo({ id: taskParam, title: 'Unknown Task' });
-        }
-      };
-      
-      fetchTaskInfo();
-      
-      // Load the task chat with escalation support
-      loadTaskChat(taskParam);
+    if (threadParam) {
+      // If task param is also provided, load task context for bonus info
+      if (taskParam) {
+        const fetchTaskInfo = async () => {
+          try {
+            const task = await apiRequest<{ id: string; title: string }>(`/api/tasks/${taskParam}`);
+            setTaskInfo({ id: task.id, title: task.title });
+          } catch (error) {
+            console.error('Failed to fetch task info:', error);
+            setTaskInfo({ id: taskParam, title: 'Unknown Task' });
+          }
+        };
+        fetchTaskInfo();
+        
+        // Load with escalation support for task chats
+        loadTaskChat(taskParam);
+      } else {
+        // Load any conversation by thread ID (calendar memos, regular chats, etc.)
+        loadChat(threadParam);
+      }
     }
 
     const loadData = async () => {
