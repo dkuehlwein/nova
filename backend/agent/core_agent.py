@@ -277,6 +277,12 @@ class CoreAgent:
                 logger.info(f"Resuming conversation for task {task.id} with {existing_message_count} messages")
                 # Get the current messages to extract the AI response
                 messages = state.values.get("messages", [])
+                
+                # Check for pending interrupts in resumed conversations
+                if state.interrupts:
+                    logger.info(f"Found {len(state.interrupts)} pending interrupts in resumed conversation")
+                    interrupt_detected = True
+                    interrupt_data = state.interrupts
             else:
                 logger.info(f"Starting new conversation for task {task.id}")
                 
@@ -305,8 +311,7 @@ class CoreAgent:
             
             # Handle interrupts first (regardless of messages)
             if interrupt_detected and interrupt_data:
-                logger.info(f"Handling user question for task {task.id}")
-                await self._handle_user_question(task, interrupt_data)
+                await self._handle_interrupt(task, interrupt_data)
                 return
             
             # Extract and save AI response if we have messages
@@ -435,40 +440,89 @@ class CoreAgent:
         ]
     
     
-    async def _handle_user_question(self, task: Task, interrupts):
-        """Handle user question interrupts."""
+    async def _handle_interrupt(self, task: Task, interrupts):
+        """
+        Unified interrupt handler for both user questions and tool approvals.
+        
+        Handles all types of human-in-the-loop interrupts:
+        - user_question: Agent asking for user input/decisions
+        - tool_approval_request: Agent requesting permission to use tools
+        - unknown types: Treated as user questions for safety
+        """
         try:
-            # Move task to NEEDS_REVIEW status
+            # Move task to NEEDS_REVIEW status (same for all interrupt types)
             await update_task_tool(
                 task_id=str(task.id),
                 status="needs_review"
             )
             
-            # Extract escalation details from interrupts
-            escalation_questions = []
-            for interrupt in interrupts:
-                if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
-                    if interrupt.value.get("type") == "user_question":
-                        question = interrupt.value.get("question", "Human input requested")
-                        escalation_questions.append(question)
+            # Parse interrupt data and determine type
+            interrupt_data = self._parse_interrupt_data(interrupts)
+            interrupt_type = interrupt_data.get("type", "unknown")
             
-            # Add escalation comment
-            if escalation_questions:
-                escalation_text = "\n\n".join(escalation_questions)
-                await update_task_tool(
-                    task_id=str(task.id),
-                    comment=f"Core Agent is requesting human input:\n\n{escalation_text}\n\n⏸️ Task paused - please respond to continue processing."
-                )
+            # Generate appropriate comment based on interrupt type
+            if interrupt_type == "tool_approval_request":
+                comment = self._create_tool_approval_comment(interrupt_data)
+                log_message = "tool approval request"
             else:
-                await update_task_tool(
-                    task_id=str(task.id),
-                    comment="Core Agent is requesting human input. Please respond to continue processing."
-                )
+                # Handle user_question and unknown types
+                comment = self._create_user_question_comment(interrupt_data)
+                log_message = "user question" if interrupt_type == "user_question" else f"unknown interrupt type '{interrupt_type}' (treated as user question)"
             
-            logger.info(f"Moved task {task.id} ({task.title}) to NEEDS_REVIEW due to human escalation")
+            # Add the comment
+            await update_task_tool(
+                task_id=str(task.id),
+                comment=comment
+            )
+            
+            logger.info(f"Moved task {task.id} ({task.title}) to NEEDS_REVIEW due to {log_message}")
             
         except Exception as e:
-            logger.error(f"Failed to handle human escalation for {task.id} ({task.title}): {e}")
+            logger.error(f"Failed to handle interrupt for task {task.id} ({task.title}): {e}")
+
+    def _parse_interrupt_data(self, interrupts) -> dict:
+        """Extract and consolidate data from interrupt objects."""
+        # Find the first valid interrupt with data
+        for interrupt in interrupts:
+            if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
+                return interrupt.value
+        
+        # Fallback for empty or malformed interrupts
+        return {"type": "unknown"}
+
+    def _create_tool_approval_comment(self, interrupt_data: dict) -> str:
+        """Create comment text for tool approval requests."""
+        tool_name = interrupt_data.get("tool_name", "unknown_tool")
+        tool_args = interrupt_data.get("tool_args", {})
+        
+        # Format tool display
+        if tool_args:
+            args_str = ", ".join(f"{k}={v}" for k, v in tool_args.items())
+            tool_display = f"{tool_name}({args_str})"
+        else:
+            tool_display = tool_name
+        
+        return (
+            f"Core Agent is requesting permission to use tool:\n\n"
+            f"- {tool_display}\n\n"
+            f"⏸️ Task paused - please approve/deny to continue processing."
+        )
+
+    def _create_user_question_comment(self, interrupt_data: dict) -> str:
+        """Create comment text for user question requests."""
+        question = interrupt_data.get("question")
+        
+        if question:
+            return (
+                f"Core Agent is requesting human input:\n\n"
+                f"{question}\n\n"
+                f"⏸️ Task paused - please respond to continue processing."
+            )
+        else:
+            return (
+                f"Core Agent is requesting human input. "
+                f"Please respond to continue processing."
+            )
 
     async def _handle_task_error(self, task: Task, error_message: str):
         """Handle task processing errors."""

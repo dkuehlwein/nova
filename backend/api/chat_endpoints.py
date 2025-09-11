@@ -258,7 +258,7 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                 else:
                     logger.debug(f"Skipped AI message with no content and no tool calls")
             else:
-                # Skip other message types (ToolMessage, SystemMessage, etc.)
+                # Skip other message types (ToolMessage, etc.)
                 logger.debug(f"Skipped message type: {type(msg).__name__}")
         
         logger.debug(f"Returning {len(chat_messages)} chat messages (from {len(messages)} total)")
@@ -494,6 +494,22 @@ async def stream_chat(chat_request: ChatRequest):
                 
                 # Get the AI message with tool calls (first message)
                 ai_msg = memory_tool_messages[0]
+                
+                # First, yield the AI message content if it exists
+                if ai_msg.content and ai_msg.content.strip():
+                    message_event = {
+                        "type": "message",
+                        "data": {
+                            "role": "assistant",
+                            "content": ai_msg.content,
+                            "timestamp": timestamp,
+                            "node": "agent"
+                        }
+                    }
+                    yield f"data: {json.dumps(message_event)}\n\n"
+                    logger.info(f"Yielded memory AI message content: {ai_msg.content[:50]}...")
+                
+                # Then yield the tool calls
                 if hasattr(ai_msg, 'tool_calls') and ai_msg.tool_calls:
                     for tool_call in ai_msg.tool_calls:
                         tool_event = {
@@ -613,20 +629,29 @@ async def stream_chat(chat_request: ChatRequest):
                 
                 logger.info(f"Finished streaming for thread_id: {chat_request.thread_id} after {stream_count} chunks")
                 
-                # Verify checkpoints were saved
+                # Verify checkpoints were saved and check for pending interrupts
                 try:
                     checkpointer = chat_agent.checkpointer
-                    current_state = await checkpointer.aget(config)
-                    if current_state and 'messages' in current_state.get('channel_values', {}):
-                        messages_count = len(current_state['channel_values']['messages'])
+                    checkpoint_state = await checkpointer.aget(config)
+                    if checkpoint_state and 'messages' in checkpoint_state.get('channel_values', {}):
+                        messages_count = len(checkpoint_state['channel_values']['messages'])
                         logger.debug(f"Conversation saved: {messages_count} messages in thread {chat_request.thread_id}")
                     else:
                         logger.warning(f"No state found for thread {chat_request.thread_id} after streaming")
                     
+                    # Check for pending interrupts using agent state (not checkpointer state)
+                    agent_state = await chat_agent.aget_state(config)
+                    if agent_state and agent_state.interrupts:
+                        logger.info(f"Found {len(agent_state.interrupts)} pending interrupts after streaming - sending complete to trigger frontend polling")
+                        for interrupt in agent_state.interrupts:
+                            if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
+                                interrupt_type = interrupt.value.get("type")
+                                logger.info(f"Pending interrupt type: {interrupt_type}")
+                    
                 except Exception as checkpoint_error:
                     logger.error(f"Error verifying checkpoints: {checkpoint_error}")
                 
-                # Send completion signal
+                # Send completion signal (frontend will poll for pending escalations)
                 yield f"data: {json.dumps({'type': 'complete', 'data': {'timestamp': datetime.now().isoformat()}})}\n\n"
                 
             except Exception as e:
@@ -890,66 +915,83 @@ async def get_task_chat_data(chat_id: str):
         checkpointer = await get_checkpointer_from_service_manager()
         messages = await _get_chat_history_with_checkpointer(chat_id, checkpointer)
         
-        # Check for escalation info if this is a task thread
+        # Check for escalation info for ALL conversations (universal tool approval support)
         pending_escalation = None
-        if chat_id.startswith("core_agent_task_"):
-            try:
-                from agent.chat_agent import create_chat_agent
-                from langchain_core.runnables import RunnableConfig
-                
-                # Get agent with the same checkpointer and check current state for interrupts
-                agent = await create_chat_agent(checkpointer=checkpointer, include_escalation=True)
-                config = RunnableConfig(configurable={"thread_id": chat_id})
-                state = await agent.aget_state(config)
-                
-                # Helper function to find most recent ask_user tool call
-                def find_escalation_tool_call():
-                    if not state.values:
-                        return None
-                    for msg in reversed(state.values.get("messages", [])):
-                        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                            escalation_call = next((tc for tc in msg.tool_calls if tc.get("name") == "ask_user"), None)
-                            if escalation_call:
-                                return escalation_call
+        # Remove the task-only restriction - check all conversations for escalations
+        try:
+            from agent.chat_agent import create_chat_agent
+            from langchain_core.runnables import RunnableConfig
+            
+            # Get agent with the same checkpointer and check current state for interrupts
+            agent = await create_chat_agent(checkpointer=checkpointer, include_escalation=True)
+            config = RunnableConfig(configurable={"thread_id": chat_id})
+            state = await agent.aget_state(config)
+            
+            # Helper function to find most recent ask_user tool call
+            def find_escalation_tool_call():
+                if not state.values:
                     return None
-                
-                # Check for human escalation interrupts
-                pending_escalation = None
-                escalation_data = None
-                
-                # First check active interrupts (immediate detection)
-                if state.interrupts:
-                    for interrupt in state.interrupts:
-                        if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
-                            interrupt_type = interrupt.value.get("type")
-                            if interrupt_type == "user_question":
-                                escalation_data = interrupt.value
-                                break
-                
-                # If no active interrupts, check if waiting for resume (persistent detection)
-                if not escalation_data and state.next and "__interrupt__" in state.next:
+                for msg in reversed(state.values.get("messages", [])):
+                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        escalation_call = next((tc for tc in msg.tool_calls if tc.get("name") == "ask_user"), None)
+                        if escalation_call:
+                            return escalation_call
+                return None
+            
+            # Check for human escalation interrupts
+            pending_escalation = None
+            escalation_data = None
+            
+            # First check active interrupts (immediate detection)
+            if state.interrupts:
+                for interrupt in state.interrupts:
+                    if hasattr(interrupt, 'value') and isinstance(interrupt.value, dict):
+                        interrupt_type = interrupt.value.get("type")
+                        if interrupt_type == "user_question":
+                            escalation_data = interrupt.value
+                            break
+                        elif interrupt_type == "tool_approval_request":
+                            escalation_data = interrupt.value
+                            escalation_data["type"] = "tool_approval_request"  # Ensure type is preserved
+                            break
+            
+            # If no active interrupts, check if waiting for resume (persistent detection)
+            if not escalation_data and state.next and "__interrupt__" in state.next:
+                escalation_call = find_escalation_tool_call()
+                if escalation_call:
+                    escalation_data = {
+                        "question": escalation_call.get("args", {}).get("question", "No question provided"),
+                        "instructions": "Please respond to continue"
+                    }
+            
+            # Build pending escalation response
+            if escalation_data:
+                tool_call_id = None
+                if "tool_call_id" not in escalation_data:
                     escalation_call = find_escalation_tool_call()
                     if escalation_call:
-                        escalation_data = {
-                            "question": escalation_call.get("args", {}).get("question", "No question provided"),
-                            "instructions": "Please respond to continue"
-                        }
+                        tool_call_id = escalation_call.get("id")
                 
-                # Build pending escalation response
-                if escalation_data:
-                    tool_call_id = None
-                    if "tool_call_id" not in escalation_data:
-                        escalation_call = find_escalation_tool_call()
-                        if escalation_call:
-                            tool_call_id = escalation_call.get("id")
-                    
+                # Build escalation based on type
+                if escalation_data.get("type") == "tool_approval_request":
+                    pending_escalation = {
+                        "question": f"Nova wants to use the tool: {escalation_data.get('tool_name', 'unknown')}",
+                        "instructions": "Please choose your approval option",
+                        "tool_call_id": escalation_data.get("tool_call_id", tool_call_id),
+                        "type": "tool_approval_request",
+                        "tool_name": escalation_data.get("tool_name"),
+                        "tool_args": escalation_data.get("tool_args", {})
+                    }
+                else:
+                    # Regular user question escalation
                     pending_escalation = {
                         "question": escalation_data.get("question", "No question provided"),
                         "instructions": escalation_data.get("instructions", "Please respond to continue"),
-                        "tool_call_id": escalation_data.get("tool_call_id", tool_call_id)
+                        "tool_call_id": escalation_data.get("tool_call_id", tool_call_id),
+                        "type": "user_question"
                     }
-            except Exception as e:
-                logger.warning(f"Could not get escalation info for {chat_id}: {e}")
+        except Exception as e:
+            logger.warning(f"Could not get escalation info for {chat_id}: {e}")
         
         return TaskChatResponse(
             messages=messages,
@@ -958,3 +1000,49 @@ async def get_task_chat_data(chat_id: str):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting task chat data: {str(e)}")
+
+
+@router.post("/conversations/{chat_id}/escalation-response")
+async def respond_to_escalation(chat_id: str, response: dict):
+    """
+    Respond to an escalation (user question or tool approval) and resume conversation.
+    
+    Body format:
+    - For user questions: {"response": "user's text response"}
+    - For tool approvals: {"type": "approve|always_allow|deny", "response": "optional message"}
+    """
+    try:
+        from agent.chat_agent import create_chat_agent
+        from langchain_core.runnables import RunnableConfig
+        from langgraph.graph.graph import Command
+        
+        # Get agent and config
+        checkpointer = await get_checkpointer_from_service_manager()
+        agent = await create_chat_agent(checkpointer=checkpointer, include_escalation=True)
+        config = RunnableConfig(configurable={"thread_id": chat_id})
+        
+        # Determine response format based on response data
+        if "type" in response:
+            # Tool approval response
+            response_data = {
+                "type": response["type"]  # approve, always_allow, or deny
+            }
+            if "response" in response:
+                response_data["message"] = response["response"]
+        else:
+            # User question response (plain text)
+            response_data = response.get("response", "")
+        
+        logger.info(f"Resuming escalation for {chat_id} with response: {response_data}")
+        
+        # Resume with the response
+        await agent.aupdate_state(config, {"messages": []}, as_node=None)
+        result = await agent.ainvoke(Command(resume=response_data), config)
+        
+        logger.info(f"Escalation response processed for {chat_id}")
+        
+        return {"success": True, "message": "Escalation response processed"}
+        
+    except Exception as e:
+        logger.error(f"Error responding to escalation for {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error responding to escalation: {str(e)}")

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Send, Loader2 } from "lucide-react";
+import { AlertTriangle, Send, Loader2, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -9,11 +9,28 @@ import { useState } from "react";
 interface EscalationBoxProps {
   question: string;
   instructions: string;
+  escalationType?: 'user_question' | 'tool_approval_request';
+  toolName?: string;
+  toolArgs?: Record<string, unknown>;
   onSubmit: (response: string) => Promise<void>;
+  onApprove?: () => Promise<void>;
+  onDeny?: () => Promise<void>;
+  onAlwaysAllow?: () => Promise<void>;
   isSubmitting?: boolean;
 }
 
-export function EscalationBox({ question, instructions, onSubmit, isSubmitting = false }: EscalationBoxProps) {
+export function EscalationBox({
+  question,
+  instructions,
+  escalationType = 'user_question',
+  toolName,
+  toolArgs,
+  onSubmit,
+  onApprove,
+  onDeny,
+  onAlwaysAllow,
+  isSubmitting = false
+}: EscalationBoxProps) {
   const [response, setResponse] = useState("");
 
   const handleSubmit = async () => {
@@ -30,6 +47,70 @@ export function EscalationBox({ question, instructions, onSubmit, isSubmitting =
     }
   };
 
+  // Tool approval UI (blue styling, buttons instead of text area)
+  if (escalationType === 'tool_approval_request') {
+    return (
+      <div className="my-4 border-2 border-blue-200 bg-blue-50 rounded-lg p-4">
+        <div className="flex items-center space-x-2 mb-3">
+          <Shield className="h-5 w-5 text-blue-600" />
+          <Badge className="bg-blue-100 text-blue-800 border-blue-300">
+            Tool Approval Required
+          </Badge>
+        </div>
+        
+        <div className="mb-4">
+          <h4 className="font-medium text-blue-900 mb-2">Nova wants to use: {toolName}</h4>
+          <div className="bg-white border border-blue-200 rounded-md p-3 text-sm">
+            <p className="text-blue-800 mb-2">Nova is requesting permission to call this tool.</p>
+            {toolArgs && Object.keys(toolArgs).length > 0 && (
+              <details className="mt-2">
+                <summary className="text-xs text-blue-600 cursor-pointer hover:text-blue-800">
+                  Show parameters
+                </summary>
+                <pre className="text-xs mt-1 bg-gray-50 p-2 rounded border overflow-x-auto text-gray-800">
+                  {JSON.stringify(toolArgs, null, 2)}
+                </pre>
+              </details>
+            )}
+          </div>
+        </div>
+        
+        <div className="flex gap-3 flex-wrap">
+          <Button 
+            variant="outline" 
+            onClick={onDeny} 
+            disabled={isSubmitting}
+            className="border-red-300 text-red-700 hover:bg-red-50"
+          >
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Deny
+          </Button>
+          <Button 
+            onClick={onApprove} 
+            disabled={isSubmitting}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Approve Once
+          </Button>
+          <Button 
+            onClick={onAlwaysAllow} 
+            disabled={isSubmitting}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Always Allow
+          </Button>
+        </div>
+        
+        <div className="mt-3 text-xs text-blue-600">
+          Your choice will be remembered. &quot;Always Allow&quot; adds this tool to your approved list.
+        </div>
+      </div>
+    )
+  }
+  
+  // Regular user question UI (existing orange styling, text area)
   return (
     <div className="my-4 border-2 border-orange-200 bg-orange-50 rounded-lg p-4">
       {/* Header */}

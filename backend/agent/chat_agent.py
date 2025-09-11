@@ -154,5 +154,9 @@ def clear_chat_agent_cache():
     from .prompts import clear_system_prompt_cache
     clear_system_prompt_cache()
     
-    logger.info("All component caches cleared - next agent creation will reload everything")
+    # Clear tool permissions cache
+    from utils.tool_permissions_manager import permission_config
+    permission_config.clear_permissions_cache()
+    
+    logger.info("All component caches cleared - next agent creation will reload everything (tools, prompts, and permissions)")
 

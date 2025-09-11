@@ -28,6 +28,9 @@ export interface PendingEscalation {
   question: string;
   instructions: string;
   tool_call_id?: string;
+  type?: 'user_question' | 'tool_approval_request';
+  tool_name?: string;
+  tool_args?: Record<string, unknown>;
 }
 
 export interface ChatState {
@@ -84,7 +87,7 @@ export function useChat() {
   const addMessage = useCallback((message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
     const newMessage: ChatMessage = {
       ...message,
-      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       timestamp: new Date().toISOString(),
     };
 
@@ -106,7 +109,7 @@ export function useChat() {
     }));
   }, []);
 
-  // Load an existing chat conversation
+  // Load an existing chat conversation (now with escalation support)
   const loadChat = useCallback(async (chatId: string) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     
@@ -114,20 +117,34 @@ export function useChat() {
       // Set the thread ID first (especially important for task threads)
       setCurrentThreadId(chatId);
       
-      // Try to fetch chat messages from the backend
+      // Use the task-data endpoint for ALL chats to get escalation support
       try {
-        const backendMessages = await apiRequest<{
-          id: string;
-          sender: string;
-          content: string;
-          created_at: string;
-          needs_decision: boolean;
-          metadata?: {type?: string; is_collapsible?: boolean; title?: string};
-          tool_calls?: ToolCall[];
-        }[]>(API_ENDPOINTS.chatMessages(chatId));
+        const taskChatData = await apiRequest<{
+          messages: Array<{
+            id: string;
+            sender: string;
+            content: string;
+            created_at: string;
+            needs_decision: boolean;
+            metadata?: {
+              type?: string;
+              is_collapsible?: boolean;
+              title?: string;
+            };
+            tool_calls?: ToolCall[];
+          }>;
+          pending_escalation?: {
+            question: string;
+            instructions: string;
+            tool_call_id?: string;
+            type?: 'user_question' | 'tool_approval_request';
+            tool_name?: string;
+            tool_args?: Record<string, unknown>;
+          };
+        }>(API_ENDPOINTS.taskChatData(chatId));
 
-        // Convert backend messages to frontend format
-        const chatMessages: ChatMessage[] = backendMessages.map((msg, index) => ({
+        // Convert messages to ChatMessage format (with metadata!)
+        const chatMessages: ChatMessage[] = taskChatData.messages.map((msg, index) => ({
           id: msg.id || `loaded-msg-${index}`,
           role: msg.sender === 'user' ? 'user' : (msg.sender === 'system' ? 'system' : 'assistant'),
           content: msg.content,
@@ -137,15 +154,22 @@ export function useChat() {
           toolCalls: msg.tool_calls || undefined,
         }));
 
-        // Set the messages
+        // Use escalation data from the endpoint (works for all chats now!)
+        const pendingEscalation = taskChatData.pending_escalation || null;
+
+        // Set the messages and escalation state
         setState(prev => ({
           ...prev,
           messages: chatMessages,
           isLoading: false,
           error: null,
+          pendingEscalation,
         }));
 
         console.log(`Loaded chat ${chatId} with ${chatMessages.length} messages`);
+        if (pendingEscalation) {
+          console.log('Pending escalation detected:', pendingEscalation);
+        }
         
       } catch {
         // For task threads that don't exist yet, this is normal
@@ -156,6 +180,7 @@ export function useChat() {
           messages: [],
           isLoading: false,
           error: null,
+          pendingEscalation: null,
         }));
       }
       
@@ -166,6 +191,7 @@ export function useChat() {
         ...prev,
         isLoading: false,
         error: errorMessage,
+        pendingEscalation: null,
       }));
     }
   }, []);
@@ -188,6 +214,8 @@ export function useChat() {
         let assistantMessageId: string | null = null;
         let assistantContent = '';
         let assistantTimestamp: string | null = null;
+        let bufferedToolCalls: Array<{type: 'tool_call' | 'tool_result', data: StreamToolData}> = [];
+        let hasReceivedMessageContent = false;
 
         // Cancel any ongoing request
         if (abortControllerRef.current) {
@@ -275,20 +303,92 @@ export function useChat() {
                             timestamp: assistantTimestamp || new Date().toISOString(),
                           });
                         }
+                        
+                        // Mark that we've received message content, now process any buffered tool calls
+                        if (!hasReceivedMessageContent && contentToAdd && contentToAdd.trim()) {
+                          hasReceivedMessageContent = true;
+                          
+                          // Process any buffered tool calls now that we have message content
+                          for (const bufferedEvent of bufferedToolCalls) {
+                            if (bufferedEvent.type === 'tool_call') {
+                              const toolData = bufferedEvent.data as StreamToolData;
+                              
+                              // Add tool call to the assistant message  
+                              setState(prev => ({
+                                ...prev,
+                                messages: prev.messages.map(msg => 
+                                  msg.id === assistantMessageId 
+                                    ? { 
+                                        ...msg, 
+                                        toolCalls: [
+                                          ...(msg.toolCalls || []),
+                                          {
+                                            tool: toolData.tool,
+                                            args: toolData.args || {},
+                                            timestamp: toolData.timestamp || new Date().toISOString(),
+                                            tool_call_id: toolData.tool_call_id,
+                                          }
+                                        ]
+                                      }
+                                    : msg
+                                ),
+                              }));
+                            } else if (bufferedEvent.type === 'tool_result') {
+                              const resultData = bufferedEvent.data as StreamToolData;
+                              setState(prev => ({
+                                ...prev,
+                                messages: prev.messages.map(msg => 
+                                  msg.id === assistantMessageId 
+                                    ? {
+                                        ...msg,
+                                        toolCalls: (msg.toolCalls || []).map(toolCall =>
+                                          toolCall.tool_call_id === resultData.tool_call_id
+                                            ? {
+                                                ...toolCall,
+                                                result: resultData.result,
+                                              }
+                                            : toolCall
+                                        )
+                                      }
+                                    : msg
+                                ),
+                              }));
+                            }
+                          }
+                          // Clear the buffer after processing
+                          bufferedToolCalls = [];
+                        }
                       }
                       break;
 
                     case 'tool_call':
                       const toolData = event.data as StreamToolData;
                       
-                      // Create assistant message if it doesn't exist yet (handles tool calls before content)
+                      // If we haven't received message content yet, buffer this tool call
+                      if (!hasReceivedMessageContent) {
+                        bufferedToolCalls.push({type: 'tool_call', data: toolData});
+                        // Create assistant message container if it doesn't exist (but don't show tool calls yet)
+                        if (!assistantMessageId) {
+                          assistantMessageId = addMessage({
+                            role: 'assistant',
+                            content: '',
+                            isStreaming: true,
+                          });
+                          // Store timestamp from first tool call if not set
+                          if (toolData.timestamp && !assistantTimestamp) {
+                            assistantTimestamp = toolData.timestamp;
+                          }
+                        }
+                        break;
+                      }
+                      
+                      // If we've already received message content, process tool call immediately
                       if (!assistantMessageId) {
                         assistantMessageId = addMessage({
                           role: 'assistant',
                           content: '',
                           isStreaming: true,
                         });
-                        // Store timestamp from first tool call if not set
                         if (toolData.timestamp && !assistantTimestamp) {
                           assistantTimestamp = toolData.timestamp;
                         }
@@ -318,7 +418,14 @@ export function useChat() {
 
                     case 'tool_result':
                       const resultData = event.data as StreamToolData;
-                      // Find and update the matching tool call with its result
+                      
+                      // If we haven't received message content yet, buffer this tool result
+                      if (!hasReceivedMessageContent) {
+                        bufferedToolCalls.push({type: 'tool_result', data: resultData});
+                        break;
+                      }
+                      
+                      // If we've already received message content, process tool result immediately
                       if (assistantMessageId) {
                         setState(prev => ({
                           ...prev,
@@ -348,6 +455,52 @@ export function useChat() {
                           isStreaming: false,
                           timestamp: assistantTimestamp || new Date().toISOString(),
                         });
+                      }
+                      
+                      // Check for pending escalations/tool approvals after stream completes
+                      try {
+                        const taskChatData = await apiRequest<{
+                          messages: Array<{
+                            id: string;
+                            sender: string;
+                            content: string;
+                            created_at: string;
+                            needs_decision: boolean;
+                            metadata?: {
+                              type?: string;
+                              is_collapsible?: boolean;
+                              title?: string;
+                            };
+                            tool_calls?: ToolCall[];
+                          }>;
+                          pending_escalation?: {
+                            question: string;
+                            instructions: string;
+                            tool_call_id?: string;
+                            type?: 'user_question' | 'tool_approval_request';
+                            tool_name?: string;
+                            tool_args?: Record<string, unknown>;
+                          };
+                        }>(API_ENDPOINTS.taskChatData(currentThreadId));
+
+                        // Update pending escalation if found
+                        if (taskChatData.pending_escalation) {
+                          const escalation: PendingEscalation = {
+                            question: taskChatData.pending_escalation.question,
+                            instructions: taskChatData.pending_escalation.instructions,
+                            tool_call_id: taskChatData.pending_escalation.tool_call_id,
+                            type: taskChatData.pending_escalation.type,
+                            tool_name: taskChatData.pending_escalation.tool_name,
+                            tool_args: taskChatData.pending_escalation.tool_args,
+                          };
+                          setState(prev => ({ 
+                            ...prev, 
+                            pendingEscalation: escalation
+                          }));
+                          console.log('Tool approval detected after streaming:', escalation);
+                        }
+                      } catch (pollError) {
+                        console.log('No escalation polling needed (normal for regular chats):', pollError);
                       }
                       break;
 
@@ -580,7 +733,7 @@ export function useChat() {
     }
   }, []);
 
-  // Send escalation response
+  // Send escalation response for task chats
   const sendEscalationResponse = useCallback(async (taskId: string, response: string) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     
@@ -607,6 +760,156 @@ export function useChat() {
     }
   }, [loadTaskChat]);
 
+  // Send tool approval response for any chat thread (not just tasks)  
+  const sendToolApprovalResponse = useCallback(async (response: string) => {
+    // Clear the escalation immediately for better UX
+    setState(prev => ({ ...prev, pendingEscalation: null }));
+    
+    // Use the existing sendMessage function - it handles everything properly
+    await sendMessage(response, true);
+  }, [sendMessage]);
+
+  // Respond to escalations (user questions and tool approvals)
+  const respondToEscalation = useCallback(async (response: string) => {
+    if (!state.pendingEscalation) {
+      throw new Error('No pending escalation to respond to');
+    }
+
+    setState(prev => ({ ...prev, isLoading: true, pendingEscalation: null }));
+
+    try {
+      // Send response to backend
+      await apiRequest(API_ENDPOINTS.escalationResponse(currentThreadId), {
+        method: 'POST',
+        body: JSON.stringify({ response }),
+      });
+
+      // The response has been sent, backend will resume processing
+      // Wait a moment then check for new messages
+      setTimeout(async () => {
+        try {
+          // Reload the task chat to get any new messages from the resumed processing
+          if (currentThreadId.startsWith('core_agent_task_')) {
+            const taskId = currentThreadId.replace('core_agent_task_', '');
+            await loadTaskChat(taskId);
+          }
+        } catch (error) {
+          console.warn('Failed to reload chat after escalation response:', error);
+        } finally {
+          setState(prev => ({ ...prev, isLoading: false }));
+        }
+      }, 1000);
+
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to respond to escalation';
+      setState(prev => ({ ...prev, error: errorMessage, isLoading: false }));
+      throw error;
+    }
+  }, [state.pendingEscalation, currentThreadId, loadTaskChat]);
+
+  // Tool approval specific responses
+  const approveToolOnce = useCallback(async () => {
+    if (!state.pendingEscalation || state.pendingEscalation.type !== 'tool_approval_request') {
+      throw new Error('No pending tool approval to respond to');
+    }
+
+    setState(prev => ({ ...prev, isLoading: true, pendingEscalation: null }));
+
+    try {
+      await apiRequest(API_ENDPOINTS.escalationResponse(currentThreadId), {
+        method: 'POST',
+        body: JSON.stringify({ type: 'approve' }),
+      });
+
+      // Reload task chat after approval
+      setTimeout(async () => {
+        try {
+          if (currentThreadId.startsWith('core_agent_task_')) {
+            const taskId = currentThreadId.replace('core_agent_task_', '');
+            await loadTaskChat(taskId);
+          }
+        } catch (error) {
+          console.warn('Failed to reload chat after tool approval:', error);
+        } finally {
+          setState(prev => ({ ...prev, isLoading: false }));
+        }
+      }, 1000);
+
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to approve tool';
+      setState(prev => ({ ...prev, error: errorMessage, isLoading: false }));
+      throw error;
+    }
+  }, [state.pendingEscalation, currentThreadId, loadTaskChat]);
+
+  const alwaysAllowTool = useCallback(async () => {
+    if (!state.pendingEscalation || state.pendingEscalation.type !== 'tool_approval_request') {
+      throw new Error('No pending tool approval to respond to');
+    }
+
+    setState(prev => ({ ...prev, isLoading: true, pendingEscalation: null }));
+
+    try {
+      await apiRequest(API_ENDPOINTS.escalationResponse(currentThreadId), {
+        method: 'POST',
+        body: JSON.stringify({ type: 'always_allow' }),
+      });
+
+      // Reload task chat after approval
+      setTimeout(async () => {
+        try {
+          if (currentThreadId.startsWith('core_agent_task_')) {
+            const taskId = currentThreadId.replace('core_agent_task_', '');
+            await loadTaskChat(taskId);
+          }
+        } catch (error) {
+          console.warn('Failed to reload chat after tool approval:', error);
+        } finally {
+          setState(prev => ({ ...prev, isLoading: false }));
+        }
+      }, 1000);
+
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to approve tool';
+      setState(prev => ({ ...prev, error: errorMessage, isLoading: false }));
+      throw error;
+    }
+  }, [state.pendingEscalation, currentThreadId, loadTaskChat]);
+
+  const denyTool = useCallback(async () => {
+    if (!state.pendingEscalation || state.pendingEscalation.type !== 'tool_approval_request') {
+      throw new Error('No pending tool approval to respond to');
+    }
+
+    setState(prev => ({ ...prev, isLoading: true, pendingEscalation: null }));
+
+    try {
+      await apiRequest(API_ENDPOINTS.escalationResponse(currentThreadId), {
+        method: 'POST',
+        body: JSON.stringify({ type: 'deny' }),
+      });
+
+      // Reload task chat after denial
+      setTimeout(async () => {
+        try {
+          if (currentThreadId.startsWith('core_agent_task_')) {
+            const taskId = currentThreadId.replace('core_agent_task_', '');
+            await loadTaskChat(taskId);
+          }
+        } catch (error) {
+          console.warn('Failed to reload chat after tool denial:', error);
+        } finally {
+          setState(prev => ({ ...prev, isLoading: false }));
+        }
+      }, 1000);
+
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to deny tool';
+      setState(prev => ({ ...prev, error: errorMessage, isLoading: false }));
+      throw error;
+    }
+  }, [state.pendingEscalation, currentThreadId, loadTaskChat]);
+
   return {
     // State
     messages: state.messages,
@@ -624,7 +927,12 @@ export function useChat() {
     updateMessage,
     loadChat, // New function for loading existing chats
     loadTaskChat, // Load task chat with escalation support
-    sendEscalationResponse, // Send response to escalation
+    sendEscalationResponse, // Send response to escalation (for task chats)
+    sendToolApprovalResponse, // Send tool approval response (for any chat thread)
+    respondToEscalation, // General escalation response
+    approveToolOnce, // Approve tool once
+    alwaysAllowTool, // Always allow tool
+    denyTool, // Deny tool
 
     // Utilities (manual trigger only)
     checkHealth,

@@ -215,4 +215,5 @@ export const API_ENDPOINTS = {
   chatById: (id: string) => `/chat/conversations/${id}`,
   chatMessages: (id: string) => `/chat/conversations/${id}/messages`,
   taskChatData: (id: string) => `/chat/conversations/${id}/task-data`,
+  escalationResponse: (id: string) => `/chat/conversations/${id}/escalation-response`,
 } as const; 

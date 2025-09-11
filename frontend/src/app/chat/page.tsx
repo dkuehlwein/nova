@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from "react";
 import { useChat, ChatMessage } from "@/hooks/useChat";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { EscalationBox } from "@/components/EscalationBox";
 import { MarkdownMessage } from "@/components/MarkdownMessage";
 import { SystemMessage } from "@/components/SystemMessage";
@@ -48,6 +48,7 @@ function ChatPage() {
   const [taskInfo, setTaskInfo] = useState<{ id: string; title: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const searchParams = useSearchParams();
+  const router = useRouter();
   const {
     messages,
     isLoading,
@@ -60,6 +61,7 @@ function ChatPage() {
     loadChat,
     loadTaskChat,
     sendEscalationResponse,
+    sendToolApprovalResponse,
   } = useChat();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const chatHistoryContainerRef = useRef<HTMLDivElement>(null);
@@ -169,9 +171,10 @@ function ChatPage() {
           try {
             const task = await apiRequest<{ id: string; title: string }>(`/api/tasks/${taskParam}`);
             setTaskInfo({ id: task.id, title: task.title });
-          } catch (error) {
-            console.error('Failed to fetch task info:', error);
-            setTaskInfo({ id: taskParam, title: 'Unknown Task' });
+          } catch {
+            // Task doesn't exist in database but thread exists in LangGraph - this is normal
+            console.log(`Task ${taskParam} not found in database, using thread-based title`);
+            setTaskInfo({ id: taskParam, title: `Agent Task ${taskParam.substring(0, 8)}` });
           }
         };
         fetchTaskInfo();
@@ -179,7 +182,7 @@ function ChatPage() {
         // Load with escalation support for task chats
         loadTaskChat(taskParam);
       } else {
-        // Load any conversation by thread ID (calendar memos, regular chats, etc.)
+        // Load any conversation by thread ID - now with universal escalation support!
         loadChat(threadParam);
       }
     }
@@ -268,11 +271,18 @@ function ChatPage() {
   const handleChatSelect = useCallback(async (chatItem: ChatHistoryItem) => {
     try {
       if (chatItem.task_id) {
-        // Task-specific chat
+        // Task-specific chat - update URL with both thread and task params
+        const threadId = `core_agent_task_${chatItem.task_id}`;
+        const newUrl = `/chat?thread=${threadId}&task=${chatItem.task_id}`;
+        router.push(newUrl);
+        
         setTaskInfo({ id: chatItem.task_id, title: chatItem.title });
         await loadTaskChat(chatItem.task_id);
       } else {
-        // Regular chat
+        // Regular chat - update URL with thread param only
+        const newUrl = `/chat?thread=${chatItem.id}`;
+        router.push(newUrl);
+        
         setTaskInfo(null);
         await loadChat(chatItem.id);
       }
@@ -285,7 +295,7 @@ function ChatPage() {
         setMessage(`Continue our conversation: ${chatItem.title}`);
       }
     }
-  }, [loadChat, loadTaskChat]);
+  }, [loadChat, loadTaskChat, router]);
 
   // Handle copy message
   const handleCopyMessage = useCallback(async (messageId: string, content: string) => {
@@ -336,6 +346,17 @@ function ChatPage() {
           messageType={msg.metadata?.type || "system_prompt"}
           title={msg.metadata?.title}
         />
+      );
+    }
+
+    // Handle tool approval decision messages with special styling
+    if (msg.role === "user" && msg.metadata?.type === "tool_approval_decision") {
+      return (
+        <div key={msg.id} className="flex justify-center mb-4">
+          <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg px-4 py-2 text-sm font-medium shadow-sm">
+            {msg.content}
+          </div>
+        </div>
       );
     }
 
@@ -490,6 +511,9 @@ function ChatPage() {
                 variant="outline" 
                 size="sm" 
                 onClick={() => {
+                  // Clear the URL parameters and start fresh
+                  router.push('/chat');
+                  setTaskInfo(null);
                   clearChat();
                 }}
                 className="w-full"
@@ -711,12 +735,49 @@ function ChatPage() {
                 {messages.map((msg) => renderMessage(msg))}
                 
                 {/* Escalation Box for pending decisions */}
-                {pendingEscalation && taskInfo && (
+                {pendingEscalation && (
                   <EscalationBox
                     question={pendingEscalation.question}
                     instructions={pendingEscalation.instructions}
+                    escalationType={pendingEscalation.type || 'user_question'}
+                    toolName={pendingEscalation.tool_name}
+                    toolArgs={pendingEscalation.tool_args}
                     onSubmit={async (response) => {
-                      await sendEscalationResponse(taskInfo.id, response);
+                      // Use task ID from URL params or taskInfo for task chats
+                      const taskId = taskInfo?.id || searchParams.get('task');
+                      if (taskId) {
+                        await sendEscalationResponse(taskId, response);
+                      } else {
+                        // For regular chat threads, use the tool approval handler
+                        await sendToolApprovalResponse(response);
+                      }
+                    }}
+                    onApprove={async () => {
+                      const taskId = taskInfo?.id || searchParams.get('task');
+                      if (taskId) {
+                        await sendEscalationResponse(taskId, "approve");
+                      } else {
+                        // For regular chat threads, use the tool approval handler
+                        await sendToolApprovalResponse("approve");
+                      }
+                    }}
+                    onDeny={async () => {
+                      const taskId = taskInfo?.id || searchParams.get('task');
+                      if (taskId) {
+                        await sendEscalationResponse(taskId, "deny");
+                      } else {
+                        // For regular chat threads, use the tool approval handler
+                        await sendToolApprovalResponse("deny");
+                      }
+                    }}
+                    onAlwaysAllow={async () => {
+                      const taskId = taskInfo?.id || searchParams.get('task');
+                      if (taskId) {
+                        await sendEscalationResponse(taskId, "always_allow");
+                      } else {
+                        // For regular chat threads, use the tool approval handler
+                        await sendToolApprovalResponse("always_allow");
+                      }
                     }}
                     isSubmitting={isLoading}
                   />

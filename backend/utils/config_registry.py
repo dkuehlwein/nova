@@ -285,6 +285,17 @@ class ConfigRegistry:
             )
             self.register("input_hooks", input_hooks_manager)
             
+            # 4. Tool Permissions Configuration
+            from models.tool_permissions_config import ToolPermissionsConfig
+            
+            tool_permissions_manager = YamlConfigManager(
+                config_path=configs_path / "tool_permissions.yaml",
+                config_name="tool_permissions",
+                config_model=ToolPermissionsConfig,
+                default_config=ToolPermissionsConfig.get_default_config()
+            )
+            self.register("tool_permissions", tool_permissions_manager)
+            
             self._initialized = True
             logger.info("Standard Nova configurations initialized successfully")
             
