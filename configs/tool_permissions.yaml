@@ -1,21 +1,15 @@
-# Tool Permissions Configuration
-# Follows Nova's standard YAML config pattern
-
 permissions:
   allow:
-    # Safe read-only tools that don't require approval
-    - get_tasks
-    - search_memory
-    - get_task_by_id
-    - get_memories
-    - search_memories
-    - ask_user
+  - get_tasks
+  - search_memory
+  - get_task_by_id
+  - get_memories
+  - search_memories
+  - ask_user
+  - update_task
   deny:
-    # External tools always require approval
-    - "mcp_tool(*)"
-    # Critical task status changes require approval
-
+  - mcp_tool(*)
 settings:
-  require_justification: true
   audit_enabled: true
-  default_secure: true  # New tools require approval by default
+  default_secure: true
+  require_justification: true

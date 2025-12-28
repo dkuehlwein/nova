@@ -355,6 +355,8 @@ services:
     build:
       context: ./mcp_servers/feature_request
       dockerfile: Dockerfile
+    env_file:
+      - .env
     ports:
       - "8003:8000"
     environment:
