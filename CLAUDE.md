@@ -57,6 +57,18 @@ docker-compose up -d nova-frontend
 ### Service Restart Strategies
 - Restart llama.cpp with docker compose up/down instead of restart. Otherwise changes will not be picked up
 
+## Development Workflow
+
+### Feature Implementation Process
+1. **Pre-work**: Review relevant Architecture Decision Records (ADRs) in `docs/adr/`.
+2. **Implementation**:
+    - Follow established patterns (ServiceManager, db_manager, etc).
+    - Ensure tests are added or adapted to cover new changes.
+3. **Post-work**:
+    - Run relevant tests to verify changes (`uv run pytest ...`).
+    - **Update ADRs** if architectural decisions changed.
+    - Create new ADRs for significant new decisions.
+
 ## Architecture Overview
 
 Nova is an AI-powered kanban task management system with a dual-agent architecture:
