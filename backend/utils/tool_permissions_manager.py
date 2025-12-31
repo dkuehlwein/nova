@@ -53,9 +53,17 @@ class ToolPermissionConfig:
                 }
             }
     
+    # Fields to ignore when generating permission patterns (dynamic IDs)
+    IGNORED_FIELDS = {"id", "task_id", "uuid", "execution_id", "thread_id", "run_id"}
+
     async def add_permission(self, tool_name: str, tool_args: Dict[str, Any] = None):
         """Add new permission to allow list using Nova's ConfigRegistry."""
-        pattern = self._format_permission_pattern(tool_name, tool_args)
+        # Filter out dynamic ID fields to create a broader permission pattern
+        clean_args = None
+        if tool_args:
+            clean_args = {k: v for k, v in tool_args.items() if k not in self.IGNORED_FIELDS}
+            
+        pattern = self._format_permission_pattern(tool_name, clean_args)
         
         try:
             config: ToolPermissionsConfig = get_config("tool_permissions")
@@ -173,13 +181,13 @@ class ToolApprovalInterceptor:
         
         # Check deny rules first (they override allow rules)
         deny_patterns = permissions["permissions"].get("deny", [])
-        if self._matches_any_pattern(permission_string, deny_patterns):
+        if self._matches_any_pattern(tool_name, tool_args, deny_patterns):
             logger.debug(f"Tool call denied by deny rule: {permission_string}")
             return False
             
         # Check allow rules
         allow_patterns = permissions["permissions"].get("allow", [])
-        allowed = self._matches_any_pattern(permission_string, allow_patterns)
+        allowed = self._matches_any_pattern(tool_name, tool_args, allow_patterns)
         
         if allowed:
             logger.debug(f"Tool call pre-approved: {permission_string}")
@@ -188,29 +196,61 @@ class ToolApprovalInterceptor:
             
         return allowed
     
-    def _matches_any_pattern(self, permission_string: str, patterns: List[str]) -> bool:
+    def _matches_any_pattern(self, tool_name: str, tool_args: Dict[str, Any], patterns: List[str]) -> bool:
         """Check if permission string matches any of the given patterns."""
         for pattern in patterns:
-            if self._matches_pattern(permission_string, pattern):
+            if self._matches_pattern(tool_name, tool_args, pattern):
                 return True
         return False
     
-    def _matches_pattern(self, permission_string: str, pattern: str) -> bool:
-        """Check if permission string matches a specific pattern."""
-        # Handle exact match
+    def _matches_pattern(self, tool_name: str, tool_args: Dict[str, Any], pattern: str) -> bool:
+        """Check if tool call matches a specific pattern."""
+        # 1. Exact match with formatted string
+        permission_string = self.config._format_permission_pattern(tool_name, tool_args)
         if pattern == permission_string:
             return True
             
-        # Handle wildcard patterns like "mcp_tool(*)"
-        if pattern.endswith("(*)"):
-            tool_name = pattern[:-3]
-            return permission_string.startswith(f"{tool_name}(")
+        # 2. Wildcard pattern "ToolName(*)"
+        if pattern == f"{tool_name}(*)":
+            return True
+            
+        # 3. Tool name only "ToolName"
+        if pattern == tool_name:
+            return True
         
-        # Handle tool-only patterns (no parentheses)
-        if "(" not in pattern and "(" not in permission_string:
-            return pattern == permission_string
-        
-        # Handle patterns with specific args like "update_task(status=done)"
+        # 4. Subset argument matching
+        # If the pattern is for this tool, check if required args are present and match
+        if pattern.startswith(f"{tool_name}("):
+            try:
+                # Extract args string: "key1=val1,key2=val2"
+                args_content = pattern[len(tool_name)+1:-1]
+                if not args_content:
+                    return True # Empty args pattern matches
+                
+                # Split pairs
+                # Note: This simple split fails for values containing commas. 
+                # But it improves upon the previous substring matching significantly.
+                pairs = args_content.split(',')
+                
+                tool_args_str = {k: str(v) for k, v in (tool_args or {}).items()}
+                
+                for pair in pairs:
+                    if '=' not in pair:
+                        continue
+                    k, v = pair.split('=', 1)
+                    k = k.strip()
+                    v = v.strip()
+                    
+                    # If pattern requires a key that is missing or different
+                    if k not in tool_args_str or tool_args_str[k] != v:
+                        return False
+                
+                # If all required pairs matched
+                return True
+            except Exception:
+                pass
+
+        # 5. Legacy/Fallback: Substring match for backward compatibility and complex cases
         if pattern in permission_string:
             return True
             

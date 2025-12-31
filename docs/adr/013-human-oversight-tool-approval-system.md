@@ -84,9 +84,14 @@ settings:
 
 ### Pattern Syntax
 
+### Pattern Syntax (Updated 2025-12-31)
+
 - `ToolName` - Allow all calls to tool
-- `ToolName(*)` - Allow any arguments
-- `ToolName(arg=value)` - Allow specific argument patterns
+- `ToolName(*)` - Allow any arguments (Wildcard)
+- `ToolName(arg=value)` - **Attribute-Based Match**:
+    - Matches if `arg` equals `value`.
+    - Ignores unspeciifed attributes in the incoming call (Implicit Wildcarding).
+    - Automatically ignores dynamic Resource Identifiers (`id`, `task_id`, etc.) when saving approvals.
 - Deny rules override allow rules
 
 ## Integration
