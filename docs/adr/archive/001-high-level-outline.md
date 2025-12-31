@@ -1,6 +1,16 @@
-# Nova
+# Nova - Original High-Level Outline
 
-Nova is an AI assistant for an director in an IT consultancy. 
+> **Status**: ARCHIVED
+> **Archived Date**: 2025-12-31
+> **Reason**: This was an initial requirements document, not an architectural decision record. Much of the content is now outdated (references OpenMemory MCP instead of Graphiti, outdated project structure). See CLAUDE.md for current project overview.
+
+---
+
+*Original content preserved below for historical reference:*
+
+---
+
+Nova is an AI assistant for an director in an IT consultancy.
 This is the high-level requirements document for Nova.
 
 # Project Structure
@@ -29,9 +39,9 @@ nova/
 # Techstack
 ## Agent Techstack:
 - python 3.13 with uv for venvs and pytest for tests
-- langchain/langgraph 
+- langchain/langgraph
 - memory: OpenMemory MCP for contextual memory (#person, #project relationships). Separate from kanban task management.
-    - Preference for OpenMemory https://mem0.ai/openmemory-mcp 
+    - Preference for OpenMemory https://mem0.ai/openmemory-mcp
     - Benefit: Works with Ollama https://github.com/mem0ai/mem0/discussions/2811
 - fastMCP for mcp servers
 - celery for recurring tasks (loading new mails → creating tasks, NOT triggering agent actions)
@@ -54,7 +64,7 @@ React 19 is required for best integration with langchain: https://langchain-ai.g
 # UI
 Nova needs a unified frontend (nova/frontend/) that provides Nova-specific features with fully integrated components.
 
-## A quick overview of the current state. 
+## A quick overview of the current state.
 - # of open tasks (on click, linked to kanban lane)
 - # of blocked tasks (on click, linked to kanban lane)
 - Current Task that Nova is working on (Task title, on click link to task)
@@ -68,9 +78,9 @@ Nova needs a unified frontend (nova/frontend/) that provides Nova-specific featu
 ## Chat
 The chat interface needs to show all human feedback requests (i.e. Nova sends a message to the user) and allow the user to send a new message to Nova.
 It shows old chats and the user can click on old chats to continue the conversation.
-Examples: 
+Examples:
 - https://github.com/langchain-ai/agent-chat-ui
-- https://github.com/langchain-ai/agent-inbox?tab=readme-ov-file 
+- https://github.com/langchain-ai/agent-inbox?tab=readme-ov-file
 A canvas to show e.g. e-mail drafts would be nice, but not for the first iteration.
 
 ## Kanban board
@@ -78,7 +88,7 @@ The Kanban board shows all tasks, the lane, status, and all related info (commen
 
 **Integration**: Fully integrated Nova component using kanban MCP API endpoints. This provides:
 - Consistent architecture with chat component
-- Seamless UX with shared state and theming  
+- Seamless UX with shared state and theming
 - Single codebase maintenance
 - Direct API integration without embedding complexity
 
@@ -89,7 +99,7 @@ The kanban MCP server continues to provide both `/mcp/` endpoints (for agent) an
 
 ## Task
 - Unique ID
-- Status 
+- Status
     - New: For brand new tasks (e.g., new email).
     - User Input Received: Tasks where the user has provided feedback and are ready for Nova to continue.
     - Needs Review: Tasks processed by Nova that require user attention (e.g., a summary of an email, a question).
@@ -155,7 +165,7 @@ Nova only works on ONE tasks. This is to make sure we don't get racing condition
     - The memory/context of #people and #projects is updated in OpenMemory and potentially the project DB
 
 ## User Feedback
-- User answers a chat request 
+- User answers a chat request
 - The task gets a new comment that summarizes the users answer.
 - Related task is moved back to "User Input Received"
 - Nova picks it up in next loop iteration

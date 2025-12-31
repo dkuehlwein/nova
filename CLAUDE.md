@@ -163,6 +163,18 @@ backend/
 4. Use async/await throughout for better performance
 5. Leverage hot-reload for prompts and configuration changes
 
+### Architecture Decision Records (ADRs)
+Detailed architectural decisions are documented in `docs/adr/`. Key ADRs:
+- **ADR-002**: Human-in-the-loop via `ask_user` tool and LangGraph interrupts
+- **ADR-003**: Graphiti memory system with Neo4j (`memory/graphiti_manager.py`)
+- **ADR-004**: 3-tier configuration with BaseConfigManager pattern
+- **ADR-005**: Real-time infrastructure (hot-reload, Redis pub/sub, WebSocket)
+- **ADR-007**: User context injection into system prompts
+- **ADR-010**: Unified health monitoring with caching (`services/health_monitor.py`)
+- **ADR-011**: LiteLLM-first architecture for all LLM operations
+- **ADR-012**: Multi-input hooks for email/calendar (`input_hooks/`)
+- **ADR-013**: Tool approval system for human oversight (`tools/tool_approval_helper.py`)
+
 ## Testing Chat and Tool Calling
 
 ### Quick Chat Test

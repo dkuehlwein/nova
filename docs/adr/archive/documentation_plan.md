@@ -1,5 +1,15 @@
 # Nova Documentation Overhaul Plan
 
+> **Status**: ARCHIVED - Backlog Item
+> **Archived Date**: 2025-12-31
+> **Reason**: This is a task/plan document, not an architectural decision. The proposed documentation restructure has not been implemented. See project backlog for documentation improvements.
+
+---
+
+*Original content preserved below for reference when documentation work is prioritized:*
+
+---
+
 This document outlines the plan to create a new, comprehensive, and philosophy-driven documentation suite for the Nova project.
 
 ## Guiding Philosophy
