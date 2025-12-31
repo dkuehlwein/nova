@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 # Install uv and curl for health checks
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
