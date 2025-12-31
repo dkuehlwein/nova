@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import List
 from uuid import UUID
 
-from langchain.tools import StructuredTool
+from langchain_core.tools import StructuredTool
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 

@@ -7,7 +7,7 @@ functions and provide structured interfaces for the agent.
 
 import logging
 from typing import List
-from langchain.tools import StructuredTool
+from langchain_core.tools import StructuredTool
 
 from memory.memory_functions import search_memory, add_memory, MemorySearchError, MemoryAddError
 

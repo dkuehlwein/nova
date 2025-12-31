@@ -21,8 +21,8 @@ dependencies = [
     "langchain-google-genai>=2.0.0",
     "langchain-openai>=0.2.0",
     "google-generativeai>=0.8.0",
-    "langgraph>=0.2.50",
-    "langgraph-checkpoint-postgres>=2.0.0",
+    "langgraph>=1.0.0",
+    "langgraph-checkpoint-postgres>=3.0.0",
     "psycopg[binary,pool]>=3.1.0",
     "pytest>=8.3.5",
     "pytest-asyncio>=1.0.0",
@@ -41,6 +41,7 @@ dependencies = [
     "flower>=2.0.1",
     "email-validator>=2.2.0",
     "docker>=7.0.0",
+    "mcp==1.9.1",
 ]
 requires-python = ">=3.13"
 

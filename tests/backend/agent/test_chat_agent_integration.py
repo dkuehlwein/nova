@@ -41,7 +41,7 @@ class TestChatAgentIntegration:
         test_tools = [get_test_data, calculate]
         
         # Mock only external dependencies, test our business logic
-        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
+        with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
              patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
              patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt, \
              patch('agent.chat_agent.create_react_agent') as mock_create_react_agent:
@@ -110,7 +110,7 @@ class TestChatAgentIntegration:
         local_tools = [local_tool_1, local_tool_2]
         mcp_tools = [mcp_tool_1, mcp_tool_2]
         
-        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
+        with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
              patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
              patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt, \
              patch('agent.chat_agent.create_react_agent') as mock_create_react_agent:
@@ -160,7 +160,7 @@ class TestChatAgentIntegration:
         
         test_tools = [get_user_info, send_notification]
         
-        with patch('agent.chat_agent.create_llm') as mock_create_llm, \
+        with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
              patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
              patch('agent.prompts.get_nova_system_prompt') as mock_get_prompt, \
              patch('agent.chat_agent.create_react_agent') as mock_create_react_agent:

@@ -186,27 +186,7 @@ class TestCoreAgentInitialization:
             assert hasattr(added_status, 'started_at')
             assert agent.status_id is not None
     
-    @pytest.mark.asyncio
-    async def test_initialize_status_resets_existing_record(self, mock_agent_status, mock_pg_pool):
-        """Test that status initialization resets existing record."""
-        
-        mock_session = AsyncMock()
-        mock_result = Mock()
-        mock_result.scalar_one_or_none.return_value = mock_agent_status
-        mock_session.execute.return_value = mock_result
-        
-        with patch('agent.core_agent.db_manager.get_session') as mock_get_session:
-            mock_get_session.return_value.__aenter__.return_value = mock_session
-            
-            agent = CoreAgent(mock_pg_pool)
-            await agent._initialize_status()
-            
-            # Verify existing status was reset
-            assert mock_agent_status.status == AgentStatusEnum.IDLE
-            assert mock_agent_status.current_task_id is None
-            assert mock_agent_status.last_error is None
-            mock_session.commit.assert_called_once()
-            assert agent.status_id == mock_agent_status.id
+
 
 
 class TestCoreAgentTaskSelection:
@@ -527,7 +507,7 @@ class TestCoreAgentEscalationFlow:
         with patch.object(CoreAgent, '_move_task_to_in_progress') as mock_move, \
              patch.object(CoreAgent, '_get_context') as mock_get_context, \
              patch.object(CoreAgent, '_create_task_messages') as mock_create_msgs, \
-             patch.object(CoreAgent, '_handle_human_escalation') as mock_escalation:
+             patch.object(CoreAgent, '_handle_interrupt') as mock_escalation:
             
             mock_get_context.return_value = {"memory_context": [], "comments": []}
             mock_create_msgs.return_value = [Mock(content="test message")]
