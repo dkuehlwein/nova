@@ -503,11 +503,12 @@ async def _http_request(url: str, headers: dict, timeout: int = 10) -> tuple[int
 async def _validate_google_api_key(db_session: AsyncSession, api_key: str, settings) -> dict:
     """Validate Google API key using Gemini API."""
     from datetime import datetime, timezone
+    from config import settings as app_config
     try:
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        
-        model = genai.GenerativeModel("gemini-2.5-flash-lite-preview-06-17")
+
+        model = genai.GenerativeModel(app_config.DEFAULT_CHAT_MODEL)
         response = model.generate_content("Hello")
         
         now = datetime.now(timezone.utc).isoformat()
@@ -992,8 +993,8 @@ async def get_google_api_status(
                     # Test Google API using the models endpoint
                     import google.generativeai as genai
                     genai.configure(api_key=app_settings.GOOGLE_API_KEY.get_secret_value())
-                    
-                    model = genai.GenerativeModel("gemini-2.5-flash")
+
+                    model = genai.GenerativeModel(app_settings.DEFAULT_CHAT_MODEL)
                     response = model.generate_content("Hello", request_options={"timeout": 10})
                     
                     if response and response.text and len(response.text.strip()) > 0:

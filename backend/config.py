@@ -76,6 +76,12 @@ class Settings(BaseSettings):
     # LiteLLM Configuration (Tier 2: Deployment Environment)
     LITELLM_BASE_URL: str = "http://localhost:4000"  # LiteLLM gateway URL
     LITELLM_MASTER_KEY: str = "sk-1234"  # Master key for LiteLLM API access
+
+    # Default LLM Models (Tier 1: Development Defaults)
+    # Single source of truth for model defaults - all other code imports from here
+    DEFAULT_CHAT_MODEL: str = "gemini-3-flash-preview"
+    DEFAULT_MEMORY_MODEL: str = "gemini-3-flash-preview"
+    DEFAULT_EMBEDDING_MODEL: str = "gemini-embedding-001"
     
     # llama.cpp Configuration (Tier 2: Deployment Environment)
     LLAMACPP_BASE_URL: str = "http://localhost:8080"  # llama.cpp server URL

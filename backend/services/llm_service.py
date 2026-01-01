@@ -22,15 +22,9 @@ class LLMModelService:
     # Constants
     GEMINI_MODELS = [
         {
-            "model_name": "gemini-2.5-flash",
+            "model_name": "gemini-3-flash-preview",
             "litellm_params": {
-                "model": "gemini/gemini-2.5-flash"
-            }
-        },
-        {
-            "model_name": "gemini-2.5-flash-lite-preview-06-17",
-            "litellm_params": {
-                "model": "gemini/gemini-2.5-flash-lite-preview-06-17"
+                "model": "gemini/gemini-3-flash-preview"
             }
         },
         {
@@ -117,9 +111,9 @@ class LLMModelService:
     
     FALLBACK_CONFIG = {
         "fallbacks": {
-            "SmolLM3-3B-128K-BF16": ["gemini-2.5-flash"],
-            "phi-4-Q4_K_M": ["gemini-2.5-flash"],
-            "gemini-2.5-flash": ["gemini-2.5-flash-lite-preview-06-17"]
+            "SmolLM3-3B-128K-BF16": ["gemini-3-flash-preview"],
+            "phi-4-Q4_K_M": ["gemini-3-flash-preview"],
+            "llamacpp/gpt-oss-20b": ["gemini-3-flash-preview"]
         }
     }
     
