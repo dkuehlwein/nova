@@ -1,6 +1,7 @@
 "use client";
 
 import ReactMarkdown from 'react-markdown';
+import { Zap } from 'lucide-react';
 import { CollapsibleToolCall } from './CollapsibleToolCall';
 
 interface ToolCall {
@@ -9,6 +10,20 @@ interface ToolCall {
   timestamp: string;
   result?: string;  // Tool result content
   tool_call_id?: string;  // Link to tool call
+}
+
+// Special component for skill activation display
+function SkillActivationBlock({ skillName }: { skillName: string }) {
+  return (
+    <div className="my-2 border border-purple-200 dark:border-purple-800 rounded-lg bg-purple-50 dark:bg-purple-900/20">
+      <div className="px-3 py-2 flex items-center space-x-2">
+        <Zap className="h-4 w-4 text-purple-500" />
+        <span className="font-medium text-sm text-purple-700 dark:text-purple-300">
+          Skill Activated: {skillName}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 interface MarkdownMessageProps {
@@ -99,15 +114,23 @@ export function MarkdownMessage({ content, className = "", toolCalls, disableLin
   return (
     <div className={`prose prose-sm max-w-none dark:prose-invert ${className}`}>
       {/* Render streaming tool calls first (from props) - modern approach */}
-      {hasStreamingToolCalls && toolCalls?.map((toolCall, index) => (
-        <CollapsibleToolCall
-          key={`streaming-tool-${toolCall.tool_call_id || index}`}
-          toolName={toolCall.tool}
-          args={JSON.stringify(toolCall.args, null, 2)}
-          result={toolCall.result}
-          tool_call_id={toolCall.tool_call_id}
-        />
-      ))}
+      {hasStreamingToolCalls && toolCalls?.map((toolCall, index) => {
+        // Special handling for skill activation
+        if (toolCall.tool === 'enable_skill') {
+          const skillName = (toolCall.args as { skill_name?: string }).skill_name || 'Unknown';
+          return <SkillActivationBlock key={`skill-${toolCall.tool_call_id || index}`} skillName={skillName} />;
+        }
+        // Regular tool call display
+        return (
+          <CollapsibleToolCall
+            key={`streaming-tool-${toolCall.tool_call_id || index}`}
+            toolName={toolCall.tool}
+            args={JSON.stringify(toolCall.args, null, 2)}
+            result={toolCall.result}
+            tool_call_id={toolCall.tool_call_id}
+          />
+        );
+      })}
       
       {/* Always render remaining content */}
       <div>
@@ -124,6 +147,15 @@ export function MarkdownMessage({ content, className = "", toolCalls, disableLin
       {/* Legacy format compatibility when no streaming tool calls */}
       {!hasStreamingToolCalls && parts.map((part, index) => {
         if (part.type === 'tool' && part.toolName && part.args) {
+          // Special handling for skill activation in legacy format
+          if (part.toolName === 'enable_skill') {
+            try {
+              const args = JSON.parse(part.args);
+              return <SkillActivationBlock key={index} skillName={args.skill_name || 'Unknown'} />;
+            } catch {
+              return <SkillActivationBlock key={index} skillName="Unknown" />;
+            }
+          }
           return (
             <CollapsibleToolCall
               key={index}

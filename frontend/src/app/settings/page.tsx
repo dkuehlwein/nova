@@ -1708,18 +1708,25 @@ function SettingsPageContent() {
                 <FileText className="h-4 w-4 mr-2" /> 
                 System Prompt
               </TabsTrigger>
-              <TabsTrigger 
-                value="mcp-servers" 
+              <TabsTrigger
+                value="mcp-servers"
                 className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
-                <ListChecks className="h-4 w-4 mr-2" /> 
+                <ListChecks className="h-4 w-4 mr-2" />
                 MCP Servers
               </TabsTrigger>
-              <TabsTrigger 
-                value="system-status" 
+              <TabsTrigger
+                value="skills"
                 className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
-                <ShieldCheck className="h-4 w-4 mr-2" /> 
+                <Zap className="h-4 w-4 mr-2" />
+                Skills
+              </TabsTrigger>
+              <TabsTrigger
+                value="system-status"
+                className="w-full justify-start data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <ShieldCheck className="h-4 w-4 mr-2" />
                 System Status
               </TabsTrigger>
             </TabsList>
@@ -1737,6 +1744,13 @@ function SettingsPageContent() {
                   <div className="bg-card border border-border rounded-lg p-6">
                     <h2 className="text-lg font-semibold text-foreground mb-4">MCP Servers Management</h2>
                     <MCPServersTab />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="skills" className="mt-0">
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <h2 className="text-lg font-semibold text-foreground mb-4">Available Skills</h2>
+                    <SkillsTab />
                   </div>
                 </TabsContent>
 

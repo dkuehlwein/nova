@@ -5,7 +5,7 @@ Provides REST API for listing available skills and their metadata.
 Implements ADR-014 Phase 6 (Frontend & Observability).
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -65,7 +65,7 @@ async def get_skills():
         return SkillsListResponse(
             skills=skills,
             count=len(skills),
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     except Exception as e:
