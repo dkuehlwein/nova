@@ -117,6 +117,33 @@ export function useToggleMCPServer() {
   })
 }
 
+// Skills Queries
+interface SkillInfo {
+  name: string
+  version: string
+  description: string
+  author: string
+  tags: string[]
+}
+
+interface SkillsData {
+  skills: SkillInfo[]
+  count: number
+  timestamp: string
+}
+
+export function useSkills() {
+  return useQuery({
+    queryKey: ['skills'],
+    queryFn: async (): Promise<SkillsData> => {
+      return await apiRequest('/api/skills/')
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes - skills don't change often
+    refetchOnWindowFocus: false,
+    retry: 2
+  })
+}
+
 // WebSocket Connection Queries
 export function useWebSocketConnections() {
   return useQuery({
