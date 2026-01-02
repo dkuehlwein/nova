@@ -125,23 +125,37 @@ def mock_dependencies():
     with patch('agent.chat_agent.create_chat_agent') as mock_create_agent, \
          patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools, \
          patch('api.chat_endpoints.get_checkpointer_from_service_manager') as mock_get_checkpointer, \
+         patch('memory.memory_functions.search_memory') as mock_search_memory, \
          patch('pathlib.Path') as mock_path_class, \
          patch('builtins.open') as mock_open, \
          patch('database.database.db_manager') as mock_db_manager:
         
-        # Mock chat agent creation
+        # Mock chat agent creation - must be async function
         mock_agent = MockChatAgent()
-        mock_create_agent.return_value = mock_agent
+        async def async_create_agent(**kwargs):
+            return mock_agent
+        mock_create_agent.side_effect = async_create_agent
         
         # Mock tools - return empty list to avoid LangChain tool issues
         async def async_get_tools():
             return []
         mock_get_tools.side_effect = async_get_tools
         
-        # Mock checkpointer
-        mock_get_checkpointer.return_value = MockCheckpointer()
+        # Mock checkpointer - must be async function
+        async def async_get_checkpointer():
+            return MockCheckpointer()
+        mock_get_checkpointer.side_effect = async_get_checkpointer
         
-
+        # Mock memory search - return empty results to avoid Graphiti connection
+        async def async_search_memory(query: str, limit: int = None, group_id: str = None):
+            return {
+                "success": True,
+                "results": [],
+                "count": 0,
+                "query": query,
+                "limit": limit or 10
+            }
+        mock_search_memory.side_effect = async_search_memory
         
         # Mock Path class and file operations
         def create_mock_path(path_str="test/path"):
@@ -185,6 +199,7 @@ def mock_dependencies():
             'create_agent': mock_create_agent,
             'get_tools': mock_get_tools,
             'get_checkpointer': mock_get_checkpointer,
+            'search_memory': mock_search_memory,
             'db_manager': mock_db_manager
         }
 

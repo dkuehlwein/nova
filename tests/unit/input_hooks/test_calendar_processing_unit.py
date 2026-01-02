@@ -4,7 +4,7 @@ Pure Unit Tests for Calendar Processing Components.
 These tests mock all external dependencies and test business logic in isolation.
 They verify the components work correctly with proper input/output contracts.
 
-Run with: uv run pytest tests/backend/test_calendar_processing_unit.py -v
+Run with: pytest tests/unit/input_hooks/test_calendar_processing_unit.py -v
 """
 
 import pytest
@@ -133,33 +133,36 @@ class TestMeetingAnalyzerUnit:
         """Test that events are filtered by target date correctly."""
         analyzer = MeetingAnalyzer()
         
+        # Use relative dates for better maintainability
+        target_date = date(2025, 8, 31)
+        tomorrow = date(2025, 9, 1)
+        yesterday = date(2025, 8, 30)
+        
         # Events for different dates
         events = [
             {
                 "id": "today_meeting",
                 "summary": "Today's Meeting",
-                "start": "2025-08-31T10:00:00+02:00",
-                "end": "2025-08-31T11:00:00+02:00",
+                "start": f"{target_date.isoformat()}T10:00:00+02:00",
+                "end": f"{target_date.isoformat()}T11:00:00+02:00",
                 "attendees": [{"email": "test@example.com"}]
             },
             {
                 "id": "tomorrow_meeting", 
                 "summary": "Tomorrow's Meeting",
-                "start": "2025-09-01T10:00:00+02:00",  # Different date
-                "end": "2025-09-01T11:00:00+02:00",
+                "start": f"{tomorrow.isoformat()}T10:00:00+02:00",
+                "end": f"{tomorrow.isoformat()}T11:00:00+02:00",
                 "attendees": [{"email": "test@example.com"}]
             },
             {
                 "id": "yesterday_meeting",
                 "summary": "Yesterday's Meeting", 
-                "start": "2025-08-30T10:00:00+02:00",  # Different date
-                "end": "2025-08-30T11:00:00+02:00",
+                "start": f"{yesterday.isoformat()}T10:00:00+02:00",
+                "end": f"{yesterday.isoformat()}T11:00:00+02:00",
                 "attendees": [{"email": "test@example.com"}]
             }
         ]
         
-        # Filter for August 31, 2025
-        target_date = date(2025, 8, 31)
         meetings = analyzer.analyze_events(events, target_date=target_date)
         
         # Should only get today's meeting
@@ -288,33 +291,41 @@ class TestMemoGeneratorUnit:
         )
     
     @pytest.mark.asyncio
-    async def test_generate_fallback_memo(self, sample_meeting_info):
-        """Test fallback memo generation without AI."""
-        generator = MemoGenerator()
-        
-        memo = generator._generate_fallback_memo(sample_meeting_info)
-        
-        assert memo is not None
-        assert "Sprint Planning" in memo
-        assert "alice@example.com" in memo
-        assert "bob@example.com" in memo
-        assert "Conference Room A" in memo
-        assert "60 minutes" in memo or "1 hour" in memo
+    async def test_generate_memo_success(self, sample_meeting_info):
+        """Test successful memo generation with AI."""
+        with patch('backend.input_hooks.calendar_processing.memo_generator.create_chat_agent') as mock_agent:
+            # Mock AI agent to succeed
+            mock_chat_agent = AsyncMock()
+            
+            # Mock astream to return an async iterator
+            async def mock_astream(*args, **kwargs):
+                # Simulate streaming chunks
+                yield {"chat_agent": {"messages": [type('obj', (), {'content': 'Generated memo for Sprint Planning', 'type': 'ai'})]}}
+            
+            mock_chat_agent.astream = mock_astream
+            mock_agent.return_value = mock_chat_agent
+            
+            generator = MemoGenerator()
+            memo_text, thread_id = await generator.generate_meeting_memo(sample_meeting_info)
+            
+            # Should get memo and thread_id
+            assert memo_text is not None
+            assert isinstance(thread_id, str)
+            assert len(memo_text) > 0
     
     @pytest.mark.asyncio 
-    async def test_generate_memo_with_ai_fallback(self, sample_meeting_info):
-        """Test that memo generation falls back to simple memo on AI failure."""
+    async def test_generate_memo_with_ai_failure(self, sample_meeting_info):
+        """Test that memo generation raises exception on AI failure."""
         with patch('backend.input_hooks.calendar_processing.memo_generator.create_chat_agent') as mock_agent:
             # Mock AI agent to fail
             mock_agent.side_effect = Exception("AI service unavailable")
             
             generator = MemoGenerator()
-            memo = await generator.generate_meeting_memo(sample_meeting_info)
+            # Should raise exception, not return fallback
+            with pytest.raises(Exception) as exc_info:
+                await generator.generate_meeting_memo(sample_meeting_info)
             
-            # Should get fallback memo, not crash
-            assert memo is not None
-            assert "Sprint Planning" in memo
-            assert len(memo) > 50  # Should be substantial content
+            assert "AI service unavailable" in str(exc_info.value)
 
 
 class TestMeetingCreatorUnit:
@@ -392,6 +403,43 @@ class TestMeetingCreatorUnit:
         assert "Sprint Planning" in formatted
         assert "10:00" in formatted or "10:00:00" in formatted
         assert "Conference Room A" in formatted
+    
+    @pytest.mark.asyncio
+    async def test_check_prep_meeting_exists(self, sample_meeting_info):
+        """Test checking if prep meeting already exists."""
+        with patch('backend.input_hooks.calendar_processing.meeting_creator.mcp_manager') as mock_mcp:
+            # Mock list events tool to return existing prep meeting
+            mock_list_tool = Mock()
+            mock_list_tool.name = "google_calendar_list_events"
+            existing_prep = {
+                "id": "existing_prep_123",
+                "summary": "PREP: Sprint Planning"
+            }
+            mock_list_tool.ainvoke = AsyncMock(return_value=[existing_prep])
+            
+            mock_mcp.get_tools = AsyncMock(return_value=[mock_list_tool])
+            
+            creator = MeetingCreator()
+            result = await creator.check_prep_meeting_exists(sample_meeting_info)
+            
+            # Returns True if exists, not the event ID
+            assert result is True
+            
+    @pytest.mark.asyncio
+    async def test_check_prep_meeting_not_exists(self, sample_meeting_info):
+        """Test checking when prep meeting doesn't exist."""
+        with patch('backend.input_hooks.calendar_processing.meeting_creator.mcp_manager') as mock_mcp:
+            mock_list_tool = Mock()
+            mock_list_tool.name = "google_calendar_list_events"
+            mock_list_tool.ainvoke = AsyncMock(return_value=[])
+            
+            mock_mcp.get_tools = AsyncMock(return_value=[mock_list_tool])
+            
+            creator = MeetingCreator()
+            result = await creator.check_prep_meeting_exists(sample_meeting_info)
+            
+            # Returns False when doesn't exist
+            assert result is False
 
 
 class TestCalendarProcessorUnit:
@@ -445,7 +493,7 @@ class TestCalendarProcessorUnit:
             mock_analyzer.analyze_events = Mock(return_value=[mock_meeting])
             
             # Mock memo generator
-            mock_memo.generate_meeting_memo = AsyncMock(return_value="Test memo")
+            mock_memo.generate_meeting_memo = AsyncMock(return_value=("Test memo", "mock_thread_id"))
             
             # Mock meeting creator
             mock_creator.check_prep_meeting_exists = AsyncMock(return_value=None)
@@ -496,6 +544,46 @@ class TestCalendarProcessorUnit:
             assert result["success"] == False
             assert len(result["errors"]) > 0
             assert "Fetch failed" in str(result["errors"])
+    
+    @pytest.mark.asyncio
+    async def test_process_multiple_calendars(self):
+        """Test processing events from multiple calendar IDs."""
+        config = CalendarHookConfig(
+            name="multi_calendar_test",
+            hook_type="calendar",
+            enabled=True,
+            polling_interval=86400,
+            create_tasks=True,
+            hook_settings=CalendarHookSettings(
+                calendar_ids=["primary", "work@example.com"],
+                look_ahead_days=1,
+                min_meeting_duration=15,
+                prep_time_minutes=15
+            )
+        )
+        
+        processor = CalendarProcessor()
+        
+        with patch.object(processor, 'fetcher') as mock_fetcher, \
+             patch.object(processor, 'analyzer') as mock_analyzer:
+            
+            # Mock fetcher to return events - it gets called once per calendar
+            # and returns the same events each time in this mock
+            mock_fetcher.fetch_todays_events = AsyncMock(return_value=[
+                {"id": "event1", "summary": "Meeting 1"},
+                {"id": "event2", "summary": "Meeting 2"}
+            ])
+            
+            # Mock analyzer to return no meetings for this test
+            mock_analyzer.analyze_events = Mock(return_value=[])
+            
+            result = await processor.process_daily_meetings(config)
+            
+            # Fetcher is called once per calendar, each returns 2 events = 4 total
+            assert result["events_fetched"] == 4
+            assert result["success"] is True
+            # Verify fetcher was called twice (once per calendar)
+            assert mock_fetcher.fetch_todays_events.call_count == 2
 
 
 if __name__ == "__main__":
