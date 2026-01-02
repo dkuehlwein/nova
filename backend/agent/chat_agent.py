@@ -1,21 +1,28 @@
 """
 Nova LangGraph Chat Agent
 
-A modern LangGraph chat agent that integrates with Nova's tools following current best practices.
+A modern LangGraph chat agent with dynamic skill loading support (ADR-014).
+Uses a custom StateGraph instead of create_react_agent to enable per-turn
+dynamic tool binding based on active skills.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import List, Any
+from typing import Any, List, Literal, Optional
 
+from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.prebuilt import create_react_agent
+from langgraph.graph import END, START, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition
 
+from mcp_client import mcp_manager
 from tools import get_all_tools
+from utils.skill_manager import get_skill_manager
+
 from .chat_llm import create_chat_llm
 from .prompts import get_nova_system_prompt
-from mcp_client import mcp_manager
+from .skill_aware_state import SkillAwareAgentState
 
 logger = logging.getLogger(__name__)
 
@@ -85,62 +92,220 @@ async def get_llm(use_cache=True):
 
 
 async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, include_escalation=False):
-    """Create LangGraph chat agent with cached components.
-    
+    """Create LangGraph chat agent with dynamic skill loading support.
+
+    This creates a custom StateGraph that supports per-turn dynamic tool binding
+    based on active skills. When a skill is enabled, its tools become available
+    on the next turn.
+
     Args:
         checkpointer: Optional checkpointer to use for conversation state
         pg_pool: PostgreSQL connection pool (required if no checkpointer provided)
         use_cache: If True, use cached components; if False, reload everything
         include_escalation: If True, include ask_user tool (for task contexts)
-    
+
     Returns:
         LangGraph chat agent with current tools/prompt and PostgreSQL checkpointer
-        
+
     Raises:
         ValueError: If neither checkpointer nor pg_pool is provided
-        
+
     Notes:
         - Always creates fresh agent instance (no agent instance caching)
         - Caches components (tools, LLM) separately from checkpointer
         - Every conversation gets latest tools/prompt when cache is cleared
         - Each conversation can have its own checkpointer for state management
         - PostgreSQL checkpointer is required - no MemorySaver fallback
+        - Supports dynamic skill activation/deactivation (ADR-014)
     """
     # Clear component caches if requested
     if not use_cache:
         clear_chat_agent_cache()
-    
+
     # Create checkpointer if none provided
     if checkpointer is None:
         if pg_pool is None:
             raise ValueError("PostgreSQL connection pool is required when no checkpointer provided")
         # Use provided pool for checkpointer
         from utils.service_manager import create_postgres_checkpointer
+
         checkpointer = create_postgres_checkpointer(pg_pool)
-    
-    logger.info("Creating chat agent", extra={
-        "data": {
-            "has_custom_checkpointer": checkpointer is not None,
-            "has_pg_pool": pg_pool is not None,
-            "use_cache": use_cache,
-            "checkpointer_type": type(checkpointer).__name__
-        }
-    })
-    
+
+    logger.info(
+        "Creating chat agent",
+        extra={
+            "data": {
+                "has_custom_checkpointer": checkpointer is not None,
+                "has_pg_pool": pg_pool is not None,
+                "use_cache": use_cache,
+                "checkpointer_type": type(checkpointer).__name__,
+            }
+        },
+    )
+
     # Get cached or fresh components
     llm = await get_llm(use_cache=use_cache)
-    tools = await get_all_tools_with_mcp(use_cache=use_cache, include_escalation=include_escalation)
+    base_tools = await get_all_tools_with_mcp(
+        use_cache=use_cache, include_escalation=include_escalation
+    )
     system_prompt = await get_nova_system_prompt(use_cache=use_cache)
 
-    # Always create fresh agent instance with current components + checkpointer
-    agent = create_react_agent(
-        model=llm,
-        tools=tools,
-        prompt=system_prompt,
-        checkpointer=checkpointer
+    # Get skill manager for dynamic tool loading
+    skill_manager = get_skill_manager()
+
+    # Cache for skill tools (loaded on demand)
+    skill_tools_cache: dict[str, list] = {}
+
+    async def get_tools_for_state(state: SkillAwareAgentState) -> list:
+        """Get all tools including dynamically loaded skill tools."""
+        all_tools = list(base_tools)
+
+        active_skills = state.get("active_skills", {})
+        for skill_name in active_skills:
+            if skill_name not in skill_tools_cache:
+                try:
+                    skill_tools_cache[skill_name] = await skill_manager.get_skill_tools(
+                        skill_name
+                    )
+                    logger.info(
+                        f"Loaded tools for skill: {skill_name}",
+                        extra={
+                            "data": {
+                                "skill": skill_name,
+                                "tools": [t.name for t in skill_tools_cache[skill_name]],
+                            }
+                        },
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to load tools for skill {skill_name}: {e}",
+                        extra={"data": {"skill": skill_name, "error": str(e)}},
+                    )
+                    continue
+            all_tools.extend(skill_tools_cache[skill_name])
+
+        return all_tools
+
+    async def agent_node(state: SkillAwareAgentState) -> dict:
+        """LLM node with per-turn dynamic tool binding."""
+        # Get tools for current state (including active skill tools)
+        current_tools = await get_tools_for_state(state)
+
+        # Bind tools for this turn
+        llm_with_tools = llm.bind_tools(current_tools)
+
+        # Prepend system prompt to messages if not already present
+        messages = list(state["messages"])
+        if not messages or not isinstance(messages[0], SystemMessage):
+            messages = [SystemMessage(content=system_prompt)] + messages
+
+        # Invoke LLM
+        response = await llm_with_tools.ainvoke(messages)
+
+        return {"messages": [response]}
+
+    def should_continue(state: SkillAwareAgentState) -> Literal["tools", "__end__"]:
+        """Determine whether to continue to tools or end."""
+        messages = state["messages"]
+        last_message = messages[-1]
+
+        # If the last message has tool calls, continue to tools node
+        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+            return "tools"
+
+        return END
+
+    async def tool_node_with_skill_state(
+        state: SkillAwareAgentState,
+    ) -> dict:
+        """Execute tool calls and handle skill state updates."""
+        messages = state["messages"]
+        last_message = messages[-1]
+
+        if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+            return {}
+
+        # Get current tools (including skill tools)
+        current_tools = await get_tools_for_state(state)
+
+        # Create tool node with current tools
+        tool_node = ToolNode(current_tools)
+
+        # Execute tools
+        result = await tool_node.ainvoke(state)
+
+        # Check for skill activation/deactivation in tool calls
+        # and update active_skills state accordingly
+        active_skills = dict(state.get("active_skills", {}))
+        skills_changed = False
+
+        for tool_call in last_message.tool_calls:
+            tool_name = tool_call.get("name", "")
+
+            if tool_name == "enable_skill":
+                skill_name = tool_call.get("args", {}).get("skill_name", "")
+                if skill_name and skill_name in skill_manager.list_skills():
+                    # Calculate turn number (count of AI messages)
+                    turn_number = sum(
+                        1 for m in messages if isinstance(m, AIMessage)
+                    )
+
+                    # Get skill tools for activation metadata
+                    try:
+                        skill_def = await skill_manager.load_skill(skill_name)
+                        tool_names = [
+                            f"{skill_name}__{t.name}" for t in skill_def.tools
+                        ]
+                    except Exception:
+                        tool_names = []
+
+                    active_skills[skill_name] = {
+                        "activated_at_turn": turn_number,
+                        "tools": tool_names,
+                    }
+                    skills_changed = True
+                    logger.info(
+                        f"Skill activated in state: {skill_name}",
+                        extra={"data": {"skill": skill_name, "turn": turn_number}},
+                    )
+
+            elif tool_name == "disable_skill":
+                skill_name = tool_call.get("args", {}).get("skill_name", "")
+                if skill_name and skill_name in active_skills:
+                    del active_skills[skill_name]
+                    # Also remove from cache to free memory
+                    if skill_name in skill_tools_cache:
+                        del skill_tools_cache[skill_name]
+                    skills_changed = True
+                    logger.info(
+                        f"Skill deactivated in state: {skill_name}",
+                        extra={"data": {"skill": skill_name}},
+                    )
+
+        # Return result with updated active_skills if changed
+        if skills_changed:
+            result["active_skills"] = active_skills
+
+        return result
+
+    # Build the graph
+    graph = StateGraph(SkillAwareAgentState)
+
+    # Add nodes
+    graph.add_node("agent", agent_node)
+    graph.add_node("tools", tool_node_with_skill_state)
+
+    # Add edges
+    graph.add_edge(START, "agent")
+    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+    graph.add_edge("tools", "agent")
+
+    # Compile with checkpointer
+    agent = graph.compile(checkpointer=checkpointer)
+
+    logger.info(
+        f"Created skill-aware chat agent with {len(base_tools)} base tools and {type(checkpointer).__name__} checkpointer"
     )
-    
-    logger.info(f"Created chat agent with {len(tools)} tools and {type(checkpointer).__name__} checkpointer")
     return agent
 
 

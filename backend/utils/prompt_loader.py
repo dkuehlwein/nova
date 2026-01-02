@@ -3,12 +3,15 @@ Prompt loader with hot-reload capabilities.
 UPDATED: Now uses database-based user settings instead of config files.
 """
 
-from utils.config_registry import config_registry
-from utils.logging import get_logger
+from datetime import datetime
+
+import pytz
+
 from database.database import db_manager
 from models.user_settings import UserSettings
-from datetime import datetime
-import pytz
+from utils.config_registry import config_registry
+from utils.logging import get_logger
+from utils.skill_manager import get_skill_manager
 
 logger = get_logger("prompt_loader")
 
@@ -55,13 +58,53 @@ async def load_nova_system_prompt() -> str:
         logger.warning(f"Invalid timezone '{user_timezone}', using UTC")
         current_time_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     
+    # Build available skills section
+    available_skills_section = _build_available_skills_section()
+
     # Use the unified system's template processing - will raise if template is invalid
     prompt = prompt_manager.get_processed_config(
         user_full_name=user_full_name,
         user_email=user_email,
         user_timezone=user_timezone,
         current_time_user_tz=current_time_str,
-        user_notes_section=user_notes
+        user_notes_section=user_notes,
+        available_skills_section=available_skills_section,
     )
-    
-    return prompt 
+
+    return prompt
+
+
+def _build_available_skills_section() -> str:
+    """
+    Build the available skills section for the system prompt.
+
+    Returns an empty string if no skills are available, otherwise
+    returns a formatted section listing available skills.
+    """
+    try:
+        skill_manager = get_skill_manager()
+        skill_summaries = skill_manager.get_skill_summaries()
+
+        if not skill_summaries:
+            return ""
+
+        # Format skills as a bullet list
+        skills_list = "\n".join(
+            f"- **{name}**: {description}"
+            for name, description in sorted(skill_summaries.items())
+        )
+
+        return f"""
+
+**Available Skills:**
+The following specialized skills are available. If a user request matches
+one of these domains, use the `enable_skill` tool to load it.
+
+{skills_list}
+"""
+    except Exception as e:
+        logger.warning(
+            f"Failed to build available skills section: {e}",
+            extra={"data": {"error": str(e)}},
+        )
+        return "" 

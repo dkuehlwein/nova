@@ -7,6 +7,11 @@ permissions:
   - search_memories
   - ask_user
   - update_task
+  # Skill management tools (ADR-014)
+  - enable_skill
+  - disable_skill
+  # Example skill tools (testing only)
+  - _example_skill__*
   deny:
   - mcp_tool(*)
 settings:

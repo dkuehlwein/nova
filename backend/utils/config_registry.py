@@ -20,6 +20,7 @@ class ConfigRegistry:
     
     def __init__(self):
         self._managers: Dict[str, BaseConfigManager] = {}
+        self._skill_manager = None  # SkillManager instance (not a BaseConfigManager)
         self._initialized = False
     
     def register(self, config_name: str, manager: BaseConfigManager) -> None:
@@ -46,6 +47,10 @@ class ConfigRegistry:
     def get_manager(self, config_name: str) -> Optional[BaseConfigManager]:
         """Get configuration manager by name."""
         return self._managers.get(config_name)
+
+    def get_skill_manager(self):
+        """Get the SkillManager instance."""
+        return self._skill_manager
     
     def get_config(self, config_name: str) -> Any:
         """Get configuration by name."""
@@ -118,7 +123,7 @@ class ConfigRegistry:
     def start_all_watchers(self) -> None:
         """Start file watchers for all configuration managers."""
         logger.info("Starting all configuration watchers")
-        
+
         for config_name, manager in self._managers.items():
             try:
                 manager.start_watching()
@@ -137,11 +142,23 @@ class ConfigRegistry:
                         }
                     }
                 )
+
+        # Start skill manager watcher if available
+        if self._skill_manager:
+            try:
+                self._skill_manager.start_watching()
+                logger.info("Started watcher for skills directory")
+            except Exception as e:
+                logger.error(
+                    "Failed to start watcher for skills directory",
+                    exc_info=True,
+                    extra={"data": {"error": str(e)}}
+                )
     
     def stop_all_watchers(self) -> None:
         """Stop file watchers for all configuration managers."""
         logger.info("Stopping all configuration watchers")
-        
+
         for config_name, manager in self._managers.items():
             try:
                 manager.stop_watching()
@@ -159,6 +176,18 @@ class ConfigRegistry:
                             "error": str(e)
                         }
                     }
+                )
+
+        # Stop skill manager watcher if available
+        if self._skill_manager:
+            try:
+                self._skill_manager.stop_watching()
+                logger.info("Stopped watcher for skills directory")
+            except Exception as e:
+                logger.error(
+                    "Failed to stop watcher for skills directory",
+                    exc_info=True,
+                    extra={"data": {"error": str(e)}}
                 )
     
     def reload_all_configs(self) -> None:
@@ -287,7 +316,7 @@ class ConfigRegistry:
             
             # 4. Tool Permissions Configuration
             from models.tool_permissions_config import ToolPermissionsConfig
-            
+
             tool_permissions_manager = YamlConfigManager(
                 config_path=configs_path / "tool_permissions.yaml",
                 config_name="tool_permissions",
@@ -295,7 +324,17 @@ class ConfigRegistry:
                 default_config=ToolPermissionsConfig.get_default_config()
             )
             self.register("tool_permissions", tool_permissions_manager)
-            
+
+            # 5. Skills Manager (ADR-014: Dynamic Pluggable Skills)
+            from utils.skill_manager import SkillManager, set_skill_manager
+
+            skills_path = base_path / "skills"
+            skill_manager = SkillManager(skills_path=skills_path)
+            set_skill_manager(skill_manager)  # Set global instance
+            # Note: SkillManager is not a BaseConfigManager subclass,
+            # but we track it separately for lifecycle management
+            self._skill_manager = skill_manager
+
             self._initialized = True
             logger.info("Standard Nova configurations initialized successfully")
             

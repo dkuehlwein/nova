@@ -1,0 +1,5 @@
+name: _example_skill
+version: "1.0.0"
+description: "Example skill for testing the skills system. Provides simple greeting tools."
+author: nova-team
+tags: [example, testing]

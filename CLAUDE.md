@@ -9,11 +9,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies
 cd backend && uv sync
 
-# Run tests
+# Run all tests
 cd backend && uv run pytest ../tests
 
+# Run unit tests only (fast, no DB required)
+cd backend && uv run pytest ../tests/unit -v
+
 # Run specific test
-cd backend && uv run pytest ../tests/backend/test_specific.py -v
+cd backend && uv run pytest ../tests/component/api/test_api_endpoints.py -v
 
 # Start chat agent service (port 8000)
 cd backend && uv run python start_website.py
@@ -131,11 +134,58 @@ backend/
 ```
 
 ### Testing Strategy
-- **Unit tests**: `tests/backend/test_*.py`
-- **Integration tests**: `tests/integration/test_*.py`
-- **Run from backend dir**: `uv run pytest ../tests`
+
+Nova uses a 4-tier test structure based on isolation level:
+
+| Type | Directory | Requirements | Speed |
+|------|-----------|--------------|-------|
+| **Unit** | `tests/unit/` | None (isolated) | Fast (ms) |
+| **Component** | `tests/component/` | PostgreSQL, Redis | Medium (s) |
+| **Integration** | `tests/integration/` | DB, Redis, MCP | Slow (s-min) |
+| **End-to-End** | `tests/end2end/` | Full Docker stack | Slowest |
+
+#### Running Tests
+```bash
+# Run all tests
+cd backend && uv run pytest ../tests
+
+# Run only fast unit tests (no DB required)
+cd backend && uv run pytest ../tests/unit -v
+
+# Run component tests (requires DB/Redis)
+cd backend && uv run pytest ../tests/component -v
+
+# Run integration tests
+cd backend && uv run pytest ../tests/integration -v
+
+# Run specific test file
+cd backend && uv run pytest ../tests/unit/utils/test_logging.py -v
+
+# Skip slow tests
+cd backend && uv run pytest ../tests -m "not slow"
+```
+
+#### Test Directory Structure
+```
+tests/
+├── unit/           # Isolated tests (NOVA_SKIP_DB=1, all mocks)
+│   ├── input_hooks/
+│   ├── memory/
+│   ├── skills/
+│   └── utils/
+├── component/      # Single component with DB/Redis
+│   ├── api/
+│   ├── agent/
+│   ├── memory/
+│   └── utils/
+├── integration/    # Multi-service workflows
+│   └── agent/
+└── end2end/        # Full Docker stack tests
+```
+
+#### Notes
 - **Async support**: All tests use pytest-asyncio
-- **End2End tests**: Rebuild the docker images before running the tests. Changes only propagate after rebuilding!
+- **End2End tests**: Rebuild Docker images before running (changes only propagate after rebuild)
 
 ### Configuration Management
 - **Environment variables**: Defined in `config.py` (never access directly)
