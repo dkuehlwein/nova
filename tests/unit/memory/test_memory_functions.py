@@ -1,5 +1,5 @@
 """
-Memory Functions Unit Tests
+Memory Functions Tests
 
 Tests the memory business logic functions including search_memory, add_memory,
 and get_recent_episodes with proper mocking and error handling.

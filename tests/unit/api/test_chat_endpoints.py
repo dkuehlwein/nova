@@ -1,7 +1,7 @@
 """
 Tests for Nova Chat API Endpoints
 
-Comprehensive unit tests for chat endpoints using isolated FastAPI app
+Tests for chat endpoints using isolated FastAPI app
 with mocked dependencies to ensure fast, deterministic, offline testing.
 """
 

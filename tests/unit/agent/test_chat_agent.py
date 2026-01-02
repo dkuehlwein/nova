@@ -1,7 +1,7 @@
 """
 Tests for Nova LangGraph Chat Agent
 
-Unit tests that test real functionality while mocking only external dependencies
+Tests that test real functionality while mocking only external dependencies
 like database connections and MCP servers. Follows LangChain testing best practices.
 """
 

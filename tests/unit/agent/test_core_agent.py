@@ -1,7 +1,7 @@
 """
-Unit tests for Nova Core Agent
+Tests for Nova Core Agent
 
-Tests for the autonomous task processing functionality using mocks 
+Tests for the autonomous task processing functionality using mocks
 following modern testing patterns.
 """
 

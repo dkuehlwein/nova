@@ -1,5 +1,5 @@
 """
-GraphitiManager Unit Tests
+GraphitiManager Tests
 
 Tests the singleton GraphitiManager lifecycle, connection management,
 and error handling following Nova's testing patterns.
