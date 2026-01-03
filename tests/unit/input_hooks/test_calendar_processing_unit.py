@@ -2,9 +2,18 @@
 Pure Unit Tests for Calendar Processing Components.
 
 These tests mock all external dependencies and test business logic in isolation.
-They verify the components work correctly with proper input/output contracts.
+All tests run without requiring databases (PostgreSQL, Neo4j) or external services.
 
-Run with: pytest tests/unit/input_hooks/test_calendar_processing_unit.py -v
+Components tested:
+- CalendarFetcher: Event fetching from MCP servers (mocked)
+- MeetingAnalyzer: Event filtering and analysis (pure logic)
+- MeetingCreator: Prep meeting creation (MCP mocked)
+- CalendarProcessor: End-to-end orchestration (all deps mocked)
+
+Note: MemoGenerator tests moved to integration tests due to Neo4j/Graphiti dependencies.
+See: tests/integration/test_calendar_memo_integration.py
+
+Run with: uv run pytest tests/unit/input_hooks/test_calendar_processing_unit.py -v
 """
 
 import pytest
@@ -14,7 +23,6 @@ import json
 
 from backend.input_hooks.calendar_processing.fetcher import CalendarFetcher
 from backend.input_hooks.calendar_processing.analyzer import MeetingAnalyzer
-from backend.input_hooks.calendar_processing.memo_generator import MemoGenerator
 from backend.input_hooks.calendar_processing.meeting_creator import MeetingCreator
 from backend.input_hooks.calendar_processing.processor import CalendarProcessor
 from backend.input_hooks.models import CalendarMeetingInfo, CalendarHookConfig, CalendarHookSettings
@@ -271,61 +279,10 @@ class TestMeetingAnalyzerUnit:
         assert "All Day Conference" in meeting_titles
 
 
-class TestMemoGeneratorUnit:
-    """Pure unit tests for MemoGenerator (all AI/memory calls mocked)."""
-    
-    @pytest.fixture
-    def sample_meeting_info(self):
-        """Sample meeting info for testing."""
-        return CalendarMeetingInfo(
-            meeting_id="test_123",
-            title="Sprint Planning",
-            attendees=["alice@example.com", "bob@example.com"],
-            start_time=datetime(2025, 8, 31, 10, 0, tzinfo=timezone.utc),
-            end_time=datetime(2025, 8, 31, 11, 0, tzinfo=timezone.utc),
-            duration_minutes=60,
-            location="Conference Room A",
-            description="Plan next sprint",
-            organizer="manager@example.com",
-            calendar_id="primary"
-        )
-    
-    @pytest.mark.asyncio
-    async def test_generate_memo_success(self, sample_meeting_info):
-        """Test successful memo generation with AI."""
-        with patch('backend.input_hooks.calendar_processing.memo_generator.create_chat_agent') as mock_agent:
-            # Mock AI agent to succeed
-            mock_chat_agent = AsyncMock()
-            
-            # Mock astream to return an async iterator
-            async def mock_astream(*args, **kwargs):
-                # Simulate streaming chunks
-                yield {"chat_agent": {"messages": [type('obj', (), {'content': 'Generated memo for Sprint Planning', 'type': 'ai'})]}}
-            
-            mock_chat_agent.astream = mock_astream
-            mock_agent.return_value = mock_chat_agent
-            
-            generator = MemoGenerator()
-            memo_text, thread_id = await generator.generate_meeting_memo(sample_meeting_info)
-            
-            # Should get memo and thread_id
-            assert memo_text is not None
-            assert isinstance(thread_id, str)
-            assert len(memo_text) > 0
-    
-    @pytest.mark.asyncio 
-    async def test_generate_memo_with_ai_failure(self, sample_meeting_info):
-        """Test that memo generation raises exception on AI failure."""
-        with patch('backend.input_hooks.calendar_processing.memo_generator.create_chat_agent') as mock_agent:
-            # Mock AI agent to fail
-            mock_agent.side_effect = Exception("AI service unavailable")
-            
-            generator = MemoGenerator()
-            # Should raise exception, not return fallback
-            with pytest.raises(Exception) as exc_info:
-                await generator.generate_meeting_memo(sample_meeting_info)
-            
-            assert "AI service unavailable" in str(exc_info.value)
+# NOTE: MemoGenerator tests moved to integration tests
+# (tests/integration/test_calendar_memo_integration.py)
+# Because MemoGenerator imports memory systems that depend on Neo4j/Graphiti,
+# these are integration tests, not unit tests.
 
 
 class TestMeetingCreatorUnit:
