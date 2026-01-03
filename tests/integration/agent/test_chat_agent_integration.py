@@ -194,4 +194,38 @@ class TestChatAgentIntegration:
             
             assert result is not None
             assert "messages" in result
-            mock_agent.invoke.assert_called_once() 
+            mock_agent.invoke.assert_called_once()
+
+
+class TestPromptLoading:
+    """Integration tests for prompt loading with real infrastructure."""
+    
+    @pytest.fixture(autouse=True)
+    async def setup_config_registry(self):
+        """Initialize config registry for prompt loading tests."""
+        from utils.config_registry import config_registry
+        
+        # Initialize config registry if not already done
+        if not config_registry._initialized:
+            await config_registry.initialize()
+        
+        yield
+        
+        # Optional: cleanup after test
+        # await config_registry.close()
+    
+    @pytest.mark.asyncio
+    async def test_prompt_loading_always_current(self):
+        """Test that get_nova_system_prompt always returns current content."""
+        from agent.prompts import get_nova_system_prompt
+        
+        # Since get_nova_system_prompt() calls the prompt loader which reads from file,
+        # it should always return current content without caching.
+        # This is an integration test - uses real config registry and file system.
+        prompt1 = await get_nova_system_prompt()
+        prompt2 = await get_nova_system_prompt()
+        
+        # Both calls should return the same content (current file content)
+        assert prompt1 == prompt2
+        assert len(prompt1) > 0
+        assert "Nova" in prompt1

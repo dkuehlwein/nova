@@ -9,7 +9,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Any
 
-from memory.graphiti_manager import get_graphiti_client, MemorySearchError, MemoryAddError
+from memory import graphiti_manager
+from memory.graphiti_manager import MemorySearchError, MemoryAddError
 from memory.entity_types import NOVA_ENTITY_TYPES
 from config import settings
 
@@ -32,7 +33,7 @@ async def search_memory(query: str, limit: int = None, group_id: str = None) -> 
         MemorySearchError: When search operation fails
     """
     try:
-        client = await get_graphiti_client()
+        client = await graphiti_manager.get_graphiti_client()
         
         # Get user settings for memory search limit
         if limit is None:
@@ -103,7 +104,7 @@ async def add_memory(
         MemoryAddError: When add operation fails
     """
     try:
-        client = await get_graphiti_client()
+        client = await graphiti_manager.get_graphiti_client()
         
         add_group_id = group_id or settings.MEMORY_GROUP_ID
         add_reference_time = reference_time or datetime.now(timezone.utc)
@@ -169,7 +170,7 @@ async def add_memory(
 async def get_recent_episodes(limit: int = 10, group_id: str = None) -> Dict[str, Any]:
     """Get recent memory episodes for debugging/management."""
     try:
-        client = await get_graphiti_client()
+        client = await graphiti_manager.get_graphiti_client()
         search_group_id = group_id or settings.MEMORY_GROUP_ID
         
         episodes = await client.retrieve_episodes(

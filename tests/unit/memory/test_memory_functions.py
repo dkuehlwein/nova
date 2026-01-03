@@ -28,7 +28,7 @@ class TestSearchMemory:
     @pytest.mark.asyncio
     async def test_search_memory_success(self, mock_edge_result):
         """Test successful memory search."""
-        with patch('memory.memory_functions.get_graphiti_client') as mock_get_client, \
+        with patch('memory.memory_functions.graphiti_manager.get_graphiti_client') as mock_get_client, \
              patch('memory.memory_functions.settings') as mock_settings:
             
             mock_settings.MEMORY_SEARCH_LIMIT = 10
@@ -58,9 +58,9 @@ class TestSearchMemory:
     @pytest.mark.asyncio
     async def test_search_memory_error_handling(self):
         """Test search memory error handling."""
-        with patch('memory.memory_functions.graphiti_manager') as mock_manager:
+        with patch('memory.memory_functions.graphiti_manager.get_graphiti_client') as mock_get_client:
             
-            mock_manager.get_client.side_effect = Exception("Connection failed")
+            mock_get_client.side_effect = Exception("Connection failed")
             
             from memory.memory_functions import search_memory, MemorySearchError
             
@@ -94,7 +94,7 @@ class TestAddMemory:
     @pytest.mark.asyncio
     async def test_add_memory_success(self, mock_add_result):
         """Test successful memory addition."""
-        with patch('memory.memory_functions.graphiti_manager') as mock_manager, \
+        with patch('memory.memory_functions.graphiti_manager.get_graphiti_client') as mock_get_client, \
              patch('memory.memory_functions.settings') as mock_settings, \
              patch('memory.memory_functions.NOVA_ENTITY_TYPES') as mock_types:
             
@@ -102,7 +102,7 @@ class TestAddMemory:
             
             mock_client = AsyncMock()
             mock_client.add_episode.return_value = mock_add_result
-            mock_manager.get_client = AsyncMock(return_value=mock_client)
+            mock_get_client.return_value = mock_client
             
             from memory.memory_functions import add_memory
             
@@ -120,9 +120,9 @@ class TestAddMemory:
     @pytest.mark.asyncio
     async def test_add_memory_error_handling(self):
         """Test add memory error handling."""
-        with patch('memory.memory_functions.graphiti_manager') as mock_manager:
+        with patch('memory.memory_functions.graphiti_manager.get_graphiti_client') as mock_get_client:
             
-            mock_manager.get_client.side_effect = Exception("Connection failed")
+            mock_get_client.side_effect = Exception("Connection failed")
             
             from memory.memory_functions import add_memory, MemoryAddError
             

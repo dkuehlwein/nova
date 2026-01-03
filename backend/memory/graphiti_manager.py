@@ -13,6 +13,7 @@ from graphiti_core.llm_client.config import LLMConfig
 from graphiti_core.embedder import OpenAIEmbedder
 from graphiti_core.embedder.openai import OpenAIEmbedderConfig
 from graphiti_core.cross_encoder import CrossEncoderClient
+from config import settings
 
 
 def create_graphiti_llm() -> OpenAIClient:
@@ -65,9 +66,9 @@ class NullCrossEncoder(CrossEncoderClient):
     for enhanced relevance scoring.
     """
     
-    def rank(self, query: str, messages: List[str]) -> List[int]:
-        """Return messages in original order (no reranking)."""
-        return list(range(len(messages)))
+    async def rank(self, query: str, messages: List[str]) -> List[tuple[str, float]]:
+        """Return messages in original order with descending scores."""
+        return [(msg, 1.0 - i * 0.01) for i, msg in enumerate(messages)]
 
 
 def create_graphiti_cross_encoder() -> CrossEncoderClient:
@@ -83,7 +84,6 @@ async def create_graphiti_client() -> Graphiti:
         Configured Graphiti client with LiteLLM-routed LLM and embedding services
     """
     # Get Neo4j connection from config settings (Tier 2)
-    from config import settings
     neo4j_uri = settings.NEO4J_URI
     neo4j_user = settings.NEO4J_USER  
     neo4j_password = settings.NEO4J_PASSWORD

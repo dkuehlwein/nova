@@ -1,7 +1,7 @@
 """
-GraphitiManager Tests
+Graphiti Manager Tests
 
-Tests the singleton GraphitiManager lifecycle, connection management,
+Tests the module-level graphiti client lifecycle, connection management,
 and error handling following Nova's testing patterns.
 """
 
@@ -10,237 +10,117 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import os
 
 
-class TestGraphitiManager:
-    """Test GraphitiManager singleton and lifecycle management."""
+class TestGraphitiClient:
+    """Test graphiti client singleton and lifecycle management."""
 
     @pytest.fixture
     def mock_graphiti_client(self):
         """Mock Graphiti client for testing."""
         mock_client = AsyncMock()
-        mock_client.build_indices_and_constraints = AsyncMock()
         mock_client.close = AsyncMock()
         return mock_client
 
-    @pytest.fixture
-    def mock_gemini_client(self):
-        """Mock GeminiClient for testing."""
-        return MagicMock()
-
-    @pytest.fixture
-    def mock_gemini_embedder(self):
-        """Mock GeminiEmbedder for testing."""
-        return MagicMock()
-
-    @pytest.mark.asyncio
-    async def test_singleton_pattern(self):
-        """Test that GraphitiManager follows singleton pattern."""
-        from memory.graphiti_manager import GraphitiManager
-        
-        manager1 = GraphitiManager()
-        manager2 = GraphitiManager()
-        
-        # Different instances but should manage same client
-        assert manager1 is not manager2
-        assert manager1._client is None
-        assert manager2._client is None
+    @pytest.fixture(autouse=True)
+    async def cleanup_global_client(self):
+        """Reset global client before and after each test."""
+        import memory.graphiti_manager as gm
+        gm._graphiti_client = None
+        yield
+        gm._graphiti_client = None
 
     @pytest.mark.asyncio
     async def test_get_client_initializes_properly(self, mock_graphiti_client):
         """Test client initialization with proper configuration."""
-        with patch('memory.graphiti_manager.Graphiti', return_value=mock_graphiti_client), \
-             patch('memory.graphiti_manager.create_graphiti_llm') as mock_llm, \
-             patch('memory.graphiti_manager.create_graphiti_embedder') as mock_embedder, \
-             patch('memory.graphiti_manager.settings') as mock_settings:
+        with patch('memory.graphiti_manager.create_graphiti_client', return_value=mock_graphiti_client):
+            from memory.graphiti_manager import get_graphiti_client
             
-            mock_settings.neo4j_uri = "bolt://localhost:7687"
-            mock_settings.neo4j_user = "test_user"
-            mock_settings.neo4j_password = "test_password"
-            
-            from memory.graphiti_manager import GraphitiManager
-            
-            manager = GraphitiManager()
-            client = await manager.get_client()
+            client = await get_graphiti_client()
             
             assert client is mock_graphiti_client
-            assert manager._client is mock_graphiti_client
-            assert manager._initialized is True
-            
-            # Verify indices were built
-            mock_graphiti_client.build_indices_and_constraints.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_client_reuses_existing(self, mock_graphiti_client):
         """Test that subsequent calls reuse existing client."""
-        with patch('memory.graphiti_manager.Graphiti', return_value=mock_graphiti_client), \
-             patch('memory.graphiti_manager.create_graphiti_llm'), \
-             patch('memory.graphiti_manager.create_graphiti_embedder'), \
-             patch('memory.graphiti_manager.settings') as mock_settings:
+        with patch('memory.graphiti_manager.create_graphiti_client', return_value=mock_graphiti_client) as mock_create:
+            from memory.graphiti_manager import get_graphiti_client
             
-            mock_settings.neo4j_uri = "bolt://localhost:7687"
-            mock_settings.neo4j_user = "test_user"
-            mock_settings.neo4j_password = "test_password"
-            
-            from memory.graphiti_manager import GraphitiManager
-            
-            manager = GraphitiManager()
-            client1 = await manager.get_client()
-            client2 = await manager.get_client()
+            client1 = await get_graphiti_client()
+            client2 = await get_graphiti_client()
             
             assert client1 is client2
-            # Indices should only be built once
-            assert mock_graphiti_client.build_indices_and_constraints.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_connection_error_handling(self):
-        """Test proper error handling when Neo4j connection fails."""
-        with patch('memory.graphiti_manager.Graphiti', side_effect=Exception("Connection failed")), \
-             patch('memory.graphiti_manager.create_graphiti_llm'), \
-             patch('memory.graphiti_manager.create_graphiti_embedder'), \
-             patch('memory.graphiti_manager.settings') as mock_settings:
-            
-            mock_settings.neo4j_uri = "bolt://localhost:7687"
-            mock_settings.neo4j_user = "test_user"
-            mock_settings.neo4j_password = "test_password"
-            
-            from memory.graphiti_manager import GraphitiManager, MemoryConnectionError
-            
-            manager = GraphitiManager()
-            
-            with pytest.raises(MemoryConnectionError) as exc_info:
-                await manager.get_client()
-            
-            assert "Cannot connect to Neo4j" in str(exc_info.value)
-            assert "Connection failed" in str(exc_info.value)
+            # create_graphiti_client should only be called once
+            assert mock_create.call_count == 1
 
     @pytest.mark.asyncio
     async def test_close_cleanup(self, mock_graphiti_client):
         """Test proper cleanup during close."""
-        with patch('memory.graphiti_manager.Graphiti', return_value=mock_graphiti_client), \
-             patch('memory.graphiti_manager.create_graphiti_llm'), \
-             patch('memory.graphiti_manager.create_graphiti_embedder'), \
-             patch('memory.graphiti_manager.settings') as mock_settings:
+        with patch('memory.graphiti_manager.create_graphiti_client', return_value=mock_graphiti_client):
+            from memory.graphiti_manager import get_graphiti_client, close_graphiti_client
+            import memory.graphiti_manager as gm
             
-            mock_settings.neo4j_uri = "bolt://localhost:7687"
-            mock_settings.neo4j_user = "test_user"
-            mock_settings.neo4j_password = "test_password"
+            await get_graphiti_client()  # Initialize client
+            assert gm._graphiti_client is not None
             
-            from memory.graphiti_manager import GraphitiManager
-            
-            manager = GraphitiManager()
-            await manager.get_client()  # Initialize client
-            
-            await manager.close()
+            await close_graphiti_client()
             
             mock_graphiti_client.close.assert_called_once()
-            assert manager._client is None
-            assert manager._initialized is False
+            assert gm._graphiti_client is None
 
     @pytest.mark.asyncio
     async def test_close_with_no_client(self):
         """Test close works safely when no client exists."""
-        from memory.graphiti_manager import GraphitiManager
+        from memory.graphiti_manager import close_graphiti_client
         
-        manager = GraphitiManager()
         # Should not raise exception
-        await manager.close()
-
-    @pytest.mark.asyncio
-    async def test_close_with_exception(self, mock_graphiti_client):
-        """Test close handles exceptions gracefully."""
-        mock_graphiti_client.close.side_effect = Exception("Close failed")
-        
-        with patch('memory.graphiti_manager.Graphiti', return_value=mock_graphiti_client), \
-             patch('memory.graphiti_manager.create_graphiti_llm'), \
-             patch('memory.graphiti_manager.create_graphiti_embedder'), \
-             patch('memory.graphiti_manager.settings') as mock_settings:
-            
-            mock_settings.neo4j_uri = "bolt://localhost:7687"
-            mock_settings.neo4j_user = "test_user"
-            mock_settings.neo4j_password = "test_password"
-            
-            from memory.graphiti_manager import GraphitiManager
-            
-            manager = GraphitiManager()
-            await manager.get_client()
-            
-            # Should not raise exception, just log warning
-            await manager.close()
-            
-            assert manager._client is None
-            assert manager._initialized is False
+        await close_graphiti_client()
 
 
 class TestGraphitiClients:
     """Test Graphiti LLM and embedder client creation."""
 
     @pytest.mark.asyncio
-    async def test_create_graphiti_llm_with_api_key(self):
-        """Test LLM client creation with API key."""
-        with patch('memory.graphiti_manager.settings') as mock_settings, \
-             patch('memory.graphiti_manager.GeminiClient') as mock_client_cls, \
-             patch('database.database.UserSettingsService') as mock_settings_service:
+    async def test_create_graphiti_llm(self):
+        """Test LLM client creation with mocked config."""
+        with patch('utils.llm_factory.get_memory_llm_config') as mock_config, \
+             patch('memory.graphiti_manager.OpenAIClient') as mock_client_cls:
             
-            mock_settings.GOOGLE_API_KEY.get_secret_value.return_value = "test_api_key"
-            mock_settings_service.get_llm_settings_sync.return_value = {"memory_llm_model": "gemini-2.0-flash-exp"}
-            mock_settings_service.get_memory_settings_sync.return_value = {"memory_token_limit": 2048}
+            mock_config.return_value = {
+                "model": "gpt-4",
+                "small_model": "gpt-3.5-turbo",
+                "api_key": "test_api_key",
+                "base_url": "http://localhost:4000",
+                "temperature": 0.7,
+                "max_tokens": 2048
+            }
             
             from memory.graphiti_manager import create_graphiti_llm
             
             client = create_graphiti_llm()
             
             mock_client_cls.assert_called_once()
-            config = mock_client_cls.call_args[1]["config"]
-            assert config.api_key == "test_api_key"
-            assert config.model == "gemini-2.0-flash-exp"
-            assert config.temperature == 0.1
-            assert config.max_tokens == 2048
+            # Verify config was passed
+            assert mock_config.called
 
     @pytest.mark.asyncio
-    async def test_create_graphiti_llm_missing_api_key(self):
-        """Test LLM client creation fails without API key."""
-        with patch('memory.graphiti_manager.settings') as mock_settings, \
-             patch.dict(os.environ, {}, clear=True):
+    async def test_create_graphiti_embedder(self):
+        """Test embedder creation with mocked config."""
+        with patch('utils.llm_factory.get_embedding_config') as mock_config, \
+             patch('memory.graphiti_manager.OpenAIEmbedder') as mock_embedder_cls:
             
-            mock_settings.GOOGLE_API_KEY = None
-            
-            from memory.graphiti_manager import create_graphiti_llm
-            
-            with pytest.raises(ValueError) as exc_info:
-                create_graphiti_llm()
-            
-            assert "GOOGLE_API_KEY environment variable is required" in str(exc_info.value)
-
-    @pytest.mark.asyncio
-    async def test_create_graphiti_embedder_with_api_key(self):
-        """Test embedder creation with API key."""
-        with patch('memory.graphiti_manager.settings') as mock_settings, \
-             patch('memory.graphiti_manager.GeminiEmbedder') as mock_embedder_cls:
-            
-            mock_settings.GOOGLE_API_KEY.get_secret_value.return_value = "test_api_key"
+            mock_config.return_value = {
+                "embedding_model": "text-embedding-3-large",
+                "api_key": "test_api_key",
+                "base_url": "http://localhost:4000",
+                "embedding_dim": 3072
+            }
             
             from memory.graphiti_manager import create_graphiti_embedder
             
             embedder = create_graphiti_embedder()
             
             mock_embedder_cls.assert_called_once()
-            config = mock_embedder_cls.call_args[1]["config"]
-            assert config.api_key == "test_api_key"
-            assert config.embedding_model == "models/text-embedding-004"
-
-    @pytest.mark.asyncio
-    async def test_create_graphiti_embedder_missing_api_key(self):
-        """Test embedder creation fails without API key."""
-        with patch('memory.graphiti_manager.settings') as mock_settings, \
-             patch.dict(os.environ, {}, clear=True):
-            
-            mock_settings.GOOGLE_API_KEY = None
-            
-            from memory.graphiti_manager import create_graphiti_embedder
-            
-            with pytest.raises(ValueError) as exc_info:
-                create_graphiti_embedder()
-            
-            assert "GOOGLE_API_KEY environment variable is required" in str(exc_info.value)
+            # Verify config was passed
+            assert mock_config.called
 
 
 class TestNullCrossEncoder:

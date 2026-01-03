@@ -5,7 +5,7 @@ Focused tests for cache clearing and prompt loading behavior.
 """
 
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, AsyncMock
 
 from agent.chat_agent import clear_chat_agent_cache
 
@@ -28,21 +28,6 @@ class TestAgentReloading:
         # Verify all component caches are cleared
         assert agent.chat_agent._cached_tools is None
         assert agent.chat_agent._cached_llm is None
-    
-    @pytest.mark.asyncio
-    async def test_prompt_loading_always_current(self):
-        """Test that get_nova_system_prompt always returns current content."""
-        from agent.prompts import get_nova_system_prompt
-        
-        # Since get_nova_system_prompt() calls the prompt loader which reads from file,
-        # it should always return current content without caching
-        prompt1 = await get_nova_system_prompt()
-        prompt2 = await get_nova_system_prompt()
-        
-        # Both calls should return the same content (current file content)
-        assert prompt1 == prompt2
-        assert len(prompt1) > 0
-        assert "Nova" in prompt1
 
 
 class TestCacheManagement:
