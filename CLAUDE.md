@@ -135,13 +135,12 @@ backend/
 
 ### Testing Strategy
 
-Nova uses a 4-tier test structure based on isolation level:
+Nova uses a 3-tier test structure based on isolation level:
 
 | Type | Directory | Requirements | Speed |
 |------|-----------|--------------|-------|
-| **Unit** | `tests/unit/` | None (isolated) | Fast (ms) |
-| **Component** | `tests/component/` | PostgreSQL, Redis | Medium (s) |
-| **Integration** | `tests/integration/` | DB, Redis, MCP | Slow (s-min) |
+| **Unit** | `tests/unit/` | None (isolated, all mocked) | Fast (ms) |
+| **Integration** | `tests/integration/` | PostgreSQL, Redis, config files | Medium (s) |
 | **End-to-End** | `tests/end2end/` | Full Docker stack | Slowest |
 
 #### Running Tests
@@ -152,10 +151,7 @@ cd backend && uv run pytest ../tests
 # Run only fast unit tests (no DB required)
 cd backend && uv run pytest ../tests/unit -v
 
-# Run component tests (requires DB/Redis)
-cd backend && uv run pytest ../tests/component -v
-
-# Run integration tests
+# Run integration tests (requires DB/Redis)
 cd backend && uv run pytest ../tests/integration -v
 
 # Run specific test file
@@ -169,16 +165,13 @@ cd backend && uv run pytest ../tests -m "not slow"
 ```
 tests/
 ├── unit/           # Isolated tests (NOVA_SKIP_DB=1, all mocks)
+│   ├── agent/
+│   ├── api/
 │   ├── input_hooks/
 │   ├── memory/
 │   ├── skills/
 │   └── utils/
-├── component/      # Single component with DB/Redis
-│   ├── api/
-│   ├── agent/
-│   ├── memory/
-│   └── utils/
-├── integration/    # Multi-service workflows
+├── integration/    # Tests requiring real services (DB, Redis, config)
 │   └── agent/
 └── end2end/        # Full Docker stack tests
 ```

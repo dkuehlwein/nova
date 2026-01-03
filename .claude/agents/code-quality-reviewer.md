@@ -44,19 +44,17 @@ When reviewing code, you will:
 - Check status is one of: Proposed, Accepted, Implemented, Partial, Superseded
 - Verify README.md index is updated if new ADR added
 
-**Test Coverage Verification (4-Tier Structure):**
-Nova uses a 4-tier test structure based on isolation level:
+**Test Coverage Verification (3-Tier Structure):**
+Nova uses a 3-tier test structure based on isolation level:
 
 | Type | Directory | Requirements | Speed |
 |------|-----------|--------------|-------|
 | Unit | `tests/unit/` | None (isolated, NOVA_SKIP_DB=1) | Fast (ms) |
-| Component | `tests/component/` | PostgreSQL, Redis | Medium (s) |
 | Integration | `tests/integration/` | DB, Redis, MCP | Slow (s-min) |
 | End-to-End | `tests/end2end/` | Full Docker stack | Slowest |
 
 Review requirements:
 - Examine unit tests in `tests/unit/` for isolated, fast tests with full mocking
-- Review component tests in `tests/component/` for single-component tests with DB/Redis
 - Check integration tests in `tests/integration/` for multi-service workflow tests
 - Verify tests are placed in the correct tier based on their dependencies
 - Ensure tests actually exercise the new/modified code paths
@@ -68,7 +66,6 @@ Review requirements:
 **Test Execution Validation:**
 - Recommend running specific test commands using the project's testing patterns:
   - Unit tests: `cd backend && uv run pytest ../tests/unit -v` (no DB required)
-  - Component tests: `cd backend && uv run pytest ../tests/component -v`
   - Integration tests: `cd backend && uv run pytest ../tests/integration -v`
   - Specific file: `cd backend && uv run pytest ../tests/unit/utils/test_logging.py -v`
   - Skip slow tests: `cd backend && uv run pytest ../tests -m "not slow"`
