@@ -16,7 +16,7 @@ cd backend && uv run pytest ../tests
 cd backend && uv run pytest ../tests/unit -v
 
 # Run specific test
-cd backend && uv run pytest ../tests/component/api/test_api_endpoints.py -v
+cd backend && uv run pytest ../tests/unit/api/test_api_endpoints.py -v
 
 # Start chat agent service (port 8000)
 cd backend && uv run python start_website.py
