@@ -52,9 +52,9 @@ class LLMModelService:
             }
         },
         {
-            "model_name": "qwen3-embedding-4b",
+            "model_name": "local/qwen3-embedding-0.6b-dwq",
             "litellm_params": {
-                "model": "huggingface/Qwen/Qwen3-Embedding-4B"
+                "model": "local/qwen3-embedding-0.6b-dwq"
             }
         }
     ]

@@ -183,7 +183,7 @@ class OnboardingCompleteRequest(BaseModel):
     """Request model for completing onboarding with model selection."""
     chat_llm_model: Optional[str] = Field(default="qwen3-32b", description="Chat model selection")
     memory_llm_model: Optional[str] = Field(default="qwen3-32b", description="Memory model selection") 
-    embedding_model: Optional[str] = Field(default="qwen3-embedding-4b", description="Embedding model selection")
+    embedding_model: Optional[str] = Field(default="local/qwen3-embedding-0.6b-dwq", description="Embedding model selection")
     litellm_base_url: Optional[str] = Field(default="http://localhost:4000", description="LiteLLM base URL")
     litellm_master_key: Optional[str] = Field(default="sk-1234", description="LiteLLM master key")
 
