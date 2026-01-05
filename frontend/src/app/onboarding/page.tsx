@@ -79,9 +79,9 @@ export default function OnboardingPage() {
   // Model selection data
   const [availableModels, setAvailableModels] = useState<AvailableModels | null>(null);
   const [modelSelection, setModelSelection] = useState({
-    chat_llm_model: 'qwen3-32b',
-    memory_llm_model: 'qwen3-32b', 
-    embedding_model: 'qwen3-embedding-4b',
+    chat_llm_model: 'local/openai/gpt-oss-20b',
+    memory_llm_model: 'local/openai/gpt-oss-20b',
+    embedding_model: 'local/qwen3-embedding-0.6b-dwq',
     litellm_base_url: 'http://localhost:4000'
   });
   const [modelsLoading, setModelsLoading] = useState(false);

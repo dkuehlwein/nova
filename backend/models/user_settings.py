@@ -58,14 +58,14 @@ class UserSettings(Base):
     # MCP Server Preferences (which servers are enabled/disabled)
     mcp_server_preferences: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
     
-    # Chat LLM Settings (Local-First HuggingFace Defaults)
-    chat_llm_model: Mapped[str] = mapped_column(String(100), default="qwen3-32b")  # HuggingFace via Cerebras
+    # Chat LLM Settings (Local-First Defaults)
+    chat_llm_model: Mapped[str] = mapped_column(String(100), default="local/openai/gpt-oss-20b")  # Local LLM via LiteLLM
     chat_llm_temperature: Mapped[float] = mapped_column(Float, default=0.7)  # Higher for creativity
     chat_llm_max_tokens: Mapped[int] = mapped_column(Integer, default=4096)
-    
+
     # Memory LLM Settings (Separate from Chat for Flexibility)
-    memory_llm_model: Mapped[str] = mapped_column(String(100), default="qwen3-32b")  # Same as chat for consistency
-    memory_small_llm_model: Mapped[str] = mapped_column(String(100), default="qwen3-32b")  # Small model for quick operations
+    memory_llm_model: Mapped[str] = mapped_column(String(100), default="local/openai/gpt-oss-20b")  # Same as chat for consistency
+    memory_small_llm_model: Mapped[str] = mapped_column(String(100), default="local/openai/gpt-oss-20b")  # Small model for quick operations
     memory_llm_temperature: Mapped[float] = mapped_column(Float, default=0.1)  # Lower for factual accuracy
     memory_llm_max_tokens: Mapped[int] = mapped_column(Integer, default=2048)  # Memory operations token limit
     
@@ -114,14 +114,14 @@ class UserSettingsModel(BaseModel):
     # MCP Server Preferences
     mcp_server_preferences: Dict[str, Any] = Field(default_factory=dict)
     
-    # Chat LLM Settings (Local-First HuggingFace Defaults)
-    chat_llm_model: str = "qwen3-32b"  # HuggingFace via Cerebras
+    # Chat LLM Settings (Local-First Defaults)
+    chat_llm_model: str = "local/openai/gpt-oss-20b"  # Local LLM via LiteLLM
     chat_llm_temperature: float = 0.7  # Higher for creativity
     chat_llm_max_tokens: int = 4096
-    
+
     # Memory LLM Settings (Separate from Chat for Flexibility)
-    memory_llm_model: str = "qwen3-32b"  # Same as chat for consistency
-    memory_small_llm_model: str = "qwen3-32b"  # Small model for quick operations
+    memory_llm_model: str = "local/openai/gpt-oss-20b"  # Same as chat for consistency
+    memory_small_llm_model: str = "local/openai/gpt-oss-20b"  # Small model for quick operations
     memory_llm_temperature: float = 0.1  # Lower for factual accuracy
     memory_llm_max_tokens: int = 2048  # Memory operations token limit
     

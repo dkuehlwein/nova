@@ -181,8 +181,9 @@ async def update_user_settings(
 
 class OnboardingCompleteRequest(BaseModel):
     """Request model for completing onboarding with model selection."""
-    chat_llm_model: Optional[str] = Field(default="qwen3-32b", description="Chat model selection")
-    memory_llm_model: Optional[str] = Field(default="qwen3-32b", description="Memory model selection") 
+    chat_llm_model: Optional[str] = Field(default="local/openai/gpt-oss-20b", description="Chat model selection")
+    memory_llm_model: Optional[str] = Field(default="local/openai/gpt-oss-20b", description="Memory model selection")
+    memory_small_llm_model: Optional[str] = Field(default=None, description="Memory small model selection (defaults to memory_llm_model if not set)")
     embedding_model: Optional[str] = Field(default="local/qwen3-embedding-0.6b-dwq", description="Embedding model selection")
     litellm_base_url: Optional[str] = Field(default="http://localhost:4000", description="LiteLLM base URL")
     litellm_master_key: Optional[str] = Field(default="sk-1234", description="LiteLLM master key")
@@ -209,20 +210,23 @@ async def complete_onboarding(
         settings.onboarding_complete = True
         settings.chat_llm_model = request.chat_llm_model
         settings.memory_llm_model = request.memory_llm_model
+        # Use memory_small_llm_model if provided, otherwise default to memory_llm_model
+        settings.memory_small_llm_model = request.memory_small_llm_model or request.memory_llm_model
         settings.embedding_model = request.embedding_model
         settings.litellm_base_url = request.litellm_base_url
         settings.litellm_master_key = request.litellm_master_key
-        
+
         await session.commit()
-        
-        logger.info(f"Onboarding completed with models: chat={request.chat_llm_model}, memory={request.memory_llm_model}, embedding={request.embedding_model}, litellm_url={request.litellm_base_url}")
+
+        logger.info(f"Onboarding completed with models: chat={request.chat_llm_model}, memory={request.memory_llm_model}, memory_small={settings.memory_small_llm_model}, embedding={request.embedding_model}, litellm_url={request.litellm_base_url}")
         
         return {
-            "status": "success", 
+            "status": "success",
             "message": "Onboarding completed with LiteLLM-first defaults",
             "models": {
                 "chat_llm_model": request.chat_llm_model,
                 "memory_llm_model": request.memory_llm_model,
+                "memory_small_llm_model": settings.memory_small_llm_model,
                 "embedding_model": request.embedding_model,
                 "litellm_base_url": request.litellm_base_url,
                 "litellm_master_key": request.litellm_master_key
