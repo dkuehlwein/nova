@@ -57,51 +57,8 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # llama.cpp for local LLM inference with GPU support
-  # llamacpp:
-  #   container_name: nova-llamacpp
-  #   # Use latest official CUDA image with full tools (newer than server-cuda)
-  #   image: ghcr.io/ggml-org/llama.cpp:full-cuda
-  #   # Alternative: build custom for absolute latest (has CUDA linking issues)
-  #   # build:
-  #   #   context: .
-  #   #   dockerfile: llamacpp.Dockerfile
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: 1
-  #             capabilities: [gpu]
-  #   ports:
-  #     - "8080:8080"
-  #   volumes:
-  #     - ./llm_models:/models
-  #     - ~/.cache/huggingface:/root/.cache/huggingface
-  #   environment:
-  #     - CUDA_VISIBLE_DEVICES=0
-  #     - CUDA_DOCKER_ARCH=all
-  #     - GGML_CUDA=1
-  #   command: >
-  #     --server
-  #     --model /models/${LLAMACPP_MODEL_FILE:-gpt-oss-20b-Q8_0.gguf}
-  #     --host 0.0.0.0
-  #     --port 8080
-  #     --n-gpu-layers 42
-  #     --ctx-size 8192
-  #     --cache-type-k q8_0
-  #     --cache-type-v q8_0
-  #     --flash-attn
-  #     --jinja
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 90s
-  #   restart: unless-stopped
-
   # LiteLLM Gateway for unified LLM API
+  # Connects to external LLM endpoints (e.g., LM Studio running on host)
   litellm:
     container_name: nova-litellm
     image: ghcr.io/berriai/litellm:main-latest
@@ -114,7 +71,8 @@ services:
       DATABASE_URL: postgresql://${LITELLM_USER:-litellm}:${LITELLM_PASSWORD:-litellm_dev_password}@postgres:5432/${LITELLM_DB:-litellm}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-salt-1234}
-      LLAMACPP_BASE_URL: http://nova-llamacpp:8080
+      # External LLM API endpoint (e.g., LM Studio on host) - use host.docker.internal from container
+      LLM_API_BASE_URL: ${LLM_API_BASE_URL:-http://host.docker.internal:1234}
       STORE_MODEL_IN_DB: "True"
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       HF_TOKEN: ${HF_TOKEN}
@@ -156,7 +114,7 @@ services:
       CREATE_TABLES: ${CREATE_TABLES:-true}
       # LLM Provider Configuration
       LLM_PROVIDER: ${LLM_PROVIDER:-google}
-      LLAMACPP_BASE_URL: http://llamacpp:8080
+      LLM_API_BASE_URL: ${LLM_API_BASE_URL:-http://host.docker.internal:1234}
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
     depends_on:
@@ -204,7 +162,7 @@ services:
       SQL_DEBUG: ${SQL_DEBUG:-false}
       # LLM Provider Configuration
       LLM_PROVIDER: ${LLM_PROVIDER:-google}
-      LLAMACPP_BASE_URL: http://llamacpp:8080
+      LLM_API_BASE_URL: ${LLM_API_BASE_URL:-http://host.docker.internal:1234}
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
     depends_on:

@@ -5,22 +5,18 @@ Provides API endpoints for managing Tier 3 (database) user settings.
 NEVER exposes Tier 1 (config.py) or Tier 2 (.env) values for security.
 """
 
-from typing import Optional
-
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from database.database import get_db_session
 from models.user_settings import (
-    UserSettings, 
-    UserSettingsModel, 
+    UserSettings,
+    UserSettingsModel,
     UserSettingsUpdateModel,
     OnboardingStatusModel
 )
 from utils.logging import get_logger
-from utils.docker_manager import restart_llamacpp_container
 
 logger = get_logger("settings_api")
 
@@ -29,139 +25,16 @@ router = APIRouter(prefix="/api/user-settings", tags=["user-settings"])
 
 async def _handle_chat_model_change(model_name: str) -> None:
     """
-    Handle LLM model changes in LiteLLM-first architecture.
-    
-    Most models route through LiteLLM and require no restart.
-    Only local GGUF models need llamacpp container restart.
-    
+    Handle LLM model changes.
+
+    In the LiteLLM-first architecture, all models route through LiteLLM.
+    Model loading is handled by the external LLM API (e.g., LM Studio, Ollama).
+    No container restarts needed - just log the change.
+
     Args:
         model_name: The new model name selected by the user
     """
     logger.info(f"Model change detected: {model_name}")
-    
-    try:
-        # Check if this is a local GGUF model that needs container restart
-        if await _is_local_gguf_model(model_name):
-            logger.info(f"Local GGUF model selected: {model_name}, restarting llamacpp container")
-            
-            # Get the model file name from litellm config
-            model_file = await _get_model_file_from_config(model_name)
-            if model_file:
-                success = await restart_llamacpp_container(model_file)
-                if success:
-                    logger.info(f"Successfully restarted llamacpp for model: {model_name}")
-                else:
-                    logger.error(f"Failed to restart llamacpp for model: {model_name}")
-            else:
-                logger.warning(f"Could not find model file for: {model_name}")
-        else:
-            # This is a LiteLLM-routed model (HuggingFace, OpenAI, etc.) - no restart needed
-            logger.info(f"LiteLLM-routed model selected: {model_name}, no llamacpp restart needed")
-            
-    except Exception as e:
-        logger.error(f"Error handling model change: {e}")
-
-
-async def _is_local_gguf_model(model_name: str) -> bool:
-    """
-    Check if a model is a local GGUF model that requires llamacpp container restart.
-    
-    In LiteLLM-first architecture, these are models that use llamacpp:8080 api_base.
-    
-    Args:
-        model_name: The model name to check
-        
-    Returns:
-        bool: True if this is a local GGUF model, False otherwise
-    """
-    try:
-        import yaml
-        from pathlib import Path
-        
-        # Path to litellm config
-        possible_paths = [
-            Path(__file__).parent.parent.parent / "configs" / "litellm_config.yaml",  # Host path
-            Path("/app/configs/litellm_config.yaml"),  # Container mounted path
-        ]
-        
-        config_path = None
-        for path in possible_paths:
-            if path.exists():
-                config_path = path
-                break
-        
-        if not config_path:
-            return False
-            
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-            
-        # Check if model uses llamacpp api_base (indicates local GGUF model)
-        for model in config.get("model_list", []):
-            if model.get("model_name") == model_name:
-                api_base = model.get("litellm_params", {}).get("api_base", "")
-                return "llamacpp:8080" in api_base or "localhost:8080" in api_base
-                
-        return False
-        
-    except Exception as e:
-        logger.warning(f"Error checking if model is local GGUF: {e}")
-        return False
-
-
-async def _get_model_file_from_config(model_name: str) -> Optional[str]:
-    """
-    Get the GGUF file name for a model from litellm_config.yaml.
-    
-    Args:
-        model_name: The model name to look up
-        
-    Returns:
-        str: The GGUF file name, or None if not found
-    """
-    try:
-        import yaml
-        from pathlib import Path
-        
-        # Path to litellm config (try multiple locations)
-        possible_paths = [
-            Path(__file__).parent.parent.parent / "configs" / "litellm_config.yaml",  # Host path
-            Path("/app/configs/litellm_config.yaml"),  # Container mounted path
-        ]
-        
-        config_path = None
-        for path in possible_paths:
-            if path.exists():
-                config_path = path
-                break
-        
-        if not config_path:
-            logger.error(f"LiteLLM config not found at any of: {possible_paths}")
-            return None
-            
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-            
-        # Look for the model in the model_list
-        for model_config in config.get("model_list", []):
-            if model_config.get("model_name") == model_name:
-                # Extract the GGUF file name from the model path
-                model_path = model_config.get("litellm_params", {}).get("model", "")
-                if model_path.startswith("openai/"):
-                    # Remove "openai/" prefix to get the actual file name
-                    file_name = model_path[7:]  # Remove "openai/" (7 characters)
-                    # Add .gguf extension if not present
-                    if not file_name.endswith('.gguf'):
-                        file_name += '.gguf'
-                    return file_name
-                return model_path
-                
-        logger.warning(f"Model {model_name} not found in litellm_config.yaml")
-        return None
-        
-    except Exception as e:
-        logger.error(f"Error reading litellm config: {e}")
-        return None
 
 
 @router.get("/status", response_model=OnboardingStatusModel)
@@ -279,7 +152,7 @@ async def update_user_settings(
                     extra={"data": {"event_id": llm_event.id, "updated_fields": list(update_data.keys())}}
                 )
                 
-                # If chat model changed, check if it's a local model and restart llamacpp if needed
+                # Log model change - external LLM API (LM Studio, etc.) handles model loading
                 if "chat_llm_model" in update_data:
                     await _handle_chat_model_change(settings.chat_llm_model)
                 
@@ -401,29 +274,29 @@ async def _check_service_connections(app_settings):
             }
     
     # Run checks in parallel
-    llamacpp_check = check_http_service(f"{app_settings.LLAMACPP_BASE_URL}/health")
+    local_llm_check = check_http_service(f"{app_settings.LLM_API_BASE_URL}/v1/models")
     litellm_check = check_http_service(f"{app_settings.LITELLM_BASE_URL}/health", app_settings.LITELLM_MASTER_KEY)
-    
+
     # Neo4j check (synchronous)
     neo4j_status = check_neo4j_service(
         app_settings.NEO4J_URI,
         app_settings.NEO4J_USER,
         app_settings.NEO4J_PASSWORD
     )
-    
+
     # Wait for HTTP checks
-    llamacpp_status, litellm_status = await asyncio.gather(
-        llamacpp_check, litellm_check, return_exceptions=True
+    local_llm_status, litellm_status = await asyncio.gather(
+        local_llm_check, litellm_check, return_exceptions=True
     )
-    
+
     # Handle exceptions
-    if isinstance(llamacpp_status, Exception):
-        llamacpp_status = {"status": "unhealthy", "error": str(llamacpp_status)}
+    if isinstance(local_llm_status, Exception):
+        local_llm_status = {"status": "unhealthy", "error": str(local_llm_status)}
     if isinstance(litellm_status, Exception):
         litellm_status = {"status": "unhealthy", "error": str(litellm_status)}
-    
+
     return {
-        "llamacpp": llamacpp_status,
+        "local_llm": local_llm_status,
         "litellm": litellm_status,
         "neo4j": neo4j_status
     }
@@ -458,7 +331,7 @@ async def get_system_status():
             "services": {
                 "chat_agent_port": app_settings.CHAT_AGENT_PORT,
                 "core_agent_port": app_settings.CORE_AGENT_PORT,
-                "llamacpp": service_status["llamacpp"],
+                "local_llm": service_status["local_llm"],
                 "litellm": service_status["litellm"],
                 "neo4j": service_status["neo4j"]
             },

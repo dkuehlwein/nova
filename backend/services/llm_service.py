@@ -98,22 +98,14 @@ class LLMModelService:
         }
     ]
 
-    LLAMACPP_MODELS = [
-        {
-            "model_name": "llamacpp/gpt-oss-20b",
-            "litellm_params": {
-                "model": "openai/gpt-oss-20b-Q8_0.gguf",
-                "api_base": "http://nova-llamacpp:8080/v1",
-                "api_key": "no-key"
-            }
-        }
-    ]
-    
+    # Local LLM models are added dynamically based on what's loaded in the external API
+    # (e.g., LM Studio, Ollama). No static model list needed - models are discovered at runtime.
+
     FALLBACK_CONFIG = {
         "fallbacks": {
             "SmolLM3-3B-128K-BF16": ["gemini-3-flash-preview"],
             "phi-4-Q4_K_M": ["gemini-3-flash-preview"],
-            "llamacpp/gpt-oss-20b": ["gemini-3-flash-preview"]
+            "local-model": ["gemini-3-flash-preview"]
         }
     }
     
@@ -308,57 +300,94 @@ class LLMModelService:
         
         return success_count
     
-    async def initialize_llamacpp_models(self, session) -> int:
-        """Initialize Llama.cpp models if the service is available. Returns count of successful additions."""
-        if not settings.LLAMACPP_BASE_URL:
-            logger.info("Llama.cpp base URL not configured - skipping Llama.cpp model initialization")
+    async def initialize_local_llm_models(self, session) -> int:
+        """
+        Initialize local LLM models from external API (e.g., LM Studio, Ollama).
+
+        Discovers available models from the configured LLM_API_BASE_URL endpoint.
+        Returns count of successful additions.
+        """
+        if not settings.LLM_API_BASE_URL:
+            logger.info("LLM API base URL not configured - skipping local model initialization")
             return 0
-        
-        success_count = 0
-        for model_config in self.LLAMACPP_MODELS:
-            model_name = model_config["model_name"]
-            success, was_added = await self.add_model_to_litellm(model_config)
-            if success:
-                if was_added:
-                    success_count += 1
-                    logger.info(f"Added new model: {model_name}")
-        
-        return success_count
+
+        try:
+            # Query the external API for available models
+            async with aiohttp.ClientSession() as http_session:
+                url = f"{settings.LLM_API_BASE_URL}/v1/models"
+                async with http_session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status != 200:
+                        logger.info(f"Local LLM API not available at {settings.LLM_API_BASE_URL} - skipping")
+                        return 0
+
+                    result = await response.json()
+                    models = result.get("data", [])
+
+                    if not models:
+                        logger.info("No models loaded in local LLM API")
+                        return 0
+
+                    success_count = 0
+                    for model in models:
+                        model_id = model.get("id", "")
+                        if not model_id:
+                            continue
+
+                        # Create model config for LiteLLM
+                        model_config = {
+                            "model_name": f"local/{model_id}",
+                            "litellm_params": {
+                                "model": f"openai/{model_id}",
+                                "api_base": f"{settings.LLM_API_BASE_URL}/v1",
+                                "api_key": "no-key"
+                            }
+                        }
+
+                        success, was_added = await self.add_model_to_litellm(model_config)
+                        if success and was_added:
+                            success_count += 1
+                            logger.info(f"Added local model: {model_id}")
+
+                    return success_count
+
+        except Exception as e:
+            logger.info(f"Could not connect to local LLM API: {e} - skipping local model initialization")
+            return 0
 
     async def initialize_default_models_in_litellm(self, db: AsyncSession) -> bool:
         """
         Initialize working models in LiteLLM based on API key availability.
-        
+
         Only adds models for services that are actually available.
         """
         try:
             total_models = 0
-            
-            # Initialize Llama.cpp models
-            llamacpp_count = await self.initialize_llamacpp_models(db)
-            total_models += llamacpp_count
+
+            # Initialize local LLM models (e.g., LM Studio, Ollama)
+            local_count = await self.initialize_local_llm_models(db)
+            total_models += local_count
 
             # Initialize Gemini models
             gemini_count = await self.initialize_gemini_models(db)
             total_models += gemini_count
-            
+
             # Initialize HuggingFace models
             hf_count = await self.initialize_huggingface_models(db)
             total_models += hf_count
-            
+
             # Initialize OpenRouter models
             openrouter_count = await self.initialize_openrouter_models(db)
             total_models += openrouter_count
-            
+
             # Update fallback configuration if we have any models
             if total_models > 0:
                 await self.update_fallback_config()
-                logger.info(f"Successfully initialized {total_models} models: {llamacpp_count} Llama.cpp, {gemini_count} Gemini, {hf_count} HuggingFace, {openrouter_count} OpenRouter")
+                logger.info(f"Successfully initialized {total_models} models: {local_count} local, {gemini_count} Gemini, {hf_count} HuggingFace, {openrouter_count} OpenRouter")
                 return True
             else:
                 logger.info("No working models available - check API keys")
                 return True
-            
+
         except Exception as e:
             logger.error(f"Error initializing models: {e}")
             return False

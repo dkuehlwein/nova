@@ -22,11 +22,11 @@ router = APIRouter(prefix="/api/system", tags=["System Management"])
 # Allowed services for restart operations (security measure)
 ALLOWED_SERVICES = {
     "mcp_gmail",
-    "redis", 
+    "redis",
     "postgres",
     "chat-agent",
     "core-agent",
-    "llamacpp"
+    "litellm"
 }
 
 

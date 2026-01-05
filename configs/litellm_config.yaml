@@ -5,7 +5,7 @@ model_list: []
 
 # Models are now managed dynamically:
 # - Gemini models: Added if Google API key is valid
-# - Local models: Added if underlying services (llama.cpp) are running  
+# - Local models: Discovered from external LLM API (e.g., LM Studio, Ollama)
 # - HuggingFace models: Added if HF token is valid and services are available
 
 general_settings:

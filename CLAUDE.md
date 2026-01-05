@@ -45,8 +45,8 @@ cd frontend && npm run lint
 
 ### Docker Services
 ```bash
-# Start dependencies (PostgreSQL, Redis, Neo4j, llama.cpp, LiteLLM)
-docker-compose up -d postgres redis neo4j llamacpp litellm
+# Start dependencies (PostgreSQL, Redis, Neo4j, LiteLLM)
+docker-compose up -d postgres redis neo4j litellm
 
 # Full stack with containers (including frontend)
 docker-compose up -d
@@ -57,8 +57,10 @@ docker-compose up -d nova-frontend
 
 ## Development Notes
 
-### Service Restart Strategies
-- Restart llama.cpp with docker compose up/down instead of restart. Otherwise changes will not be picked up
+### Local LLM Setup
+- Install LM Studio (or Ollama) on your Mac and load a model
+- LM Studio runs on port 1234 by default (configure via `LLM_API_BASE_URL` env var)
+- Models are discovered automatically by LiteLLM at startup
 
 ## Development Workflow
 
@@ -80,7 +82,7 @@ Nova is an AI-powered kanban task management system with a dual-agent architectu
 1. **Chat Agent Service** (`start_website.py:8000`) - User-facing chat interface and API endpoints
 2. **Core Agent Service** (`start_core_agent.py:8001`) - Autonomous task processing loop
 3. **Frontend** (`Next.js:3000`) - Web interface for task management (containerized)
-4. **Local LLM Infrastructure** - llama.cpp (`8080`) + LiteLLM gateway (`4000`) for local AI inference
+4. **Local LLM Infrastructure** - External LLM API (e.g., LM Studio on `1234`) + LiteLLM gateway (`4000`)
 5. **MCP Servers** - External tool integrations (Google Workspace, Feature Requests)
 
 ### Key Architectural Patterns
@@ -193,7 +195,7 @@ tests/
 ### Key Technologies
 - **Backend**: FastAPI, LangChain, LangGraph, SQLAlchemy, Redis, PostgreSQL
 - **Frontend**: Next.js, React, TailwindCSS, Radix UI
-- **Local LLM**: llama.cpp (CUDA-accelerated) + LiteLLM (OpenAI-compatible gateway)
+- **Local LLM**: LM Studio/Ollama (external) + LiteLLM (OpenAI-compatible gateway)
 - **Memory**: Graphiti (Neo4j graph memory system)
 - **Task Queue**: Celery with Redis broker
 - **Tools**: MCP (Model Context Protocol) servers
@@ -282,8 +284,8 @@ Verify all services are running:
 # Check Nova backend
 curl http://localhost:8000/health
 
-# Check llama.cpp
-curl http://localhost:8080/health
+# Check LM Studio (or your local LLM)
+curl http://localhost:1234/v1/models
 
 # Check LiteLLM gateway
 curl http://localhost:4000/health/readiness
@@ -293,7 +295,7 @@ curl http://localhost:8000/api/user-settings/
 ```
 
 ### Common Issues
-- **Tool calling fails**: Ensure llama.cpp has `--jinja` flag (required for function calling)
+- **Tool calling fails**: Ensure your local LLM supports function calling (check model capabilities)
 
 - **Settings not persisting**: Restart Nova backend after changing LLM settings
 - Use uv run to run python code, uv run pytest for tests. The venv is in the backend folder!

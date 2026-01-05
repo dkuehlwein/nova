@@ -83,8 +83,9 @@ class Settings(BaseSettings):
     DEFAULT_MEMORY_MODEL: str = "gemini-3-flash-preview"
     DEFAULT_EMBEDDING_MODEL: str = "gemini-embedding-001"
     
-    # llama.cpp Configuration (Tier 2: Deployment Environment)
-    LLAMACPP_BASE_URL: str = "http://localhost:8080"  # llama.cpp server URL
+    # External LLM API Configuration (Tier 2: Deployment Environment)
+    # Generic OpenAI-compatible endpoint (e.g., LM Studio, Ollama, vLLM)
+    LLM_API_BASE_URL: str = "http://localhost:1234"  # Default LM Studio port
 
     @model_validator(mode="after")
     def compute_urls(self):
