@@ -5,7 +5,10 @@ Provides API endpoints for managing Tier 3 (database) user settings.
 NEVER exposes Tier 1 (config.py) or Tier 2 (.env) values for security.
 """
 
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
