@@ -15,25 +15,40 @@ logger = logging.getLogger(__name__)
 class OutlookService:
     """
     Service class for interacting with Microsoft Outlook on Mac.
-    
+
     Uses appscript (Python AppleScript bridge) to control Outlook.
     """
 
     def __init__(self):
         self._outlook = None
         self._connected = False
-        self._connect()
+        # Don't connect at init - defer to first use to avoid blocking startup
+        logger.info("OutlookService initialized (lazy connection)")
 
-    def _connect(self) -> bool:
-        """Establish connection to Outlook via appscript."""
-        try:
+    def _connect(self, timeout: float = 10.0) -> bool:
+        """Establish connection to Outlook via appscript with timeout."""
+        import concurrent.futures
+        import threading
+
+        def _do_connect():
             from appscript import app
-            self._outlook = app('Microsoft Outlook')
+            outlook = app('Microsoft Outlook')
             # Test connection by checking if Outlook is running
-            self._outlook.name()
-            self._connected = True
-            logger.info("Connected to Microsoft Outlook")
-            return True
+            outlook.name()
+            return outlook
+
+        try:
+            # Use ThreadPoolExecutor with timeout to prevent hanging
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_do_connect)
+                self._outlook = future.result(timeout=timeout)
+                self._connected = True
+                logger.info("Connected to Microsoft Outlook")
+                return True
+        except concurrent.futures.TimeoutError:
+            logger.warning(f"Timeout connecting to Outlook after {timeout}s - is Outlook running?")
+            self._connected = False
+            return False
         except Exception as e:
             logger.warning(f"Could not connect to Outlook: {e}")
             self._connected = False
@@ -92,9 +107,25 @@ class OutlookService:
                         # Get sender info safely
                         try:
                             sender = msg.sender()
-                            sender_name = sender.name() if hasattr(sender, 'name') else str(sender)
-                            sender_email = sender.address() if hasattr(sender, 'address') else ""
-                        except Exception:
+                            # appscript returns a keyword dict-like object
+                            # Access using appscript's k (keyword) notation
+                            from appscript import k
+                            if isinstance(sender, dict):
+                                sender_name = sender.get(k.name, "Unknown")
+                                sender_email = sender.get(k.address, "")
+                            elif hasattr(sender, '__getitem__'):
+                                # Try dict-style access with appscript keywords
+                                try:
+                                    sender_name = sender[k.name]
+                                    sender_email = sender[k.address]
+                                except (KeyError, TypeError):
+                                    sender_name = str(sender)
+                                    sender_email = ""
+                            else:
+                                sender_name = str(sender)
+                                sender_email = ""
+                        except Exception as e:
+                            logger.debug(f"Error extracting sender: {e}")
                             sender_name = "Unknown"
                             sender_email = ""
                         
