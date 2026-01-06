@@ -41,10 +41,18 @@ export function useNovaWebSocket(options: UseNovaWebSocketOptions = {}) {
   const messagesReceived = useRef(0)
   const lastNovaMessage = useRef<NovaEvent | null>(null)
 
-  // Determine WebSocket URL - simpler logic
+  // Determine WebSocket URL - use NEXT_PUBLIC_API_URL if available
   const getWebSocketUrl = useCallback(() => {
     if (typeof window === 'undefined') return null
     
+    // Use NEXT_PUBLIC_API_URL if configured (e.g., http://localhost:8000)
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      const apiUrl = new URL(process.env.NEXT_PUBLIC_API_URL)
+      const wsProtocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+      return `${wsProtocol}//${apiUrl.host}/ws/`
+    }
+    
+    // Fallback to window.location with port override for development
     const { protocol, hostname, port } = window.location
     const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
     const wsPort = process.env.NODE_ENV === 'development' ? '8000' : port
