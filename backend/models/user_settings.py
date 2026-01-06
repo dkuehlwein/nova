@@ -70,7 +70,7 @@ class UserSettings(Base):
     memory_llm_max_tokens: Mapped[int] = mapped_column(Integer, default=2048)  # Memory operations token limit
     
     # Embedding Model Settings
-    embedding_model: Mapped[str] = mapped_column(String(100), default="local/qwen3-embedding-0.6b-dwq")
+    embedding_model: Mapped[str] = mapped_column(String(100), default="local/text-embedding-nomic-embed-text-v1.5")
     
     # LiteLLM Connection Settings (Base URL only - master key in Tier 2)
     litellm_base_url: Mapped[str] = mapped_column(String(200), default="http://localhost:4000")
@@ -126,7 +126,7 @@ class UserSettingsModel(BaseModel):
     memory_llm_max_tokens: int = 2048  # Memory operations token limit
     
     # Embedding Model Settings
-    embedding_model: str = "local/qwen3-embedding-0.6b-dwq"
+    embedding_model: str = "local/text-embedding-nomic-embed-text-v1.5"
     
     # LiteLLM Connection Settings (Base URL only - master key in Tier 2)
     litellm_base_url: str = "http://localhost:4000"

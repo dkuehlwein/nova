@@ -52,9 +52,9 @@ class LLMModelService:
             }
         },
         {
-            "model_name": "local/qwen3-embedding-0.6b-dwq",
+            "model_name": "local/text-embedding-nomic-embed-text-v1.5",
             "litellm_params": {
-                "model": "local/qwen3-embedding-0.6b-dwq"
+                "model": "local/text-embedding-nomic-embed-text-v1.5"
             }
         }
     ]

@@ -8,7 +8,7 @@ dynamic tool binding based on active skills.
 
 from __future__ import annotations
 
-import logging
+import time
 from typing import Any, List, Literal, Optional
 
 from langchain_core.messages import AIMessage, SystemMessage
@@ -18,13 +18,14 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from mcp_client import mcp_manager
 from tools import get_all_tools
+from utils.logging import get_logger, log_timing
 from utils.skill_manager import get_skill_manager
 
 from .chat_llm import create_chat_llm
 from .prompts import get_nova_system_prompt
 from .skill_aware_state import SkillAwareAgentState
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Cache for tools to avoid repeated fetching
@@ -36,39 +37,46 @@ _cached_llm = None
 
 async def get_all_tools_with_mcp(use_cache=True, include_escalation=False) -> List[Any]:
     """Get all tools including both local Nova tools and external MCP tools.
-    
+
     Args:
         use_cache: If True, use cached tools; if False, reload tools
         include_escalation: If True, include ask_user tool (for task contexts)
-        
+
     Returns:
         List of all available tools (cached or fresh)
     """
     global _cached_tools
-    
+    t0 = time.time()
+
     # Don't use cache if escalation setting is different
     if not use_cache or (include_escalation and _cached_tools is not None):
         _cached_tools = None
         logger.info("Tools cache cleared for reload")
-    
+
     if _cached_tools is not None:
+        logger.info("⏱️ TIMING: get_all_tools_with_mcp returning cached tools (0ms)")
         return _cached_tools
-    
+
     # Get local Nova tools
+    t1 = time.time()
     local_tools = get_all_tools(include_escalation=include_escalation)
-    
+    log_timing("get_local_tools", t1, {"count": len(local_tools)})
+
     # Get MCP tools from external servers (respects enabled/disabled state)
     try:
+        t1 = time.time()
         mcp_tools = await mcp_manager.get_tools()
+        log_timing("get_mcp_tools", t1, {"count": len(mcp_tools)})
         logger.info(f"Loaded {len(mcp_tools)} MCP tools from enabled servers")
     except Exception as e:
         logger.warning(f"Could not fetch MCP tools: {e}")
         mcp_tools = []
-    
+
     # Combine and cache tools
     _cached_tools = local_tools + mcp_tools
+    log_timing("get_all_tools_with_mcp_total", t0, {"local": len(local_tools), "mcp": len(mcp_tools)})
     logger.info(f"Total tools available: {len(local_tools)} local + {len(mcp_tools)} MCP = {len(_cached_tools)} total")
-    
+
     return _cached_tools
 
 
@@ -131,6 +139,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
 
         checkpointer = create_postgres_checkpointer(pg_pool)
 
+    agent_start = time.time()
     logger.info(
         "Creating chat agent",
         extra={
@@ -144,11 +153,19 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
     )
 
     # Get cached or fresh components
+    t0 = time.time()
     llm = await get_llm(use_cache=use_cache)
+    log_timing("get_llm", t0)
+
+    t0 = time.time()
     base_tools = await get_all_tools_with_mcp(
         use_cache=use_cache, include_escalation=include_escalation
     )
+    log_timing("get_all_tools_with_mcp", t0, {"count": len(base_tools)})
+
+    t0 = time.time()
     system_prompt = await get_nova_system_prompt(use_cache=use_cache)
+    log_timing("get_nova_system_prompt", t0)
 
     # Get skill manager for dynamic tool loading
     skill_manager = get_skill_manager()
@@ -188,20 +205,33 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
 
     async def agent_node(state: SkillAwareAgentState) -> dict:
         """LLM node with per-turn dynamic tool binding."""
+        node_start = time.time()
+
         # Get tools for current state (including active skill tools)
+        t0 = time.time()
         current_tools = await get_tools_for_state(state)
+        log_timing("agent_node.get_tools_for_state", t0, {"count": len(current_tools)})
 
         # Bind tools for this turn
+        t0 = time.time()
         llm_with_tools = llm.bind_tools(current_tools)
+        log_timing("agent_node.bind_tools", t0, {"count": len(current_tools)})
 
         # Prepend system prompt to messages if not already present
         messages = list(state["messages"])
         if not messages or not isinstance(messages[0], SystemMessage):
             messages = [SystemMessage(content=system_prompt)] + messages
 
-        # Invoke LLM
-        response = await llm_with_tools.ainvoke(messages)
+        # Calculate approximate prompt size for logging
+        prompt_chars = sum(len(str(m.content)) for m in messages)
+        logger.info(f"Invoking LLM with {len(messages)} messages (~{prompt_chars} chars)")
 
+        # Invoke LLM
+        t0 = time.time()
+        response = await llm_with_tools.ainvoke(messages)
+        log_timing("agent_node.llm_invoke", t0, {"messages": len(messages), "prompt_chars": prompt_chars})
+
+        log_timing("agent_node.total", node_start)
         return {"messages": [response]}
 
     def should_continue(state: SkillAwareAgentState) -> Literal["tools", "__end__"]:
@@ -301,8 +331,11 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
     graph.add_edge("tools", "agent")
 
     # Compile with checkpointer
+    t0 = time.time()
     agent = graph.compile(checkpointer=checkpointer)
+    log_timing("graph_compile", t0)
 
+    log_timing("create_chat_agent_total", agent_start, {"tools": len(base_tools)})
     logger.info(
         f"Created skill-aware chat agent with {len(base_tools)} base tools and {type(checkpointer).__name__} checkpointer"
     )

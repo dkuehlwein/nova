@@ -5,6 +5,7 @@ FastAPI endpoints for LangGraph agent compatible with agent-chat-ui patterns.
 """
 
 import json
+import time
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
@@ -15,12 +16,14 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
 
 from models.chat import (
-    ChatMessage, ChatRequest, ChatSummary, 
+    ChatMessage, ChatRequest, ChatSummary,
     ChatMessageDetail, TaskChatResponse
 )
-from utils.logging import get_logger
+from utils.logging import get_logger, log_timing
 
 logger = get_logger(__name__)
+
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
@@ -375,18 +378,23 @@ async def health_check():
 async def stream_chat(chat_request: ChatRequest):
     """Stream chat messages with the assistant."""
     try:
-        logger.info(f"Streaming chat for thread_id: {chat_request.thread_id}")
-        
+        request_start = time.time()
+        logger.info(f"⏱️ TIMING: Starting stream_chat for thread_id: {chat_request.thread_id}")
+
         # Get the appropriate checkpointer
+        t0 = time.time()
         checkpointer = await get_checkpointer_from_service_manager()
-        
+        log_timing("get_checkpointer", t0)
+
         # Get chat agent with specific checkpointer (for conversation state)
         # Note: When using custom checkpointer, we don't cache the agent since each conversation
         # needs its own checkpointer instance for proper state management
         logger.info("Getting chat agent with checkpointer...")
         try:
             from agent.chat_agent import create_chat_agent
+            t0 = time.time()
             chat_agent = await create_chat_agent(checkpointer=checkpointer, include_escalation=True)
+            log_timing("create_chat_agent", t0)
             logger.info(f"Chat agent ready. Using checkpointer: {type(checkpointer)} (id: {id(checkpointer)})")
         except Exception as agent_error:
             logger.error(f"Failed to create chat agent: {agent_error}")
@@ -399,7 +407,9 @@ async def stream_chat(chat_request: ChatRequest):
         resume_from_interrupt = False
         user_response = None
         try:
+            t0 = time.time()
             state = await chat_agent.aget_state(config)
+            log_timing("check_interrupts", t0)
             logger.info(f"Checking for interrupts in thread {chat_request.thread_id}: state={state}, interrupts={state.interrupts if state else None}")
             if state and state.interrupts:
                 logger.info(f"Found active interrupt for thread {chat_request.thread_id}, resuming with user response")
@@ -407,19 +417,23 @@ async def stream_chat(chat_request: ChatRequest):
                 user_response = chat_request.messages[-1].content
         except Exception as state_error:
             logger.warning(f"Could not check for interrupts: {state_error}")
-        
+
         # Inject memory search tool call on first turn (skip if resuming from interrupt)
         memory_tool_messages = []
+        t0 = time.time()
         is_first_turn = await _is_first_turn(chat_request.thread_id, checkpointer)
-        
+        log_timing("is_first_turn_check", t0)
+
         if is_first_turn and not resume_from_interrupt:
             logger.info("First turn in conversation - injecting memory search tool call")
             try:
                 from memory.memory_functions import search_memory
-                
+
                 # Use the user's message for context search
                 user_message = chat_request.messages[0].content
+                t0 = time.time()
                 memory_result = await search_memory(user_message, limit=5)
+                log_timing("memory_search", t0)
                 
                 if memory_result["success"] and memory_result["results"]:
                     memory_facts = [result["fact"] for result in memory_result["results"]]
@@ -482,11 +496,14 @@ async def stream_chat(chat_request: ChatRequest):
                 logger.error(f"Failed to convert messages: {convert_error}")
                 raise HTTPException(status_code=500, detail=f"Failed to convert messages: {str(convert_error)}")
         
+        log_timing("total_pre_stream_setup", request_start)
         logger.debug(f"Starting stream for thread_id: {chat_request.thread_id}, resume_from_interrupt: {resume_from_interrupt}")
-        
-        
+
+
         async def generate_response():
             """Generate SSE (Server-Sent Events) response stream."""
+            first_token_time = None
+            stream_start = time.time()
             # Yield memory tool calls first if they exist (for immediate display)
             # Skip memory tool injection if resuming from interrupt
             if not resume_from_interrupt and memory_tool_messages and len(memory_tool_messages) >= 2:
@@ -557,6 +574,10 @@ async def stream_chat(chat_request: ChatRequest):
                     stream_mode="updates"
                 ):
                     stream_count += 1
+                    if stream_count == 1:
+                        first_token_time = time.time()
+                        first_token_ms = (first_token_time - stream_start) * 1000
+                        logger.info(f"⏱️ TIMING: first_chunk took {first_token_ms:.2f}ms (time to first LLM response)")
                     logger.debug(f"Stream chunk {stream_count}: {chunk}")
                     
                     # Process chunk data
@@ -627,6 +648,8 @@ async def stream_chat(chat_request: ChatRequest):
                                     }
                                     yield f"data: {json.dumps(tool_result_event)}\n\n"
                 
+                total_stream_ms = (time.time() - stream_start) * 1000
+                logger.info(f"⏱️ TIMING: total_streaming took {total_stream_ms:.2f}ms ({stream_count} chunks)")
                 logger.info(f"Finished streaming for thread_id: {chat_request.thread_id} after {stream_count} chunks")
                 
                 # Verify checkpoints were saved and check for pending interrupts

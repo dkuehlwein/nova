@@ -4,8 +4,12 @@ LLM Factory Utilities
 Centralized LLM creation logic to eliminate duplication between chat and memory systems.
 """
 
+import time
 from typing import Dict, Any
 from config import settings
+from utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 
@@ -74,20 +78,23 @@ def get_litellm_master_key() -> str:
 def get_chat_llm_config() -> Dict[str, Any]:
     """
     Get validated chat LLM configuration from user settings.
-    
+
     Returns:
         Dictionary with chat LLM configuration
     """
+    t0 = time.time()
     try:
         from database.database import UserSettingsService
         user_settings = UserSettingsService.get_llm_settings_sync()
+        elapsed_ms = (time.time() - t0) * 1000
+        logger.info(f"⏱️ TIMING: get_llm_settings_sync took {elapsed_ms:.2f}ms")
     except Exception:
         user_settings = {}
-    
+
     model_name = user_settings.get("chat_llm_model", settings.DEFAULT_CHAT_MODEL)
     temperature = user_settings.get("chat_llm_temperature", 0.7)
     max_tokens = user_settings.get("chat_llm_max_tokens", 4096)
-    
+
     return {
         "model": model_name,
         "temperature": temperature,

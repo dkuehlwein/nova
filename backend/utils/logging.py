@@ -6,6 +6,7 @@ Implements consistent JSON logging with request correlation and optional file ro
 import logging
 import logging.handlers
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -15,6 +16,33 @@ import structlog
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+
+
+# Module-level logger for timing (initialized lazily)
+_timing_logger = None
+
+
+def log_timing(operation: str, start_time: float, extra_data: dict = None, logger=None):
+    """Log timing information for performance analysis.
+
+    Args:
+        operation: Name of the operation being timed
+        start_time: Start time from time.time()
+        extra_data: Optional additional data to include in the log
+        logger: Optional logger to use. If None, uses module-level timing logger.
+    """
+    global _timing_logger
+    elapsed_ms = (time.time() - start_time) * 1000
+    data = {"operation": operation, "elapsed_ms": round(elapsed_ms, 2)}
+    if extra_data:
+        data.update(extra_data)
+
+    if logger is None:
+        if _timing_logger is None:
+            _timing_logger = get_logger("timing")
+        logger = _timing_logger
+
+    logger.info(f"⏱️ TIMING: {operation} took {elapsed_ms:.2f}ms", extra={"data": data})
 
 
 def configure_logging(

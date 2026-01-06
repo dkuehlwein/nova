@@ -184,7 +184,7 @@ class OnboardingCompleteRequest(BaseModel):
     chat_llm_model: Optional[str] = Field(default="local/openai/gpt-oss-20b", description="Chat model selection")
     memory_llm_model: Optional[str] = Field(default="local/openai/gpt-oss-20b", description="Memory model selection")
     memory_small_llm_model: Optional[str] = Field(default=None, description="Memory small model selection (defaults to memory_llm_model if not set)")
-    embedding_model: Optional[str] = Field(default="local/qwen3-embedding-0.6b-dwq", description="Embedding model selection")
+    embedding_model: Optional[str] = Field(default="local/text-embedding-nomic-embed-text-v1.5", description="Embedding model selection")
     litellm_base_url: Optional[str] = Field(default="http://localhost:4000", description="LiteLLM base URL")
     litellm_master_key: Optional[str] = Field(default="sk-1234", description="LiteLLM master key")
 
