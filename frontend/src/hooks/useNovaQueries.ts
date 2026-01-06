@@ -25,27 +25,25 @@ interface AdminOperationResult {
 }
 
 
+// Per ADR-015, MCP servers are managed by LiteLLM
+// This interface matches the read-only API response
 interface MCPServerStatus {
   name: string
-  url: string
-  health_url: string
   description: string
-  enabled: boolean
   healthy: boolean
-  tools_count?: number
-  error?: string
-  last_check?: string
+  tools_count: number
+  tool_names: string[]
 }
 
 interface MCPServersData {
   servers: MCPServerStatus[]
   total_servers: number
-  healthy_servers: number
-  enabled_servers: number
+  total_tools: number
+  source: string
 }
 
 
-// MCP Servers Queries
+// MCP Servers Queries (read-only per ADR-015)
 export function useMCPServers() {
   return useQuery({
     queryKey: ['mcp-servers'],
@@ -62,57 +60,6 @@ export function useMCPServers() {
         if (status >= 400 && status < 500) return false
       }
       return failureCount < 3
-    }
-  })
-}
-
-export function useToggleMCPServer() {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: async ({ serverName, enabled }: { serverName: string; enabled: boolean }) => {
-      return await apiRequest(`/api/mcp/${serverName}/toggle`, {
-        method: 'PUT',
-        body: JSON.stringify({ enabled }),
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-    },
-    onMutate: async ({ serverName, enabled }) => {
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['mcp-servers'] })
-
-      // Snapshot the previous value
-      const previousServers = queryClient.getQueryData(['mcp-servers'])
-
-      // Optimistically update to the new value
-      queryClient.setQueryData(['mcp-servers'], (old: unknown) => {
-        const typedOld = old as MCPServersData | undefined
-        if (!typedOld?.servers) return old
-        
-        return {
-          ...typedOld,
-          servers: typedOld.servers.map(server => 
-            server.name === serverName 
-              ? { ...server, enabled }
-              : server
-          )
-        }
-      })
-
-      // Return a context object with the snapshotted value
-      return { previousServers }
-    },
-    onError: (_err, _variables, context) => {
-      // If the mutation fails, roll back to the previous value
-      if (context?.previousServers) {
-        queryClient.setQueryData(['mcp-servers'], context.previousServers)
-      }
-    },
-    onSettled: () => {
-      // Always refetch after error or success
-      queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
     }
   })
 }

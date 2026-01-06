@@ -1,10 +1,8 @@
 import os
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional, Any, Dict, List
+from typing import Optional
 from pydantic import SecretStr
-
-from utils.config_registry import get_config
 
 
 class Settings(BaseSettings):
@@ -16,13 +14,13 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
-    
+
     # Google Generative AI Settings (using API Key)
     GOOGLE_API_KEY: Optional[SecretStr] = None
-    
+
     # HuggingFace API Token
     HF_TOKEN: Optional[SecretStr] = None
-    
+
     # OpenRouter API Key
     OPENROUTER_API_KEY: Optional[SecretStr] = None
 
@@ -32,21 +30,21 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "nova_dev_password"
     POSTGRES_PORT: int = 5432
     POSTGRES_HOST: str = "localhost"  # Default to localhost, Docker compose overrides this
-    
+
     # Database Configuration (constructed from PostgreSQL variables)
     DATABASE_URL: Optional[str] = None  # PostgreSQL connection string for LangChain checkpointer (no driver)
     SQLALCHEMY_DATABASE_URL: Optional[str] = None  # PostgreSQL connection string for SQLAlchemy (+asyncpg)
-    
+
     # Neo4j Configuration (for Graphiti Memory)
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "password"
     NEO4J_DATABASE: str = "neo4j"
-    
+
     # Memory Configuration
     MEMORY_GROUP_ID: str = "nova"
     MEMORY_SEARCH_LIMIT: int = 10
-    
+
     # LangSmith Configuration
     LANGCHAIN_TRACING_V2: Optional[str] = "true"
     LANGCHAIN_ENDPOINT: Optional[str] = "https://api.smith.langchain.com"
@@ -56,14 +54,14 @@ class Settings(BaseSettings):
     # Service Ports
     CHAT_AGENT_PORT: int = 8000
     CORE_AGENT_PORT: int = 8001
-    
+
     # Frontend Configuration
     FRONTEND_BASE_URL: str = "http://localhost:3000"  # Base URL for Nova frontend chat links
-    
+
     # Logging Configuration
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = True  # Set to False for human-readable console output during development
-    
+
     # File Logging Configuration
     LOG_FILE_ENABLED: bool = False  # Set to True to enable file logging with rotation
     LOG_FILE_PATH: Optional[str] = None  # Path to log file (defaults to ./logs/{service_name}.log)
@@ -72,8 +70,9 @@ class Settings(BaseSettings):
 
     # Email Integration Configuration
     EMAIL_ENABLED: bool = True  # Master toggle for email processing (Tier 1: infrastructure available)
-    
+
     # LiteLLM Configuration (Tier 2: Deployment Environment)
+    # LiteLLM is the single source of truth for LLMs and MCP servers (ADR-011, ADR-015)
     LITELLM_BASE_URL: str = "http://localhost:4000"  # LiteLLM gateway URL
     LITELLM_MASTER_KEY: str = "sk-1234"  # Master key for LiteLLM API access
 
@@ -82,7 +81,7 @@ class Settings(BaseSettings):
     DEFAULT_CHAT_MODEL: str = "gemini-3-flash-preview"
     DEFAULT_MEMORY_MODEL: str = "gemini-3-flash-preview"
     DEFAULT_EMBEDDING_MODEL: str = "gemini-embedding-001"
-    
+
     # External LLM API Configuration (Tier 2: Deployment Environment)
     # Generic OpenAI-compatible endpoint (e.g., LM Studio, Ollama, vLLM)
     LLM_API_BASE_URL: str = "http://localhost:1234"  # Default LM Studio port
@@ -93,72 +92,17 @@ class Settings(BaseSettings):
         # Construct DATABASE_URL for LangChain checkpointer (no driver)
         if not self.DATABASE_URL:
             self.DATABASE_URL = f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        
+
         # Construct SQLALCHEMY_DATABASE_URL for SQLAlchemy (+asyncpg driver)
         if not self.SQLALCHEMY_DATABASE_URL:
             self.SQLALCHEMY_DATABASE_URL = f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        
+
         # Construct Celery URLs from REDIS_URL (already loaded from environment by pydantic-settings)
         self.CELERY_BROKER_URL = f"{self.REDIS_URL}/0"
         self.CELERY_RESULT_BACKEND = f"{self.REDIS_URL}/1"
-        
+
         return self
 
-
-    def _adapt_mcp_url_for_environment(self, url: str) -> str:
-        """Adapt MCP server URL based on runtime environment."""
-        if self.POSTGRES_HOST == "postgres":
-            # In Docker: use internal network names
-            return url
-        else:
-            # In local/WSL: convert Docker internal URLs to localhost
-            url_mappings = {
-                # Current container names from Docker Compose
-                "http://nova-google-workspace:8000/mcp": "http://localhost:8002/mcp",
-                "http://nova-feature-request:8000/mcp": "http://localhost:8003/mcp",
-                "http://nova-google-workspace:8000/mcp/": "http://localhost:8002/mcp/",
-                "http://nova-feature-request:8000/mcp/": "http://localhost:8003/mcp/",
-            }
-            return url_mappings.get(url, url)
-
-    @property
-    def MCP_SERVERS(self) -> List[Dict[str, Any]]:
-        """List of enabled MCP servers from YAML configuration with environment-aware URLs"""
-        servers = []
-        
-        try:
-            # Check if config registry is initialized first
-            from utils.config_registry import config_registry
-            if not config_registry._initialized:
-                # Try to initialize config in worker process
-                try:
-                    from utils.config_registry import initialize_configs
-                    initialize_configs()
-                except Exception:
-                    # Config registry not initialized yet - return empty list
-                    # This happens during early import phase before lifespan startup
-                    return servers
-            
-            mcp_config = get_config("mcp_servers")
-            
-            for server_name, server_config in mcp_config.items():
-                # Only include enabled servers
-                if getattr(server_config, 'enabled', True):
-                    original_url = server_config.url
-                    adapted_url = self._adapt_mcp_url_for_environment(original_url)
-                    
-                    servers.append({
-                        "name": server_name,
-                        "url": adapted_url,
-                        "description": getattr(server_config, 'description', f"{server_name} MCP Server")
-                    })
-        
-        except Exception as e:
-            # Log error but don't crash the application
-            print(f"Warning: Failed to load MCP configuration: {e}")
-        
-        return servers
-    
     def _is_running_in_docker(self) -> bool:
         """Check if the application is running inside Docker."""
         return os.path.exists('/.dockerenv') or os.environ.get('DOCKER_ENV') == 'true'

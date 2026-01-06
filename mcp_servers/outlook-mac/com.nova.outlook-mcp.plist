@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nova.outlook-mcp</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>uv</string>
+        <string>run</string>
+        <string>python</string>
+        <string>main.py</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>9100</string>
+    </array>
+
+    <!-- Working directory must be the outlook-mac project root -->
+    <key>WorkingDirectory</key>
+    <string>${HOME}/Code/nova/mcp_servers/outlook-mac</string>
+
+    <!-- Keep alive to restart on failure -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Start when loaded -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Standard output and error logs -->
+    <key>StandardOutPath</key>
+    <string>/tmp/nova-outlook-mcp.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/nova-outlook-mcp.err.log</string>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+
+    <!-- Throttle restarts (minimum 10 seconds between restarts) -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>

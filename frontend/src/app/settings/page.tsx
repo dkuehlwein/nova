@@ -4,13 +4,12 @@ import Navbar from "@/components/Navbar";
 import { AlertCircle, Brain, Mail, KanbanSquare, Server, FileText, ListChecks, ShieldCheck, User, Key, Cog, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-import { useMCPServers, useToggleMCPServer, useRestartService, useUserSettings, useUpdateUserSettings, useAvailableModels, useSkills } from "@/hooks/useNovaQueries";
+import { useMCPServers, useUserSettings, useUpdateUserSettings, useAvailableModels, useSkills } from "@/hooks/useNovaQueries";
 import { useSystemStatusPage, useRefreshAllServices } from "@/hooks/useUnifiedSystemStatus";
 import { useState, Suspense, useEffect } from "react";
 import React from "react";
@@ -30,46 +29,22 @@ function TabContentLoader({ children }: { children: string }) {
 }
 
 // MCP Servers tab content - loaded only when tab is active
+// Per ADR-015, MCP servers are managed by LiteLLM - this is read-only
 function MCPServersTab() {
   const { data: mcpData, isLoading: mcpLoading, error: mcpError } = useMCPServers();
-  const toggleMutation = useToggleMCPServer();
-  const restartMutation = useRestartService();
-  const [restartingService, setRestartingService] = useState<string | null>(null);
-
-  const handleToggleServer = async (serverName: string, currentEnabled: boolean) => {
-    try {
-      await toggleMutation.mutateAsync({
-        serverName,
-        enabled: !currentEnabled
-      });
-    } catch (error) {
-      console.error('Failed to toggle server:', error);
-    }
-  };
-
-  const handleRestartServer = async (serverName: string) => {
-    try {
-      setRestartingService(serverName);
-      await restartMutation.mutateAsync(serverName);
-    } catch (error) {
-      console.error('Failed to restart server:', error);
-    } finally {
-      setRestartingService(null);
-    }
-  };
-
 
   const getServerIcon = (serverName: string) => {
-    switch (serverName.toLowerCase()) {
-      case "gmail":
-        return Mail;
-      case "kanban":
-        return KanbanSquare;
-      case "memory":
-        return Brain;
-      default:
-        return Server;
+    const name = serverName.toLowerCase();
+    if (name.includes("gmail") || name.includes("outlook") || name.includes("mail") || name.includes("google_workspace")) {
+      return Mail;
     }
+    if (name.includes("kanban")) {
+      return KanbanSquare;
+    }
+    if (name.includes("memory")) {
+      return Brain;
+    }
+    return Server;
   };
 
   // Show error if failed to load
@@ -99,13 +74,11 @@ function MCPServersTab() {
               </div>
               <div className="flex items-center space-x-3">
                 <div className="h-4 w-4 bg-muted rounded-full" />
-                <div className="h-6 w-10 bg-muted rounded-full" />
               </div>
             </div>
             <div className="h-4 w-full bg-muted rounded mb-2" />
             <div className="flex items-center justify-between text-sm">
               <div className="h-3 w-24 bg-muted rounded" />
-              <div className="h-3 w-32 bg-muted rounded" />
             </div>
           </div>
         ))}
@@ -115,12 +88,18 @@ function MCPServersTab() {
 
   return (
     <div className="space-y-4">
+      {/* Info banner about LiteLLM management */}
+      <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+        <p className="text-sm text-blue-800 dark:text-blue-200">
+          <strong>Note:</strong> MCP servers are managed by LiteLLM. To add or modify servers,
+          edit <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">configs/litellm_config.yaml</code> and restart LiteLLM.
+        </p>
+      </div>
+
       <div className="space-y-4">
         {mcpData?.servers?.map((server) => {
           const ServerIcon = getServerIcon(server.name);
-          const status = !server.enabled ? "disabled" : (server.healthy ? "healthy" : "unhealthy");
-          const isToggling = toggleMutation.isPending;
-          const isRestarting = restartingService === server.name;
+          const status = server.healthy ? "healthy" : "unhealthy";
 
           return (
             <div key={server.name} className="border border-border rounded-lg p-4">
@@ -129,7 +108,6 @@ function MCPServersTab() {
                   <ServerIcon className="h-5 w-5 text-primary" />
                   <div>
                     <h3 className="font-medium text-foreground">{server.name}</h3>
-                    <p className="text-sm text-muted-foreground">{server.url}</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
@@ -144,32 +122,29 @@ function MCPServersTab() {
                     showDetails={false}
                     size="sm"
                   />
-                  <Switch
-                    checked={server.enabled}
-                    onCheckedChange={() => handleToggleServer(server.name, server.enabled)}
-                    disabled={isToggling}
-                  />
                 </div>
               </div>
-              <p className="text-sm text-muted-foreground mb-2">{server.description}</p>
+              <p className="text-sm text-muted-foreground mb-2">{server.description || "No description available"}</p>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">
                   {server.tools_count || 0} tools available
                 </span>
                 <span className="text-muted-foreground">
-                  {server.enabled ? (server.healthy ? `Last check: Just now` : "Health check failed") : "Disabled"}
+                  {server.healthy ? "Connected" : "Connection failed"}
                 </span>
               </div>
-              {!server.healthy && server.enabled && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 w-full"
-                  onClick={() => handleRestartServer(server.name)}
-                  disabled={isRestarting}
-                >
-                  {isRestarting ? "Restarting..." : "Restart Server"}
-                </Button>
+              {/* Show tool names if available */}
+              {server.tool_names && server.tool_names.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <p className="text-xs text-muted-foreground mb-2">Available tools:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {server.tool_names.map((toolName) => (
+                      <Badge key={toolName} variant="secondary" className="text-xs">
+                        {toolName}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           );
@@ -177,7 +152,8 @@ function MCPServersTab() {
         {(!mcpData?.servers || mcpData.servers.length === 0) && (
           <div className="text-center py-8 text-muted-foreground">
             <Server className="h-8 w-8 mx-auto mb-2" />
-            <p className="text-sm">No MCP servers configured</p>
+            <p className="text-sm">No MCP servers configured in LiteLLM</p>
+            <p className="text-xs mt-1">Add servers to configs/litellm_config.yaml</p>
           </div>
         )}
       </div>

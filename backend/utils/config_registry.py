@@ -282,30 +282,20 @@ class ConfigRegistry:
             
             prompts_path = base_path / "agent" / "prompts"
             
-            # 1. MCP Servers Configuration
-            # Use proper Pydantic validation with YamlConfigManager
-            from models.config import MCPServersConfig
-            
-            mcp_manager = YamlConfigManager(
-                config_path=configs_path / "mcp_servers.yaml",
-                config_name="mcp_servers",
-                config_model=MCPServersConfig,
-                default_config=None  # File should exist, no default needed
-            )
-            self.register("mcp_servers", mcp_manager)
+            # Note: MCP servers are now managed by LiteLLM (ADR-015)
+            # Configuration is in configs/litellm_config.yaml under mcp_servers
 
-            
-            # 2. System Prompt Configuration
+            # 1. System Prompt Configuration
             system_prompt_manager = MarkdownConfigManager(
                 config_path=prompts_path / "NOVA_SYSTEM_PROMPT.md",
                 config_name="system_prompt",
                 default_config="You are Nova, an AI assistant."
             )
             self.register("system_prompt", system_prompt_manager)
-            
-            # 3. Input Hooks Configuration
+
+            # 2. Input Hooks Configuration
             from input_hooks.models import InputHooksConfig
-            
+
             input_hooks_manager = YamlConfigManager(
                 config_path=configs_path / "input_hooks.yaml",
                 config_name="input_hooks",
@@ -313,8 +303,8 @@ class ConfigRegistry:
                 default_config=InputHooksConfig()  # Use default empty config if file doesn't exist
             )
             self.register("input_hooks", input_hooks_manager)
-            
-            # 4. Tool Permissions Configuration
+
+            # 3. Tool Permissions Configuration
             from models.tool_permissions_config import ToolPermissionsConfig
 
             tool_permissions_manager = YamlConfigManager(
@@ -325,7 +315,7 @@ class ConfigRegistry:
             )
             self.register("tool_permissions", tool_permissions_manager)
 
-            # 5. Skills Manager (ADR-014: Dynamic Pluggable Skills)
+            # 4. Skills Manager (ADR-014: Dynamic Pluggable Skills)
             from utils.skill_manager import SkillManager, set_skill_manager
 
             skills_path = base_path / "skills"

@@ -43,3 +43,23 @@ litellm_settings:
   
   # Drop unsupported parameters (fixes Gemini embedding compatibility)
   drop_params: true
+
+# MCP Server Configuration (ADR-015: LiteLLM MCP Gateway Migration)
+# LiteLLM acts as the central registry for all MCP servers
+# Format: server_name as key (no hyphens allowed - use underscores)
+# Transport: "http" for streamable-http servers (FastMCP default), "sse" for SSE-only servers
+mcp_servers:
+  google_workspace:
+    url: http://nova-google-workspace:8000/mcp
+    transport: http
+    description: "Google Workspace - Gmail and Calendar operations"
+
+  feature_request:
+    url: http://nova-feature-request:8000/mcp
+    transport: http
+    description: "Linear integration for feature requests"
+
+  outlook_mac:
+    url: http://host.docker.internal:9100/mcp
+    transport: http
+    description: "Local Outlook for Mac - Email and Calendar (via AppleScript)"

@@ -1,6 +1,15 @@
+"""
+MCP Client Manager - Interfaces with LiteLLM's MCP Gateway.
+
+Per ADR-015, LiteLLM is the single source of truth for MCP servers and tools.
+Nova queries LiteLLM's /mcp-rest/tools/list endpoint for tool discovery.
+"""
+
 import asyncio
+import httpx
 from typing import List, Dict, Any, Optional
-from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_core.tools import StructuredTool
+from pydantic import create_model
 from config import settings
 from utils.logging import get_logger
 
@@ -8,188 +17,261 @@ logger = get_logger("mcp-client")
 
 
 class MCPClientManager:
-    """Manages MCP server discovery, health checking, and tool fetching.
-    
-    No caching - always fetches fresh tools from current server configuration.
-    This ensures MCP server enable/disable changes are immediately reflected.
+    """Manages MCP tool discovery via LiteLLM's MCP Gateway.
+
+    LiteLLM is the single registry for all MCP servers (ADR-015).
+    This manager queries LiteLLM to discover available tools and
+    converts them to LangChain tools for agent use.
     """
-    
+
     def __init__(self):
-        pass  # No caching - always fetch fresh tools
-    
-    async def check_server_health_and_get_tools_count(self, server_info: Dict[str, Any], timeout: float = 5.0) -> tuple[bool, Optional[int]]:
-        """Check server health and get tools count using standard MCP tools/list endpoint"""
-        server_name = server_info.get("name", "unknown")
-        
+        self._litellm_base_url = settings.LITELLM_BASE_URL
+        self._litellm_api_key = settings.LITELLM_MASTER_KEY
+
+    async def list_tools_from_litellm(self, timeout: float = 10.0) -> Dict[str, Any]:
+        """
+        Query LiteLLM's MCP Gateway for all available tools.
+
+        Returns:
+            Dict with 'tools' list from LiteLLM or empty on failure
+        """
+        url = f"{self._litellm_base_url}/mcp-rest/tools/list"
+
         try:
-            # Use the MCP client to list tools from this specific server
-            server_config = {
-                server_name: {
-                    "url": server_info["url"],
-                    "transport": "streamable_http"
-                }
-            }
-            
-            # Create a temporary client for this specific server
-            client = MultiServerMCPClient(server_config)
-            
-            # Try to get tools - this tests both health and gives us tools count
-            tools = await asyncio.wait_for(client.get_tools(), timeout=timeout)
-            tools_count = len(tools)
-            
-            logger.debug(f"MCP server {server_name}: healthy=True, tools_count={tools_count}")
-            return True, tools_count
-            
-        except asyncio.TimeoutError:
-            logger.warning(f"MCP tools/list timeout for {server_name}")
-            return False, None
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    url,
+                    headers={"Authorization": f"Bearer {self._litellm_api_key}"},
+                    timeout=timeout
+                )
+                response.raise_for_status()
+                return response.json()
+
+        except httpx.TimeoutException:
+            logger.warning(f"Timeout fetching tools from LiteLLM MCP Gateway")
+            return {"tools": []}
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error from LiteLLM MCP Gateway: {e.response.status_code}")
+            return {"tools": []}
         except Exception as e:
-            logger.warning(f"MCP tools/list failed for {server_name}: {e}")
-            return False, None
+            logger.error(f"Error fetching tools from LiteLLM: {e}")
+            return {"tools": []}
+
+    async def get_mcp_servers_status(self, timeout: float = 10.0) -> List[Dict[str, Any]]:
+        """
+        Get MCP server status by aggregating info from LiteLLM's tool list.
+
+        Groups tools by server (via mcp_info) and returns server-level status.
+        """
+        result = await self.list_tools_from_litellm(timeout)
+        tools = result.get("tools", [])
+
+        if not tools:
+            return []
+
+        # Group tools by server
+        servers: Dict[str, Dict[str, Any]] = {}
+
+        for tool in tools:
+            mcp_info = tool.get("mcp_info", {})
+            server_name = mcp_info.get("server_name", "unknown")
+
+            if server_name not in servers:
+                servers[server_name] = {
+                    "name": server_name,
+                    "description": mcp_info.get("description", ""),
+                    "tools_count": 0,
+                    "healthy": True,  # If we got tools, server is healthy
+                    "enabled": True,  # LiteLLM only returns enabled servers
+                    "tool_names": []
+                }
+
+            servers[server_name]["tools_count"] += 1
+            servers[server_name]["tool_names"].append(tool.get("name", "unknown"))
+
+        return list(servers.values())
+
+    async def check_server_health_and_get_tools_count(
+        self,
+        server_info: Dict[str, Any],
+        timeout: float = 5.0
+    ) -> tuple[bool, Optional[int]]:
+        """
+        Check if a specific MCP server is healthy via LiteLLM.
+
+        Since LiteLLM manages server connections, we check if the server
+        appears in the tools list with tools.
+        """
+        server_name = server_info.get("name", "unknown")
+
+        servers_status = await self.get_mcp_servers_status(timeout)
+
+        for server in servers_status:
+            if server["name"] == server_name:
+                return True, server["tools_count"]
+
+        # Server not found in LiteLLM - either unhealthy or not configured
+        logger.debug(f"Server {server_name} not found in LiteLLM MCP Gateway")
+        return False, None
 
     async def discover_working_servers(self) -> List[Dict[str, Any]]:
-        """Discover which MCP servers are alive and working"""
-        all_servers = settings.MCP_SERVERS
-        
-        if not all_servers:
-            logger.warning("No MCP servers configured")
-            return []
-        
-        logger.info(f"Checking health of {len(all_servers)} MCP servers")
-        
-        # Check health of all servers concurrently
-        health_checks = [
-            self.check_server_health_and_get_tools_count(server) 
-            for server in all_servers
-        ]
-        
-        health_results = await asyncio.gather(*health_checks, return_exceptions=True)
-        
-        # Filter to only healthy servers
-        working_servers = []
-        failed_servers = []
-        for server, result in zip(all_servers, health_results):
-            server_name = server.get("name", "unknown")
-            if isinstance(result, Exception):
-                failed_servers.append({
-                    "name": server_name,
-                    "reason": f"exception: {str(result)}"
-                })
-                continue
-            
-            is_healthy, tools_count = result
-            if is_healthy:
-                working_servers.append(server)
-            else:
-                failed_servers.append({
-                    "name": server_name,
-                    "reason": "mcp_tools_list_failed"
-                })
-        
-        if failed_servers:
-            failed_names = [f["name"] for f in failed_servers]
-            logger.warning(f"Unavailable MCP servers: {', '.join(failed_names)}")
-        
-        logger.info(f"Found {len(working_servers)} healthy MCP servers")
-        
-        return working_servers
-    
-    async def test_server_tools(self, server_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Test if a single MCP server's tools can be fetched"""
-        is_healthy, tools_count = await self.check_server_health_and_get_tools_count(server_info)
-        
-        if is_healthy:
-            return {
-                "server": server_info,
-                "status": "success",
-                "tools_count": tools_count or 0,
-                "error": None
-            }
-        else:
-            return {
-                "server": server_info,
-                "status": "error", 
-                "tools_count": 0,
-                "error": "MCP tools/list failed"
-            }
-    
-    async def get_tools(self) -> List[Any]:
-        """Get tools from all enabled MCP servers"""
-        
-        logger.info("Fetching tools from MCP servers")
-        
-        # First discover working servers
-        working_servers = await self.discover_working_servers()
-        
-        if not working_servers:
-            logger.info("No working MCP servers found")
-            return []
-        
-        # Test tool fetching for each working server
-        logger.info(f"Testing tool fetching for {len(working_servers)} servers")
-        
-        tool_tests = [
-            self.test_server_tools(server) 
-            for server in working_servers
-        ]
-        
-        test_results = await asyncio.gather(*tool_tests, return_exceptions=True)
-        
-        # Filter to servers that can provide tools
-        functional_servers = []
-        total_tools_expected = 0
-        failed_tool_servers = []
-        
-        for result in test_results:
-            if isinstance(result, Exception):
-                logger.error(f"Tool test resulted in exception: {result}")
-                continue
-                
-            server_name = result["server"].get("name", "unknown")
-            if result["status"] == "success":
-                functional_servers.append(result["server"])
-                total_tools_expected += result["tools_count"]
-            else:
-                error_msg = result.get('error', 'unknown error')
-                failed_tool_servers.append({
-                    "name": server_name,
-                    "error": error_msg[:100] + "..." if len(error_msg) > 100 else error_msg
-                })
-        
-        if failed_tool_servers:
-            failed_names = [f["name"] for f in failed_tool_servers]
-            logger.warning(f"Tool fetch failures: {', '.join(failed_names)}")
-        
-        if not functional_servers:
-            logger.info("No MCP servers can provide tools")
-            return []
-        
-        logger.info(f"Found {len(functional_servers)} functional servers with {total_tools_expected} tools")
-        
-        # Prepare server configuration for MultiServerMCPClient
-        server_config = {}
-        for server_info in functional_servers:
-            server_name = server_info.get("name", "unknown")
-            server_config[server_name] = {
-                "url": server_info["url"],
-                "transport": "streamable_http"
-            }
-        
-        # Create MultiServerMCPClient with functional servers
-        try:
-            client = MultiServerMCPClient(server_config)
-            tools = await client.get_tools()
-            
-            if not tools:
-                logger.warning("No tools were fetched from functional MCP servers")
-                return []
-            
-            logger.info(f"Successfully fetched {len(tools)} tools from MCP servers")
-            return tools
-            
-        except Exception as e:
-            logger.error(f"Error creating MCP client or fetching tools: {e}")
+        """Discover working MCP servers from LiteLLM."""
+        servers = await self.get_mcp_servers_status()
+
+        if not servers:
+            logger.warning("No MCP servers available from LiteLLM")
             return []
 
+        logger.info(f"Found {len(servers)} MCP servers via LiteLLM")
+        return servers
+
+    def _convert_json_schema_to_pydantic_fields(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert JSON Schema properties to Pydantic field definitions."""
+        properties = schema.get("properties", {})
+        required = set(schema.get("required", []))
+        fields = {}
+
+        type_mapping = {
+            "string": str,
+            "integer": int,
+            "number": float,
+            "boolean": bool,
+            "array": list,
+            "object": dict
+        }
+
+        for prop_name, prop_schema in properties.items():
+            prop_type = prop_schema.get("type", "string")
+            python_type = type_mapping.get(prop_type, str)
+
+            default = prop_schema.get("default", ...)
+            if prop_name not in required and default == ...:
+                default = None
+                python_type = Optional[python_type]
+
+            fields[prop_name] = (python_type, default)
+
+        return fields
+
+    async def call_mcp_tool(
+        self,
+        server_name: str,
+        tool_name: str,
+        arguments: Dict[str, Any]
+    ) -> Any:
+        """
+        Execute an MCP tool via LiteLLM's MCP Gateway.
+
+        Args:
+            server_name: Name of the MCP server
+            tool_name: Name of the tool to execute
+            arguments: Tool arguments
+
+        Returns:
+            Tool execution result
+        """
+        url = f"{self._litellm_base_url}/mcp-rest/tools/call"
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {self._litellm_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "name": tool_name,
+                        "arguments": arguments,
+                        "mcp_server": server_name
+                    },
+                    timeout=60.0  # Tool calls may take longer
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                # Extract content from MCP response
+                content = result.get("content", [])
+                if content and isinstance(content, list) and len(content) > 0:
+                    # Return the text content from the first content block
+                    first_content = content[0]
+                    if isinstance(first_content, dict) and "text" in first_content:
+                        return first_content["text"]
+                    return first_content
+
+                return result
+
+        except httpx.TimeoutException:
+            logger.error(f"Timeout calling MCP tool {tool_name} on {server_name}")
+            return {"error": f"Timeout calling tool {tool_name}"}
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error calling MCP tool: {e.response.status_code} - {e.response.text}")
+            return {"error": f"HTTP error: {e.response.status_code}"}
+        except Exception as e:
+            logger.error(f"Error calling MCP tool {tool_name}: {e}")
+            return {"error": str(e)}
+
+    async def get_tools(self) -> List[Any]:
+        """
+        Get LangChain-compatible tools from LiteLLM's MCP Gateway.
+
+        Fetches all tools from LiteLLM and converts them to LangChain
+        StructuredTool objects that can be bound to the agent.
+        """
+        logger.info("Fetching MCP tools from LiteLLM")
+
+        result = await self.list_tools_from_litellm()
+        tools_data = result.get("tools", [])
+
+        if not tools_data:
+            logger.info("No MCP tools available from LiteLLM")
+            return []
+
+        langchain_tools = []
+
+        for tool_data in tools_data:
+            try:
+                tool_name = tool_data.get("name")
+                description = tool_data.get("description", "No description")
+                input_schema = tool_data.get("inputSchema", {})
+                mcp_info = tool_data.get("mcp_info", {})
+                server_name = mcp_info.get("server_name", "unknown")
+
+                # Create Pydantic model for the tool's input schema
+                fields = self._convert_json_schema_to_pydantic_fields(input_schema)
+
+                if fields:
+                    ArgsModel = create_model(f"{tool_name}Args", **fields)
+                else:
+                    ArgsModel = create_model(f"{tool_name}Args")
+
+                # Create a closure to capture server_name and tool_name
+                def make_tool_func(srv_name: str, tl_name: str):
+                    async def tool_func(**kwargs) -> str:
+                        result = await self.call_mcp_tool(srv_name, tl_name, kwargs)
+                        if isinstance(result, dict):
+                            import json
+                            return json.dumps(result)
+                        return str(result)
+                    return tool_func
+
+                tool = StructuredTool.from_function(
+                    coroutine=make_tool_func(server_name, tool_name),
+                    name=tool_name,
+                    description=f"[{server_name}] {description}",
+                    args_schema=ArgsModel,
+                    return_direct=False
+                )
+
+                langchain_tools.append(tool)
+
+            except Exception as e:
+                logger.warning(f"Failed to convert MCP tool {tool_data.get('name', 'unknown')}: {e}")
+                continue
+
+        logger.info(f"Successfully loaded {len(langchain_tools)} MCP tools from LiteLLM")
+        return langchain_tools
+
+
 # Global instance for reuse
-mcp_manager = MCPClientManager() 
+mcp_manager = MCPClientManager()

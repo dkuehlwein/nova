@@ -18,6 +18,7 @@ This directory contains Architecture Decision Records documenting significant te
 | [012](012-multi-input-hook-architecture-design.md) | Multi-Input Hook Architecture | Implemented | Registry-based hooks for email, calendar |
 | [013](013-human-oversight-tool-approval-system.md) | Tool Approval System | Implemented | Human oversight for tool execution |
 | [014](014-pluggable-skills-system.md) | Pluggable Skills System | Proposed | Dynamic workflow/skill loading system |
+| [015](015-litellm-mcp-gateway-migration.md) | LiteLLM MCP Gateway Migration | Implemented | Migrate MCP management to LiteLLM, enable enterprise federation |
 
 ### Draft ADRs
 
@@ -102,7 +103,7 @@ Reference file paths, don't include full code.
 
 ## Creating New ADRs
 
-1. Use the next available number (currently 015)
+1. Use the next available number (currently 016)
 2. Naming: `NNN-short-descriptive-name.md`
 3. For drafts: `DRAFT-descriptive-name.md`
 4. Follow the format above
@@ -114,4 +115,4 @@ Reference file paths, don't include full code.
 - [Frontend Code](../../frontend/) - UI
 
 ---
-*Last updated: 2025-12-31*
+*Last updated: 2026-01-06*

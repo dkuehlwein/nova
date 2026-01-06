@@ -1,0 +1,17 @@
+[project]
+name = "outlook-mac"
+version = "0.1.0"
+description = "Outlook MCP Server - Access local MS Outlook on Mac via AppleScript"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp>=2.3.4",
+    "fastapi>=0.104.0",
+    "appscript>=1.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
+]

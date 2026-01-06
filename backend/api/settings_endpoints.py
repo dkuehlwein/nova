@@ -327,14 +327,9 @@ async def get_system_status():
             "environment": "docker" if app_settings._is_running_in_docker() else "local",
             "log_level": app_settings.LOG_LEVEL,
             "email_enabled": app_settings.EMAIL_ENABLED,
-            "mcp_servers": [
-                {
-                    "name": server["name"],
-                    "url": server["url"],
-                    "description": server["description"]
-                }
-                for server in app_settings.MCP_SERVERS
-            ],
+            # MCP servers are now managed by LiteLLM (ADR-015)
+            # Use /api/mcp endpoint for MCP server status
+            "mcp_servers_source": "litellm",
             "services": {
                 "chat_agent_port": app_settings.CHAT_AGENT_PORT,
                 "core_agent_port": app_settings.CORE_AGENT_PORT,
