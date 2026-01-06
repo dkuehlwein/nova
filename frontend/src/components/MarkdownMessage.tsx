@@ -1,6 +1,7 @@
 "use client";
 
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Zap } from 'lucide-react';
 import { CollapsibleToolCall } from './CollapsibleToolCall';
 
@@ -99,6 +100,7 @@ export function MarkdownMessage({ content, className = "", toolCalls, disableLin
     return (
       <div className={`prose prose-sm max-w-none dark:prose-invert ${className}`}>
         <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
           components={disableLinks ? {
             // Disable links if requested (to prevent nested <a> tags)
             a: ({ children }) => <span className="text-blue-600 dark:text-blue-400">{children}</span>,
@@ -135,6 +137,7 @@ export function MarkdownMessage({ content, className = "", toolCalls, disableLin
       {/* Always render remaining content */}
       <div>
         <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
           components={disableLinks ? {
             // Disable links if requested (to prevent nested <a> tags)
             a: ({ children }) => <span className="text-blue-600 dark:text-blue-400">{children}</span>,
