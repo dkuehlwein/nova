@@ -15,7 +15,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
 
-from agent.chat_agent import create_chat_agent, get_all_tools_with_mcp
+from agent.chat_agent import create_chat_agent, get_all_tools
 
 # Check if DB is available for tests that require it
 SKIP_DB_TESTS = os.environ.get("NOVA_SKIP_DB", "0") == "1"
@@ -53,7 +53,7 @@ class TestChatAgentIntegration:
 
         # Mock external dependencies
         with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools_with_mcp', new_callable=AsyncMock) as mock_get_tools_with_mcp, \
+             patch('agent.chat_agent.get_all_tools', new_callable=AsyncMock) as mock_get_tools_with_mcp, \
              patch('agent.chat_agent.get_nova_system_prompt', new_callable=AsyncMock) as mock_get_prompt, \
              patch('agent.chat_agent.get_skill_manager') as mock_get_skill_manager:
 
@@ -112,7 +112,7 @@ class TestChatAgentIntegration:
         all_tools = local_tools + mcp_tools
 
         with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools_with_mcp', new_callable=AsyncMock) as mock_get_tools_with_mcp, \
+             patch('agent.chat_agent.get_all_tools', new_callable=AsyncMock) as mock_get_tools_with_mcp, \
              patch('agent.chat_agent.get_nova_system_prompt', new_callable=AsyncMock) as mock_get_prompt, \
              patch('agent.chat_agent.get_skill_manager') as mock_get_skill_manager:
 
@@ -131,7 +131,7 @@ class TestChatAgentIntegration:
             # Create agent with checkpointer
             agent = await create_chat_agent(checkpointer=mock_checkpointer)
 
-            # Verify tools were fetched (combined in get_all_tools_with_mcp)
+            # Verify tools were fetched (combined in get_all_tools)
             mock_get_tools_with_mcp.assert_called_once()
 
             # Verify agent was created successfully
@@ -164,7 +164,7 @@ class TestChatAgentIntegration:
         test_tools = [get_user_info, send_notification]
 
         with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools_with_mcp', new_callable=AsyncMock) as mock_get_tools_with_mcp, \
+             patch('agent.chat_agent.get_all_tools', new_callable=AsyncMock) as mock_get_tools_with_mcp, \
              patch('agent.chat_agent.get_nova_system_prompt', new_callable=AsyncMock) as mock_get_prompt, \
              patch('agent.chat_agent.get_skill_manager') as mock_get_skill_manager:
 

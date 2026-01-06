@@ -82,6 +82,30 @@ def setup_tools(outlook_service: OutlookService):
         """
         return await outlook_service.create_draft(recipients, subject, body, cc)
 
+    @mcp.tool()
+    async def send_email(
+        recipients: List[str],
+        subject: str,
+        body: str,
+        cc: Optional[List[str]] = None
+    ) -> Dict[str, str]:
+        """
+        Send an email directly via Outlook. REQUIRES USER APPROVAL.
+
+        This tool sends the email immediately without saving as draft first.
+        Use create_draft if you want to prepare an email for user review before sending.
+
+        Args:
+            recipients: List of recipient email addresses
+            subject: Email subject line
+            body: Email body content (plain text)
+            cc: Optional list of CC recipient email addresses
+
+        Returns:
+            Confirmation with send status
+        """
+        return await outlook_service.send_email(recipients, subject, body, cc)
+
     # === Calendar Tools ===
 
     @mcp.tool()
@@ -117,17 +141,17 @@ def setup_tools(outlook_service: OutlookService):
             "mcp_endpoint": "/mcp",
             "outlook_connected": outlook_status["connected"],
             "outlook_error": outlook_status.get("error"),
-            "tools_count": 4
+            "tools_count": 5
         })
 
     @mcp.custom_route("/tools/count", methods=["GET"])
     async def tools_count(request):
         """Tools count endpoint for Nova integration."""
         return JSONResponse({
-            "tools_count": 4,
-            "email_tools": 3,
+            "tools_count": 5,
+            "email_tools": 4,
             "calendar_tools": 1,
-            "total_tools": 4
+            "total_tools": 5
         })
 
 

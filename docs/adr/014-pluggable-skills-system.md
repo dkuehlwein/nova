@@ -357,7 +357,7 @@ permissions:
 ### Phase 4: Integration & Security
 1. Integrate skill tools with `ToolPermissionsManager`
 2. Add skill tool patterns to permissions config
-3. Update `get_all_tools_with_mcp()` to include skill management tools
+3. Update `get_all_tools()` to include skill management tools
 4. Test permission flows with skill tools
 
 ### Phase 5: Testing & Validation

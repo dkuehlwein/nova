@@ -2,6 +2,7 @@ permissions:
   allow:
   - get_tasks
   - search_memory
+  - add_memory
   - get_task_by_id
   - get_memories
   - search_memories
@@ -14,6 +15,8 @@ permissions:
   - _example_skill__*
   deny:
   - mcp_tool(*)
+  # Outlook email sending always requires explicit approval
+  - send_email
 settings:
   audit_enabled: true
   default_secure: true

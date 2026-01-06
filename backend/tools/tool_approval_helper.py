@@ -109,67 +109,49 @@ def add_human_in_the_loop(
     return call_tool_with_interrupt
 
 
-def get_tools_requiring_approval() -> list[str]:
-    """
-    Get list of tool names that require approval based on configuration.
-    
-    Returns:
-        list[str]: List of tool names that need approval
-    """
-    from utils.tool_permissions_manager import permission_config
-    
-    # Get all restricted tools (tools not in the allow list)
-    restricted_tools = permission_config.get_restricted_tools()
-    logger.info(f"Tools requiring approval: {restricted_tools}")
-    
-    return restricted_tools
-
-
 def request_tool_approval(tool_name: str, tool_args: Dict[str, Any]) -> str:
     logger.info(f"Requesting tool approval for: {tool_name}")
     logger.info(f"About to call interrupt() for tool approval")
-    
+
     # Use LangGraph interrupt with tool approval type
     user_response = interrupt({
-        "type": "tool_approval_request", 
+        "type": "tool_approval_request",
         "tool_name": tool_name,
         "tool_args": tool_args
     })
-    
+
     logger.info(f"interrupt() returned: {user_response} (type: {type(user_response)})")
-    
+
     # Process the user response
     if isinstance(user_response, str):
         response = user_response
     elif isinstance(user_response, dict):
         response = user_response.get("response", "deny")
     else:
-        response = str(user_response)    
-    
+        response = str(user_response)
+
     return response
 
 
 def wrap_tools_for_approval(tools: list[BaseTool]) -> list[BaseTool]:
     """
     Wrap tools that require approval with the human-in-the-loop pattern.
-    
-    Args:
-        tools: List of tools to potentially wrap
-        
-    Returns:
-        list[BaseTool]: List of tools with approval wrappers applied where needed
+
+    Checks each tool against the permission config (allow/deny lists, default_secure).
+    Tools not explicitly allowed will be wrapped with approval requirement.
     """
-    tools_requiring_approval = set(get_tools_requiring_approval())
+    from utils.tool_permissions_manager import permission_config
+
     wrapped_tools = []
-    
+    wrapped_count = 0
+
     for tool in tools:
-        if tool.name in tools_requiring_approval:
-            logger.info(f"Wrapping tool {tool.name} for approval")
-            wrapped_tool = add_human_in_the_loop(tool)
-            wrapped_tools.append(wrapped_tool)
+        if not permission_config.is_tool_allowed(tool.name):
+            logger.info(f"Wrapping tool '{tool.name}' for approval")
+            wrapped_tools.append(add_human_in_the_loop(tool))
+            wrapped_count += 1
         else:
-            logger.debug(f"Tool {tool.name} does not require approval")
             wrapped_tools.append(tool)
-    
-    logger.info(f"Wrapped {len([t for t in tools if t.name in tools_requiring_approval])} tools for approval out of {len(tools)} total tools")
+
+    logger.info(f"Wrapped {wrapped_count}/{len(tools)} tools for approval")
     return wrapped_tools

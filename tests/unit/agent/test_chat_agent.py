@@ -17,7 +17,7 @@ import logging
 from typing import List, Any, Optional
 
 from agent.chat_agent import (
-    get_all_tools_with_mcp,
+    get_all_tools,
     clear_chat_agent_cache,
     create_chat_agent
 )
@@ -117,7 +117,7 @@ class TestCheckpointerIntegration:
     async def test_create_chat_agent_with_pool_creates_checkpointer(self, fake_chat_model, sample_tools):
         """Test that providing pg_pool creates PostgreSQL checkpointer internally."""
         with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
+             patch('agent.chat_agent.get_local_tools') as mock_get_tools_with_mcp, \
              patch('agent.chat_agent.get_nova_system_prompt') as mock_get_prompt, \
              patch('utils.service_manager.create_postgres_checkpointer') as mock_create_pg, \
              patch('agent.chat_agent.get_skill_manager') as mock_skill_manager:
@@ -153,7 +153,7 @@ class TestCheckpointerIntegration:
     async def test_create_chat_agent_checkpointer_creation_failure(self, fake_chat_model, sample_tools):
         """Test that checkpointer creation failures are propagated."""
         with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
+             patch('agent.chat_agent.get_local_tools') as mock_get_tools_with_mcp, \
              patch('agent.chat_agent.get_nova_system_prompt') as mock_get_prompt, \
              patch('utils.service_manager.create_postgres_checkpointer') as mock_create_pg:
 
@@ -180,46 +180,48 @@ class TestToolsManagement:
     """Test tools management with real tool loading logic."""
     
     @pytest.mark.asyncio
-    async def test_get_all_tools_with_mcp_caching(self, sample_tools):
+    async def test_get_all_tools_caching(self, sample_tools):
         """Test tools are cached after first load."""
-        with patch('agent.chat_agent.get_all_tools') as mock_get_tools, \
-             patch('agent.chat_agent.mcp_manager') as mock_mcp:
-            
+        with patch('agent.chat_agent.get_local_tools') as mock_get_tools, \
+             patch('agent.chat_agent.mcp_manager') as mock_mcp, \
+             patch('agent.chat_agent.wrap_tools_for_approval', side_effect=lambda x: x):
+
             mock_get_tools.return_value = sample_tools
             mock_mcp.get_tools = AsyncMock(return_value=[])
-            
+
             # First call - should fetch tools
-            tools1 = await get_all_tools_with_mcp()
+            tools1 = await get_all_tools()
             assert len(tools1) == 3
             assert tools1[0].name == "get_tasks"
-            
-            # Second call - should use cache  
-            tools2 = await get_all_tools_with_mcp()
+
+            # Second call - should use cache
+            tools2 = await get_all_tools()
             assert tools1 is tools2  # Same object reference
-            
-            # Should only call get_all_tools once due to caching
+
+            # Should only call get_local_tools once due to caching
             mock_get_tools.assert_called_once()
-            # Should only call MCP get_tools once due to caching  
+            # Should only call MCP get_tools once due to caching
             mock_mcp.get_tools.assert_called_once()
     
     @pytest.mark.asyncio
-    async def test_get_all_tools_with_mcp_combines_sources(self, sample_tools):
+    async def test_get_all_tools_combines_sources(self, sample_tools):
         """Test tools from local and MCP sources are combined."""
-        
+
         # Create mock MCP tool
         @tool
         def mcp_search(query: str):
             """Search using MCP."""
             return f"MCP search results for: {query}"
-        
-        with patch('agent.chat_agent.get_all_tools') as mock_get_tools, \
-             patch('agent.chat_agent.mcp_manager') as mock_mcp:
-            
+
+        with patch('agent.chat_agent.get_local_tools') as mock_get_tools, \
+             patch('agent.chat_agent.mcp_manager') as mock_mcp, \
+             patch('agent.chat_agent.wrap_tools_for_approval', side_effect=lambda x: x):
+
             mock_get_tools.return_value = sample_tools  # 3 local tools
             mock_mcp.get_tools = AsyncMock(return_value=[mcp_search])  # 1 MCP tool
-            
-            tools = await get_all_tools_with_mcp()
-            
+
+            tools = await get_all_tools()
+
             assert len(tools) == 4  # 3 local + 1 MCP
             tool_names = [tool.name for tool in tools]
             assert "get_tasks" in tool_names
@@ -229,7 +231,7 @@ class TestToolsManagement:
     
     def test_clear_chat_agent_cache(self, sample_tools):
         """Test all caches are properly cleared."""
-        with patch('agent.chat_agent.get_all_tools') as mock_get_tools, \
+        with patch('agent.chat_agent.get_local_tools') as mock_get_tools, \
              patch('agent.chat_agent.mcp_manager') as mock_mcp:
             
             mock_get_tools.return_value = sample_tools
@@ -252,14 +254,15 @@ class TestToolsManagement:
     @pytest.mark.asyncio
     async def test_get_all_tools_mcp_error_handling(self, sample_tools):
         """Test graceful handling of MCP errors."""
-        with patch('agent.chat_agent.get_all_tools') as mock_get_tools, \
-             patch('agent.chat_agent.mcp_manager') as mock_mcp:
-            
+        with patch('agent.chat_agent.get_local_tools') as mock_get_tools, \
+             patch('agent.chat_agent.mcp_manager') as mock_mcp, \
+             patch('agent.chat_agent.wrap_tools_for_approval', side_effect=lambda x: x):
+
             mock_get_tools.return_value = sample_tools
             mock_mcp.get_tools = AsyncMock(side_effect=Exception("MCP connection failed"))
-            
-            tools = await get_all_tools_with_mcp()
-            
+
+            tools = await get_all_tools()
+
             # Should still return local tools despite MCP failure
             assert len(tools) == 3
             assert tools[0].name == "get_tasks"
@@ -272,7 +275,7 @@ class TestChatAgentCreation:
     async def test_create_chat_agent_basic(self, fake_chat_model, sample_tools, mock_checkpointer):
         """Test basic agent creation."""
         with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
+             patch('agent.chat_agent.get_local_tools') as mock_get_tools_with_mcp, \
              patch('agent.chat_agent.get_nova_system_prompt') as mock_get_prompt, \
              patch('agent.chat_agent.get_skill_manager') as mock_skill_manager:
 
@@ -294,7 +297,7 @@ class TestChatAgentCreation:
         custom_checkpointer = MemorySaver()
 
         with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
+             patch('agent.chat_agent.get_local_tools') as mock_get_tools_with_mcp, \
              patch('agent.chat_agent.get_nova_system_prompt') as mock_get_prompt, \
              patch('agent.chat_agent.get_skill_manager') as mock_skill_manager:
 
@@ -311,7 +314,7 @@ class TestChatAgentCreation:
     async def test_create_chat_agent_use_cache_false(self, fake_chat_model, sample_tools, mock_checkpointer):
         """Test agent creation with use_cache=False."""
         with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
+             patch('agent.chat_agent.get_local_tools') as mock_get_tools_with_mcp, \
              patch('agent.chat_agent.get_nova_system_prompt') as mock_get_prompt, \
              patch('agent.chat_agent.get_skill_manager') as mock_skill_manager:
 
@@ -371,7 +374,7 @@ class TestAgentInvocation:
     async def test_agent_simple_invoke(self, fake_chat_model, sample_tools, mock_checkpointer):
         """Test agent can be invoked with a simple message."""
         with patch('agent.chat_agent.create_chat_llm') as mock_create_llm, \
-             patch('agent.chat_agent.get_all_tools_with_mcp') as mock_get_tools_with_mcp, \
+             patch('agent.chat_agent.get_local_tools') as mock_get_tools_with_mcp, \
              patch('agent.chat_agent.get_nova_system_prompt') as mock_get_prompt, \
              patch('agent.chat_agent.get_skill_manager') as mock_skill_manager:
 

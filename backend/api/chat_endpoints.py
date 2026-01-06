@@ -712,9 +712,9 @@ async def get_available_tools():
     Get list of available tools that the agent can use.
     """
     try:
-        from agent.chat_agent import get_all_tools_with_mcp
-        
-        tools = await get_all_tools_with_mcp()
+        from agent.chat_agent import get_all_tools
+
+        tools = await get_all_tools()
         tools_info = []
         
         for tool in tools:

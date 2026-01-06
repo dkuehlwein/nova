@@ -133,29 +133,67 @@ class ToolPermissionConfig:
                 }
             }
     
-    def get_restricted_tools(self) -> List[str]:
-        """Get list of tools that require approval (not in allow list)."""
+    def is_tool_allowed(self, tool_name: str) -> bool:
+        """Check if a tool is explicitly allowed (doesn't require approval).
+
+        With default_secure=true, tools NOT in the allow list require approval.
+        Tools in the deny list are always blocked (require approval that will be denied).
+        """
         try:
             permissions = self.get_permissions_sync()
-            allowed_tools = set(permissions["permissions"].get("allow", []))
-            
-            # For simplicity, we'll define the known tool names here
-            # In a real implementation, this could be dynamic based on loaded tools
-            all_known_tools = {
-                "create_task", "update_task", "get_tasks", "get_task_by_id",
-                "search_memory", "add_memory", "ask_user"
-            }
-            
-            # Tools not in allow list require approval
-            restricted_tools = [tool for tool in all_known_tools if tool not in allowed_tools]
-            logger.debug(f"Restricted tools requiring approval: {restricted_tools}")
-            return restricted_tools
-            
+            allow_patterns = permissions["permissions"].get("allow", [])
+            deny_patterns = permissions["permissions"].get("deny", [])
+            default_secure = permissions["settings"].get("default_secure", True)
+
+            # Check deny list first - denied tools always require approval
+            for pattern in deny_patterns:
+                if self._matches_tool_pattern(tool_name, pattern):
+                    logger.debug(f"Tool {tool_name} is in deny list")
+                    return False
+
+            # Check allow list
+            for pattern in allow_patterns:
+                if self._matches_tool_pattern(tool_name, pattern):
+                    logger.debug(f"Tool {tool_name} is explicitly allowed")
+                    return True
+
+            # If default_secure is True, tools not in allow list require approval
+            if default_secure:
+                logger.debug(f"Tool {tool_name} not in allow list, default_secure=True, requires approval")
+                return False
+
+            # default_secure is False - allow by default
+            return True
+
         except Exception as e:
-            logger.error(f"Error getting restricted tools: {e}")
-            # Default to requiring approval for memory modification tools
-            return ["add_memory", "update_task"]
-    
+            logger.error(f"Error checking tool permission for {tool_name}: {e}")
+            # Fail secure - require approval on error
+            return False
+
+    def _matches_tool_pattern(self, tool_name: str, pattern: str) -> bool:
+        """Check if a tool name matches a permission pattern.
+
+        Supports:
+        - Exact match: "send_email"
+        - Wildcard suffix: "mcp_tool(*)" matches any mcp_tool call
+        - Prefix wildcard: "_example_skill__*" matches _example_skill__foo, _example_skill__bar
+        """
+        # Exact match
+        if pattern == tool_name:
+            return True
+
+        # Wildcard suffix pattern like "tool_name(*)"
+        if pattern.endswith("(*)") and tool_name == pattern[:-3]:
+            return True
+
+        # Prefix wildcard pattern like "prefix_*"
+        if pattern.endswith("*"):
+            prefix = pattern[:-1]
+            if tool_name.startswith(prefix):
+                return True
+
+        return False
+
     def clear_permissions_cache(self):
         """Clear permissions cache - delegated to ConfigRegistry hot-reload."""
         # ConfigRegistry handles hot-reload automatically via file watching

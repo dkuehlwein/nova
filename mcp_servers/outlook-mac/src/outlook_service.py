@@ -31,7 +31,7 @@ class OutlookService:
         import threading
 
         def _do_connect():
-            from appscript import app
+            from appscript import app, k
             outlook = app('Microsoft Outlook')
             # Test connection by checking if Outlook is running
             outlook.name()
@@ -232,54 +232,116 @@ class OutlookService:
             loop = asyncio.get_event_loop()
             
             def _create_draft():
-                # Create a new outgoing message
+                from appscript import k
+
+                # Create a new outgoing message using appscript keywords
                 msg = self._outlook.make(
-                    new=self._outlook.outgoing_message,
+                    new=k.outgoing_message,
                     with_properties={
-                        self._outlook.outgoing_message.subject: subject,
-                        self._outlook.outgoing_message.content: body
+                        k.subject: subject,
+                        k.content: body
                     }
                 )
-                
+
                 # Add recipients
                 for recipient_email in recipients:
                     msg.make(
-                        new=self._outlook.to_recipient,
+                        new=k.to_recipient,
                         with_properties={
-                            self._outlook.to_recipient.email_address: {
-                                self._outlook.email_address.address: recipient_email
-                            }
+                            k.email_address: {k.address: recipient_email}
                         }
                     )
-                
+
                 # Add CC recipients if provided
                 if cc:
                     for cc_email in cc:
                         msg.make(
-                            new=self._outlook.cc_recipient,
+                            new=k.cc_recipient,
                             with_properties={
-                                self._outlook.cc_recipient.email_address: {
-                                    self._outlook.email_address.address: cc_email
-                                }
+                                k.email_address: {k.address: cc_email}
                             }
                         )
-                
-                # Save as draft (do not send)
-                msg.save()
-                
+
+                # Message is automatically saved in Drafts folder upon creation
+                # No explicit save() call needed (and it doesn't work for outgoing messages)
+
                 return {
                     "status": "success",
                     "message": f"Draft created with subject: {subject}",
                     "recipients": recipients,
                     "cc": cc or []
                 }
-            
+
             result = await loop.run_in_executor(None, _create_draft)
             return result
-            
+
         except Exception as e:
             logger.error(f"Error creating draft: {e}")
             return {"error": f"Failed to create draft: {str(e)}"}
+
+    async def send_email(
+        self,
+        recipients: List[str],
+        subject: str,
+        body: str,
+        cc: Optional[List[str]] = None
+    ) -> str:
+        """Send an email directly via Outlook (requires user approval)."""
+        try:
+            if not await self._ensure_connected():
+                return "Error: Could not connect to Outlook. Is it running?"
+
+            loop = asyncio.get_event_loop()
+
+            def _send_email():
+                from appscript import k
+
+                # Create a new outgoing message using appscript keywords
+                msg = self._outlook.make(
+                    new=k.outgoing_message,
+                    with_properties={
+                        k.subject: subject,
+                        k.content: body
+                    }
+                )
+
+                # Add recipients
+                for recipient_email in recipients:
+                    msg.make(
+                        new=k.to_recipient,
+                        with_properties={
+                            k.email_address: {k.address: recipient_email}
+                        }
+                    )
+
+                # Add CC recipients if provided
+                if cc:
+                    for cc_email in cc:
+                        msg.make(
+                            new=k.cc_recipient,
+                            with_properties={
+                                k.email_address: {k.address: cc_email}
+                            }
+                        )
+
+                # Send the email
+                msg.send()
+
+                # Format recipients as string for clear output
+                recipients_str = ", ".join(recipients)
+                cc_str = ", ".join(cc) if cc else None
+
+                if cc_str:
+                    return f"Email successfully sent to {recipients_str} (CC: {cc_str}) with subject: {subject}"
+                else:
+                    return f"Email successfully sent to {recipients_str} with subject: {subject}"
+
+            result = await loop.run_in_executor(None, _send_email)
+            return result
+
+        except Exception as e:
+            logger.error(f"Error sending email: {e}")
+            return f"Error: Failed to send email: {str(e)}"
 
     async def list_calendar_events(
         self,

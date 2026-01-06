@@ -90,9 +90,13 @@ class TestLangGraphToolApproval:
             return f"Restricted: {message}"
         
         tools = [allowed_tool, restricted_tool]
-        
+
         # Mock permission config to make restricted_tool require approval
-        with patch.object(permission_config, 'get_restricted_tools', return_value=['restricted_tool']):
+        # is_tool_allowed returns True if tool is pre-approved (no approval needed)
+        def mock_is_tool_allowed(tool_name: str) -> bool:
+            return tool_name == "allowed_tool"  # Only allowed_tool is pre-approved
+
+        with patch.object(permission_config, 'is_tool_allowed', side_effect=mock_is_tool_allowed):
             wrapped_tools = wrap_tools_for_approval(tools)
         
         # Should still have 2 tools
@@ -243,26 +247,25 @@ class TestLangGraphToolApproval:
 
 class TestToolPermissionConfiguration:
     """Test tool permission configuration integration."""
-    
+
     def test_permission_config_integration(self):
         """Test integration with Nova's permission configuration system."""
-        # Test that permission config can identify restricted tools
-        restricted_tools = permission_config.get_restricted_tools()
-        
-        # Should return a list of tool names
-        assert isinstance(restricted_tools, list)
-        assert all(isinstance(tool, str) for tool in restricted_tools)
-        
-        # Should have some restricted tools based on default config
-        assert len(restricted_tools) > 0
-        
-        # Common write operations should typically be restricted
-        expected_restricted = {"create_task", "update_task", "add_memory"}
-        actual_restricted = set(restricted_tools)
-        
-        # At least some expected tools should be restricted
-        intersection = expected_restricted.intersection(actual_restricted)
-        assert len(intersection) > 0, f"Expected some of {expected_restricted} to be restricted, got {actual_restricted}"
+        # Test that permission config can check if tools are allowed
+        # With default_secure=True, tools not in allow list require approval
+
+        # Tools in the default allow list should be allowed
+        # (uses default config when ConfigRegistry not initialized)
+        assert permission_config.is_tool_allowed("get_tasks") is True
+        assert permission_config.is_tool_allowed("search_memory") is True
+        assert permission_config.is_tool_allowed("get_task_by_id") is True
+
+        # Tools NOT in the allow list should require approval (default_secure=True)
+        assert permission_config.is_tool_allowed("some_unknown_tool") is False
+        assert permission_config.is_tool_allowed("create_task") is False  # Not in default allow list
+
+        # Tools matching deny patterns should require approval
+        # Note: send_email is in the yaml config's deny list, but default config uses mcp_tool(*)
+        assert permission_config.is_tool_allowed("random_mcp_tool") is False  # Not in allow list
     
     def test_default_secure_behavior(self):
         """Test that system defaults to secure behavior."""

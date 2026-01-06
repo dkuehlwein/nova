@@ -17,7 +17,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from mcp_client import mcp_manager
-from tools import get_all_tools
+from tools import get_local_tools
+from tools.tool_approval_helper import wrap_tools_for_approval
 from utils.logging import get_logger, log_timing
 from utils.skill_manager import get_skill_manager
 
@@ -35,48 +36,44 @@ _cached_tools: Optional[List[Any]] = None
 _cached_llm = None
 
 
-async def get_all_tools_with_mcp(use_cache=True, include_escalation=False) -> List[Any]:
-    """Get all tools including both local Nova tools and external MCP tools.
+async def get_all_tools(use_cache=True, include_escalation=False) -> List[Any]:
+    """Get all tools (local Nova tools + MCP tools), wrapped for approval.
 
     Args:
         use_cache: If True, use cached tools; if False, reload tools
         include_escalation: If True, include ask_user tool (for task contexts)
-
-    Returns:
-        List of all available tools (cached or fresh)
     """
     global _cached_tools
     t0 = time.time()
 
-    # Don't use cache if escalation setting is different
     if not use_cache or (include_escalation and _cached_tools is not None):
         _cached_tools = None
         logger.info("Tools cache cleared for reload")
 
     if _cached_tools is not None:
-        logger.info("⏱️ TIMING: get_all_tools_with_mcp returning cached tools (0ms)")
         return _cached_tools
 
     # Get local Nova tools
     t1 = time.time()
-    local_tools = get_all_tools(include_escalation=include_escalation)
+    local_tools = get_local_tools(include_escalation=include_escalation)
     log_timing("get_local_tools", t1, {"count": len(local_tools)})
 
-    # Get MCP tools from external servers (respects enabled/disabled state)
+    # Get MCP tools from external servers
     try:
         t1 = time.time()
         mcp_tools = await mcp_manager.get_tools()
         log_timing("get_mcp_tools", t1, {"count": len(mcp_tools)})
-        logger.info(f"Loaded {len(mcp_tools)} MCP tools from enabled servers")
     except Exception as e:
         logger.warning(f"Could not fetch MCP tools: {e}")
         mcp_tools = []
 
-    # Combine and cache tools
-    _cached_tools = local_tools + mcp_tools
-    log_timing("get_all_tools_with_mcp_total", t0, {"local": len(local_tools), "mcp": len(mcp_tools)})
-    logger.info(f"Total tools available: {len(local_tools)} local + {len(mcp_tools)} MCP = {len(_cached_tools)} total")
+    # Combine all tools and wrap for approval
+    all_tools = local_tools + mcp_tools
+    t1 = time.time()
+    _cached_tools = wrap_tools_for_approval(all_tools)
+    log_timing("wrap_tools_for_approval", t1, {"count": len(_cached_tools)})
 
+    logger.info(f"Tools: {len(local_tools)} local + {len(mcp_tools)} MCP = {len(_cached_tools)} total")
     return _cached_tools
 
 
@@ -158,10 +155,10 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
     log_timing("get_llm", t0)
 
     t0 = time.time()
-    base_tools = await get_all_tools_with_mcp(
+    base_tools = await get_all_tools(
         use_cache=use_cache, include_escalation=include_escalation
     )
-    log_timing("get_all_tools_with_mcp", t0, {"count": len(base_tools)})
+    log_timing("get_all_tools", t0, {"count": len(base_tools)})
 
     t0 = time.time()
     system_prompt = await get_nova_system_prompt(use_cache=use_cache)
