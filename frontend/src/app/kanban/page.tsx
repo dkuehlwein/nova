@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 import { useKanbanTasks, useCreateTask, useDeleteTask, formatStatusName, getStatusColor, type Task } from "@/hooks/useNovaQueries";
+import { apiRequest, API_ENDPOINTS } from "@/lib/api";
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
@@ -183,11 +184,8 @@ function KanbanPage() {
 
   const fetchTaskComments = async (taskId: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/tasks/${taskId}/comments`);
-      if (response.ok) {
-        const comments = await response.json();
-        setTaskComments(comments);
-      }
+      const comments = await apiRequest<Comment[]>(API_ENDPOINTS.taskComments(taskId));
+      setTaskComments(comments);
     } catch (err) {
       console.error('Failed to fetch comments:', err);
       setTaskComments([]);
@@ -196,19 +194,12 @@ function KanbanPage() {
 
   const fetchTaskActivity = async (taskId: string) => {
     try {
-      // Get general activity for this task
-      const response = await fetch(`http://localhost:8000/api/recent-activity`);
-      
-      if (response.ok) {
-        const allActivity = await response.json();
-        // Filter activity for this specific task
-        const filteredActivity = allActivity.filter((activity: ActivityItem) => 
-          activity.related_task_id === taskId
-        );
-        setTaskActivity(filteredActivity);
-      } else {
-        setTaskActivity([]);
-      }
+      const allActivity = await apiRequest<Activity[]>('/api/recent-activity');
+      // Filter activity for this specific task
+      const filteredActivity = allActivity.filter((activity) =>
+        activity.related_task_id === taskId
+      );
+      setTaskActivity(filteredActivity);
     } catch (err) {
       console.error('Failed to fetch activity:', err);
       setTaskActivity([]);
@@ -233,26 +224,17 @@ function KanbanPage() {
 
   const handleSaveTitle = async () => {
     if (!selectedTask || !editedTitle.trim()) return;
-    
+
     try {
-      const response = await fetch(`http://localhost:8000/api/tasks/${selectedTask.id}`, {
+      await apiRequest(API_ENDPOINTS.taskById(selectedTask.id), {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: editedTitle.trim()
-        }),
+        body: JSON.stringify({ title: editedTitle.trim() }),
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to update title');
-      }
-      
+
       // Update the selected task
       setSelectedTask({ ...selectedTask, title: editedTitle.trim() });
       setIsEditingTitle(false);
-      
+
       // Refresh the activity to show the edit
       fetchTaskActivity(selectedTask.id);
     } catch (err) {
@@ -262,26 +244,17 @@ function KanbanPage() {
 
   const handleSaveDescription = async () => {
     if (!selectedTask) return;
-    
+
     try {
-      const response = await fetch(`http://localhost:8000/api/tasks/${selectedTask.id}`, {
+      await apiRequest(API_ENDPOINTS.taskById(selectedTask.id), {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          description: editedDescription.trim()
-        }),
+        body: JSON.stringify({ description: editedDescription.trim() }),
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to update description');
-      }
-      
+
       // Update the selected task
       setSelectedTask({ ...selectedTask, description: editedDescription.trim() });
       setIsEditingDescription(false);
-      
+
       // Refresh the activity to show the edit
       fetchTaskActivity(selectedTask.id);
     } catch (err) {
@@ -314,29 +287,72 @@ function KanbanPage() {
   };
 
   const TaskCard = ({ task }: { task: Task }) => (
-    <div 
-      className="bg-card border border-border rounded-lg p-4 mb-3 cursor-pointer hover:shadow-md transition-shadow"
+    <div
+      className="group bg-card border border-border rounded-lg p-4 mb-3 cursor-pointer hover:shadow-md focus:ring-2 focus:ring-primary focus:outline-none transition-shadow"
       onClick={() => handleTaskClick(task)}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleTaskClick(task);
+        }
+      }}
     >
-      <div className="flex items-start justify-between mb-2">
-        <h4 className="font-medium text-foreground text-sm">{task.title}</h4>
+      {/* Title - full width */}
+      <h4 className="font-medium text-foreground text-sm mb-2 line-clamp-2">{task.title}</h4>
+
+      {/* Description - conditional */}
+      {task.description && (
+        <div className="text-xs text-muted-foreground mb-3 line-clamp-2">
+          <MarkdownMessage content={task.description} className="text-xs" />
+        </div>
+      )}
+
+      {/* Tags - conditional */}
+      {task.tags && task.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {task.tags.map((tag: string) => (
+            <Badge key={tag} variant="secondary" className="text-xs px-1 py-0">
+              {tag}
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      {/* Footer: Date + Actions (hover reveal) */}
+      <div className="flex items-center justify-between text-xs">
         <div className="flex items-center space-x-1">
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Calendar className="h-3 w-3" />
+          <span className="text-muted-foreground">
+            {task.completed_at
+              ? new Date(task.completed_at).toLocaleDateString()
+              : task.due_date
+                ? new Date(task.due_date).toLocaleDateString()
+                : new Date(task.updated_at).toLocaleDateString()
+            }
+          </span>
+        </div>
+
+        {/* Actions - hidden by default, shown on hover */}
+        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity touch-reveal">
+          <Button
+            variant="ghost"
+            size="sm"
             className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
             onClick={(e) => handleTaskChat(task, e)}
             title="Open chat with Nova about this task"
+            aria-label="Open chat with Nova about this task"
           >
             <MessageCircle className="h-3 w-3" />
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
                 onClick={(e) => e.stopPropagation()}
+                aria-label="Delete task"
               >
                 <Trash2 className="h-3 w-3" />
               </Button>
@@ -350,7 +366,7 @@ function KanbanPage() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction 
+                <AlertDialogAction
                   onClick={(e: React.MouseEvent) => {
                     e.stopPropagation();
                     handleDeleteTask(task.id);
@@ -365,36 +381,6 @@ function KanbanPage() {
           </AlertDialog>
         </div>
       </div>
-      
-      <div className="text-xs text-muted-foreground mb-3 line-clamp-2">
-        <MarkdownMessage content={task.description || ''} className="text-xs" />
-      </div>
-
-      <div className="flex flex-wrap gap-1 mb-3">
-        {(task.tags || []).map((tag: string) => (
-          <Badge key={tag} variant="secondary" className="text-xs px-1 py-0">
-            {tag}
-          </Badge>
-        ))}
-      </div>
-
-      <div className="flex items-center justify-between text-xs">
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-1">
-            <Calendar className="h-3 w-3" />
-            <span className="text-muted-foreground">
-              {task.completed_at 
-                ? new Date(task.completed_at).toLocaleDateString()
-                : task.due_date 
-                  ? new Date(task.due_date).toLocaleDateString()
-                  : new Date(task.updated_at).toLocaleDateString()
-              }
-            </span>
-          </div>
-        </div>
-      </div>
-
-
     </div>
   );
 
@@ -755,7 +741,7 @@ function KanbanPage() {
           </DialogContent>
         </Dialog>
 
-        <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-6">
           {lanes.map((lane) => (
             <div key={lane.id} className="bg-card border border-border rounded-lg">
               <div className="p-4 border-b border-border">

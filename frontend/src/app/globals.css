@@ -175,4 +175,11 @@
       max-width: 320px;
     }
   }
+
+  /* Touch device support - always show hover-reveal elements on touch devices */
+  @media (hover: none) and (pointer: coarse) {
+    .touch-reveal {
+      opacity: 1;
+    }
+  }
 }
