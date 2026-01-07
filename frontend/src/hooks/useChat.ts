@@ -144,7 +144,8 @@ export function useChat() {
         }>(API_ENDPOINTS.taskChatData(chatId));
 
         // Convert messages to ChatMessage format (with metadata!)
-        const chatMessages: ChatMessage[] = taskChatData.messages.map((msg, index) => ({
+        // Then merge consecutive assistant messages to match streaming behavior
+        const rawMessages: ChatMessage[] = taskChatData.messages.map((msg, index) => ({
           id: msg.id || `loaded-msg-${index}`,
           role: msg.sender === 'user' ? 'user' : (msg.sender === 'system' ? 'system' : 'assistant'),
           content: msg.content,
@@ -153,6 +154,36 @@ export function useChat() {
           metadata: msg.metadata || undefined,
           toolCalls: msg.tool_calls || undefined,
         }));
+
+        // Merge consecutive assistant messages (to match streaming behavior where tool calls
+        // and responses are accumulated into a single message)
+        const chatMessages: ChatMessage[] = [];
+        for (const msg of rawMessages) {
+          const lastMsg = chatMessages[chatMessages.length - 1];
+
+          // Merge if both are assistant messages and the current one has no special metadata
+          if (
+            lastMsg &&
+            lastMsg.role === 'assistant' &&
+            msg.role === 'assistant' &&
+            !msg.metadata?.type &&
+            !lastMsg.metadata?.type
+          ) {
+            // Merge content
+            if (msg.content && msg.content.trim()) {
+              lastMsg.content = lastMsg.content
+                ? `${lastMsg.content}\n\n${msg.content}`
+                : msg.content;
+            }
+            // Merge tool calls
+            if (msg.toolCalls && msg.toolCalls.length > 0) {
+              lastMsg.toolCalls = [...(lastMsg.toolCalls || []), ...msg.toolCalls];
+            }
+            // Keep the earlier timestamp
+          } else {
+            chatMessages.push(msg);
+          }
+        }
 
         // Use escalation data from the endpoint (works for all chats now!)
         const pendingEscalation = taskChatData.pending_escalation || null;
@@ -694,7 +725,8 @@ export function useChat() {
       }>(API_ENDPOINTS.taskChatData(threadId));
 
       // Convert messages to ChatMessage format (with metadata!)
-      const chatMessages: ChatMessage[] = taskChatData.messages.map((msg, index) => ({
+      // Then merge consecutive assistant messages to match streaming behavior
+      const rawMessages: ChatMessage[] = taskChatData.messages.map((msg, index) => ({
         id: msg.id || `loaded-msg-${index}`,
         role: msg.sender === 'user' ? 'user' : (msg.sender === 'system' ? 'system' : 'assistant'),
         content: msg.content,
@@ -703,6 +735,36 @@ export function useChat() {
         metadata: msg.metadata || undefined,
         toolCalls: msg.tool_calls || undefined,
       }));
+
+      // Merge consecutive assistant messages (to match streaming behavior where tool calls
+      // and responses are accumulated into a single message)
+      const chatMessages: ChatMessage[] = [];
+      for (const msg of rawMessages) {
+        const lastMsg = chatMessages[chatMessages.length - 1];
+
+        // Merge if both are assistant messages and the current one has no special metadata
+        if (
+          lastMsg &&
+          lastMsg.role === 'assistant' &&
+          msg.role === 'assistant' &&
+          !msg.metadata?.type &&
+          !lastMsg.metadata?.type
+        ) {
+          // Merge content
+          if (msg.content && msg.content.trim()) {
+            lastMsg.content = lastMsg.content
+              ? `${lastMsg.content}\n\n${msg.content}`
+              : msg.content;
+          }
+          // Merge tool calls
+          if (msg.toolCalls && msg.toolCalls.length > 0) {
+            lastMsg.toolCalls = [...(lastMsg.toolCalls || []), ...msg.toolCalls];
+          }
+          // Keep the earlier timestamp
+        } else {
+          chatMessages.push(msg);
+        }
+      }
 
       // Use escalation data from the endpoint
       const pendingEscalation = taskChatData.pending_escalation || null;

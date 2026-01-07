@@ -1025,6 +1025,98 @@ async def get_task_chat_data(chat_id: str):
         raise HTTPException(status_code=500, detail=f"Error getting task chat data: {str(e)}")
 
 
+@router.delete("/conversations/{chat_id}")
+async def delete_chat(chat_id: str):
+    """
+    Delete a chat conversation.
+
+    For task-related chats (core_agent_task_*), this will also delete the associated task.
+    Returns information about what was deleted to help frontend show appropriate feedback.
+    """
+    from api.api_endpoints import cleanup_task_chat_data
+    from config import settings
+    from psycopg_pool import AsyncConnectionPool
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+    try:
+        is_task_chat = chat_id.startswith("core_agent_task_")
+        task_id = chat_id.replace("core_agent_task_", "") if is_task_chat else None
+
+        if is_task_chat and task_id:
+            # This is a task chat - delete the task which cascades to chat cleanup
+            from database.database import db_manager
+            from sqlalchemy import select
+            from models.models import Task
+
+            task_found = False
+            async with db_manager.get_session() as session:
+                result = await session.execute(select(Task).where(Task.id == task_id))
+                task = result.scalar_one_or_none()
+
+                if task:
+                    task_found = True
+                    from sqlalchemy import text
+
+                    # Clean up foreign key references first
+                    await session.execute(
+                        text("UPDATE processed_items SET task_id = NULL WHERE task_id = :task_id"),
+                        {"task_id": task_id}
+                    )
+
+                    # Delete the task
+                    await session.delete(task)
+                    await session.commit()
+
+            # Clean up chat data AFTER transaction completes successfully
+            if task_found:
+                try:
+                    await cleanup_task_chat_data(task_id)
+                except Exception as cleanup_error:
+                    # Task is already deleted, log but don't fail
+                    logger.warning(f"Failed to cleanup chat data for task {task_id}: {cleanup_error}")
+
+                logger.info(f"Deleted task chat {chat_id} and associated task {task_id}")
+                return {
+                    "success": True,
+                    "deleted_chat": chat_id,
+                    "deleted_task": task_id,
+                    "message": "Deleted chat and associated task"
+                }
+            else:
+                # Task doesn't exist but thread might - fall through to delete just the thread
+                logger.info(f"Task {task_id} not found, attempting to delete thread only")
+
+        # Regular chat or task not found - delete just the checkpointer thread
+        database_url = settings.DATABASE_URL
+        pool = AsyncConnectionPool(database_url, open=False)
+        await pool.open()
+
+        try:
+            async with pool.connection() as conn:
+                checkpointer = AsyncPostgresSaver(conn)
+                await checkpointer.adelete_thread(chat_id)
+                logger.info(f"Deleted chat thread: {chat_id}")
+
+            return {
+                "success": True,
+                "deleted_chat": chat_id,
+                "deleted_task": None,
+                "message": "Deleted chat conversation"
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to delete chat thread {chat_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to delete chat: {str(e)}")
+        finally:
+            await pool.close()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting chat: {str(e)}")
+
+
 @router.post("/conversations/{chat_id}/escalation-response")
 async def respond_to_escalation(chat_id: str, response: dict):
     """

@@ -164,7 +164,7 @@ export async function apiRequest<T>(
       try {
         baseUrl = await detectBackendUrl();
         url = `${baseUrl}${endpoint}`;
-        
+
         // Single retry with detected URL
         const response = await fetch(url, {
           headers: {
@@ -184,7 +184,7 @@ export async function apiRequest<T>(
         throw retryError;
       }
     }
-    
+
     // Don't log errors for health checks to reduce noise
     if (!endpoint.includes('/health')) {
       console.error(`API request failed for ${endpoint}:`, error);
@@ -216,4 +216,5 @@ export const API_ENDPOINTS = {
   chatMessages: (id: string) => `/chat/conversations/${id}/messages`,
   taskChatData: (id: string) => `/chat/conversations/${id}/task-data`,
   escalationResponse: (id: string) => `/chat/conversations/${id}/escalation-response`,
+  deleteChat: (id: string) => `/chat/conversations/${id}`,
 } as const; 

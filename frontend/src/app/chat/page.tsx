@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Send, AlertTriangle, MessageSquare, Bot, Loader2, StopCircle, Copy, RotateCcw, Check, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Send, AlertTriangle, MessageSquare, Bot, Loader2, StopCircle, Copy, RotateCcw, Check, ThumbsUp, ThumbsDown, Trash2, Link } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -67,6 +67,7 @@ function ChatPage() {
   const chatHistoryContainerRef = useRef<HTMLDivElement>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [ratedMessages, setRatedMessages] = useState<Record<string, 'up' | 'down'>>({});
+  const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
   const { data: userSettings } = useUserSettings();
 
   // Memoize the stable data to prevent unnecessary re-renders
@@ -172,9 +173,9 @@ function ChatPage() {
             const task = await apiRequest<{ id: string; title: string }>(`/api/tasks/${taskParam}`);
             setTaskInfo({ id: task.id, title: task.title });
           } catch {
-            // Task doesn't exist in database but thread exists in LangGraph - this is normal
-            console.log(`Task ${taskParam} not found in database, using thread-based title`);
-            setTaskInfo({ id: taskParam, title: `Agent Task ${taskParam.substring(0, 8)}` });
+            // Task doesn't exist in database - this indicates orphaned LangGraph data
+            console.error(`Task ${taskParam} not found in database. This chat thread is orphaned and should be cleaned up.`);
+            setTaskInfo({ id: taskParam, title: `Orphaned Task ${taskParam.substring(0, 8)}` });
           }
         };
         fetchTaskInfo();
@@ -333,6 +334,57 @@ function ChatPage() {
     // TODO: Send rating to backend for analytics
   }, []);
 
+  // Handle delete chat
+  const handleDeleteChat = useCallback(async (chatItem: ChatHistoryItem, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent selecting the chat when clicking delete
+
+    // Show confirmation dialog with appropriate warning
+    const isTaskChat = !!chatItem.task_id;
+    const confirmMessage = isTaskChat
+      ? `This chat is connected to a task. Deleting it will also delete the task "${chatItem.title}" and all its data.\n\nAre you sure you want to continue?`
+      : `Delete this conversation "${chatItem.title}"?\n\nThis action cannot be undone.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setDeletingChatId(chatItem.id);
+
+    try {
+      const response = await apiRequest<{
+        success: boolean;
+        deleted_chat: string;
+        deleted_task: string | null;
+        message: string;
+      }>(API_ENDPOINTS.deleteChat(chatItem.id), {
+        method: 'DELETE',
+      });
+
+      if (response.success) {
+        // Remove from chat history
+        setChatHistory(prev => prev.filter(c => c.id !== chatItem.id));
+
+        // If this was a task chat, also remove from pending decisions
+        if (chatItem.task_id) {
+          setPendingDecisions(prev => prev.filter(d => d.id !== chatItem.task_id));
+        }
+
+        // If we just deleted the currently active chat, clear it
+        const currentThread = searchParams.get('thread');
+        if (currentThread === chatItem.id) {
+          router.push('/chat');
+          clearChat();
+          setTaskInfo(null);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to delete chat:', error);
+      alert('Failed to delete chat. Please try again.');
+    } finally {
+      setDeletingChatId(null);
+    }
+  }, [searchParams, router, clearChat]);
+
   const renderMessage = useCallback((msg: ChatMessage) => {
     // Handle system messages separately
     if (msg.role === "system") {
@@ -353,7 +405,7 @@ function ChatPage() {
     if (msg.role === "user" && msg.metadata?.type === "tool_approval_decision") {
       return (
         <div key={msg.id} className="flex justify-center mb-4">
-          <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg px-4 py-2 text-sm font-medium shadow-sm">
+          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-200 rounded-lg px-4 py-2 text-sm font-medium shadow-sm">
             {msg.content}
           </div>
         </div>
@@ -401,7 +453,7 @@ function ChatPage() {
                 <Loader2 className="h-3 w-3 animate-spin opacity-60" />
               )}
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className={`text-xs ${msg.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
               {formatTimestamp(msg.timestamp)}
             </span>
           </div>
@@ -423,11 +475,19 @@ function ChatPage() {
           
           {/* Message Actions - Positioned in the bottom padding area */}
           {!msg.isStreaming && msg.content && (
-            <div className="absolute bottom-2 right-2 flex items-center space-x-1 bg-background/90 backdrop-blur-sm border border-border/50 rounded-lg px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm">
+            <div className={`absolute bottom-2 right-2 flex items-center space-x-1 backdrop-blur-sm border rounded-lg px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm ${
+              msg.role === "user"
+                ? "bg-primary-foreground/20 border-primary-foreground/30"
+                : "bg-background/90 border-border/50"
+            }`}>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 px-1.5 text-xs hover:bg-muted"
+                className={`h-6 px-1.5 text-xs ${
+                  msg.role === "user"
+                    ? "hover:bg-primary-foreground/20 text-primary-foreground"
+                    : "hover:bg-muted"
+                }`}
                 onClick={() => handleCopyMessage(msg.id, msg.content)}
                 disabled={copiedMessageId === msg.id}
               >
@@ -437,7 +497,7 @@ function ChatPage() {
                   <Copy className="h-3 w-3" />
                 )}
               </Button>
-              
+
               {msg.role === "assistant" && messageIndex > 0 && (
                 <Button
                   variant="ghost"
@@ -449,7 +509,7 @@ function ChatPage() {
                   <RotateCcw className="h-3 w-3" />
                 </Button>
               )}
-              
+
               {/* Rating buttons for assistant messages */}
               {msg.role === "assistant" && (
                 <>
@@ -553,35 +613,52 @@ function ChatPage() {
                       Needs Decision ({memoizedPendingDecisions.length})
                     </h3>
                     <div className="space-y-2">
-                      {memoizedPendingDecisions.map((decision) => (
-                        <div
-                          key={decision.id}
-                          onClick={() => handleChatSelect({
-                            id: `core_agent_task_${decision.id}`,
-                            title: decision.title,
-                            last_message: decision.description,
-                            updated_at: decision.updated_at,
-                            needs_decision: true,
-                            task_id: decision.id,
-                          })}
-                          className="p-3 rounded-lg border border-orange-200 bg-orange-50 hover:bg-orange-100 cursor-pointer transition-colors"
-                        >
-                          <div className="flex items-start space-x-2">
-                            <AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <h4 className="text-sm font-medium text-orange-900 truncate">
-                                {decision.title}
-                              </h4>
-                              <div className="text-xs text-orange-700 line-clamp-2 mt-1">
-                                <MarkdownMessage content={decision.description} />
+                      {memoizedPendingDecisions.map((decision) => {
+                        const chatItem: ChatHistoryItem = {
+                          id: `core_agent_task_${decision.id}`,
+                          title: decision.title,
+                          last_message: decision.description,
+                          updated_at: decision.updated_at,
+                          needs_decision: true,
+                          task_id: decision.id,
+                        };
+                        return (
+                          <div
+                            key={decision.id}
+                            onClick={() => handleChatSelect(chatItem)}
+                            className="p-3 rounded-lg border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-900/50 cursor-pointer transition-colors group/decision"
+                          >
+                            <div className="flex items-start space-x-2">
+                              <AlertTriangle className="h-4 w-4 text-orange-500 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <h4 className="text-sm font-medium text-orange-900 dark:text-orange-100 truncate">
+                                  {decision.title}
+                                </h4>
+                                <div className="text-xs text-orange-700 dark:text-orange-300 line-clamp-2 mt-1">
+                                  <MarkdownMessage content={decision.description} disableLinks />
+                                </div>
+                                <p className="text-xs text-orange-600 dark:text-orange-400 mt-2">
+                                  {formatDate(decision.updated_at)}
+                                </p>
                               </div>
-                              <p className="text-xs text-orange-600 mt-2">
-                                {formatDate(decision.updated_at)}
-                              </p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 opacity-0 group-hover/decision:opacity-100 transition-opacity text-orange-600 dark:text-orange-400 hover:text-destructive flex-shrink-0"
+                                onClick={(e) => handleDeleteChat(chatItem, e)}
+                                disabled={deletingChatId === chatItem.id}
+                                title="Delete chat and task"
+                              >
+                                {deletingChatId === chatItem.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3 w-3" />
+                                )}
+                              </Button>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -606,21 +683,42 @@ function ChatPage() {
                           <div
                             key={chatItem.id}
                             onClick={() => handleChatSelect(chatItem)}
-                            className="p-3 rounded-lg border hover:bg-muted cursor-pointer transition-colors"
+                            className="p-3 rounded-lg border hover:bg-muted cursor-pointer transition-colors group/chat relative"
                           >
                             <div className="flex items-start space-x-2">
                               <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                               <div className="flex-1 min-w-0">
-                                <h4 className="text-sm font-medium truncate">
-                                  <MarkdownMessage content={chatItem.title} />
-                                </h4>
+                                <div className="flex items-center gap-1">
+                                  <h4 className="text-sm font-medium truncate flex-1">
+                                    <MarkdownMessage content={chatItem.title} disableLinks />
+                                  </h4>
+                                  {chatItem.task_id && (
+                                    <span title="Connected to task">
+                                      <Link className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                                  <MarkdownMessage content={chatItem.last_message} />
+                                  <MarkdownMessage content={chatItem.last_message} disableLinks />
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-2">
                                   {formatDate(chatItem.last_activity || chatItem.updated_at)}
                                 </p>
                               </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 opacity-0 group-hover/chat:opacity-100 transition-opacity text-muted-foreground hover:text-destructive flex-shrink-0"
+                                onClick={(e) => handleDeleteChat(chatItem, e)}
+                                disabled={deletingChatId === chatItem.id}
+                                title={chatItem.task_id ? "Delete chat and task" : "Delete chat"}
+                              >
+                                {deletingChatId === chatItem.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3 w-3" />
+                                )}
+                              </Button>
                             </div>
                           </div>
                         ))}
@@ -785,7 +883,7 @@ function ChatPage() {
                 
                 {error && (
                   <div className="flex justify-center">
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-2 rounded-lg text-sm">
                       <AlertTriangle className="h-4 w-4 inline mr-2" />
                       {error}
                     </div>

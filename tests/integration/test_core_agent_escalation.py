@@ -338,25 +338,32 @@ async def test_complete_escalation_workflow():
                     text("DELETE FROM task_comments WHERE task_id = :task_id"),
                     {"task_id": str(task_id)}
                 )
-                
+
                 # Delete task
                 await session.execute(
-                    text("DELETE FROM tasks WHERE id = :task_id"), 
+                    text("DELETE FROM tasks WHERE id = :task_id"),
                     {"task_id": str(task_id)}
                 )
-                
+
                 # Clean up agent status
                 if core_agent is not None and core_agent.status_id:
                     await session.execute(
                         text("DELETE FROM agent_status WHERE id = :status_id"),
                         {"status_id": str(core_agent.status_id)}
                     )
-                
+
                 await session.commit()
-                
-                logger.info("Test cleanup completed", extra={
-                    "data": {"task_id": str(task_id)}
-                })
+
+            # Clean up LangGraph checkpoint data (outside session context)
+            try:
+                from api.api_endpoints import cleanup_task_chat_data
+                await cleanup_task_chat_data(str(task_id))
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup chat data: {cleanup_error}")
+
+            logger.info("Test cleanup completed", extra={
+                "data": {"task_id": str(task_id)}
+            })
         
         # Clean up ServiceManager and its pool
         await service_manager.close_pg_pool()
@@ -463,20 +470,27 @@ async def test_escalation_flow_monitoring():
                 )
                 if core_agent is not None and core_agent.status_id:
                     await session.execute(
-                        text("DELETE FROM agent_status WHERE id = :status_id"), 
+                        text("DELETE FROM agent_status WHERE id = :status_id"),
                         {"status_id": str(core_agent.status_id)}
                     )
                 await session.commit()
-        
+
+            # Clean up LangGraph checkpoint data (outside session context)
+            try:
+                from api.api_endpoints import cleanup_task_chat_data
+                await cleanup_task_chat_data(str(task_id))
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup chat data: {cleanup_error}")
+
         # Clean up ServiceManager and its pool
         await service_manager.close_pg_pool()
-        
+
         # Ensure Redis connections are completely closed between tests
         await close_redis()
 
 
 @pytest.mark.asyncio
-@pytest.mark.integration 
+@pytest.mark.integration
 async def test_multiple_escalation_cycles():
     """
     Test handling multiple escalation cycles using ServiceManager.
@@ -597,9 +611,16 @@ async def test_multiple_escalation_cycles():
                         {"status_id": str(core_agent.status_id)}
                     )
                 await session.commit()
-        
+
+            # Clean up LangGraph checkpoint data (outside session context)
+            try:
+                from api.api_endpoints import cleanup_task_chat_data
+                await cleanup_task_chat_data(str(task_id))
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup chat data: {cleanup_error}")
+
         # Clean up ServiceManager and its pool
         await service_manager.close_pg_pool()
-        
+
         # Ensure Redis connections are completely closed between tests
         await close_redis()
