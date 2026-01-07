@@ -1,26 +1,18 @@
 """
 Unified configuration event system.
 Provides standardized events for all configuration changes.
+
+Uses the NovaEvent model from models/events.py with type="config_changed"
+to ensure compatibility with the Redis pub/sub system.
 """
 
 from datetime import datetime
 from typing import Dict, Any
-from pydantic import BaseModel
 
+from models.events import NovaEvent
 from utils.logging import get_logger
 
 logger = get_logger("config_events")
-
-
-class ConfigUpdatedEvent(BaseModel):
-    """Unified event for configuration updates."""
-    id: str
-    type: str = "config_updated"
-    config_type: str  # "mcp_servers", "user_profile", "system_prompt"
-    operation: str    # "updated", "validated", "backed_up", "restored", "reloaded"
-    source: str       # "config-api", "file-watcher", "user-action", "manual"
-    details: Dict[str, Any]
-    timestamp: datetime
 
 
 def create_config_event(
@@ -28,18 +20,26 @@ def create_config_event(
     operation: str,
     source: str,
     details: Dict[str, Any]
-) -> ConfigUpdatedEvent:
-    """Create a standardized configuration event."""
-    timestamp = datetime.now()
-    event_id = f"config_{config_type}_{operation}_{timestamp.strftime('%Y%m%d_%H%M%S_%f')}"
-    
-    return ConfigUpdatedEvent(
-        id=event_id,
-        config_type=config_type,
-        operation=operation,
-        source=source,
-        details=details,
-        timestamp=timestamp
+) -> NovaEvent:
+    """Create a standardized configuration event using NovaEvent.
+
+    Args:
+        config_type: Type of config ("mcp_servers", "user_profile", "system_prompt", "tool_permissions")
+        operation: Operation performed ("updated", "validated", "backed_up", "restored", "reloaded")
+        source: Source of the change ("config-api", "file-watcher", "user-action", "manual")
+        details: Additional details about the change
+
+    Returns:
+        NovaEvent with type="config_changed"
+    """
+    return NovaEvent(
+        type="config_changed",
+        data={
+            "config_type": config_type,
+            "operation": operation,
+            "details": details
+        },
+        source=source
     )
 
 

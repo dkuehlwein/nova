@@ -232,8 +232,10 @@ class TestAgentPromptIntegration:
         from backend.utils.config_events import create_config_event
 
         # Create a mock event handler
+        # Note: create_config_event now returns NovaEvent with type="config_changed"
+        # and config_type is in event.data["config_type"]
         async def mock_event_handler(event):
-            if event.type == "config_updated" and event.config_type == "system_prompt":
+            if event.type == "config_changed" and event.data.get("config_type") == "system_prompt":
                 await mock_create_chat_agent(reload_tools=True)
 
         with patch('backend.utils.config_events.publish_config_event', side_effect=mock_event_handler):

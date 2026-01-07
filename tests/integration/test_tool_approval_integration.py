@@ -16,10 +16,22 @@ from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parent.parent.parent / "backend"))
 
-from tools import get_all_tools
+from tools import get_local_tools
 from tools.tool_approval_helper import add_human_in_the_loop, wrap_tools_for_approval
 from utils.tool_permissions_manager import ToolPermissionConfig, permission_config
 from langchain_core.tools import tool
+
+
+def get_all_tools(enable_tool_approval=False):
+    """Test helper: Get local tools with optional approval wrapping.
+
+    Note: The actual get_all_tools lives in agent/chat_agent.py and is async.
+    For testing tool approval logic, we just need local tools.
+    """
+    tools = get_local_tools(include_escalation=False)
+    if enable_tool_approval:
+        tools = wrap_tools_for_approval(tools)
+    return tools
 
 
 class TestLangGraphToolApproval:
@@ -219,30 +231,29 @@ class TestLangGraphToolApproval:
         """Test integration with actual Nova tools and default permissions."""
         # Get Nova tools with approval enabled
         tools = get_all_tools(enable_tool_approval=True)
-        
+
         # Verify we have the expected Nova tools
         tool_names = {t.name for t in tools}
         expected_tools = {"create_task", "update_task", "get_tasks", "get_task_by_id", "search_memory", "add_memory"}
         assert expected_tools.issubset(tool_names), f"Missing Nova tools: {expected_tools - tool_names}"
-        
+
         # Test that permissions are applied correctly based on default config
         approval_tools = [t for t in tools if "[REQUIRES APPROVAL]" in t.description]
         pre_approved_tools = [t for t in tools if "[REQUIRES APPROVAL]" not in t.description]
-        
-        # Should have some tools in each category based on default config
-        assert len(approval_tools) >= 3, f"Expected at least 3 approval tools, got {len(approval_tools)}"
-        assert len(pre_approved_tools) >= 3, f"Expected at least 3 pre-approved tools, got {len(pre_approved_tools)}"
-        
-        # Verify that read-only tools are typically pre-approved
+
+        # With default config, most task tools are pre-approved
+        # Only create_task should require approval by default
+        assert len(approval_tools) >= 1, f"Expected at least 1 approval tool, got {len(approval_tools)}"
+        assert len(pre_approved_tools) >= 5, f"Expected at least 5 pre-approved tools, got {len(pre_approved_tools)}"
+
+        # Verify that read-only tools are pre-approved
         readonly_tools = {"get_tasks", "get_task_by_id", "search_memory"}
         readonly_tool_names = {t.name for t in pre_approved_tools}
         assert readonly_tools.issubset(readonly_tool_names), "Read-only tools should be pre-approved"
-        
-        # Verify that write operations typically require approval
-        write_tools = {"create_task", "update_task", "add_memory"}
+
+        # Verify create_task requires approval (default config)
         approval_tool_names = {t.name for t in approval_tools}
-        # At least some write tools should require approval
-        assert len(write_tools.intersection(approval_tool_names)) > 0, "Some write tools should require approval"
+        assert "create_task" in approval_tool_names, "create_task should require approval"
 
 
 class TestToolPermissionConfiguration:
