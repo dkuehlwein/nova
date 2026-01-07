@@ -8,15 +8,16 @@ providing LLM and embedding services through LiteLLM routing.
 from typing import List, Optional
 
 from graphiti_core import Graphiti
-from graphiti_core.llm_client import OpenAIClient
 from graphiti_core.llm_client.config import LLMConfig
+
+from memory.llm_client import MarkdownStrippingOpenAIClient
 from graphiti_core.embedder import OpenAIEmbedder
 from graphiti_core.embedder.openai import OpenAIEmbedderConfig
 from graphiti_core.cross_encoder import CrossEncoderClient
 from config import settings
 
 
-def create_graphiti_llm() -> OpenAIClient:
+def create_graphiti_llm() -> MarkdownStrippingOpenAIClient:
     """
     Create OpenAI-compatible LLM client that routes through LiteLLM for memory operations.
     
@@ -35,7 +36,7 @@ def create_graphiti_llm() -> OpenAIClient:
         temperature=llm_config["temperature"],
         max_tokens=llm_config["max_tokens"]
     )
-    return OpenAIClient(config=config)
+    return MarkdownStrippingOpenAIClient(config=config)
 
 
 def create_graphiti_embedder() -> OpenAIEmbedder:

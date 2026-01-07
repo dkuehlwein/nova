@@ -82,7 +82,7 @@ class TestGraphitiClients:
     async def test_create_graphiti_llm(self):
         """Test LLM client creation with mocked config."""
         with patch('utils.llm_factory.get_memory_llm_config') as mock_config, \
-             patch('memory.graphiti_manager.OpenAIClient') as mock_client_cls:
+             patch('memory.graphiti_manager.MarkdownStrippingOpenAIClient') as mock_client_cls:
             
             mock_config.return_value = {
                 "model": "gpt-4",
@@ -150,6 +150,62 @@ class TestNullCrossEncoder:
         result = await encoder.rank("test query", [])
         
         assert result == []
+
+
+class TestStripMarkdownJson:
+    """Test the strip_markdown_json utility function."""
+
+    def test_strips_json_code_block(self):
+        """Test stripping ```json ... ``` wrapper."""
+        from memory.llm_client import strip_markdown_json
+
+        input_text = '```json\n{"key": "value"}\n```'
+        result = strip_markdown_json(input_text)
+
+        assert result == '{"key": "value"}'
+
+    def test_strips_plain_code_block(self):
+        """Test stripping ``` ... ``` wrapper without language specifier."""
+        from memory.llm_client import strip_markdown_json
+
+        input_text = '```\n{"key": "value"}\n```'
+        result = strip_markdown_json(input_text)
+
+        assert result == '{"key": "value"}'
+
+    def test_preserves_raw_json(self):
+        """Test that raw JSON without markdown is preserved."""
+        from memory.llm_client import strip_markdown_json
+
+        input_text = '{"key": "value"}'
+        result = strip_markdown_json(input_text)
+
+        assert result == '{"key": "value"}'
+
+    def test_handles_whitespace(self):
+        """Test handling of extra whitespace around code blocks."""
+        from memory.llm_client import strip_markdown_json
+
+        input_text = '  ```json\n{"key": "value"}\n```  '
+        result = strip_markdown_json(input_text)
+
+        assert result == '{"key": "value"}'
+
+    def test_handles_empty_string(self):
+        """Test handling of empty string."""
+        from memory.llm_client import strip_markdown_json
+
+        assert strip_markdown_json('') == ''
+        assert strip_markdown_json(None) is None
+
+    def test_handles_array_json(self):
+        """Test stripping markdown from JSON array (like ExtractedEntities)."""
+        from memory.llm_client import strip_markdown_json
+
+        input_text = '```json\n[\n  {\n    "name": "daniel",\n    "entity_type_id": 0\n  }\n]\n```'
+        result = strip_markdown_json(input_text)
+
+        assert result == '[\n  {\n    "name": "daniel",\n    "entity_type_id": 0\n  }\n]'
 
 
 if __name__ == "__main__":
