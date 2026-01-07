@@ -19,6 +19,11 @@ logger = get_logger("base_config_manager")
 
 ConfigType = TypeVar('ConfigType', bound=Union[BaseModel, str])
 
+# Global shared observer registry - one Observer per directory
+_shared_observers: Dict[str, Observer] = {}
+_shared_observers_lock = threading.Lock()
+_observer_handlers: Dict[str, Dict[str, FileSystemEventHandler]] = {}  # dir -> {config_name -> handler}
+
 
 class ValidationResult(BaseModel):
     """Result of configuration validation."""
@@ -321,15 +326,23 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
             return False
     
     def start_watching(self) -> None:
-        """Start watching configuration file for changes."""
+        """Start watching configuration file for changes.
+
+        Uses a shared Observer per directory to avoid watchdog's
+        'already scheduled' error when multiple configs share the same directory.
+        """
+        global _shared_observers, _observer_handlers
+
         if self._observer:
             logger.warning(f"File watcher already started for {self.config_name}")
             return
-        
+
+        watch_dir = str(self.config_path.parent)
+
         class ConfigFileHandler(FileSystemEventHandler):
             def __init__(self, manager: BaseConfigManager):
                 self.manager = manager
-            
+
             def on_modified(self, event):
                 if not event.is_directory and Path(event.src_path) == self.manager.config_path:
                     logger.debug(
@@ -337,32 +350,66 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
                         extra={"data": {"path": event.src_path}}
                     )
                     self.manager._debounced_reload()
-        
-        self._observer = Observer()
-        self._observer.schedule(
-            ConfigFileHandler(self),
-            str(self.config_path.parent),
-            recursive=False
-        )
-        self._observer.start()
-        
+
+        handler = ConfigFileHandler(self)
+
+        with _shared_observers_lock:
+            # Check if we already have an observer for this directory
+            if watch_dir in _shared_observers:
+                # Reuse existing observer - schedule our handler
+                observer = _shared_observers[watch_dir]
+                try:
+                    observer.schedule(handler, watch_dir, recursive=False)
+                except RuntimeError:
+                    # Directory already being watched - this is expected
+                    # The existing watch will dispatch to all handlers
+                    pass
+                _observer_handlers[watch_dir][self.config_name] = handler
+                self._observer = observer  # Share reference
+            else:
+                # Create new observer for this directory
+                observer = Observer()
+                observer.schedule(handler, watch_dir, recursive=False)
+                observer.start()
+                _shared_observers[watch_dir] = observer
+                _observer_handlers[watch_dir] = {self.config_name: handler}
+                self._observer = observer
+
         logger.info(
             f"Started watching configuration: {self.config_name}",
             extra={"data": {"path": str(self.config_path)}}
         )
     
     def stop_watching(self) -> None:
-        """Stop watching configuration file."""
-        if self._observer:
-            self._observer.stop()
-            self._observer.join()
-            self._observer = None
-            
-            logger.info(
-                f"Stopped watching configuration: {self.config_name}",
-                extra={"data": {"path": str(self.config_path)}}
-            )
-        
+        """Stop watching configuration file.
+
+        Only stops the shared Observer when all configs using it have stopped.
+        """
+        global _shared_observers, _observer_handlers
+
+        watch_dir = str(self.config_path.parent)
+
+        with _shared_observers_lock:
+            if watch_dir in _observer_handlers and self.config_name in _observer_handlers[watch_dir]:
+                # Remove our handler from the registry
+                del _observer_handlers[watch_dir][self.config_name]
+
+                # If no more handlers for this directory, stop the observer
+                if not _observer_handlers[watch_dir]:
+                    if watch_dir in _shared_observers:
+                        observer = _shared_observers[watch_dir]
+                        observer.stop()
+                        observer.join()
+                        del _shared_observers[watch_dir]
+                    del _observer_handlers[watch_dir]
+
+        self._observer = None
+
+        logger.info(
+            f"Stopped watching configuration: {self.config_name}",
+            extra={"data": {"path": str(self.config_path)}}
+        )
+
         # Cancel any pending reload
         with self._lock:
             if self._pending_reload:
