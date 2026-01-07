@@ -547,7 +547,7 @@ function ChatPage() {
     <div className="chat-page bg-background">
       <Navbar />
 
-      <div className="flex h-[calc(100vh-4rem)]">
+      <div className="flex h-[calc(100vh-var(--navbar-height))]">
         {/* Sidebar - Chat History */}
         <div className="chat-sidebar w-80 border-r border-border bg-card flex flex-col">
           <div className="p-4 border-b border-border">

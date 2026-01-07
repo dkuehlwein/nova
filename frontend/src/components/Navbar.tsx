@@ -35,7 +35,7 @@ export default function Navbar() {
       <nav className="border-b border-border bg-card">
         <div className="flex h-16 items-center px-6">
           <Link href="/" className="flex items-center space-x-2">
-            <Brain className="h-8 w-8 text-primary" />
+            <Brain className="h-8 w-8 text-primary animate-pulse" />
             <h1 className="text-2xl font-bold text-foreground">Nova</h1>
           </Link>
           <div className="ml-8 text-muted-foreground">Loading...</div>
@@ -48,7 +48,7 @@ export default function Navbar() {
 
   return (
     <nav className="border-b border-border bg-card">
-      <div className="flex h-20 items-center px-6">
+      <div className="flex h-16 items-center px-6">
         {/* Left Section - Logo and Navigation */}
         <div className="flex items-center space-x-8">
           {/* Logo and Brand */}
