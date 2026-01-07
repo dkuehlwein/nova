@@ -220,6 +220,13 @@ tests/
 4. Use async/await throughout for better performance
 5. Leverage hot-reload for prompts and configuration changes
 
+### Research Before Implementing
+When encountering integration issues with external libraries:
+1. **Check GitHub Issues first** - Search the library's issue tracker for similar problems before writing custom workarounds
+2. **Test API capabilities directly** - Use `curl` or simple test scripts to verify what the external service actually supports (e.g., test LM Studio's `response_format` support directly)
+3. **Understand the library's architecture** - Read the source code to understand where your override needs to hook in (e.g., graphiti-core's `_create_structured_completion` vs `_handle_structured_response`)
+4. **Avoid hardcoded fixes** - If a hack is needed, make it configurable or at least document why the proper solution doesn't work
+
 ### Architecture Decision Records (ADRs)
 Detailed architectural decisions are documented in `docs/adr/`. Key ADRs:
 - **ADR-002**: Human-in-the-loop via `ask_user` tool and LangGraph interrupts

@@ -208,5 +208,94 @@ class TestStripMarkdownJson:
         assert result == '[\n  {\n    "name": "daniel",\n    "entity_type_id": 0\n  }\n]'
 
 
+class TestMarkdownStrippingOpenAIClient:
+    """Test the MarkdownStrippingOpenAIClient class."""
+
+    @pytest.mark.asyncio
+    async def test_handle_structured_response_strips_markdown(self):
+        """Test that _handle_structured_response strips markdown wrappers."""
+        from memory.llm_client import MarkdownStrippingOpenAIClient
+
+        client = MarkdownStrippingOpenAIClient.__new__(MarkdownStrippingOpenAIClient)
+
+        # Mock response with markdown-wrapped JSON
+        class MockResponse:
+            output_text = '```json\n{"extracted_entities": [{"name": "Daniel", "entity_type_id": 0}]}\n```'
+
+        result = client._handle_structured_response(MockResponse())
+
+        assert result == {"extracted_entities": [{"name": "Daniel", "entity_type_id": 0}]}
+
+    @pytest.mark.asyncio
+    async def test_handle_structured_response_wraps_list_in_object(self):
+        """Test that lists are wrapped in expected object structure for ExtractedEntities."""
+        from memory.llm_client import MarkdownStrippingOpenAIClient
+
+        client = MarkdownStrippingOpenAIClient.__new__(MarkdownStrippingOpenAIClient)
+
+        # Mock response where LLM returns a list instead of object
+        class MockResponse:
+            output_text = '[{"name": "Daniel", "entity_type_id": 0}]'
+
+        result = client._handle_structured_response(MockResponse())
+
+        # Should wrap list in expected object structure
+        assert result == {"extracted_entities": [{"name": "Daniel", "entity_type_id": 0}]}
+
+    @pytest.mark.asyncio
+    async def test_handle_structured_response_markdown_and_list(self):
+        """Test handling both markdown wrapping AND list schema mismatch."""
+        from memory.llm_client import MarkdownStrippingOpenAIClient
+
+        client = MarkdownStrippingOpenAIClient.__new__(MarkdownStrippingOpenAIClient)
+
+        # Mock response with both issues: markdown + list instead of object
+        class MockResponse:
+            output_text = '```json\n[\n  {"name": "Daniel", "entity_type_id": 0},\n  {"name": "Pizza", "entity_type_id": 0}\n]\n```'
+
+        result = client._handle_structured_response(MockResponse())
+
+        assert result == {
+            "extracted_entities": [
+                {"name": "Daniel", "entity_type_id": 0},
+                {"name": "Pizza", "entity_type_id": 0}
+            ]
+        }
+
+    @pytest.mark.asyncio
+    async def test_handle_structured_response_preserves_object(self):
+        """Test that properly formatted object responses are preserved."""
+        from memory.llm_client import MarkdownStrippingOpenAIClient
+
+        client = MarkdownStrippingOpenAIClient.__new__(MarkdownStrippingOpenAIClient)
+
+        # Mock properly formatted response
+        class MockResponse:
+            output_text = '{"extracted_entities": [{"name": "Daniel", "entity_type_id": 0}]}'
+
+        result = client._handle_structured_response(MockResponse())
+
+        assert result == {"extracted_entities": [{"name": "Daniel", "entity_type_id": 0}]}
+
+    @pytest.mark.asyncio
+    async def test_handle_json_response_strips_markdown(self):
+        """Test that _handle_json_response strips markdown wrappers."""
+        from memory.llm_client import MarkdownStrippingOpenAIClient
+
+        client = MarkdownStrippingOpenAIClient.__new__(MarkdownStrippingOpenAIClient)
+
+        # Mock response with markdown-wrapped JSON
+        class MockChoice:
+            class message:
+                content = '```json\n{"key": "value"}\n```'
+
+        class MockResponse:
+            choices = [MockChoice()]
+
+        result = client._handle_json_response(MockResponse())
+
+        assert result == {"key": "value"}
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"]) 
