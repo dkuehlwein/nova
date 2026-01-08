@@ -677,3 +677,123 @@ class OutlookService:
         except Exception as e:
             logger.error(f"Error checking if email is processed: {e}")
             return False
+
+    async def lookup_contact(self, name: str) -> Dict[str, Any]:
+        """
+        Look up an email address for a person by name.
+
+        First tries Outlook contacts, then falls back to searching recent emails
+        for senders with matching names.
+
+        Args:
+            name: The person's name to look up
+
+        Returns:
+            Dict with found, email, display_name, and source
+        """
+        try:
+            if not await self._ensure_connected():
+                return {"found": False, "error": "Could not connect to Outlook. Is it running?"}
+
+            loop = asyncio.get_event_loop()
+            search_name = name.lower().strip()
+
+            def _search_contacts_and_emails():
+                from appscript import k
+
+                # First, try to search contacts
+                # Note: Outlook for Mac has limited AppleScript support for contacts
+                # We'll primarily rely on searching recent emails
+                try:
+                    contacts = self._outlook.contacts()
+                    for contact in contacts:
+                        try:
+                            contact_name = ""
+                            # Try to get the full name
+                            try:
+                                first = contact.first_name() or ""
+                                last = contact.last_name() or ""
+                                contact_name = f"{first} {last}".strip()
+                            except Exception:
+                                try:
+                                    contact_name = contact.name() or ""
+                                except Exception:
+                                    pass
+
+                            if contact_name and search_name in contact_name.lower():
+                                # Found a match in contacts
+                                try:
+                                    email = contact.email_addresses()[0].address()
+                                    return {
+                                        "found": True,
+                                        "email": email,
+                                        "display_name": contact_name,
+                                        "source": "contacts"
+                                    }
+                                except Exception:
+                                    pass  # Contact has no email, continue searching
+                        except Exception as e:
+                            logger.debug(f"Error reading contact: {e}")
+                            continue
+                except Exception as e:
+                    logger.debug(f"Error accessing contacts: {e}")
+
+                # Fall back to searching recent emails by sender name
+                try:
+                    inbox = self._outlook.inbox
+                    messages = inbox.messages()
+
+                    # Search through recent emails (limit to 500 for performance)
+                    seen_emails = set()
+                    for i, msg in enumerate(messages):
+                        if i >= 500:
+                            break
+
+                        try:
+                            sender = msg.sender()
+                            sender_name = ""
+                            sender_email = ""
+
+                            # Extract sender info
+                            if isinstance(sender, dict):
+                                sender_name = sender.get(k.name, "")
+                                sender_email = sender.get(k.address, "")
+                            elif hasattr(sender, '__getitem__'):
+                                try:
+                                    sender_name = sender[k.name]
+                                    sender_email = sender[k.address]
+                                except (KeyError, TypeError):
+                                    sender_name = str(sender)
+                            else:
+                                sender_name = str(sender)
+
+                            # Check if name matches
+                            if sender_name and search_name in sender_name.lower():
+                                if sender_email and sender_email not in seen_emails:
+                                    return {
+                                        "found": True,
+                                        "email": sender_email,
+                                        "display_name": sender_name,
+                                        "source": "recent_emails"
+                                    }
+                                seen_emails.add(sender_email)
+
+                        except Exception as e:
+                            logger.debug(f"Error reading email sender: {e}")
+                            continue
+
+                except Exception as e:
+                    logger.debug(f"Error searching emails: {e}")
+
+                # Not found
+                return {
+                    "found": False,
+                    "error": f"No email found for '{name}' in contacts or recent emails"
+                }
+
+            result = await loop.run_in_executor(None, _search_contacts_and_emails)
+            return result
+
+        except Exception as e:
+            logger.error(f"Error looking up contact: {e}")
+            return {"found": False, "error": f"Failed to look up contact: {str(e)}"}

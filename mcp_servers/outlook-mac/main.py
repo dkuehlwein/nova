@@ -126,6 +126,29 @@ def setup_tools(outlook_service: OutlookService):
         """
         return await outlook_service.mark_email_processed(email_id)
 
+    # === Contact Lookup Tools ===
+
+    @mcp.tool()
+    async def lookup_contact(name: str) -> Dict[str, Any]:
+        """
+        Look up an email address for a person by name.
+
+        Searches Outlook contacts and recent emails to find an email address
+        for the given name. Useful for resolving names to emails when the
+        user only provides names.
+
+        Args:
+            name: The person's name to look up (e.g., "John Doe")
+
+        Returns:
+            Dict with:
+            - found: True if email was found
+            - email: The email address (if found)
+            - display_name: The full display name from Outlook
+            - source: Where the email was found ("contacts" or "recent_emails")
+        """
+        return await outlook_service.lookup_contact(name)
+
     # === Calendar Tools ===
 
     @mcp.tool()
@@ -156,22 +179,23 @@ def setup_tools(outlook_service: OutlookService):
         return JSONResponse({
             "status": "healthy" if outlook_status["connected"] else "degraded",
             "service": "outlook-mac-mcp-server",
-            "version": "1.1.0",
+            "version": "1.2.0",
             "timestamp": str(datetime.now()),
             "mcp_endpoint": "/mcp",
             "outlook_connected": outlook_status["connected"],
             "outlook_error": outlook_status.get("error"),
-            "tools_count": 6
+            "tools_count": 7
         })
 
     @mcp.custom_route("/tools/count", methods=["GET"])
     async def tools_count(request):
         """Tools count endpoint for Nova integration."""
         return JSONResponse({
-            "tools_count": 6,
+            "tools_count": 7,
             "email_tools": 5,
             "calendar_tools": 1,
-            "total_tools": 6
+            "contact_tools": 1,
+            "total_tools": 7
         })
 
 
