@@ -233,6 +233,8 @@ services:
       # LiteLLM for MCP tools
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
+      # Outlook MCP server runs on host machine (not in Docker)
+      OUTLOOK_MCP_URL: http://host.docker.internal:9100
     depends_on:
       postgres:
         condition: service_healthy

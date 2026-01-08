@@ -15,8 +15,9 @@ permissions:
   - _example_skill__*
   deny:
   - mcp_tool(*)
-  # Outlook email sending always requires explicit approval
+  # Email sending always requires explicit approval (both Outlook and Gmail)
   - send_email
+  - gmail_send_email
 settings:
   audit_enabled: true
   default_secure: true

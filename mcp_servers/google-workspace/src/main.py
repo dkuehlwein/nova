@@ -168,49 +168,49 @@ if __name__ == "__main__":
     workspace_service = GoogleWorkspaceService(args.creds_file_path, args.token_path, oauth_port=args.oauth_port)
     
     # === Gmail Tools ===
-    
+
     @mcp.tool()
-    async def send_email(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
-        """Sends an email to one or more recipients. Subject and message are distinct."""
+    async def gmail_send_email(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
+        """Sends an email via Gmail to one or more recipients. Subject and message are distinct."""
         return await workspace_service.gmail_tools.send_email(recipient_ids, subject, message)
 
     @mcp.tool()
-    async def get_unread_emails() -> Union[List[Dict[str, str]], Dict[str, str]]:
-        """Retrieves a list of unread emails from the primary inbox category."""
+    async def gmail_get_unread_emails() -> Union[List[Dict[str, str]], Dict[str, str]]:
+        """Retrieves a list of unread emails from the Gmail primary inbox category."""
         return await workspace_service.gmail_tools.get_unread_emails()
 
     @mcp.tool()
-    async def read_email_content(email_id: str) -> Dict[str, str]:
-        """Retrieves the full content of a specific email. AUTOMATICALLY marks the email as read - no need to call mark_email_as_read separately."""
+    async def gmail_read_email(email_id: str) -> Dict[str, str]:
+        """Retrieves the full content of a specific Gmail email. AUTOMATICALLY marks the email as read - no need to call gmail_mark_as_read separately."""
         return await workspace_service.gmail_tools.read_email(email_id)
 
     @mcp.tool()
-    async def trash_email(email_id: str) -> Union[str, Dict[str, str]]:
-        """Moves the specified email to the trash."""
+    async def gmail_trash_email(email_id: str) -> Union[str, Dict[str, str]]:
+        """Moves the specified Gmail email to the trash."""
         return await workspace_service.gmail_tools.trash_email(email_id)
 
     @mcp.tool()
-    async def mark_email_as_read(email_id: str) -> Union[str, Dict[str, str]]:
-        """Marks the specified email as read."""
+    async def gmail_mark_as_read(email_id: str) -> Union[str, Dict[str, str]]:
+        """Marks the specified Gmail email as read."""
         return await workspace_service.gmail_tools.mark_email_as_read(email_id)
 
     @mcp.tool()
-    async def create_draft_email(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
-        """Creates a draft email message for one or more recipients."""
+    async def gmail_create_draft(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
+        """Creates a Gmail draft email message for one or more recipients."""
         return await workspace_service.gmail_tools.create_draft(recipient_ids, subject, message)
 
     @mcp.tool()
-    async def list_draft_emails() -> Union[List[Dict[str, str]], Dict[str, str]]:
-        """Lists all draft emails with their ID, subject, and recipient."""
+    async def gmail_list_drafts() -> Union[List[Dict[str, str]], Dict[str, str]]:
+        """Lists all Gmail draft emails with their ID, subject, and recipient."""
         return await workspace_service.gmail_tools.list_drafts()
 
     @mcp.tool()
-    async def list_gmail_labels() -> Union[List[Dict[str, str]], Dict[str, str]]:
-        """Lists all labels in the user's mailbox."""
+    async def gmail_list_labels() -> Union[List[Dict[str, str]], Dict[str, str]]:
+        """Lists all labels in the Gmail mailbox."""
         return await workspace_service.gmail_tools.list_labels()
 
     @mcp.tool()
-    async def create_new_label(label_name: str) -> Dict[str, str]:
+    async def gmail_create_label(label_name: str) -> Dict[str, str]:
         """Creates a new label in Gmail."""
         return await workspace_service.gmail_tools.create_label(label_name)
 

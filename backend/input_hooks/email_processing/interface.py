@@ -9,40 +9,45 @@ This allows swapping email providers (Gmail, IMAP, etc.) without changing core e
 EMAIL_TOOL_INTERFACE = {
     # List/fetch emails operation
     "list_emails": [
-        "get_unread_emails",    # Google Workspace MCP
-        "list_messages",        # Generic Gmail API
-        "fetch_emails",         # IMAP MCP
-        "list_inbox_emails"     # Alternative naming
+        "gmail_get_unread_emails",  # Google Workspace MCP (gmail_ prefixed)
+        "get_unread_emails",        # Legacy naming
+        "list_messages",            # Generic Gmail API
+        "fetch_emails",             # IMAP MCP
+        "list_inbox_emails"         # Alternative naming
     ],
-    
-    # Get single email content operation  
+
+    # Get single email content operation
     "get_email": [
-        "read_email_content",   # Google Workspace MCP
-        "get_message",          # Generic Gmail API
-        "fetch_email",          # IMAP MCP
-        "get_email_content"     # Alternative naming
+        "gmail_read_email",         # Google Workspace MCP (gmail_ prefixed)
+        "read_email_content",       # Legacy naming
+        "get_message",              # Generic Gmail API
+        "fetch_email",              # IMAP MCP
+        "get_email_content"         # Alternative naming
     ],
-    
+
     # List email labels/folders operation
     "list_labels": [
-        "list_gmail_labels",    # Google Workspace MCP
-        "list_labels",          # Generic Gmail API
-        "list_folders",         # IMAP MCP
-        "get_labels"            # Alternative naming
+        "gmail_list_labels",        # Google Workspace MCP (gmail_ prefixed)
+        "list_gmail_labels",        # Legacy naming
+        "list_labels",              # Generic Gmail API
+        "list_folders",             # IMAP MCP
+        "get_labels"                # Alternative naming
     ],
-    
+
     # Send email operation (for future use)
     "send_email": [
-        "send_email",           # Google Workspace MCP
-        "compose_email",        # Alternative naming
-        "send_message"          # Generic naming
+        "gmail_send_email",         # Google Workspace MCP (gmail_ prefixed)
+        "send_email",               # Legacy naming
+        "compose_email",            # Alternative naming
+        "send_message"              # Generic naming
     ],
-    
+
     # Mark email as read operation (for future use)
     "mark_read": [
-        "mark_email_as_read",   # Google Workspace MCP
-        "mark_read",            # Generic naming
-        "set_read_status"       # Alternative naming
+        "gmail_mark_as_read",       # Google Workspace MCP (gmail_ prefixed)
+        "mark_email_as_read",       # Legacy naming
+        "mark_read",                # Generic naming
+        "set_read_status"           # Alternative naming
     ]
 }
 
