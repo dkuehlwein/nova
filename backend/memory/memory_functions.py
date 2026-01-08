@@ -225,9 +225,10 @@ async def get_recent_facts(limit: int = 5, group_id: Optional[str] = None) -> Di
 
         async with driver.session() as session:
             # Query edges ordered by created_at descending
+            # Use directed pattern (-[r]->)  to avoid returning each edge twice
             result = await session.run(
                 """
-                MATCH ()-[r:RELATES_TO]-()
+                MATCH ()-[r:RELATES_TO]->()
                 WHERE r.group_id = $group_id
                 RETURN r.uuid as uuid, r.fact as fact,
                        r.source_node_uuid as source_node,
@@ -323,9 +324,10 @@ async def delete_fact(fact_uuid: str) -> Dict[str, Any]:
 
         async with driver.session() as session:
             # Delete the edge by UUID
+            # Use directed pattern to match the edge once
             result = await session.run(
                 """
-                MATCH ()-[r:RELATES_TO {uuid: $uuid}]-()
+                MATCH ()-[r:RELATES_TO {uuid: $uuid}]->()
                 DELETE r
                 RETURN count(r) as deleted
                 """,
