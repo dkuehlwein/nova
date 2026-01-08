@@ -77,6 +77,19 @@ class EmailHookConfig(HookConfig):
     hook_settings: EmailHookSettings = Field(default_factory=EmailHookSettings)
 
 
+class OutlookEmailHookSettings(BaseModel):
+    """Outlook email-specific hook settings."""
+    max_per_fetch: int = Field(default=50, gt=0)
+    folder: str = "inbox"
+    since_date: Optional[str] = None  # Only process emails from this date onwards (YYYY-MM-DD)
+
+
+class OutlookEmailHookConfig(HookConfig):
+    """Configuration for Outlook email input hooks."""
+    hook_type: Literal["outlook_email"] = "outlook_email"
+    hook_settings: OutlookEmailHookSettings = Field(default_factory=OutlookEmailHookSettings)
+
+
 class CalendarHookSettings(BaseModel):
     """Calendar-specific hook settings."""
     calendar_ids: List[str] = ["primary"]
@@ -122,7 +135,7 @@ class CalendarMeetingInfo(BaseModel):
 
 
 # Union type for all possible hook configs
-AnyHookConfig = Union[EmailHookConfig, CalendarHookConfig, HookConfig]
+AnyHookConfig = Union[EmailHookConfig, OutlookEmailHookConfig, CalendarHookConfig, HookConfig]
 
 
 class InputHooksConfig(BaseModel):

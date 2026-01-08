@@ -33,7 +33,9 @@ def setup_tools(outlook_service: OutlookService):
     async def list_emails(
         folder: str = "inbox",
         limit: int = 20,
-        unread_only: bool = False
+        unread_only: bool = False,
+        exclude_processed: bool = False,
+        since_date: Optional[str] = None
     ) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """
         List emails from the specified folder in Outlook.
@@ -42,11 +44,13 @@ def setup_tools(outlook_service: OutlookService):
             folder: Folder name to list emails from (default: inbox)
             limit: Maximum number of emails to return (default: 20)
             unread_only: If True, only return unread emails
+            exclude_processed: If True, exclude emails already processed by Nova (have "Nova Processed" category)
+            since_date: Only return emails received on or after this date (format: YYYY-MM-DD)
 
         Returns:
-            List of email summaries with id, subject, sender, date, and read status
+            List of email summaries with id, subject, sender, date, read status, and processing status
         """
-        return await outlook_service.list_emails(folder, limit, unread_only)
+        return await outlook_service.list_emails(folder, limit, unread_only, exclude_processed, since_date)
 
     @mcp.tool()
     async def read_email(email_id: str) -> Dict[str, Any]:
@@ -106,6 +110,22 @@ def setup_tools(outlook_service: OutlookService):
         """
         return await outlook_service.send_email(recipients, subject, body, cc)
 
+    @mcp.tool()
+    async def mark_email_processed(email_id: str) -> Dict[str, Any]:
+        """
+        Mark an email as processed by Nova by adding the "Nova Processed" category.
+
+        This is used by Nova's input hook system to track which emails have already
+        been converted to tasks, preventing duplicate processing.
+
+        Args:
+            email_id: The unique identifier of the email to mark as processed
+
+        Returns:
+            Status dict with success/error information and the email_id
+        """
+        return await outlook_service.mark_email_processed(email_id)
+
     # === Calendar Tools ===
 
     @mcp.tool()
@@ -136,22 +156,22 @@ def setup_tools(outlook_service: OutlookService):
         return JSONResponse({
             "status": "healthy" if outlook_status["connected"] else "degraded",
             "service": "outlook-mac-mcp-server",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "timestamp": str(datetime.now()),
             "mcp_endpoint": "/mcp",
             "outlook_connected": outlook_status["connected"],
             "outlook_error": outlook_status.get("error"),
-            "tools_count": 5
+            "tools_count": 6
         })
 
     @mcp.custom_route("/tools/count", methods=["GET"])
     async def tools_count(request):
         """Tools count endpoint for Nova integration."""
         return JSONResponse({
-            "tools_count": 5,
-            "email_tools": 4,
+            "tools_count": 6,
+            "email_tools": 5,
             "calendar_tools": 1,
-            "total_tools": 5
+            "total_tools": 6
         })
 
 

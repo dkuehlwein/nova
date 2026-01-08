@@ -5,7 +5,7 @@ Handles all MCP tool interactions for email retrieval.
 """
 import os
 from contextlib import contextmanager
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from config import settings
 from mcp_client import mcp_manager
 from utils.logging import get_logger
@@ -70,9 +70,14 @@ class EmailFetcher:
             if not hook_config.enabled:
                 logger.info("Email hook is disabled")
                 return []
-            
-            # Test MCP connection health
-            await self._health_check()
+
+            # Test MCP connection health - return empty if tools unavailable
+            if not await self._health_check():
+                logger.info(
+                    "Email hook skipped - MCP tools not available",
+                    extra={"data": {"hook_name": hook_config.name}}
+                )
+                return []
             
             # Fetch emails using MCP client
             logger.info(
@@ -154,27 +159,50 @@ class EmailFetcher:
             raise
     
     
-    async def _health_check(self) -> None:
-        """Test MCP connection health by checking available tools."""
+    async def _health_check(self) -> bool:
+        """
+        Test MCP connection health by checking available tools.
+
+        Returns:
+            True if healthy and tools available, False otherwise
+        """
         try:
             tools = await self._get_email_tools()
             if not tools:
-                logger.error("No email tools available from MCP servers")
-                raise RuntimeError("No email tools available")
-            
-            # Quick health check by calling list_labels interface
+                logger.warning(
+                    "No email tools available from MCP servers - email hook will be skipped",
+                    extra={"data": {"available_tools": []}}
+                )
+                return False
+
+            # Check for required tools
+            required_tools = ["list_emails"]
+            missing_tools = [t for t in required_tools if t not in tools]
+            if missing_tools:
+                logger.warning(
+                    "Required email tools not available - email hook will be skipped",
+                    extra={"data": {
+                        "missing_tools": missing_tools,
+                        "available_tools": list(tools.keys())
+                    }}
+                )
+                return False
+
+            # Quick health check by calling list_labels interface (if available)
             if "list_labels" in tools:
                 await self._call_email_tool("list_labels")
                 logger.debug("Email API health check passed")
             else:
-                logger.warning("list_labels tool not available, skipping health check")
-                
+                logger.debug("list_labels tool not available, skipping optional health check")
+
+            return True
+
         except Exception as e:
-            logger.error(
-                "Email API health check failed",
+            logger.warning(
+                "Email API health check failed - email hook will be skipped",
                 extra={"data": {"error": str(e)}}
             )
-            raise
+            return False
     
     async def _get_email_tools(self) -> Dict[str, Any]:
         """Get email-related MCP tools using configurable interface mapping."""
@@ -204,12 +232,21 @@ class EmailFetcher:
         
         return self.mcp_tools
     
-    async def _call_email_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
-        """Call an email MCP tool with the given parameters."""
+    async def _call_email_tool(self, tool_name: str, **kwargs) -> Optional[Dict[str, Any]]:
+        """
+        Call an email MCP tool with the given parameters.
+
+        Returns:
+            Tool result dict, or None if tool not available
+        """
         tools = await self._get_email_tools()
-        
+
         if tool_name not in tools:
-            raise ValueError(f"Email tool '{tool_name}' not available. Available tools: {list(tools.keys())}")
+            logger.warning(
+                f"Email tool '{tool_name}' not available",
+                extra={"data": {"tool_name": tool_name, "available_tools": list(tools.keys())}}
+            )
+            return None
         
         tool = tools[tool_name]
         concrete_tool_name = getattr(tool, 'name', tool_name)

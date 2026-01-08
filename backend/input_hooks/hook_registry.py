@@ -13,7 +13,7 @@ import inspect
 from utils.config_registry import ConfigRegistry  
 from utils.logging import get_logger
 from .base_hook import BaseInputHook
-from .models import InputHooksConfig, HookConfig, AnyHookConfig, EmailHookConfig, CalendarHookConfig
+from .models import InputHooksConfig, HookConfig, AnyHookConfig, EmailHookConfig, CalendarHookConfig, OutlookEmailHookConfig
 
 logger = get_logger("input_hook_registry")
 
@@ -75,6 +75,7 @@ class InputHookRegistry(ConfigRegistry):
             hook_types = {
                 "email": "input_hooks.email_hook.EmailInputHook",
                 "calendar": "input_hooks.calendar_hook.CalendarInputHook",
+                "outlook_email": "input_hooks.outlook_email_hook.OutlookEmailHook",
                 # Future hook types will be added here:
                 # "slack": "input_hooks.slack_hook.SlackInputHook",
             }
@@ -83,6 +84,7 @@ class InputHookRegistry(ConfigRegistry):
             hook_types = {
                 "email": "backend.input_hooks.email_hook.EmailInputHook",
                 "calendar": "backend.input_hooks.calendar_hook.CalendarInputHook",
+                "outlook_email": "backend.input_hooks.outlook_email_hook.OutlookEmailHook",
                 # Future hook types will be added here:
                 # "slack": "backend.input_hooks.slack_hook.SlackInputHook",
             }

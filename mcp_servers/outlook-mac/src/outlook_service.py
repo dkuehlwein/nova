@@ -19,9 +19,13 @@ class OutlookService:
     Uses appscript (Python AppleScript bridge) to control Outlook.
     """
 
+    # Category name used to mark emails as processed by Nova
+    NOVA_PROCESSED_CATEGORY = "Nova Processed"
+
     def __init__(self):
         self._outlook = None
         self._connected = False
+        self._category_ensured = False
         # Don't connect at init - defer to first use to avoid blocking startup
         logger.info("OutlookService initialized (lazy connection)")
 
@@ -75,35 +79,85 @@ class OutlookService:
         self,
         folder: str = "inbox",
         limit: int = 20,
-        unread_only: bool = False
+        unread_only: bool = False,
+        exclude_processed: bool = False,
+        since_date: Optional[str] = None
     ) -> Union[List[Dict[str, Any]], Dict[str, str]]:
-        """List emails from the specified folder."""
+        """List emails from the specified folder.
+
+        Args:
+            folder: Folder to list emails from (default: inbox)
+            limit: Maximum number of emails to return
+            unread_only: Only return unread emails
+            exclude_processed: Exclude emails marked with Nova Processed category
+            since_date: Only return emails received on or after this date (ISO format: YYYY-MM-DD)
+        """
         try:
             if not await self._ensure_connected():
                 return {"error": "Could not connect to Outlook. Is it running?"}
-            
+
             loop = asyncio.get_event_loop()
-            
+            nova_category = self.NOVA_PROCESSED_CATEGORY
+
+            # Parse since_date if provided
+            min_date = None
+            if since_date:
+                try:
+                    min_date = datetime.strptime(since_date, "%Y-%m-%d")
+                    logger.info(f"Filtering emails since {since_date}")
+                except ValueError:
+                    logger.warning(f"Invalid since_date format: {since_date}, expected YYYY-MM-DD")
+
             def _get_emails():
                 # Get the inbox folder
                 # In Outlook for Mac, we access the default account's inbox
                 inbox = self._outlook.inbox
                 messages = inbox.messages()
-                
+
                 results = []
                 count = 0
-                
+
                 for msg in messages:
                     if count >= limit:
                         break
-                    
+
                     try:
                         is_read = msg.is_read()
-                        
+
                         # Skip read messages if unread_only is True
                         if unread_only and is_read:
                             continue
-                        
+
+                        # Get categories and check if processed
+                        categories = []
+                        is_nova_processed = False
+                        try:
+                            msg_categories = msg.categories()
+                            categories = [c.name() for c in msg_categories]
+                            is_nova_processed = nova_category in categories
+                        except Exception as e:
+                            logger.debug(f"Error getting categories: {e}")
+
+                        # Skip processed emails if exclude_processed is True
+                        if exclude_processed and is_nova_processed:
+                            continue
+
+                        # Check date filter if since_date was provided
+                        if min_date:
+                            try:
+                                msg_date = msg.time_received()
+                                # msg_date is a datetime object from appscript
+                                if hasattr(msg_date, 'date'):
+                                    # It's a datetime, compare date portion
+                                    if msg_date.date() < min_date.date():
+                                        continue
+                                elif isinstance(msg_date, datetime):
+                                    if msg_date.date() < min_date.date():
+                                        continue
+                            except Exception as e:
+                                logger.debug(f"Error checking date filter: {e}")
+                                # If we can't parse the date, include the email anyway
+
                         # Get sender info safely
                         try:
                             sender = msg.sender()
@@ -128,25 +182,27 @@ class OutlookService:
                             logger.debug(f"Error extracting sender: {e}")
                             sender_name = "Unknown"
                             sender_email = ""
-                        
+
                         results.append({
                             "id": str(msg.id()),
                             "subject": msg.subject() or "(No Subject)",
                             "sender_name": sender_name,
                             "sender_email": sender_email,
                             "date": str(msg.time_received()),
-                            "is_read": is_read
+                            "is_read": is_read,
+                            "is_nova_processed": is_nova_processed,
+                            "categories": categories
                         })
                         count += 1
                     except Exception as e:
                         logger.debug(f"Error reading message: {e}")
                         continue
-                
+
                 return results
-            
+
             emails = await loop.run_in_executor(None, _get_emails)
             return emails
-            
+
         except Exception as e:
             logger.error(f"Error listing emails: {e}")
             return {"error": f"Failed to list emails: {str(e)}"}
@@ -428,7 +484,7 @@ class OutlookService:
         """Ensure we have a connection to Outlook."""
         if not self._connected:
             return self._connect()
-        
+
         # Verify connection is still alive
         try:
             loop = asyncio.get_event_loop()
@@ -437,3 +493,172 @@ class OutlookService:
         except Exception:
             self._connected = False
             return self._connect()
+
+    async def _ensure_nova_category_exists(self) -> bool:
+        """Ensure the Nova Processed category exists in Outlook."""
+        if self._category_ensured:
+            return True
+
+        try:
+            loop = asyncio.get_event_loop()
+
+            def _create_category():
+                from appscript import k
+
+                # Check if category already exists
+                try:
+                    categories = self._outlook.categories()
+                    for cat in categories:
+                        if cat.name() == self.NOVA_PROCESSED_CATEGORY:
+                            logger.debug(f"Category '{self.NOVA_PROCESSED_CATEGORY}' already exists")
+                            return True
+                except Exception as e:
+                    logger.debug(f"Error checking categories: {e}")
+
+                # Create the category with a distinct color (purple RGB)
+                # Outlook for Mac uses RGB color values, not color constants
+                try:
+                    # Purple color as RGB tuple (matching Manager category style)
+                    purple_rgb = (55769, 27242, 47288)
+                    self._outlook.make(
+                        new=k.category,
+                        with_properties={
+                            k.name: self.NOVA_PROCESSED_CATEGORY,
+                            k.color: purple_rgb
+                        }
+                    )
+                    logger.info(f"Created category '{self.NOVA_PROCESSED_CATEGORY}'")
+                    return True
+                except Exception as e:
+                    # Category might already exist or creation failed
+                    logger.warning(f"Could not create category: {e}")
+                    return True  # Continue anyway, assignment might still work
+
+            await loop.run_in_executor(None, _create_category)
+            self._category_ensured = True
+            return True
+
+        except Exception as e:
+            logger.error(f"Error ensuring category exists: {e}")
+            return False
+
+    async def mark_email_processed(self, email_id: str) -> Dict[str, Any]:
+        """
+        Mark an email as processed by Nova by adding the Nova category.
+
+        Args:
+            email_id: The unique identifier of the email to mark
+
+        Returns:
+            Status dict with success/error information
+        """
+        try:
+            if not await self._ensure_connected():
+                return {"error": "Could not connect to Outlook. Is it running?"}
+
+            # Ensure category exists first
+            await self._ensure_nova_category_exists()
+
+            loop = asyncio.get_event_loop()
+
+            def _mark_processed():
+                from appscript import k
+
+                # Find the message by ID
+                inbox = self._outlook.inbox
+                messages = inbox.messages()
+
+                for msg in messages:
+                    try:
+                        if str(msg.id()) == email_id:
+                            # Get current categories
+                            try:
+                                current_categories = msg.categories()
+                                category_names = [c.name() for c in current_categories]
+                            except Exception:
+                                category_names = []
+
+                            # Check if already marked
+                            if self.NOVA_PROCESSED_CATEGORY in category_names:
+                                return {
+                                    "status": "already_marked",
+                                    "email_id": email_id,
+                                    "message": "Email was already marked as processed"
+                                }
+
+                            # Find the Nova category object
+                            nova_category = None
+                            for cat in self._outlook.categories():
+                                if cat.name() == self.NOVA_PROCESSED_CATEGORY:
+                                    nova_category = cat
+                                    break
+
+                            if nova_category:
+                                # Add the category to the message
+                                # Outlook for Mac uses a different approach - set category directly
+                                new_categories = list(current_categories) + [nova_category]
+                                msg.categories.set(new_categories)
+
+                                return {
+                                    "status": "success",
+                                    "email_id": email_id,
+                                    "message": f"Email marked as processed with category '{self.NOVA_PROCESSED_CATEGORY}'"
+                                }
+                            else:
+                                return {
+                                    "status": "error",
+                                    "email_id": email_id,
+                                    "error": f"Category '{self.NOVA_PROCESSED_CATEGORY}' not found"
+                                }
+                    except Exception as e:
+                        logger.debug(f"Error processing message: {e}")
+                        continue
+
+                return {"error": f"Email with ID {email_id} not found"}
+
+            result = await loop.run_in_executor(None, _mark_processed)
+            return result
+
+        except Exception as e:
+            logger.error(f"Error marking email as processed: {e}")
+            return {"error": f"Failed to mark email as processed: {str(e)}"}
+
+    async def is_email_processed(self, email_id: str) -> bool:
+        """
+        Check if an email has been marked as processed by Nova.
+
+        Args:
+            email_id: The unique identifier of the email to check
+
+        Returns:
+            True if email has the Nova Processed category, False otherwise
+        """
+        try:
+            if not await self._ensure_connected():
+                return False
+
+            loop = asyncio.get_event_loop()
+
+            def _check_processed():
+                inbox = self._outlook.inbox
+                messages = inbox.messages()
+
+                for msg in messages:
+                    try:
+                        if str(msg.id()) == email_id:
+                            try:
+                                current_categories = msg.categories()
+                                category_names = [c.name() for c in current_categories]
+                                return self.NOVA_PROCESSED_CATEGORY in category_names
+                            except Exception:
+                                return False
+                    except Exception:
+                        continue
+
+                return False
+
+            return await loop.run_in_executor(None, _check_processed)
+
+        except Exception as e:
+            logger.error(f"Error checking if email is processed: {e}")
+            return False

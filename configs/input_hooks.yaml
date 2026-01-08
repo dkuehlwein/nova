@@ -27,6 +27,23 @@ hooks:
       label_filter: null  # No label filtering by default
       create_tasks: true  # Duplicate of above, for email processor compatibility
 
+  # Outlook Email hook - creates Nova tasks from Outlook emails
+  # Uses Outlook categories ("Nova Processed") to track which emails have been processed
+  outlook_email:
+    name: "outlook_email"
+    hook_type: "outlook_email"
+    enabled: true
+    polling_interval: 60  # Check every minute
+    queue_name: "hooks"
+    create_tasks: true
+    update_existing_tasks: false  # Emails don't support updates
+
+    # Outlook-specific settings
+    hook_settings:
+      max_per_fetch: 50
+      folder: "inbox"
+      since_date: "2026-01-06"  # Only process emails from Jan 6, 2026 onwards
+
   # Calendar hook - automated meeting preparation
   calendar:
     name: "calendar"
