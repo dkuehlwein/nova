@@ -216,18 +216,33 @@ class OutlookService:
             loop = asyncio.get_event_loop()
             
             def _read_email():
+                from appscript import k
+
                 # Find the message by ID
                 inbox = self._outlook.inbox
                 messages = inbox.messages()
-                
+
                 for msg in messages:
                     try:
                         if str(msg.id()) == email_id:
-                            # Get sender info
+                            # Get sender info safely (same approach as list_emails)
                             try:
                                 sender = msg.sender()
-                                sender_name = sender.name() if hasattr(sender, 'name') else str(sender)
-                                sender_email = sender.address() if hasattr(sender, 'address') else ""
+                                # appscript returns a keyword dict-like object
+                                if isinstance(sender, dict):
+                                    sender_name = sender.get(k.name, "Unknown")
+                                    sender_email = sender.get(k.address, "")
+                                elif hasattr(sender, '__getitem__'):
+                                    # Try dict-style access with appscript keywords
+                                    try:
+                                        sender_name = sender[k.name]
+                                        sender_email = sender[k.address]
+                                    except (KeyError, TypeError):
+                                        sender_name = str(sender)
+                                        sender_email = ""
+                                else:
+                                    sender_name = str(sender)
+                                    sender_email = ""
                             except Exception:
                                 sender_name = "Unknown"
                                 sender_email = ""
