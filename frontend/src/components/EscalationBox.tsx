@@ -47,65 +47,55 @@ export function EscalationBox({
     }
   };
 
-  // Tool approval UI (blue styling, buttons instead of text area)
+  // Tool approval UI - compact inline design with always-visible parameters
   if (escalationType === 'tool_approval_request') {
     return (
-      <div className="my-4 border-2 border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4">
-        <div className="flex items-center space-x-2 mb-3">
-          <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-          <Badge className="bg-blue-100 dark:bg-blue-800/50 text-blue-800 dark:text-blue-200 border-blue-300 dark:border-blue-600">
-            Tool Approval Required
-          </Badge>
-        </div>
-
-        <div className="mb-4">
-          <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">Nova wants to use: {toolName}</h4>
-          <div className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded-md p-3 text-sm">
-            <p className="text-blue-800 dark:text-blue-200 mb-2">Nova is requesting permission to call this tool.</p>
-            {toolArgs && Object.keys(toolArgs).length > 0 && (
-              <details className="mt-2">
-                <summary className="text-xs text-blue-600 dark:text-blue-400 cursor-pointer hover:text-blue-800 dark:hover:text-blue-300">
-                  Show parameters
-                </summary>
-                <pre className="text-xs mt-1 bg-gray-50 dark:bg-gray-900 p-2 rounded border dark:border-gray-700 overflow-x-auto text-gray-800 dark:text-gray-200">
-                  {JSON.stringify(toolArgs, null, 2)}
-                </pre>
-              </details>
-            )}
+      <div className="my-3 border border-blue-200 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg overflow-hidden">
+        {/* Header row with tool name and action buttons */}
+        <div className="flex items-center justify-between px-3 py-2 bg-blue-100/50 dark:bg-blue-800/30 border-b border-blue-200 dark:border-blue-700">
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+              {toolName}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onDeny}
+              disabled={isSubmitting}
+              className="h-7 px-2 text-xs text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-700"
+            >
+              {isSubmitting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Deny"}
+            </Button>
+            <Button
+              size="sm"
+              onClick={onApprove}
+              disabled={isSubmitting}
+              className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isSubmitting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Allow"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onAlwaysAllow}
+              disabled={isSubmitting}
+              className="h-7 px-2 text-xs border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30"
+              title="Add to auto-approved tools list"
+            >
+              {isSubmitting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Always"}
+            </Button>
           </div>
         </div>
 
-        <div className="flex gap-3 flex-wrap">
-          <Button
-            variant="outline"
-            onClick={onDeny}
-            disabled={isSubmitting}
-            className="border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30"
-          >
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Deny
-          </Button>
-          <Button
-            onClick={onApprove}
-            disabled={isSubmitting}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Approve Once
-          </Button>
-          <Button
-            onClick={onAlwaysAllow}
-            disabled={isSubmitting}
-            className="bg-green-600 hover:bg-green-700 text-white"
-          >
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Always Allow
-          </Button>
-        </div>
-
-        <div className="mt-3 text-xs text-blue-600 dark:text-blue-400">
-          Your choice will be remembered. &quot;Always Allow&quot; adds this tool to your approved list.
-        </div>
+        {/* Parameters - always visible */}
+        {toolArgs && Object.keys(toolArgs).length > 0 && (
+          <pre className="text-xs p-2 overflow-x-auto text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-900/30 max-h-32 overflow-y-auto">
+            {JSON.stringify(toolArgs, null, 2)}
+          </pre>
+        )}
       </div>
     )
   }

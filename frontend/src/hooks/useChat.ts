@@ -144,8 +144,8 @@ export function useChat() {
         }>(API_ENDPOINTS.taskChatData(chatId));
 
         // Convert messages to ChatMessage format (with metadata!)
-        // Then merge consecutive assistant messages to match streaming behavior
-        const rawMessages: ChatMessage[] = taskChatData.messages.map((msg, index) => ({
+        // Keep messages separate to preserve the order of thinking -> tool call -> response
+        const chatMessages: ChatMessage[] = taskChatData.messages.map((msg, index) => ({
           id: msg.id || `loaded-msg-${index}`,
           role: msg.sender === 'user' ? 'user' : (msg.sender === 'system' ? 'system' : 'assistant'),
           content: msg.content,
@@ -154,36 +154,6 @@ export function useChat() {
           metadata: msg.metadata || undefined,
           toolCalls: msg.tool_calls || undefined,
         }));
-
-        // Merge consecutive assistant messages (to match streaming behavior where tool calls
-        // and responses are accumulated into a single message)
-        const chatMessages: ChatMessage[] = [];
-        for (const msg of rawMessages) {
-          const lastMsg = chatMessages[chatMessages.length - 1];
-
-          // Merge if both are assistant messages and the current one has no special metadata
-          if (
-            lastMsg &&
-            lastMsg.role === 'assistant' &&
-            msg.role === 'assistant' &&
-            !msg.metadata?.type &&
-            !lastMsg.metadata?.type
-          ) {
-            // Merge content
-            if (msg.content && msg.content.trim()) {
-              lastMsg.content = lastMsg.content
-                ? `${lastMsg.content}\n\n${msg.content}`
-                : msg.content;
-            }
-            // Merge tool calls
-            if (msg.toolCalls && msg.toolCalls.length > 0) {
-              lastMsg.toolCalls = [...(lastMsg.toolCalls || []), ...msg.toolCalls];
-            }
-            // Keep the earlier timestamp
-          } else {
-            chatMessages.push(msg);
-          }
-        }
 
         // Use escalation data from the endpoint (works for all chats now!)
         const pendingEscalation = taskChatData.pending_escalation || null;
@@ -247,6 +217,7 @@ export function useChat() {
         let assistantTimestamp: string | null = null;
         let bufferedToolCalls: Array<{type: 'tool_call' | 'tool_result', data: StreamToolData}> = [];
         let hasReceivedMessageContent = false;
+        let toolCallIndex = 0; // Track tool call index for [[TOOL:N]] markers
 
         // Cancel any ongoing request
         if (abortControllerRef.current) {
@@ -343,14 +314,20 @@ export function useChat() {
                           for (const bufferedEvent of bufferedToolCalls) {
                             if (bufferedEvent.type === 'tool_call') {
                               const toolData = bufferedEvent.data as StreamToolData;
-                              
-                              // Add tool call to the assistant message  
+
+                              // Insert tool marker into content at current position
+                              const marker = `\n\n[[TOOL:${toolCallIndex}]]\n\n`;
+                              assistantContent += marker;
+                              toolCallIndex++;
+
+                              // Add tool call to the assistant message
                               setState(prev => ({
                                 ...prev,
-                                messages: prev.messages.map(msg => 
-                                  msg.id === assistantMessageId 
-                                    ? { 
-                                        ...msg, 
+                                messages: prev.messages.map(msg =>
+                                  msg.id === assistantMessageId
+                                    ? {
+                                        ...msg,
+                                        content: assistantContent,
                                         toolCalls: [
                                           ...(msg.toolCalls || []),
                                           {
@@ -425,13 +402,19 @@ export function useChat() {
                         }
                       }
                       
+                      // Insert tool marker into content at current position
+                      const toolMarker = `\n\n[[TOOL:${toolCallIndex}]]\n\n`;
+                      assistantContent += toolMarker;
+                      toolCallIndex++;
+
                       // Add tool call to the assistant message
                       setState(prev => ({
                         ...prev,
-                        messages: prev.messages.map(msg => 
-                          msg.id === assistantMessageId 
-                            ? { 
-                                ...msg, 
+                        messages: prev.messages.map(msg =>
+                          msg.id === assistantMessageId
+                            ? {
+                                ...msg,
+                                content: assistantContent,
                                 toolCalls: [
                                   ...(msg.toolCalls || []),
                                   {
@@ -480,6 +463,52 @@ export function useChat() {
                       break;
 
                     case 'complete':
+                      // Process any remaining buffered tool calls before completing
+                      if (bufferedToolCalls.length > 0 && assistantMessageId) {
+                        for (const bufferedEvent of bufferedToolCalls) {
+                          if (bufferedEvent.type === 'tool_call') {
+                            const toolData = bufferedEvent.data as StreamToolData;
+                            setState(prev => ({
+                              ...prev,
+                              messages: prev.messages.map(msg =>
+                                msg.id === assistantMessageId
+                                  ? {
+                                      ...msg,
+                                      toolCalls: [
+                                        ...(msg.toolCalls || []),
+                                        {
+                                          tool: toolData.tool,
+                                          args: toolData.args || {},
+                                          timestamp: toolData.timestamp || new Date().toISOString(),
+                                          tool_call_id: toolData.tool_call_id,
+                                        }
+                                      ]
+                                    }
+                                  : msg
+                              ),
+                            }));
+                          } else if (bufferedEvent.type === 'tool_result') {
+                            const resultData = bufferedEvent.data as StreamToolData;
+                            setState(prev => ({
+                              ...prev,
+                              messages: prev.messages.map(msg =>
+                                msg.id === assistantMessageId
+                                  ? {
+                                      ...msg,
+                                      toolCalls: (msg.toolCalls || []).map(toolCall =>
+                                        toolCall.tool_call_id === resultData.tool_call_id
+                                          ? { ...toolCall, result: resultData.result }
+                                          : toolCall
+                                      )
+                                    }
+                                  : msg
+                              ),
+                            }));
+                          }
+                        }
+                        bufferedToolCalls = [];
+                      }
+
                       if (assistantMessageId) {
                         updateMessage(assistantMessageId, {
                           content: assistantContent,
@@ -725,8 +754,8 @@ export function useChat() {
       }>(API_ENDPOINTS.taskChatData(threadId));
 
       // Convert messages to ChatMessage format (with metadata!)
-      // Then merge consecutive assistant messages to match streaming behavior
-      const rawMessages: ChatMessage[] = taskChatData.messages.map((msg, index) => ({
+      // Keep messages separate to preserve the order of thinking -> tool call -> response
+      const chatMessages: ChatMessage[] = taskChatData.messages.map((msg, index) => ({
         id: msg.id || `loaded-msg-${index}`,
         role: msg.sender === 'user' ? 'user' : (msg.sender === 'system' ? 'system' : 'assistant'),
         content: msg.content,
@@ -735,36 +764,6 @@ export function useChat() {
         metadata: msg.metadata || undefined,
         toolCalls: msg.tool_calls || undefined,
       }));
-
-      // Merge consecutive assistant messages (to match streaming behavior where tool calls
-      // and responses are accumulated into a single message)
-      const chatMessages: ChatMessage[] = [];
-      for (const msg of rawMessages) {
-        const lastMsg = chatMessages[chatMessages.length - 1];
-
-        // Merge if both are assistant messages and the current one has no special metadata
-        if (
-          lastMsg &&
-          lastMsg.role === 'assistant' &&
-          msg.role === 'assistant' &&
-          !msg.metadata?.type &&
-          !lastMsg.metadata?.type
-        ) {
-          // Merge content
-          if (msg.content && msg.content.trim()) {
-            lastMsg.content = lastMsg.content
-              ? `${lastMsg.content}\n\n${msg.content}`
-              : msg.content;
-          }
-          // Merge tool calls
-          if (msg.toolCalls && msg.toolCalls.length > 0) {
-            lastMsg.toolCalls = [...(lastMsg.toolCalls || []), ...msg.toolCalls];
-          }
-          // Keep the earlier timestamp
-        } else {
-          chatMessages.push(msg);
-        }
-      }
 
       // Use escalation data from the endpoint
       const pendingEscalation = taskChatData.pending_escalation || null;

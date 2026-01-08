@@ -1,0 +1,54 @@
+# GenAI Training Onboarding Skill Configuration
+# Copy this to config.yaml and fill in your values
+# config.yaml is gitignored - DO NOT commit credentials
+#
+# To test this skill:
+#   cd backend && uv run python skills/genai_training_onboarding/test_skill.py
+
+defaults:
+  # LAM (LDAP Account Manager) settings
+  lam_url: "https://your-lam-server.example.com/lam/templates/account/edit.php"
+
+  # GitLab settings
+  gitlab_url: "https://your-gitlab-server.example.com/gitlab"
+  gitlab_project: "group/project-name"
+  gitlab_access_level: "developer"  # guest, reporter, developer, maintainer
+
+# SSL verification settings
+# WARNING: Disabling SSL verification is a security risk (MITM attacks)
+# Only set verify_ssl to false for internal servers with self-signed certs
+ssl:
+  verify_ssl: true  # Set to false ONLY for self-signed certs in trusted networks
+  ca_bundle: null   # Path to CA bundle file (preferred over disabling verification)
+
+# Credentials - two options:
+#
+# Option 1: Direct credentials (convenient for local dev)
+#   lam_username: "your-username"
+#   lam_password: "your-password"
+#   gitlab_token: "glpat-xxxxx"
+#
+# Option 2: Environment variable names (more secure for production)
+#   lam_username_env: "LAM_USERNAME"  # reads from os.environ["LAM_USERNAME"]
+#   lam_password_env: "LAM_PASSWORD"
+#   gitlab_token_env: "GITLAB_PERSONAL_TOKEN"
+#
+# NOTE: LAM credentials (username/password) are also used for HTTP Basic Auth
+# when accessing GitLab, since the GitLab instance is behind an authenticated
+# Apache proxy. Both LAM credentials AND GitLab PAT are required.
+#
+credentials:
+  # Example using direct credentials:
+  lam_username: "your-username"
+  lam_password: "your-password"
+  gitlab_token: "glpat-your-token"
+
+# Batch processing settings
+batch:
+  delay_between_participants_ms: 1000
+  max_retries: 2
+
+# Timeouts (in seconds)
+timeouts:
+  gitlab_api: 30
+  lam_page_load: 30000  # milliseconds for Playwright

@@ -71,12 +71,25 @@ interface SkillInfo {
   description: string
   author: string
   tags: string[]
+  has_config: boolean
 }
 
 interface SkillsData {
   skills: SkillInfo[]
   count: number
   timestamp: string
+}
+
+interface SkillConfigData {
+  skill_name: string
+  content: string
+  file_path: string
+  last_modified: string
+  size_bytes: number
+}
+
+interface SkillConfigUpdateResponse extends SkillConfigData {
+  message: string
 }
 
 export function useSkills() {
@@ -88,6 +101,40 @@ export function useSkills() {
     staleTime: 5 * 60 * 1000, // 5 minutes - skills don't change often
     refetchOnWindowFocus: false,
     retry: 2
+  })
+}
+
+export function useSkillConfig(skillName: string | null) {
+  return useQuery({
+    queryKey: ['skill-config', skillName],
+    queryFn: async (): Promise<SkillConfigData> => {
+      return await apiRequest(`/api/skills/${skillName}/config`)
+    },
+    enabled: !!skillName, // Only fetch when skill name is provided
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+    retry: 2
+  })
+}
+
+export function useUpdateSkillConfig() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ skillName, content }: { skillName: string; content: string }): Promise<SkillConfigUpdateResponse> => {
+      return await apiRequest(`/api/skills/${skillName}/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ content }),
+        headers: { 'Content-Type': 'application/json' }
+      })
+    },
+    onSuccess: (data, variables) => {
+      // Update the cache with the saved config
+      queryClient.setQueryData(['skill-config', variables.skillName], data)
+    },
+    onError: (error) => {
+      console.error('Failed to update skill config:', error)
+    }
   })
 }
 

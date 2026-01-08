@@ -178,91 +178,115 @@ async def _get_chat_history_with_checkpointer(thread_id: str, checkpointer) -> L
                     }
         
         logger.debug(f"Collected {len(tool_results)} tool results")
-        
+
         # Process the actual conversation messages from LangGraph
-        for i, msg in enumerate(messages):
-            # Process each message type
-            logger.debug(f"Processing message {i}: {type(msg).__name__}")
-            message_timestamp = get_message_timestamp(msg, checkpoint_timestamp)
-            
-            
+        # Group AI messages by "turn" (between user messages) and merge them
+        # A turn consists of: [AIMessage with tool_calls] -> [ToolMessage results] -> [AIMessage with response]
+        # We want to merge these into a single message with tool calls shown inline
+
+        # First, group messages by turn (separated by HumanMessage)
+        turns = []  # List of turns, each turn is a list of messages
+        current_turn = []
+
+        for msg in messages:
             if isinstance(msg, HumanMessage):
-                # Check for explicit metadata (similar to AIMessage handling)
+                if current_turn:
+                    turns.append(current_turn)
+                    current_turn = []
+                turns.append([msg])  # User message is its own "turn"
+            else:
+                current_turn.append(msg)
+
+        if current_turn:
+            turns.append(current_turn)
+
+        # Now process each turn
+        msg_index = 0
+        for turn in turns:
+            if not turn:
+                continue
+
+            first_msg = turn[0]
+
+            if isinstance(first_msg, HumanMessage):
+                # User message turn - single message
+                message_timestamp = get_message_timestamp(first_msg, checkpoint_timestamp)
                 metadata = None
-                if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs.get('metadata'):
-                    metadata = msg.additional_kwargs['metadata']
-                    logger.debug(f"Found user message with explicit metadata type: {metadata.get('type', 'unknown')}")
-                
+                if hasattr(first_msg, 'additional_kwargs') and first_msg.additional_kwargs.get('metadata'):
+                    metadata = first_msg.additional_kwargs['metadata']
+
                 chat_messages.append(ChatMessageDetail(
-                    id=f"{thread_id}-msg-{i}",
+                    id=f"{thread_id}-msg-{msg_index}",
                     sender="user",
-                    content=str(msg.content),
+                    content=str(first_msg.content),
                     created_at=message_timestamp,
                     needs_decision=False,
                     metadata=metadata
                 ))
-                logger.debug(f"Included user message: '{str(msg.content)[:50]}...' with timestamp: {message_timestamp}")
-            elif isinstance(msg, AIMessage):
-                # For AI messages, keep content and tool calls separate (consistent with streaming)
-                ai_content = str(msg.content).strip()
-                
-                # Check if this AI message has tool calls
-                has_tool_calls = hasattr(msg, 'tool_calls') and bool(getattr(msg, 'tool_calls', None))
-                
-                # Prepare tool calls data for frontend (same format as streaming)
-                message_tool_calls = []
-                if has_tool_calls:
-                    tool_calls = getattr(msg, 'tool_calls', [])
-                    logger.debug(f"AI message has {len(tool_calls)} tool calls")
-                    
-                    for tool_call in tool_calls:
-                        tool_name = tool_call.get('name', 'unknown') if isinstance(tool_call, dict) else getattr(tool_call, 'name', 'unknown')
-                        tool_args = tool_call.get('args', {}) if isinstance(tool_call, dict) else getattr(tool_call, 'args', {})
-                        tool_call_id = tool_call.get('id') if isinstance(tool_call, dict) else getattr(tool_call, 'id', None)
-                        
-                        # Create tool call object matching streaming format
-                        tool_call_obj = {
-                            'tool': tool_name,
-                            'args': tool_args,
-                            'timestamp': message_timestamp,
-                            'tool_call_id': tool_call_id
-                        }
-                        
-                        # Add result if available
-                        if tool_call_id and tool_call_id in tool_results:
-                            result = tool_results[tool_call_id]
-                            tool_call_obj['result'] = result['content']
-                        
-                        message_tool_calls.append(tool_call_obj)
-                
-                # Include AI messages with content OR tool calls (consistent with streaming)
-                if (ai_content and ai_content not in ['', 'null', 'None']) or message_tool_calls:
-                    # Check for explicit metadata (consistent approach for all context types)
-                    metadata = None
-                    if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs.get('metadata'):
-                        # Always preserve existing metadata (memory_context, task_context, etc.)
-                        metadata = msg.additional_kwargs['metadata']
-                        logger.debug(f"Found message with explicit metadata type: {metadata.get('type', 'unknown')}")
-                    elif thread_id.startswith("core_agent_task_") and "**Current Task:**" in ai_content:
-                        # Only detect current task introduction (no metadata)
-                        metadata = {
-                            "type": "task_introduction"
-                        }
-                    chat_messages.append(ChatMessageDetail(
-                        id=f"{thread_id}-msg-{i}",
-                        sender="assistant",
-                        content=ai_content or "",  # Allow empty content if there are tool calls
-                        created_at=message_timestamp,
-                        needs_decision=False,
-                        metadata=metadata,
-                        tool_calls=message_tool_calls if message_tool_calls else None
-                    ))
-                    logger.debug(f"Included AI message with content: '{ai_content[:100] if ai_content else 'empty'}...' and {len(message_tool_calls)} tool calls with timestamp: {message_timestamp}")
-                else:
-                    logger.debug(f"Skipped AI message with no content and no tool calls")
+                msg_index += 1
             else:
-                # Skip other message types (ToolMessage, etc.)
-                logger.debug(f"Skipped message type: {type(msg).__name__}")
+                # AI turn - merge all AI messages in this turn
+                # Build content with tool call markers embedded to preserve order
+                # Format: content appears inline, tool calls are marked with [[TOOL:index]]
+                merged_content_parts = []
+                all_tool_calls = []
+                first_timestamp = None
+                turn_metadata = None
+
+                for msg in turn:
+                    if isinstance(msg, AIMessage):
+                        message_timestamp = get_message_timestamp(msg, checkpoint_timestamp)
+                        if first_timestamp is None:
+                            first_timestamp = message_timestamp
+
+                        ai_content = str(msg.content).strip()
+
+                        # Check for metadata
+                        if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs.get('metadata'):
+                            turn_metadata = msg.additional_kwargs['metadata']
+                        elif thread_id.startswith("core_agent_task_") and "**Current Task:**" in ai_content:
+                            turn_metadata = {"type": "task_introduction"}
+
+                        # Add content if present (before tool calls from this message)
+                        if ai_content and ai_content not in ['', 'null', 'None']:
+                            merged_content_parts.append(ai_content)
+
+                        # Add tool call markers after the content from this message
+                        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                            for tool_call in msg.tool_calls:
+                                tool_name = tool_call.get('name', 'unknown') if isinstance(tool_call, dict) else getattr(tool_call, 'name', 'unknown')
+                                tool_args = tool_call.get('args', {}) if isinstance(tool_call, dict) else getattr(tool_call, 'args', {})
+                                tool_call_id = tool_call.get('id') if isinstance(tool_call, dict) else getattr(tool_call, 'id', None)
+
+                                tool_call_obj = {
+                                    'tool': tool_name,
+                                    'args': tool_args,
+                                    'timestamp': message_timestamp,
+                                    'tool_call_id': tool_call_id
+                                }
+
+                                if tool_call_id and tool_call_id in tool_results:
+                                    tool_call_obj['result'] = tool_results[tool_call_id]['content']
+
+                                # Add marker in content for tool call position
+                                tool_index = len(all_tool_calls)
+                                merged_content_parts.append(f"[[TOOL:{tool_index}]]")
+                                all_tool_calls.append(tool_call_obj)
+
+                # Create merged message if there's anything to show
+                if merged_content_parts or all_tool_calls:
+                    merged_content = '\n\n'.join(merged_content_parts)
+
+                    chat_messages.append(ChatMessageDetail(
+                        id=f"{thread_id}-msg-{msg_index}",
+                        sender="assistant",
+                        content=merged_content,
+                        created_at=first_timestamp or checkpoint_timestamp,
+                        needs_decision=False,
+                        metadata=turn_metadata,
+                        tool_calls=all_tool_calls if all_tool_calls else None
+                    ))
+                    msg_index += 1
         
         logger.debug(f"Returning {len(chat_messages)} chat messages (from {len(messages)} total)")
         return chat_messages

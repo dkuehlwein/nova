@@ -244,3 +244,7 @@ llm_models/
 *.gguf
 *.bin
 *.safetensors
+
+# Skill configs with credentials (each skill has config.yaml.example committed)
+backend/skills/*/config.yaml
+.auth_state.json

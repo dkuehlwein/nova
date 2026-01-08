@@ -57,3 +57,33 @@ class SkillNotFoundError(Exception):
 class SkillLoadError(Exception):
     """Raised when a skill fails to load (bad manifest, tools, etc.)."""
     pass
+
+
+# API Models for skill configuration
+
+
+class SkillConfigResponse(BaseModel):
+    """Response model for skill config retrieval."""
+
+    skill_name: str = Field(..., description="Name of the skill")
+    content: str = Field(..., description="Raw YAML content of config file")
+    file_path: str = Field(..., description="Relative path to config file")
+    last_modified: str = Field(..., description="ISO timestamp of last modification")
+    size_bytes: int = Field(..., description="File size in bytes")
+
+
+class SkillConfigUpdateRequest(BaseModel):
+    """Request model for updating skill config."""
+
+    content: str = Field(..., description="Raw YAML content to save")
+
+
+class SkillConfigUpdateResponse(BaseModel):
+    """Response after updating skill config."""
+
+    skill_name: str = Field(..., description="Name of the skill")
+    content: str = Field(..., description="Saved YAML content")
+    file_path: str = Field(..., description="Relative path to config file")
+    last_modified: str = Field(..., description="ISO timestamp of last modification")
+    size_bytes: int = Field(..., description="File size in bytes")
+    message: str = Field(..., description="Status message")

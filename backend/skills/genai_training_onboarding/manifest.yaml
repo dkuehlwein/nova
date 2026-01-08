@@ -1,0 +1,5 @@
+name: genai_training_onboarding
+version: "1.0.0"
+description: "Onboard new participants to the GenAI Training 2026 program. Creates IAM/LDAP accounts and grants GitLab repository access. Use when onboarding people to GenAI training, adding participants to the generative AI course, or setting up accounts for the 2026 GenAI workshop."
+author: nova-team
+tags: [training, onboarding, iam, gitlab]
