@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useEffect, useState } from 'react'
 import useWebSocket, { ReadyState } from 'react-use-websocket'
 import { invalidateQueriesByEvent, updateQueryDataFromEvent, type NovaEvent } from '../lib/queryClient'
 
@@ -25,10 +25,10 @@ const DEFAULT_OPTIONS: Required<Omit<UseNovaWebSocketOptions, 'shouldReconnect'>
   shouldReconnect: (closeEvent: CloseEvent) => boolean
 } = {
   shouldReconnect: () => true,
-  reconnectAttempts: 5,
-  // Exponential backoff: 1s, 2s, 4s, 8s, then cap at 10s
-  reconnectInterval: (attemptNumber: number) => 
-    Math.min(Math.pow(2, attemptNumber) * 1000, 10000),
+  reconnectAttempts: Infinity, // Keep trying forever - user may come back to tab
+  // Exponential backoff: 1s, 2s, 4s, 8s, then cap at 30s
+  reconnectInterval: (attemptNumber: number) =>
+    Math.min(Math.pow(2, attemptNumber) * 1000, 30000),
   debug: false,
   share: true, // Share connection by default for efficiency
 }
@@ -41,24 +41,33 @@ export function useNovaWebSocket(options: UseNovaWebSocketOptions = {}) {
   const messagesReceived = useRef(0)
   const lastNovaMessage = useRef<NovaEvent | null>(null)
 
+  // Reconnect key - changing this forces a new WebSocket connection
+  const [reconnectKey, setReconnectKey] = useState(0)
+
   // Determine WebSocket URL - use NEXT_PUBLIC_API_URL if available
+  // Include reconnectKey in dependency to force new connection when it changes
   const getWebSocketUrl = useCallback(() => {
     if (typeof window === 'undefined') return null
-    
+
+    let baseUrl: string
+
     // Use NEXT_PUBLIC_API_URL if configured (e.g., http://localhost:8000)
     if (process.env.NEXT_PUBLIC_API_URL) {
       const apiUrl = new URL(process.env.NEXT_PUBLIC_API_URL)
       const wsProtocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
-      return `${wsProtocol}//${apiUrl.host}/ws/`
+      baseUrl = `${wsProtocol}//${apiUrl.host}/ws/`
+    } else {
+      // Fallback to window.location with port override for development
+      const { protocol, hostname, port } = window.location
+      const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsPort = process.env.NODE_ENV === 'development' ? '8000' : port
+      baseUrl = `${wsProtocol}//${hostname}:${wsPort}/ws/`
     }
-    
-    // Fallback to window.location with port override for development
-    const { protocol, hostname, port } = window.location
-    const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsPort = process.env.NODE_ENV === 'development' ? '8000' : port
-    
-    return `${wsProtocol}//${hostname}:${wsPort}/ws/`
-  }, [])
+
+    // Add reconnect key as query param to force new connection
+    // This is a workaround for react-use-websocket not having a force reconnect option
+    return reconnectKey > 0 ? `${baseUrl}?r=${reconnectKey}` : baseUrl
+  }, [reconnectKey])
 
   // WebSocket connection with proper options
   const {
@@ -73,6 +82,7 @@ export function useNovaWebSocket(options: UseNovaWebSocketOptions = {}) {
       shouldReconnect: opts.shouldReconnect,
       reconnectAttempts: opts.reconnectAttempts,
       reconnectInterval: opts.reconnectInterval,
+      retryOnError: true, // Retry on error events, not just close events
       share: opts.share,
       onOpen: (event) => {
         connectedAt.current = new Date()
@@ -179,6 +189,33 @@ export function useNovaWebSocket(options: UseNovaWebSocketOptions = {}) {
     typeof window !== 'undefined'
   )
 
+  // Reconnect when tab becomes visible and connection is lost
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const ws = getWebSocket()
+        // Check if connection is dead or closed
+        if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+          if (opts.debug) {
+            console.log('[Nova WebSocket] Tab became visible, connection lost - forcing reconnect')
+          }
+          // Force a new connection by changing the reconnect key
+          // This changes the URL which triggers react-use-websocket to create a new connection
+          setReconnectKey(k => k + 1)
+        } else if (ws.readyState === WebSocket.OPEN) {
+          // Connection is still open, send a ping to verify it's actually alive
+          sendJsonMessage({
+            type: 'ping',
+            timestamp: new Date().toISOString()
+          })
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [getWebSocket, sendJsonMessage, opts.debug, setReconnectKey])
+
   // Connection status helper
   const connectionStatus: ConnectionStatus = {
     [ReadyState.CONNECTING]: 'Connecting',
@@ -210,16 +247,16 @@ export function useNovaWebSocket(options: UseNovaWebSocketOptions = {}) {
     }
   }, [readyState, sendJsonMessage])
 
-  // Manual connection control - simplified
+  // Manual connection control - force a new connection
   const connect = useCallback(() => {
     if (readyState === ReadyState.CLOSED || readyState === ReadyState.UNINSTANTIATED) {
-      // The useWebSocket hook will handle reconnection automatically
-      // based on shouldReconnect option
       if (opts.debug) {
         console.log('[Nova WebSocket] Manual reconnection triggered')
       }
+      // Force a new connection by changing the reconnect key
+      setReconnectKey(k => k + 1)
     }
-  }, [readyState, opts.debug])
+  }, [readyState, opts.debug, setReconnectKey])
 
   // Public API
   return {

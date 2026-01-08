@@ -226,7 +226,6 @@ interface OverviewData {
     time: string
     timestamp: string
     related_task_id?: string
-    related_chat_id?: string
   }>
   system_status: string
 }

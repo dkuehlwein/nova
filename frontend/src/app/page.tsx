@@ -32,7 +32,6 @@ interface ActivityItem {
   time: string;
   timestamp: string;
   related_task_id?: string;
-  related_chat_id?: string;
 }
 
 interface TaskDashboard {

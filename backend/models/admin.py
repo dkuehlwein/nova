@@ -21,7 +21,6 @@ class ActivityItem(BaseModel):
     time: str = Field(..., description="Human readable time (e.g., '5 minutes ago')")
     timestamp: datetime = Field(..., description="Activity timestamp")
     related_task_id: Optional[UUID] = Field(None, description="Related task ID if applicable")
-    related_chat_id: Optional[UUID] = Field(None, description="Related chat ID if applicable")
 
 
 
