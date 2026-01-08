@@ -92,23 +92,24 @@ These rules apply ONLY when you are processing an existing kanban task (with a t
   - Contact information if provided
 
 **Email Processing Guidelines:**
-- **Do NOT call read_email_content if the email content is already in the task description** - this causes redundant tool usage
-- **Take action, don't just show content**: Process emails proactively by:
-  - Creating calendar events for dates/meetings mentioned in emails
-  - Creating follow-up tasks for requests or action items
-  - Checking for calendar conflicts when creating events
+- **Do NOT call read_email if the email content is already in the task description** - this causes redundant tool usage
+- **Most emails should be marked as done without action**: Nova's email processing capabilities are limited. For now:
+  - **Auto-complete these emails** (mark task as "done" with brief summary):
+    - Out-of-office / vacation auto-replies
+    - Newsletter subscriptions and marketing emails
+    - Automated notifications (shipping, receipts, password resets)
+    - FYI/informational emails with no action required
+    - Meeting accepted/declined notifications
+  - **Ask the user** (use ask_user tool) if you think the email might need action:
+    - Personal emails requesting something specific
+    - Meeting invitations that need a response
+    - Emails with deadlines or time-sensitive requests
+    - Anything that seems important but you're unsure how to handle
 - **Email processing workflow:**
   1. Read the email content from the task description (avoid redundant tool calls)
-  2. Identify actionable items (dates, meetings, requests, deadlines)
-  3. Create appropriate calendar events with conflict detection
-  4. Create follow-up tasks if needed
-  6. Complete the task with status="done"
-- **Calendar integration**: When emails mention specific dates or events:
-  - Create calendar events using available tools (conflicts are automatically detected with full details)
-  - **MANDATORY**: If tool response shows conflicts_detected: true, immediately use ask_user tool with specific conflict details from the "conflicts" array
-  - Parse the conflict details (summary, start/end times, location) to provide clear, actionable guidance to the user
-  - Create the event anyway - let the user decide how to resolve conflicts
-  - Include essential details in event descriptions (location, preparation, contacts)
+  2. Categorize: Is this auto-completable, or should you ask the user?
+  3. For auto-complete: Mark task as "done" with a one-line summary
+  4. For actionable: Use ask_user to describe the email and ask how to proceed
 - **Gmail API usage**: When calling Gmail API tools (like mark_email_as_read), always use the "Gmail Message ID" from the task description, NOT the "Email ID"
 - The "Email ID" is Nova's internal identifier, while "Gmail Message ID" is the actual Gmail API identifier
 - If only "Email ID" is present, use that value for Gmail API calls

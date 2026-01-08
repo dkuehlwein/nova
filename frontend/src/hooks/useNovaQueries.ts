@@ -491,6 +491,7 @@ export interface Task {
   tags: string[]
   needs_decision: boolean
   decision_type?: string
+  thread_id?: string
   persons: string[]
   projects: string[]
   comments_count: number

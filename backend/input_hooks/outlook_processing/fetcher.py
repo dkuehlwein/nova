@@ -4,6 +4,7 @@ Outlook email fetching and MCP communication for Nova.
 Handles all MCP tool interactions for Outlook email retrieval via LiteLLM.
 """
 import os
+import httpx
 from contextlib import contextmanager
 from typing import List, Dict, Any, Optional
 from mcp_client import mcp_manager
@@ -54,7 +55,9 @@ class OutlookFetcher:
     # Outlook MCP tool names (as returned by LiteLLM - no prefix)
     TOOL_LIST_EMAILS = "list_emails"
     TOOL_READ_EMAIL = "read_email"
-    TOOL_MARK_PROCESSED = "mark_email_processed"
+
+    # Internal REST endpoint for marking emails (not an MCP tool)
+    OUTLOOK_SERVER_URL = os.environ.get("OUTLOOK_MCP_URL", "http://localhost:9000")
 
     def __init__(self):
         self._tools_cache: Optional[Dict[str, Any]] = None
@@ -182,6 +185,9 @@ class OutlookFetcher:
         Adds the "Nova Processed" category to the email so it won't be
         fetched again in future polling cycles.
 
+        Calls the internal REST endpoint (not an MCP tool) to keep the
+        LLM tool context clean.
+
         Args:
             email_id: The Outlook email ID
 
@@ -189,30 +195,31 @@ class OutlookFetcher:
             True if successfully marked, False otherwise
         """
         try:
-            result = await self._call_outlook_tool(
-                self.TOOL_MARK_PROCESSED,
-                email_id=email_id
-            )
+            url = f"{self.OUTLOOK_SERVER_URL}/internal/mark-processed/{email_id}"
 
-            if isinstance(result, dict):
-                if result.get("status") in ("success", "already_marked"):
-                    logger.info(
-                        f"Marked email as processed in Outlook",
-                        extra={"data": {"email_id": email_id, "status": result.get("status")}}
-                    )
-                    return True
-                elif "error" in result:
-                    logger.error(
-                        f"Failed to mark email as processed",
-                        extra={"data": {"email_id": email_id, "error": result["error"]}}
-                    )
-                    return False
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, timeout=10.0)
+                response.raise_for_status()
+                result = response.json()
+
+            if result.get("status") in ("success", "already_marked"):
+                logger.info(
+                    "Marked email as processed in Outlook",
+                    extra={"data": {"email_id": email_id, "status": result.get("status")}}
+                )
+                return True
+            elif "error" in result:
+                logger.error(
+                    "Failed to mark email as processed",
+                    extra={"data": {"email_id": email_id, "error": result["error"]}}
+                )
+                return False
 
             return True
 
         except Exception as e:
             logger.error(
-                f"Error marking email as processed",
+                "Error marking email as processed",
                 extra={"data": {"email_id": email_id, "error": str(e)}}
             )
             return False

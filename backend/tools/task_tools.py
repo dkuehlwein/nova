@@ -7,9 +7,10 @@ Tasks store email/name strings and use memory for context lookup.
 
 import json
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -48,7 +49,8 @@ async def create_task_tool(
     due_date: str = None,
     tags: List[str] = None,
     person_emails: List[str] = None,
-    project_names: List[str] = None
+    project_names: List[str] = None,
+    config: RunnableConfig = None
 ) -> str:
     """Create a new task with optional person/project references.
 
@@ -61,6 +63,11 @@ async def create_task_tool(
     - When completing an ad-hoc chat request (just do it and respond)
     """
     try:
+        # Extract thread_id from config if available (injected by LangGraph)
+        thread_id: Optional[str] = None
+        if config and hasattr(config, 'configurable') and config.configurable:
+            thread_id = config.configurable.get("thread_id")
+
         # Parse due date
         due_date_obj = None
         if due_date:
@@ -68,7 +75,7 @@ async def create_task_tool(
                 due_date_obj = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
             except ValueError:
                 pass
-        
+
         # Use the API endpoint function with string-based relationships
         task_data = TaskCreate(
             title=title,
@@ -76,9 +83,10 @@ async def create_task_tool(
             due_date=due_date_obj,
             tags=tags or [],
             person_emails=person_emails or [],
-            project_names=project_names or []
+            project_names=project_names or [],
+            thread_id=thread_id
         )
-        
+
         result = await api_create_task(task_data)
         
         # Fetch the actual Task object for formatting

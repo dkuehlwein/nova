@@ -53,17 +53,17 @@ def setup_tools(outlook_service: OutlookService):
         return await outlook_service.list_emails(folder, limit, unread_only, exclude_processed, since_date)
 
     @mcp.tool()
-    async def read_email(email_id: str) -> Dict[str, Any]:
+    async def read_email(email_id: Union[str, int]) -> Dict[str, Any]:
         """
         Read the full content of an email by its ID.
 
         Args:
-            email_id: The unique identifier of the email to read
+            email_id: The unique identifier of the email to read (string or integer)
 
         Returns:
             Full email content including subject, sender, recipients, date, and body
         """
-        return await outlook_service.read_email(email_id)
+        return await outlook_service.read_email(str(email_id))
 
     @mcp.tool()
     async def create_draft(
@@ -110,22 +110,6 @@ def setup_tools(outlook_service: OutlookService):
         """
         return await outlook_service.send_email(recipients, subject, body, cc)
 
-    @mcp.tool()
-    async def mark_email_processed(email_id: str) -> Dict[str, Any]:
-        """
-        Mark an email as processed by Nova by adding the "Nova Processed" category.
-
-        This is used by Nova's input hook system to track which emails have already
-        been converted to tasks, preventing duplicate processing.
-
-        Args:
-            email_id: The unique identifier of the email to mark as processed
-
-        Returns:
-            Status dict with success/error information and the email_id
-        """
-        return await outlook_service.mark_email_processed(email_id)
-
     # === Contact Lookup Tools ===
 
     @mcp.tool()
@@ -170,6 +154,20 @@ def setup_tools(outlook_service: OutlookService):
         """
         return await outlook_service.list_calendar_events(days_ahead, limit, calendar_name)
 
+    # === Internal Endpoints (not exposed as MCP tools) ===
+
+    @mcp.custom_route("/internal/mark-processed/{email_id}", methods=["POST"])
+    async def mark_email_processed_endpoint(request):
+        """
+        Mark an email as processed by Nova (internal endpoint, not an MCP tool).
+
+        Used by the input hook system to prevent duplicate task creation.
+        Not exposed to the LLM to keep the tool context clean.
+        """
+        email_id = request.path_params["email_id"]
+        result = await outlook_service.mark_email_processed(str(email_id))
+        return JSONResponse(result)
+
     # === Health & Info Endpoints ===
 
     @mcp.custom_route("/health", methods=["GET"])
@@ -179,23 +177,23 @@ def setup_tools(outlook_service: OutlookService):
         return JSONResponse({
             "status": "healthy" if outlook_status["connected"] else "degraded",
             "service": "outlook-mac-mcp-server",
-            "version": "1.2.0",
+            "version": "1.3.0",
             "timestamp": str(datetime.now()),
             "mcp_endpoint": "/mcp",
             "outlook_connected": outlook_status["connected"],
             "outlook_error": outlook_status.get("error"),
-            "tools_count": 7
+            "tools_count": 6
         })
 
     @mcp.custom_route("/tools/count", methods=["GET"])
     async def tools_count(request):
         """Tools count endpoint for Nova integration."""
         return JSONResponse({
-            "tools_count": 7,
-            "email_tools": 5,
+            "tools_count": 6,
+            "email_tools": 4,
             "calendar_tools": 1,
             "contact_tools": 1,
-            "total_tools": 7
+            "total_tools": 6
         })
 
 

@@ -23,6 +23,7 @@ class TaskCreate(BaseModel):
     tags: List[str] = Field(default_factory=list, description="Task tags")
     person_emails: List[str] = Field(default_factory=list, description="Assigned person email addresses")
     project_names: List[str] = Field(default_factory=list, description="Associated project names")
+    thread_id: Optional[str] = Field(None, description="Originating chat thread ID")
 
 
 class TaskUpdate(BaseModel):
@@ -58,7 +59,8 @@ class TaskResponse(BaseModel):
     tags: List[str] = Field(default_factory=list, description="Task tags")
     needs_decision: bool = Field(False, description="Whether task needs user decision")
     decision_type: Optional[str] = Field(None, description="Type of decision needed")
-    
+    thread_id: Optional[str] = Field(None, description="Originating chat thread ID")
+
     # Related entities
     persons: List[str] = Field(default_factory=list, description="Assigned person names for UI")
     projects: List[str] = Field(default_factory=list, description="Associated project names for UI")

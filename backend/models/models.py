@@ -2,7 +2,7 @@
 Nova Kanban Database Models
 
 Based on the high-level outline data structures:
-- Task, Person, Project, Chat, Artifact
+- Task, Person, Project, Artifact
 """
 
 from datetime import datetime
@@ -67,10 +67,9 @@ class Task(Base):
     # Relationships
     comments: Mapped[List["TaskComment"]] = relationship("TaskComment", back_populates="task", cascade="all, delete-orphan")
     artifacts: Mapped[List["Artifact"]] = relationship("Artifact", secondary=task_artifact_association, back_populates="tasks")
-    
-    # Optional chat relationship
-    chat_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey('chats.id'))
-    chat: Mapped[Optional["Chat"]] = relationship("Chat", back_populates="tasks")
+
+    # Optional thread_id linking to the originating chat conversation (LangGraph thread)
+    thread_id: Mapped[Optional[str]] = mapped_column(String(255))
 
 
 class TaskComment(Base):
@@ -84,52 +83,6 @@ class TaskComment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     
     task: Mapped["Task"] = relationship("Task", back_populates="comments")
-
-
-class Chat(Base):
-    """Chat model based on high-level outline."""
-    __tablename__ = 'chats'
-
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    
-    # Metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
-    # Optional project name for memory-based lookup
-    project_name: Mapped[Optional[str]] = mapped_column(String(255))
-    
-    # Relationships
-    messages: Mapped[List["ChatMessage"]] = relationship("ChatMessage", back_populates="chat", cascade="all, delete-orphan")
-    tasks: Mapped[List["Task"]] = relationship("Task", back_populates="chat")
-
-
-class ChatMessage(Base):
-    """
-    Chat messages within conversations.
-    
-    Note: We should review LangGraph patterns from agent-chat-ui:
-    https://github.com/langchain-ai/agent-chat-ui
-    
-    This model may need updates to align with LangGraph message structure.
-    """
-    __tablename__ = 'chat_messages'
-
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    chat_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey('chats.id'), nullable=False)
-    sender: Mapped[str] = mapped_column(String(50), nullable=False)  # "user" or "assistant"
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    
-    # Decision support
-    needs_decision: Mapped[bool] = mapped_column(Boolean, default=False)
-    decision_type: Mapped[Optional[str]] = mapped_column(String(100))
-    decision_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
-    
-    # Metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    
-    chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")
 
 
 class Artifact(Base):

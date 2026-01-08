@@ -177,8 +177,8 @@ function KanbanPage() {
 
   const handleTaskChat = (task: Task, e: React.MouseEvent) => {
     e.stopPropagation();
-    // Navigate to chat page with the task's core agent thread
-    const threadId = `core_agent_task_${task.id}`;
+    // Use the originating chat thread if available, otherwise fall back to task-specific thread
+    const threadId = task.thread_id || `core_agent_task_${task.id}`;
     router.push(`/chat?thread=${threadId}&task=${task.id}`);
   };
 

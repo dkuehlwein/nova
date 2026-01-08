@@ -141,39 +141,43 @@ class TestOutlookFetcherUnit:
 
     @pytest.mark.asyncio
     async def test_mark_email_processed_success(self):
-        """Test marking email as processed."""
-        with patch('backend.input_hooks.outlook_processing.fetcher.mcp_manager') as mock_mcp:
-            mark_tool = Mock()
-            mark_tool.name = "mark_email_processed"
-            mark_tool.description = "[outlook_mac] Mark email as processed"
-            mark_tool.arun = AsyncMock(return_value={
+        """Test marking email as processed via REST endpoint."""
+        with patch('backend.input_hooks.outlook_processing.fetcher.httpx.AsyncClient') as mock_client:
+            mock_response = Mock()
+            mock_response.json.return_value = {
                 "status": "success",
                 "email_id": "email_123",
                 "message": "Email marked as processed"
-            })
+            }
+            mock_response.raise_for_status = Mock()
 
-            mock_mcp.get_tools = AsyncMock(return_value=[mark_tool])
+            mock_client_instance = AsyncMock()
+            mock_client_instance.post = AsyncMock(return_value=mock_response)
+            mock_client.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_client.return_value.__aexit__ = AsyncMock(return_value=None)
 
             fetcher = OutlookFetcher()
             result = await fetcher.mark_email_processed("email_123")
 
             assert result is True
-            mark_tool.arun.assert_called_once()
+            mock_client_instance.post.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_mark_email_processed_already_marked(self):
         """Test marking email that's already processed."""
-        with patch('backend.input_hooks.outlook_processing.fetcher.mcp_manager') as mock_mcp:
-            mark_tool = Mock()
-            mark_tool.name = "mark_email_processed"
-            mark_tool.description = "[outlook_mac] Mark email as processed"
-            mark_tool.arun = AsyncMock(return_value={
+        with patch('backend.input_hooks.outlook_processing.fetcher.httpx.AsyncClient') as mock_client:
+            mock_response = Mock()
+            mock_response.json.return_value = {
                 "status": "already_marked",
                 "email_id": "email_123",
                 "message": "Email was already marked as processed"
-            })
+            }
+            mock_response.raise_for_status = Mock()
 
-            mock_mcp.get_tools = AsyncMock(return_value=[mark_tool])
+            mock_client_instance = AsyncMock()
+            mock_client_instance.post = AsyncMock(return_value=mock_response)
+            mock_client.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_client.return_value.__aexit__ = AsyncMock(return_value=None)
 
             fetcher = OutlookFetcher()
             result = await fetcher.mark_email_processed("email_123")
@@ -189,11 +193,7 @@ class TestOutlookFetcherUnit:
             list_tool.description = "[outlook_mac] List emails"
             list_tool.arun = AsyncMock(return_value=[])
 
-            mark_tool = Mock()
-            mark_tool.name = "mark_email_processed"
-            mark_tool.description = "[outlook_mac] Mark email as processed"
-
-            mock_mcp.get_tools = AsyncMock(return_value=[list_tool, mark_tool])
+            mock_mcp.get_tools = AsyncMock(return_value=[list_tool])
 
             fetcher = OutlookFetcher()
             health = await fetcher.health_check()
@@ -249,7 +249,7 @@ class TestOutlookProcessorUnit:
                 # Verify task was created with correct title
                 mock_create_task.assert_called_once()
                 call_kwargs = mock_create_task.call_args[1]
-                assert "Read Outlook Email: Important Email" in call_kwargs["title"]
+                assert "Process Outlook Email: Important Email" in call_kwargs["title"]
                 assert "outlook" in call_kwargs["tags"]
 
     @pytest.mark.asyncio
@@ -365,7 +365,7 @@ class TestOutlookEmailHookUnit:
 
         assert normalized.source_type == "outlook_email"
         assert normalized.source_id == "email_123"
-        assert "Read Outlook Email: Test Subject" in normalized.title
+        assert "Process Outlook Email: Test Subject" in normalized.title
         assert normalized.should_create_task is True
         assert normalized.should_update_existing is False
 

@@ -181,8 +181,8 @@ class OutlookProcessor:
             else:
                 recipients = str(to_recipients) if to_recipients else ""
 
-            # Create task title (per user spec: "Read Outlook Email: {subject}")
-            task_title = f"Read Outlook Email: {subject}"
+            # Create task title - "Process" signals the email content is provided and needs action
+            task_title = f"Process Outlook Email: {subject}"
 
             # Create task description
             task_description = self._format_task_description(

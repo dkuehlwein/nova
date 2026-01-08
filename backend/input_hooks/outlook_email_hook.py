@@ -105,7 +105,7 @@ class OutlookEmailHook(BaseInputHook):
             return NormalizedItem(
                 source_type="outlook_email",
                 source_id=email_id,
-                title=f"Read Outlook Email: {subject}",
+                title=f"Process Outlook Email: {subject}",
                 content=raw_item,
                 created_at=None,  # Outlook dates are strings, handled in processor
                 should_create_task=True,

@@ -158,6 +158,7 @@ class TestOverviewEndpoints:
         mock_task.tags = ["urgent"]
         mock_task.person_emails = []
         mock_task.project_names = []
+        mock_task.thread_id = None
         mock_task.comments = []
         
         mock_result = MagicMock()
@@ -199,12 +200,13 @@ class TestTaskEndpoints:
         mock_task.tags = ["test"]
         mock_task.person_emails = []
         mock_task.project_names = []
+        mock_task.thread_id = None
         mock_task.comments = []
-        
+
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [mock_task]
         mock_session.execute.return_value = mock_result
-        
+
         response = client.get("/api/tasks")
         
         assert response.status_code == 200
@@ -290,6 +292,7 @@ class TestTaskEndpoints:
         mock_task.tags = sample_task_data["tags"]
         mock_task.person_emails = []
         mock_task.project_names = []
+        mock_task.thread_id = None
         
         # Mock the session methods to simulate proper database behavior
         def mock_add(obj):
@@ -334,12 +337,13 @@ class TestTaskEndpoints:
         mock_task.tags = []
         mock_task.person_emails = []
         mock_task.project_names = []
+        mock_task.thread_id = None
         mock_task.comments = []
-        
+
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_task
         mock_session.execute.return_value = mock_result
-        
+
         response = client.get(f"/api/tasks/{task_id}")
         
         assert response.status_code == 200
@@ -383,11 +387,12 @@ class TestTaskEndpoints:
         mock_task.completed_at = None
         mock_task.person_emails = []
         mock_task.project_names = []
+        mock_task.thread_id = None
         mock_task.comments = []
         mock_task.created_at = datetime.now(timezone.utc)
         mock_task.updated_at = datetime.now(timezone.utc)
         mock_task.due_date = None
-        
+
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_task
         mock_session.execute.return_value = mock_result

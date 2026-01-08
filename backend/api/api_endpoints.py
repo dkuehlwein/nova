@@ -18,7 +18,6 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, func, or_, select, text, desc
 from sqlalchemy.orm import selectinload
-from sqlalchemy.ext.asyncio import create_async_engine
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
 
@@ -304,7 +303,8 @@ async def create_task(task_data: TaskCreate):
             due_date=task_data.due_date,
             tags=task_data.tags,
             person_emails=task_data.person_emails,
-            project_names=task_data.project_names
+            project_names=task_data.project_names,
+            thread_id=task_data.thread_id
         )
         
         session.add(task)
@@ -334,6 +334,7 @@ async def create_task(task_data: TaskCreate):
             completed_at=task.completed_at,
             tags=task.tags or [],
             needs_decision=task.status == TaskStatus.NEEDS_REVIEW,
+            thread_id=task.thread_id,
             persons=task.person_emails or [],
             projects=task.project_names or [],
             comments_count=0
@@ -366,6 +367,7 @@ async def get_task(task_id: UUID):
             completed_at=task.completed_at,
             tags=task.tags or [],
             needs_decision=task.status == TaskStatus.NEEDS_REVIEW,
+            thread_id=task.thread_id,
             persons=task.person_emails or [],
             projects=task.project_names or [],
             comments_count=len(task.comments)
@@ -449,6 +451,7 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
             completed_at=task.completed_at,
             tags=task.tags or [],
             needs_decision=task.status == TaskStatus.NEEDS_REVIEW,
+            thread_id=task.thread_id,
             persons=task.person_emails or [],
             projects=task.project_names or [],
             comments_count=len(task.comments)
@@ -498,17 +501,17 @@ async def add_task_completion_to_memory(session, task_id: UUID):
 
 
 async def cleanup_task_chat_data(task_id: str):
-    """Clean up chat data associated with a task."""
+    """Clean up LangGraph checkpointer data associated with a task."""
     logger = logging.getLogger(__name__)
-    
+
     try:
         # Get database URL from settings
         from config import settings
         database_url = settings.DATABASE_URL
-        
+
         # Clean up LangGraph checkpointer data
         thread_id = f"core_agent_task_{task_id}"
-        
+
         try:
             # Create connection pool for checkpointer
             pool = AsyncConnectionPool(
@@ -516,56 +519,17 @@ async def cleanup_task_chat_data(task_id: str):
                 open=False
             )
             await pool.open()
-            
+
             async with pool.connection() as conn:
                 checkpointer = AsyncPostgresSaver(conn)
                 await checkpointer.adelete_thread(thread_id)
                 logger.info(f"✅ Deleted LangGraph thread: {thread_id}")
-            
+
             await pool.close()
-            
+
         except Exception as e:
             logger.warning(f"Failed to delete LangGraph thread {thread_id}: {e}")
-        
-        # Clean up Nova database chat data
-        # Look for chats with IDs that might be related to this task
-        potential_chat_ids = [
-            f"core_agent_task_{task_id}",
-            f"chat-{task_id}",
-            f"task-{task_id}",
-            task_id  # Direct task ID as chat ID
-        ]
-        
-        engine = create_async_engine(database_url)
-        try:
-            async with engine.begin() as conn:
-                for chat_id in potential_chat_ids:
-                    try:
-                        # Delete chat messages first (foreign key constraint)
-                        result = await conn.execute(
-                            text("DELETE FROM chat_messages WHERE chat_id = :chat_id"),
-                            {"chat_id": chat_id}
-                        )
-                        message_count = result.rowcount
-                        
-                        # Delete chat
-                        result = await conn.execute(
-                            text("DELETE FROM chats WHERE id = :chat_id"),
-                            {"chat_id": chat_id}
-                        )
-                        chat_count = result.rowcount
-                        
-                        if message_count > 0 or chat_count > 0:
-                            logger.info(f"✅ Deleted chat {chat_id}: {message_count} messages, {chat_count} chat record")
-                            
-                    except Exception as e:
-                        logger.debug(f"No chat found with ID {chat_id}: {e}")
-                        
-        except Exception as e:
-            logger.warning(f"Failed to clean database chat data for task {task_id}: {e}")
-        finally:
-            await engine.dispose()
-            
+
     except Exception as e:
         logger.error(f"Error during chat cleanup for task {task_id}: {e}")
 

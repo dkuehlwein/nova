@@ -7,7 +7,9 @@ The Outlook MCP server exposes tools via LiteLLM at outlook_mac server.
 Note: LiteLLM returns tools without server prefix. Tool names are:
   - list_emails (not outlook_mac__list_emails)
   - read_email (not outlook_mac__read_email)
-  - mark_email_processed (not outlook_mac__mark_email_processed)
+
+Note: mark_email_processed is NOT an MCP tool - it's an internal REST endpoint
+called directly by the input hook to avoid polluting the LLM's tool context.
 """
 
 # Outlook MCP server name (as registered in LiteLLM config)
@@ -22,9 +24,6 @@ OUTLOOK_TOOL_INTERFACE = {
     # Get single email content by ID
     "get_email": "read_email",
 
-    # Mark email as processed (adds "Nova Processed" category)
-    "mark_processed": "mark_email_processed",
-
     # Calendar events (for future use)
     "list_calendar_events": "list_calendar_events",
 }
@@ -36,9 +35,6 @@ OUTLOOK_TOOL_PARAMETERS = {
         # list_emails uses: folder, limit, unread_only, exclude_processed
     },
     "read_email": {
-        "message_id": "email_id"  # Map generic message_id to Outlook's email_id
-    },
-    "mark_email_processed": {
         "message_id": "email_id"  # Map generic message_id to Outlook's email_id
     },
 }
