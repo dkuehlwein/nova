@@ -22,6 +22,9 @@ class OutlookService:
     # Category name used to mark emails as processed by Nova
     NOVA_PROCESSED_CATEGORY = "Nova Processed"
 
+    # Signature appended to all emails sent by Nova
+    NOVA_EMAIL_SIGNATURE = "\n\n---\nThis email was sent by Nova, an AI assistant."
+
     def __init__(self):
         self._outlook = None
         self._connected = False
@@ -299,9 +302,11 @@ class OutlookService:
         try:
             if not await self._ensure_connected():
                 return {"error": "Could not connect to Outlook. Is it running?"}
-            
+
             loop = asyncio.get_event_loop()
-            
+            # Append Nova signature to identify AI-sent emails
+            signed_body = body + self.NOVA_EMAIL_SIGNATURE
+
             def _create_draft():
                 from appscript import k
 
@@ -310,7 +315,7 @@ class OutlookService:
                     new=k.outgoing_message,
                     with_properties={
                         k.subject: subject,
-                        k.content: body
+                        k.content: signed_body
                     }
                 )
 
@@ -363,6 +368,8 @@ class OutlookService:
                 return "Error: Could not connect to Outlook. Is it running?"
 
             loop = asyncio.get_event_loop()
+            # Append Nova signature to identify AI-sent emails
+            signed_body = body + self.NOVA_EMAIL_SIGNATURE
 
             def _send_email():
                 from appscript import k
@@ -372,7 +379,7 @@ class OutlookService:
                     new=k.outgoing_message,
                     with_properties={
                         k.subject: subject,
-                        k.content: body
+                        k.content: signed_body
                     }
                 )
 
