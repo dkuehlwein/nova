@@ -17,8 +17,10 @@ logger = logging.getLogger(__name__)
 async def search_memory_tool(query: str) -> str:
     """
     Search stored information about people, projects, or past conversations to find relevant context.
-    
-    Use this tool when you need background information before starting tasks or answering questions about people/projects.
+
+    Use this tool when you need background information about people or projects.
+
+    NOTE: Memory is automatically searched on the first message of each conversation.
     """
     try:
         result = await search_memory(query)

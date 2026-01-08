@@ -50,7 +50,16 @@ async def create_task_tool(
     person_emails: List[str] = None,
     project_names: List[str] = None
 ) -> str:
-    """Create a new task with optional person/project references."""
+    """Create a new task with optional person/project references.
+
+    ONLY create tasks when:
+    - The user explicitly asks to create a task
+    - Processing an email that requires follow-up action
+
+    DO NOT create tasks:
+    - Just to track your own work and mark it done
+    - When completing an ad-hoc chat request (just do it and respond)
+    """
     try:
         # Parse due date
         due_date_obj = None
@@ -213,7 +222,17 @@ async def get_tasks_tool(
     project_name: str = None,
     limit: int = 20
 ) -> str:
-    """Get tasks with optional filtering."""
+    """Get tasks with optional filtering.
+
+    ONLY use this tool when:
+    - The user explicitly asks about tasks (e.g., "show me my tasks", "what tasks are pending")
+    - You need to find a specific task_id for an update operation
+
+    DO NOT use this tool to:
+    - Search for context before completing a user request
+    - Check if a task exists before doing something (just do it)
+    - Repeatedly search with different filters
+    """
     async with db_manager.get_session() as session:
         query = select(Task)
         
