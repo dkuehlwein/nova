@@ -181,7 +181,7 @@ function SettingsPageContent() {
             </div>
           </TabsContent>
 
-          <TabsContent value="memory" className="mt-0 max-w-4xl">
+          <TabsContent value="memory" className="mt-0">
             <div className="bg-card border border-border rounded-lg p-6">
               <h2 className="text-lg font-semibold text-foreground mb-4">Memory Management</h2>
               <Suspense fallback={<TabContentLoader>Memory</TabContentLoader>}>

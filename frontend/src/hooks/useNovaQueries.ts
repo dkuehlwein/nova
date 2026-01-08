@@ -636,6 +636,21 @@ interface MemoryHealthResponse {
   error?: string
 }
 
+// Episode types
+interface Episode {
+  uuid: string
+  name: string
+  source_description: string
+  created_at: string
+  content_preview: string
+}
+
+interface EpisodesResponse {
+  episodes: Episode[]
+  count: number
+  success: boolean
+}
+
 // Memory Search Query
 export function useMemorySearch(query: string) {
   return useQuery({
@@ -720,6 +735,41 @@ export function useDeleteMemoryFact() {
     },
     onError: (error) => {
       console.error('Failed to delete memory fact:', error)
+    }
+  })
+}
+
+// Recent Episodes Query (for viewing/deleting raw input events)
+export function useRecentEpisodes(limit: number = 10) {
+  return useQuery({
+    queryKey: ['memory-episodes', limit],
+    queryFn: async (): Promise<EpisodesResponse> => {
+      return await apiRequest(`/api/memory/episodes?limit=${limit}`)
+    },
+    staleTime: 30000, // 30 seconds
+    refetchOnWindowFocus: false,
+    retry: 2
+  })
+}
+
+// Delete Episode Mutation
+export function useDeleteEpisode() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (episodeUuid: string): Promise<MemoryDeleteResponse> => {
+      return await apiRequest(`/api/memory/episodes/${episodeUuid}`, {
+        method: 'DELETE'
+      })
+    },
+    onSuccess: () => {
+      // Invalidate all memory queries since episode deletion affects facts too
+      queryClient.invalidateQueries({ queryKey: ['memory-episodes'] })
+      queryClient.invalidateQueries({ queryKey: ['memory-search'] })
+      queryClient.invalidateQueries({ queryKey: ['memory-recent'] })
+    },
+    onError: (error) => {
+      console.error('Failed to delete episode:', error)
     }
   })
 } 
