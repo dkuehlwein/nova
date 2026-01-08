@@ -172,13 +172,13 @@ async def get_recent_episodes(limit: int = 10, group_id: str = None) -> Dict[str
     try:
         client = await graphiti_manager.get_graphiti_client()
         search_group_id = group_id or settings.MEMORY_GROUP_ID
-        
+
         episodes = await client.retrieve_episodes(
             reference_time=datetime.now(timezone.utc),
             last_n=limit,
             group_ids=[search_group_id]
         )
-        
+
         formatted_episodes = [
             {
                 "uuid": ep.uuid,
@@ -189,13 +189,101 @@ async def get_recent_episodes(limit: int = 10, group_id: str = None) -> Dict[str
             }
             for ep in episodes
         ]
-        
+
         return {
             "success": True,
             "episodes": formatted_episodes,
             "count": len(formatted_episodes)
         }
-        
+
     except Exception as e:
         logger.warning(f"Failed to retrieve recent episodes: {str(e)}")
-        raise MemorySearchError(f"Failed to retrieve episodes: {str(e)}") 
+        raise MemorySearchError(f"Failed to retrieve episodes: {str(e)}")
+
+
+class MemoryDeleteError(Exception):
+    """Raised when memory deletion fails."""
+    pass
+
+
+async def delete_episode(episode_uuid: str) -> Dict[str, Any]:
+    """
+    Delete a memory episode and its associated nodes/edges.
+
+    Args:
+        episode_uuid: UUID of the episode to delete
+
+    Returns:
+        Dict with success status
+
+    Raises:
+        MemoryDeleteError: When delete operation fails
+    """
+    try:
+        client = await graphiti_manager.get_graphiti_client()
+
+        await client.remove_episode(episode_uuid)
+
+        logger.info(f"Deleted memory episode: {episode_uuid}")
+
+        return {
+            "success": True,
+            "deleted_uuid": episode_uuid
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to delete episode {episode_uuid}: {str(e)}")
+        raise MemoryDeleteError(f"Failed to delete episode: {str(e)}")
+
+
+async def delete_fact(fact_uuid: str) -> Dict[str, Any]:
+    """
+    Delete a specific fact/edge from the knowledge graph.
+
+    This directly removes the edge from Neo4j without affecting episodes.
+    Use this to clean up corrupted or incorrect facts.
+
+    Args:
+        fact_uuid: UUID of the fact/edge to delete
+
+    Returns:
+        Dict with success status
+
+    Raises:
+        MemoryDeleteError: When delete operation fails
+    """
+    try:
+        client = await graphiti_manager.get_graphiti_client()
+        driver = client.driver
+
+        async with driver.session() as session:
+            # Delete the edge by UUID
+            result = await session.run(
+                """
+                MATCH ()-[r:RELATES_TO {uuid: $uuid}]-()
+                DELETE r
+                RETURN count(r) as deleted
+                """,
+                uuid=fact_uuid
+            )
+            record = await result.single()
+            deleted_count = record["deleted"] if record else 0
+
+        if deleted_count > 0:
+            logger.info(f"Deleted fact/edge: {fact_uuid}")
+            return {
+                "success": True,
+                "deleted_uuid": fact_uuid,
+                "deleted_count": deleted_count
+            }
+        else:
+            logger.warning(f"No fact found with UUID: {fact_uuid}")
+            return {
+                "success": False,
+                "error": "not_found",
+                "message": f"No fact found with UUID: {fact_uuid}"
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to delete fact {fact_uuid}: {str(e)}")
+        raise MemoryDeleteError(f"Failed to delete fact: {str(e)}") 

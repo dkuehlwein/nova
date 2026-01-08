@@ -9,12 +9,16 @@ import logging
 from fastapi import APIRouter, HTTPException
 from typing import Optional
 
-from memory.memory_functions import search_memory, add_memory, get_recent_episodes
-from memory.memory_functions import MemorySearchError, MemoryAddError
+from memory.memory_functions import (
+    search_memory, add_memory, get_recent_episodes,
+    delete_episode, delete_fact,
+    MemorySearchError, MemoryAddError, MemoryDeleteError
+)
 from models.memory import (
     MemorySearchRequest, MemorySearchResponse,
     MemoryAddRequest, MemoryAddResponse,
-    MemoryEpisodesResponse, MemoryHealthResponse
+    MemoryEpisodesResponse, MemoryHealthResponse,
+    MemoryDeleteResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -108,4 +112,32 @@ async def memory_health_check():
             status="unhealthy",
             neo4j_connected=False,
             error=str(e)
-        ) 
+        )
+
+
+@router.delete("/api/memory/episodes/{episode_uuid}", response_model=MemoryDeleteResponse)
+async def delete_episode_api(episode_uuid: str):
+    """Delete a memory episode and its associated data."""
+    try:
+        result = await delete_episode(episode_uuid)
+        return MemoryDeleteResponse(**result)
+    except MemoryDeleteError as e:
+        logger.warning(f"API memory episode delete failed: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error in memory episode delete: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/api/memory/facts/{fact_uuid}", response_model=MemoryDeleteResponse)
+async def delete_fact_api(fact_uuid: str):
+    """Delete a specific fact/edge from the knowledge graph."""
+    try:
+        result = await delete_fact(fact_uuid)
+        return MemoryDeleteResponse(**result)
+    except MemoryDeleteError as e:
+        logger.warning(f"API memory fact delete failed: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error in memory fact delete: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") 

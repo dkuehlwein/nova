@@ -78,4 +78,13 @@ class MemoryHealthResponse(BaseModel):
     status: str = Field(..., description="Overall health status")
     neo4j_connected: bool = Field(..., description="Neo4j connection status")
     search_functional: Optional[bool] = Field(None, description="Search functionality status")
-    error: Optional[str] = Field(None, description="Error message if unhealthy") 
+    error: Optional[str] = Field(None, description="Error message if unhealthy")
+
+
+class MemoryDeleteResponse(BaseModel):
+    """Response model for memory delete operations."""
+    success: bool = Field(..., description="Whether deletion was successful")
+    deleted_uuid: Optional[str] = Field(None, description="UUID of deleted item")
+    deleted_count: Optional[int] = Field(None, description="Number of items deleted")
+    error: Optional[str] = Field(None, description="Error type if failed")
+    message: Optional[str] = Field(None, description="Additional message") 
