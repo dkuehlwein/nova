@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional
 
 from memory.memory_functions import (
-    search_memory, add_memory, get_recent_episodes,
+    search_memory, add_memory, get_recent_episodes, get_recent_facts,
     delete_episode, delete_fact,
     MemorySearchError, MemoryAddError, MemoryDeleteError
 )
@@ -93,6 +93,27 @@ async def get_episodes_api(limit: int = 10, group_id: Optional[str] = None):
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.error(f"Unexpected error in episodes retrieval: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/api/memory/recent", response_model=MemorySearchResponse)
+async def get_recent_facts_api(limit: int = 5, group_id: Optional[str] = None):
+    """Get the most recent facts from the knowledge graph."""
+    try:
+        result = await get_recent_facts(limit=limit, group_id=group_id)
+
+        return MemorySearchResponse(
+            results=result["results"],
+            count=result["count"],
+            query="",  # No query for recent facts
+            success=True
+        )
+
+    except MemorySearchError as e:
+        logger.warning(f"API recent facts retrieval failed: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error in recent facts retrieval: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

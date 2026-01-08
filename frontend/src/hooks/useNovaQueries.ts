@@ -589,4 +589,137 @@ export function getStatusColor(status: string): string {
     case 'failed': return 'bg-red-700'
     default: return 'bg-gray-500'
   }
+}
+
+// Memory Management Types
+interface MemoryResult {
+  fact: string
+  uuid: string
+  source_node: string
+  target_node: string
+  created_at: string | null
+}
+
+interface MemorySearchResponse {
+  results: MemoryResult[]
+  count: number
+  query: string
+  success: boolean
+}
+
+interface MemoryAddRequest {
+  content: string
+  source_description: string
+  group_id?: string
+}
+
+interface MemoryAddResponse {
+  episode_uuid: string
+  nodes_created: number
+  edges_created: number
+  entities: Array<{ name: string; labels: string[]; uuid: string }>
+  success: boolean
+}
+
+interface MemoryDeleteResponse {
+  success: boolean
+  deleted_uuid?: string
+  deleted_count?: number
+  error?: string
+  message?: string
+}
+
+interface MemoryHealthResponse {
+  status: string
+  neo4j_connected: boolean
+  search_functional?: boolean
+  error?: string
+}
+
+// Memory Search Query
+export function useMemorySearch(query: string) {
+  return useQuery({
+    queryKey: ['memory-search', query],
+    queryFn: async (): Promise<MemorySearchResponse> => {
+      return await apiRequest('/api/memory/search', {
+        method: 'POST',
+        body: JSON.stringify({ query: query || '', limit: 50 }),
+        headers: { 'Content-Type': 'application/json' }
+      })
+    },
+    staleTime: 30000, // 30 seconds
+    refetchOnWindowFocus: false,
+    retry: 2
+  })
+}
+
+// Memory Health Check
+export function useMemoryHealth() {
+  return useQuery({
+    queryKey: ['memory-health'],
+    queryFn: async (): Promise<MemoryHealthResponse> => {
+      return await apiRequest('/api/memory/health')
+    },
+    staleTime: 60000, // 1 minute
+    refetchInterval: 60000, // Poll every minute
+    refetchOnWindowFocus: false,
+    retry: 1
+  })
+}
+
+// Recent Memories Query (for initial display before searching)
+export function useRecentMemories(limit: number = 5) {
+  return useQuery({
+    queryKey: ['memory-recent', limit],
+    queryFn: async (): Promise<MemorySearchResponse> => {
+      return await apiRequest(`/api/memory/recent?limit=${limit}`)
+    },
+    staleTime: 30000, // 30 seconds
+    refetchOnWindowFocus: false,
+    retry: 2
+  })
+}
+
+// Add Memory Mutation
+export function useAddMemory() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (data: MemoryAddRequest): Promise<MemoryAddResponse> => {
+      return await apiRequest('/api/memory/add', {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' }
+      })
+    },
+    onSuccess: () => {
+      // Invalidate memory queries to show new facts
+      queryClient.invalidateQueries({ queryKey: ['memory-search'] })
+      queryClient.invalidateQueries({ queryKey: ['memory-recent'] })
+    },
+    onError: (error) => {
+      console.error('Failed to add memory:', error)
+    }
+  })
+}
+
+// Delete Memory Fact Mutation
+export function useDeleteMemoryFact() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (factUuid: string): Promise<MemoryDeleteResponse> => {
+      return await apiRequest(`/api/memory/facts/${factUuid}`, {
+        method: 'DELETE'
+      })
+    },
+    onSuccess: () => {
+      // Invalidate memory queries to refresh the list
+      queryClient.invalidateQueries({ queryKey: ['memory-search'] })
+      queryClient.invalidateQueries({ queryKey: ['memory-recent'] })
+    },
+    onError: (error) => {
+      console.error('Failed to delete memory fact:', error)
+    }
+  })
 } 

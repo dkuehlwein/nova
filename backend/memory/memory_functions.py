@@ -7,7 +7,7 @@ These functions provide the business logic for Nova's knowledge graph operations
 
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from memory import graphiti_manager
 from memory.graphiti_manager import MemorySearchError, MemoryAddError
@@ -199,6 +199,71 @@ async def get_recent_episodes(limit: int = 10, group_id: str = None) -> Dict[str
     except Exception as e:
         logger.warning(f"Failed to retrieve recent episodes: {str(e)}")
         raise MemorySearchError(f"Failed to retrieve episodes: {str(e)}")
+
+
+async def get_recent_facts(limit: int = 5, group_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Get the most recent facts/edges from the knowledge graph.
+
+    Unlike search, this returns facts ordered by creation time (newest first)
+    regardless of semantic relevance.
+
+    Args:
+        limit: Maximum number of facts to return (default 5)
+        group_id: Memory partition (default from settings)
+
+    Returns:
+        Dict with success status and list of recent facts
+
+    Raises:
+        MemorySearchError: When retrieval fails
+    """
+    try:
+        client = await graphiti_manager.get_graphiti_client()
+        driver = client.driver
+        search_group_id = group_id or settings.MEMORY_GROUP_ID
+
+        async with driver.session() as session:
+            # Query edges ordered by created_at descending
+            result = await session.run(
+                """
+                MATCH ()-[r:RELATES_TO]-()
+                WHERE r.group_id = $group_id
+                RETURN r.uuid as uuid, r.fact as fact,
+                       r.source_node_uuid as source_node,
+                       r.target_node_uuid as target_node,
+                       r.created_at as created_at
+                ORDER BY r.created_at DESC
+                LIMIT $limit
+                """,
+                group_id=search_group_id,
+                limit=limit
+            )
+            records = await result.data()
+
+        formatted_results = [
+            {
+                "fact": record["fact"],
+                "uuid": record["uuid"],
+                "source_node": record["source_node"],
+                "target_node": record["target_node"],
+                "created_at": record["created_at"].isoformat() if record["created_at"] else None
+            }
+            for record in records
+        ]
+
+        logger.debug(f"Retrieved {len(formatted_results)} recent facts")
+
+        return {
+            "success": True,
+            "results": formatted_results,
+            "count": len(formatted_results),
+            "limit": limit
+        }
+
+    except Exception as e:
+        logger.warning(f"Failed to retrieve recent facts: {str(e)}")
+        raise MemorySearchError(f"Failed to retrieve recent facts: {str(e)}")
 
 
 class MemoryDeleteError(Exception):

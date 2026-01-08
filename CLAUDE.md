@@ -107,6 +107,16 @@ Nova is an AI-powered kanban task management system with a dual-agent architectu
 - **Required fields**: timestamp, level, service, message, request_id
 - Pattern: `logger.info("message", extra={"data": {...}})`
 
+### Code Smells to Flag
+
+When working on the codebase, **proactively inform the user** if you notice any signs for bad code. e.g.:
+
+1. **Large files (>500 lines)**: Component/module files exceeding 500 lines should be split into smaller, focused modules
+2. **Mixed concerns**: Files containing multiple unrelated components or mixing UI with business logic
+3. **Duplicate code**: Similar patterns repeated across multiple files that could be abstracted
+4. **Deep nesting**: Components or functions with excessive nesting levels (>3-4 levels)
+5. **God components**: React components doing too many things - should be split by responsibility
+
 ### Directory Structure & Responsibilities
 
 ```

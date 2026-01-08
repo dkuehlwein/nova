@@ -19,6 +19,7 @@ This directory contains Architecture Decision Records documenting significant te
 | [013](013-human-oversight-tool-approval-system.md) | Tool Approval System | Implemented | Human oversight for tool execution |
 | [014](014-pluggable-skills-system.md) | Pluggable Skills System | Proposed | Dynamic workflow/skill loading system |
 | [015](015-litellm-mcp-gateway-migration.md) | LiteLLM MCP Gateway Migration | Implemented | Migrate MCP management to LiteLLM, enable enterprise federation |
+| [016](016-memory-management-ui.md) | Memory Management UI | Implemented | Settings tab for viewing, adding, and deleting memories |
 
 ### Draft ADRs
 
