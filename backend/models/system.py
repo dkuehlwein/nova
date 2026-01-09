@@ -9,11 +9,6 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
-class ServiceRestartRequest(BaseModel):
-    """Optional request body for service restart (currently unused but ready for future params)."""
-    force: bool = Field(False, description="Whether to force restart")
-
-
 class ServiceRestartResponse(BaseModel):
     """Response for service restart operations."""
     service_name: str = Field(..., description="Name of the restarted service")

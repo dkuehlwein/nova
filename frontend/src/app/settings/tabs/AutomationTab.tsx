@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/api";
+import { HooksSection } from "./HooksSection";
 
 export function AutomationTab() {
   const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
@@ -98,6 +99,15 @@ export function AutomationTab() {
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Input Hooks Section */}
+        <div className="space-y-4 border-t border-border pt-6">
+          <h3 className="text-lg font-medium text-foreground">Input Hooks & Schedules</h3>
+          <p className="text-sm text-muted-foreground">
+            Monitor and control Nova&apos;s automated input processing from email, calendar, and other sources.
+          </p>
+          <HooksSection />
         </div>
 
         {/* Memory System Section */}

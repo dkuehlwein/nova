@@ -30,6 +30,7 @@ from api.settings_endpoints import router as user_settings_router
 from api.llm_endpoints import router as llm_router
 from api.tool_permissions_endpoints import router as tool_permissions_router
 from api.skill_endpoints import router as skill_router
+from api.hooks_endpoints import router as hooks_router
 from utils.service_manager import ServiceManager
 from utils.logging import RequestLoggingMiddleware, configure_logging
 from config import settings
@@ -187,6 +188,7 @@ app.include_router(user_settings_router)
 app.include_router(llm_router)
 app.include_router(tool_permissions_router)
 app.include_router(skill_router)
+app.include_router(hooks_router)
 
 
 @app.get("/")

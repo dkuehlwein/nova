@@ -14,7 +14,7 @@ from utils.logging import get_logger
 from services.health_monitor import health_monitor
 
 # Import domain-specific models
-from models.system import ServiceRestartRequest, ServiceRestartResponse
+from models.system import ServiceRestartResponse
 
 logger = get_logger("system-api")
 router = APIRouter(prefix="/api/system", tags=["System Management"])
