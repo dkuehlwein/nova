@@ -725,32 +725,6 @@ export function useChat() {
     setCurrentThreadId(`chat-${Date.now()}`);
   }, [stopStreaming]);
 
-  // Check agent health (manual trigger only)
-  const checkHealth = useCallback(async () => {
-    try {
-      const health = await apiRequest<{
-        status: string;
-        agent_ready: boolean;
-      }>(API_ENDPOINTS.chatHealth);
-
-      setState(prev => ({
-        ...prev,
-        isConnected: health.agent_ready,
-        error: health.agent_ready ? null : 'Agent not ready',
-      }));
-
-      return health;
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to check agent health';
-      setState(prev => ({
-        ...prev,
-        isConnected: false,
-        error: errorMessage,
-      }));
-      throw error;
-    }
-  }, []);
-
   // Test the agent
   const testAgent = useCallback(async () => {
     try {
@@ -1044,7 +1018,6 @@ export function useChat() {
     denyTool, // Deny tool
 
     // Utilities (manual trigger only)
-    checkHealth,
     testAgent,
   };
 } 

@@ -715,12 +715,26 @@ export function useMemorySearch(query: string) {
   })
 }
 
-// Memory Health Check
+// Memory Health Check - uses unified system health endpoint
 export function useMemoryHealth() {
   return useQuery({
     queryKey: ['memory-health'],
     queryFn: async (): Promise<MemoryHealthResponse> => {
-      return await apiRequest('/api/memory/health')
+      // Use unified system health endpoint for neo4j service
+      const response = await apiRequest<{
+        status: string;
+        metadata?: {
+          neo4j_connected?: boolean;
+        };
+        error_message?: string;
+      }>('/api/system/system-health/neo4j')
+
+      // Transform to MemoryHealthResponse format
+      return {
+        status: response.status === 'healthy' ? 'healthy' : 'unhealthy',
+        neo4j_connected: response.metadata?.neo4j_connected ?? response.status === 'healthy',
+        error: response.error_message
+      }
     },
     staleTime: 60000, // 1 minute
     refetchInterval: 60000, // Poll every minute

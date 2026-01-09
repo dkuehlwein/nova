@@ -111,7 +111,7 @@ Frontend (React)                    Backend (FastAPI)              Graphiti/Neo4
 |----------|--------|---------|
 | `/api/memory/search` | POST | Search facts by query |
 | `/api/memory/add` | POST | Add new memory content |
-| `/api/memory/health` | GET | Check system health |
+| `/api/system/system-health/neo4j` | GET | Check memory system health (unified endpoint) |
 | `/api/memory/facts/{uuid}` | DELETE | Delete specific fact |
 | `/api/memory/episodes/{uuid}` | DELETE | Delete episode and related data |
 

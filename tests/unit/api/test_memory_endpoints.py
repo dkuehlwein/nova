@@ -130,43 +130,6 @@ class TestMemoryAddEndpoint:
             assert response.status_code == 503
 
 
-class TestMemoryHealthEndpoint:
-    """Test GET /api/memory/health endpoint."""
-
-    def test_health_check_healthy(self, client):
-        """Test healthy memory system."""
-        mock_result = {
-            "success": True,
-            "results": [],
-            "count": 0,
-            "query": "health check",
-            "limit": 1
-        }
-
-        with patch('backend.api.memory_endpoints.search_memory', new_callable=AsyncMock) as mock_search:
-            mock_search.return_value = mock_result
-
-            response = client.get("/api/memory/health")
-
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "healthy"
-            assert data["neo4j_connected"] is True
-
-    def test_health_check_unhealthy(self, client):
-        """Test unhealthy memory system."""
-        with patch('backend.api.memory_endpoints.search_memory', new_callable=AsyncMock) as mock_search:
-            mock_search.side_effect = Exception("Connection failed")
-
-            response = client.get("/api/memory/health")
-
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "unhealthy"
-            assert data["neo4j_connected"] is False
-            assert "error" in data
-
-
 class TestDeleteEpisodeEndpoint:
     """Test DELETE /api/memory/episodes/{episode_uuid} endpoint."""
 

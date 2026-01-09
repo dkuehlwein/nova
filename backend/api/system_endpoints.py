@@ -121,21 +121,6 @@ async def get_allowed_services() -> Dict[str, Any]:
     }
 
 
-@router.get("/health")
-async def system_health() -> Dict[str, str]:
-    """
-    Simple health check for the system endpoints.
-    
-    Returns:
-        Dict with health status information
-    """
-    return {
-        "status": "healthy",
-        "service": "system-api",
-        "version": "1.0.0"
-    }
-
-
 @router.get("/system-health")
 async def get_unified_system_status(
     force_refresh: bool = False,

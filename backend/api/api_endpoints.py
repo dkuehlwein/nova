@@ -9,22 +9,17 @@ Provides REST API endpoints that match the UI requirements:
 """
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, func, or_, select, text, desc
 from sqlalchemy.orm import selectinload
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from psycopg_pool import AsyncConnectionPool
 
 from database.database import db_manager
 from models.models import (
-    Task, TaskComment, Artifact,
-    TaskStatus
+    Task, TaskComment, TaskStatus
 )
 from utils.redis_manager import publish
 from utils.task_cache import (
@@ -39,7 +34,6 @@ from models.events import create_task_updated_event
 
 # === Import Domain-Specific Pydantic Models ===
 from models.tasks import TaskCreate, TaskUpdate, TaskCommentCreate, TaskResponse
-from models.entities import ArtifactCreate, ArtifactResponse
 from models.admin import ActivityItem, TaskDashboard
 from models.chat import TaskChatMessageCreate
 
@@ -500,38 +494,8 @@ async def add_task_completion_to_memory(session, task_id: UUID):
         logging.warning(f"Failed to update memory for completed task {task_id}: {memory_error}")
 
 
-async def cleanup_task_chat_data(task_id: str):
-    """Clean up LangGraph checkpointer data associated with a task."""
-    logger = logging.getLogger(__name__)
-
-    try:
-        # Get database URL from settings
-        from config import settings
-        database_url = settings.DATABASE_URL
-
-        # Clean up LangGraph checkpointer data
-        thread_id = f"core_agent_task_{task_id}"
-
-        try:
-            # Create connection pool for checkpointer
-            pool = AsyncConnectionPool(
-                database_url,
-                open=False
-            )
-            await pool.open()
-
-            async with pool.connection() as conn:
-                checkpointer = AsyncPostgresSaver(conn)
-                await checkpointer.adelete_thread(thread_id)
-                logger.info(f"✅ Deleted LangGraph thread: {thread_id}")
-
-            await pool.close()
-
-        except Exception as e:
-            logger.warning(f"Failed to delete LangGraph thread {thread_id}: {e}")
-
-    except Exception as e:
-        logger.error(f"Error during chat cleanup for task {task_id}: {e}")
+# Import cleanup function from conversation service to avoid circular dependency
+from services.conversation_service import cleanup_task_chat_data
 
 
 @router.delete("/api/tasks/{task_id}")
@@ -673,7 +637,7 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
     
     try:
         # Get the proper checkpointer from service manager (same as chat endpoints)
-        from api.chat_endpoints import get_checkpointer_from_service_manager
+        from utils.checkpointer_utils import get_checkpointer_from_service_manager
         checkpointer = await get_checkpointer_from_service_manager()
         
         # Get agent with the proper checkpointer - same pattern as chat endpoints

@@ -91,7 +91,7 @@ Neo4j service added to docker-compose:
 | `/api/memory/search` | POST | Search knowledge graph |
 | `/api/memory/add` | POST | Add information to graph |
 | `/api/memory/episodes` | GET | List recent memory episodes |
-| `/api/memory/health` | GET | Check memory system health |
+| `/api/system/system-health/neo4j` | GET | Check memory system health (unified endpoint) |
 
 ## Consequences
 

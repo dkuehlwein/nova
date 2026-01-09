@@ -207,7 +207,6 @@ export const API_ENDPOINTS = {
   taskChatMessage: (id: string) => `/api/tasks/${id}/chat/message`,
   // Chat endpoints
   chatStream: '/chat/stream',
-  chatHealth: '/chat/health',
   chatTools: '/chat/tools',
   chatTest: '/chat/test',
   // Modern chat management endpoints (LangGraph-based)

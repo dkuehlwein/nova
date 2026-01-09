@@ -206,19 +206,7 @@ def mock_dependencies():
 
 class TestChatHealthAndTools:
     """Test basic chat service endpoints."""
-    
-    def test_health_endpoint(self, client):
-        """Test chat health check."""
-        response = client.get("/chat/health")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "status" in data
-        assert "agent_ready" in data
-        assert "timestamp" in data
-        assert data["agent_ready"] is True
-        assert data["status"] == "healthy"
-    
+
     def test_tools_endpoint(self, client):
         """Test tools listing."""
         response = client.get("/chat/tools")

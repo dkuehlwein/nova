@@ -355,7 +355,7 @@ async def test_complete_escalation_workflow():
 
             # Clean up LangGraph checkpoint data (outside session context)
             try:
-                from api.api_endpoints import cleanup_task_chat_data
+                from services.conversation_service import cleanup_task_chat_data
                 await cleanup_task_chat_data(str(task_id))
             except Exception as cleanup_error:
                 logger.warning(f"Failed to cleanup chat data: {cleanup_error}")
@@ -476,7 +476,7 @@ async def test_escalation_flow_monitoring():
 
             # Clean up LangGraph checkpoint data (outside session context)
             try:
-                from api.api_endpoints import cleanup_task_chat_data
+                from services.conversation_service import cleanup_task_chat_data
                 await cleanup_task_chat_data(str(task_id))
             except Exception as cleanup_error:
                 logger.warning(f"Failed to cleanup chat data: {cleanup_error}")
@@ -613,7 +613,7 @@ async def test_multiple_escalation_cycles():
 
             # Clean up LangGraph checkpoint data (outside session context)
             try:
-                from api.api_endpoints import cleanup_task_chat_data
+                from services.conversation_service import cleanup_task_chat_data
                 await cleanup_task_chat_data(str(task_id))
             except Exception as cleanup_error:
                 logger.warning(f"Failed to cleanup chat data: {cleanup_error}")

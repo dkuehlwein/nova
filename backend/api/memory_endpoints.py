@@ -17,8 +17,7 @@ from memory.memory_functions import (
 from models.memory import (
     MemorySearchRequest, MemorySearchResponse,
     MemoryAddRequest, MemoryAddResponse,
-    MemoryEpisodesResponse, MemoryHealthResponse,
-    MemoryDeleteResponse
+    MemoryEpisodesResponse, MemoryDeleteResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -115,25 +114,6 @@ async def get_recent_facts_api(limit: int = 5, group_id: Optional[str] = None):
     except Exception as e:
         logger.error(f"Unexpected error in recent facts retrieval: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.get("/api/memory/health", response_model=MemoryHealthResponse)
-async def memory_health_check():
-    """Check memory system health."""
-    try:
-        # Try a simple search to test connectivity
-        result = await search_memory("health check", limit=1)
-        return MemoryHealthResponse(
-            status="healthy",
-            neo4j_connected=True,
-            search_functional=result["success"]
-        )
-    except Exception as e:
-        return MemoryHealthResponse(
-            status="unhealthy",
-            neo4j_connected=False,
-            error=str(e)
-        )
 
 
 @router.delete("/api/memory/episodes/{episode_uuid}", response_model=MemoryDeleteResponse)
