@@ -59,6 +59,7 @@ class HookResponse(BaseModel):
     """Response model for a single hook."""
     name: str
     hook_type: str
+    display_name: str  # Human-readable name for UI display
     enabled: bool
     polling_interval: int
     status: str = "idle"  # "idle", "running", "error", "disabled"
@@ -151,6 +152,7 @@ async def list_hooks():
             hook_response = HookResponse(
                 name=hook_name,
                 hook_type=config.hook_type,
+                display_name=config.display_name or hook_name,
                 enabled=config.enabled,
                 polling_interval=config.polling_interval,
                 status=_get_hook_status(hook, stats),
@@ -204,6 +206,7 @@ async def get_hook(hook_name: str):
         return HookResponse(
             name=hook_name,
             hook_type=config.hook_type,
+            display_name=config.display_name or hook_name,
             enabled=config.enabled,
             polling_interval=config.polling_interval,
             status=_get_hook_status(hook, stats),

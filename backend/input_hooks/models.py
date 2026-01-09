@@ -48,6 +48,7 @@ class HookConfig(BaseModel):
     """Base configuration for all input hooks."""
     name: str
     hook_type: str
+    display_name: Optional[str] = None  # Human-readable name for UI display
     enabled: bool = True
     polling_interval: int = Field(default=300, gt=0)  # seconds
     queue_name: Optional[str] = None  # defaults to hook name

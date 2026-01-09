@@ -14,6 +14,7 @@ export interface HookStats {
 export interface Hook {
   name: string
   hook_type: string
+  display_name: string
   enabled: boolean
   polling_interval: number
   status: 'idle' | 'running' | 'error' | 'disabled'
@@ -118,18 +119,10 @@ export function useTriggerHook() {
   })
 }
 
-// Helper to format hook type for display
+// Helper to format hook type for display (fallback when display_name not available)
 export function formatHookType(hookType: string): string {
-  switch (hookType) {
-    case 'email':
-      return 'Gmail'
-    case 'outlook_email':
-      return 'Outlook Email'
-    case 'calendar':
-      return 'Calendar'
-    default:
-      return hookType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-  }
+  // Convert snake_case to Title Case as fallback
+  return hookType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
 }
 
 // Helper to format time ago

@@ -201,3 +201,47 @@ async def check_phoenix_health() -> dict:
             "host": settings.PHOENIX_HOST,
             "error": str(e),
         }
+
+
+def get_langchain_trace_id() -> Optional[str]:
+    """Get the current trace ID from LangChain's OpenInference instrumentation.
+
+    This should be called during or after LangChain LLM operations when the
+    instrumentation has created a span context. The trace ID returned will
+    match what Phoenix records for the LangChain operations.
+
+    Returns:
+        Hex-encoded trace ID string (32 characters), or None if not in a traced context
+    """
+    if not _phoenix_initialized:
+        return None
+
+    try:
+        from openinference.instrumentation.langchain import get_current_span
+
+        span = get_current_span()
+        if span:
+            span_context = span.get_span_context()
+            if span_context and span_context.is_valid:
+                return format(span_context.trace_id, '032x')
+        return None
+    except ImportError:
+        logger.debug("openinference.instrumentation.langchain not available")
+        return None
+    except Exception as e:
+        logger.debug(f"Could not get LangChain trace ID: {e}")
+        return None
+
+
+def get_phoenix_trace_url(trace_id: str, project_id: str = "UHJvamVjdDox") -> str:
+    """Generate a Phoenix UI URL for a specific trace.
+
+    Args:
+        trace_id: Hex-encoded trace ID
+        project_id: Phoenix project ID (base64 encoded). Defaults to the "default" project.
+
+    Returns:
+        Full URL to view the trace in Phoenix UI
+    """
+    # Phoenix uses the format: {host}/projects/{project_id}/traces/{trace_id}
+    return f"{settings.PHOENIX_HOST}/projects/{project_id}/traces/{trace_id}"

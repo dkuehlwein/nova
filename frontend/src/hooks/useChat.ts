@@ -21,7 +21,10 @@ export interface ChatMessage {
     collapsible_content?: string;
     is_collapsible?: boolean;
     title?: string;
+    trace_id?: string;
+    phoenix_url?: string;
   };
+  phoenixUrl?: string;
 }
 
 export interface PendingEscalation {
@@ -39,6 +42,7 @@ export interface ChatState {
   error: string | null;
   isConnected: boolean;
   pendingEscalation: PendingEscalation | null;
+  phoenixUrl: string | null;
 }
 
 interface StreamMessageData {
@@ -66,9 +70,21 @@ interface StreamErrorData {
   tool_call_id?: string;
 }
 
+interface StreamStartData {
+  thread_id: string;
+  timestamp: string;
+  trace_id?: string;
+  phoenix_url?: string;
+}
+
+interface StreamTraceData {
+  trace_id?: string;
+  phoenix_url: string;
+}
+
 export interface StreamEvent {
-  type: 'message' | 'tool_call' | 'tool_result' | 'complete' | 'error';
-  data: StreamMessageData | StreamToolData | StreamErrorData | Record<string, unknown>;
+  type: 'start' | 'message' | 'tool_call' | 'tool_result' | 'complete' | 'error' | 'trace_info';
+  data: StreamStartData | StreamMessageData | StreamToolData | StreamErrorData | StreamTraceData | Record<string, unknown>;
 }
 
 export function useChat() {
@@ -78,6 +94,7 @@ export function useChat() {
     error: null,
     isConnected: true, // Start as connected to avoid initial health check
     pendingEscalation: null,
+    phoenixUrl: null,
   });
 
   const [currentThreadId, setCurrentThreadId] = useState(() => `chat-${Date.now()}`);
@@ -130,6 +147,8 @@ export function useChat() {
               type?: string;
               is_collapsible?: boolean;
               title?: string;
+              trace_id?: string;
+              phoenix_url?: string;
             };
             tool_calls?: ToolCall[];
           }>;
@@ -153,6 +172,7 @@ export function useChat() {
           isStreaming: false,
           metadata: msg.metadata || undefined,
           toolCalls: msg.tool_calls || undefined,
+          phoenixUrl: msg.metadata?.phoenix_url,
         }));
 
         // Use escalation data from the endpoint (works for all chats now!)
@@ -266,6 +286,29 @@ export function useChat() {
                   const event: StreamEvent = data;
 
                   switch (event.type) {
+                    case 'start':
+                      // Start event just indicates streaming has begun
+                      // Trace info comes separately via trace_info event
+                      break;
+
+                    case 'trace_info':
+                      // Handle trace info event - update current assistant message with Phoenix URL
+                      const traceData = event.data as StreamTraceData;
+                      if (traceData.phoenix_url) {
+                        // Update conversation-level Phoenix URL
+                        setState(prev => ({
+                          ...prev,
+                          phoenixUrl: traceData.phoenix_url,
+                        }));
+                        // Also update the current assistant message with the Phoenix URL
+                        if (assistantMessageId) {
+                          updateMessage(assistantMessageId, {
+                            phoenixUrl: traceData.phoenix_url,
+                          });
+                        }
+                      }
+                      break;
+
                     case 'message':
                       const messageData = event.data as StreamMessageData;
                       if (messageData.role === 'assistant') {
@@ -676,6 +719,7 @@ export function useChat() {
       error: null,
       isConnected: true, // Keep connected status
       pendingEscalation: null,
+      phoenixUrl: null,
     });
     // Generate a new thread ID for the new chat
     setCurrentThreadId(`chat-${Date.now()}`);
@@ -743,6 +787,8 @@ export function useChat() {
             type?: string;
             is_collapsible?: boolean;
             title?: string;
+            trace_id?: string;
+            phoenix_url?: string;
           };
           tool_calls?: ToolCall[];
         }>;
@@ -763,6 +809,7 @@ export function useChat() {
         isStreaming: false,
         metadata: msg.metadata || undefined,
         toolCalls: msg.tool_calls || undefined,
+        phoenixUrl: msg.metadata?.phoenix_url,
       }));
 
       // Use escalation data from the endpoint
@@ -978,6 +1025,7 @@ export function useChat() {
     error: state.error,
     isConnected: state.isConnected,
     pendingEscalation: state.pendingEscalation,
+    phoenixUrl: state.phoenixUrl,
     threadId: currentThreadId,
 
     // Actions

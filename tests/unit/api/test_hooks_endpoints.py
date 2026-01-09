@@ -117,6 +117,7 @@ class TestHookResponseModel:
         response = HookResponse(
             name="email",
             hook_type="email",
+            display_name="Gmail",
             enabled=True,
             polling_interval=60,
             status="idle",
@@ -128,6 +129,7 @@ class TestHookResponseModel:
         )
 
         assert response.name == "email"
+        assert response.display_name == "Gmail"
         assert response.enabled is True
         assert response.stats.total_runs == 100
 
@@ -136,6 +138,7 @@ class TestHookResponseModel:
         response = HookResponse(
             name="email",
             hook_type="email",
+            display_name="Gmail",
             enabled=True,
             polling_interval=60,
         )
@@ -204,6 +207,7 @@ class TestHooksListResponseModel:
         hook = HookResponse(
             name="email",
             hook_type="email",
+            display_name="Gmail",
             enabled=True,
             polling_interval=60,
         )
@@ -211,3 +215,4 @@ class TestHooksListResponseModel:
 
         assert len(response.hooks) == 1
         assert response.hooks[0].name == "email"
+        assert response.hooks[0].display_name == "Gmail"

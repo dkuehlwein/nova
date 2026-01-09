@@ -97,7 +97,7 @@ function HookCard({ hook }: { hook: Hook }) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h4 className="font-medium text-foreground">{formatHookType(hook.hook_type)}</h4>
+            <h4 className="font-medium text-foreground">{hook.display_name || formatHookType(hook.hook_type)}</h4>
             <StatusIndicator status={hook.status} />
           </div>
           <div className="flex items-center gap-2">
@@ -181,7 +181,7 @@ function HookCard({ hook }: { hook: Hook }) {
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{formatHookType(hook.hook_type)} Settings</DialogTitle>
+            <DialogTitle>{hook.display_name || formatHookType(hook.hook_type)} Settings</DialogTitle>
             <DialogDescription>
               Configure how often this hook runs and other settings.
             </DialogDescription>

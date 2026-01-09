@@ -4,6 +4,7 @@ enable_task_updates: true
 hooks:
   calendar:
     create_tasks: true
+    display_name: Google Calendar
     enabled: false
     hook_settings:
       calendar_ids:
@@ -25,6 +26,7 @@ hooks:
     update_existing_tasks: true
   email:
     create_tasks: true
+    display_name: Gmail
     enabled: false
     hook_settings:
       create_tasks: true
@@ -38,6 +40,7 @@ hooks:
     update_existing_tasks: false
   outlook_email:
     create_tasks: true
+    display_name: Outlook Email
     enabled: true
     hook_settings:
       folder: 2026/Cohort 1

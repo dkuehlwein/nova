@@ -228,6 +228,21 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
         response = await llm_with_tools.ainvoke(messages)
         log_timing("agent_node.llm_invoke", t0, {"messages": len(messages), "prompt_chars": prompt_chars})
 
+        # Capture trace ID from LangChain instrumentation and attach to response metadata
+        from utils.phoenix_integration import get_langchain_trace_id, get_phoenix_trace_url, is_phoenix_enabled
+        trace_id = get_langchain_trace_id()
+        if trace_id and is_phoenix_enabled():
+            phoenix_url = get_phoenix_trace_url(trace_id)
+            # Inject into response's additional_kwargs for persistence
+            if not response.additional_kwargs:
+                response.additional_kwargs = {}
+            response.additional_kwargs["metadata"] = {
+                **response.additional_kwargs.get("metadata", {}),
+                "trace_id": trace_id,
+                "phoenix_url": phoenix_url,
+            }
+            logger.debug(f"Attached Phoenix trace to response: {trace_id}")
+
         log_timing("agent_node.total", node_start)
         return {"messages": [response]}
 

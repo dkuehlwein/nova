@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { Send, AlertTriangle, MessageSquare, Bot, Loader2, StopCircle, Copy, RotateCcw, Check, ThumbsUp, ThumbsDown, Trash2, Link } from "lucide-react";
+import { Send, AlertTriangle, MessageSquare, Bot, Loader2, StopCircle, Copy, RotateCcw, Check, ThumbsUp, ThumbsDown, Trash2, Link, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,6 +55,7 @@ function ChatPage() {
     error,
     isConnected,
     pendingEscalation,
+    phoenixUrl,
     sendMessage,
     clearChat,
     stopStreaming,
@@ -452,6 +453,17 @@ function ChatPage() {
               {msg.isStreaming && (
                 <Loader2 className="h-3 w-3 animate-spin opacity-60" />
               )}
+              {msg.role === "assistant" && msg.phoenixUrl && !msg.isStreaming && (
+                <a
+                  href={msg.phoenixUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="View trace in Phoenix"
+                  className="text-muted-foreground/70 hover:text-foreground transition-colors ml-1"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
             </div>
             <span className={`text-xs ${msg.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
               {formatTimestamp(msg.timestamp)}
@@ -779,6 +791,19 @@ function ChatPage() {
                   <Badge variant="outline" className="text-xs">
                     {userSettings.chat_llm_model}
                   </Badge>
+                )}
+                {phoenixUrl && (
+                  <a
+                    href={phoenixUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="View trace in Phoenix"
+                  >
+                    <Badge variant="outline" className="text-xs cursor-pointer hover:bg-accent flex items-center gap-1">
+                      <ExternalLink className="h-3 w-3" />
+                      Trace
+                    </Badge>
+                  </a>
                 )}
                 {taskInfo && (
                   <Badge variant="secondary" className="text-xs">

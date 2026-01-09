@@ -310,7 +310,7 @@ services:
     volumes:
       # Mount credentials directory instead of individual files
       - ./mcp_servers/google-workspace/credentials:/app/credentials
-    restart: unless-stopped
+    restart: "no"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s

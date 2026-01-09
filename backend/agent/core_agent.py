@@ -19,6 +19,7 @@ from agent.chat_agent import create_chat_agent
 from database.database import db_manager
 from models.models import Task, TaskStatus, TaskComment, AgentStatus, AgentStatusEnum
 from tools.task_tools import update_task_tool
+from utils.phoenix_integration import is_phoenix_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -245,23 +246,26 @@ class CoreAgent:
     async def _process_task(self, task: Task):
         """Process a task with AI."""
         logger.info(f"Processing task {task.id}: {task.title} (current status: {task.status.value})")
-        
+
         # If task is already completed, don't process it again
         if task.status in [TaskStatus.DONE, TaskStatus.FAILED]:
             logger.warning(f"UNEXPECTED: Attempting to process already completed task {task.id} ({task.title}) "
                           f"with status {task.status.value}.")
             return
-        
+
         # Move task to IN_PROGRESS
         await self._move_task_to_in_progress(task)
-        
+
         # Get context
         context = await self._get_context(task)
-        
+
         # Process with AI using LangGraph with unique thread_id for rollback capability
         thread_id = f"core_agent_task_{task.id}"
         config = RunnableConfig(configurable={"thread_id": thread_id})
-        
+
+        # Phoenix URL will be extracted from AIMessage metadata (captured in chat_agent.py)
+        phoenix_url = None
+
         try:
             # Check if thread already has messages (i.e., this is a resumed conversation)
             state = await self.agent.aget_state(config)
@@ -291,7 +295,7 @@ class CoreAgent:
                 
                 # Stream the agent response
                 messages = []
-                
+
                 async for chunk in self.agent.astream(
                     {"messages": task_messages},
                     config=config,
@@ -302,25 +306,32 @@ class CoreAgent:
                         # Handle message nodes
                         if isinstance(node_output, dict) and "messages" in node_output and node_output["messages"]:
                             # Accumulate all messages from the stream
-                            messages.extend(node_output["messages"])
+                            for msg in node_output["messages"]:
+                                messages.append(msg)
+                                # Extract phoenix_url from AIMessage metadata (if present)
+                                if phoenix_url is None and is_phoenix_enabled():
+                                    metadata = getattr(msg, 'additional_kwargs', {}).get('metadata', {})
+                                    if metadata.get('phoenix_url'):
+                                        phoenix_url = metadata['phoenix_url']
+                                        logger.debug(f"Extracted Phoenix URL from message: {phoenix_url}")
                         # Handle interrupt nodes (interrupt data is stored directly in chunk)
                         if node_name == "__interrupt__":
                             interrupt_detected = True
                             interrupt_data = node_output  # This is the interrupt tuple
-               
-            
+
+
             # Handle interrupts first (regardless of messages)
             if interrupt_detected and interrupt_data:
-                await self._handle_interrupt(task, interrupt_data)
+                await self._handle_interrupt(task, interrupt_data, phoenix_url)
                 return
-            
+
             # Extract and save AI response if we have messages
             if messages:
                 ai_response = messages[-1].content if hasattr(messages[-1], 'content') else str(messages[-1])
                 logger.info(f"AI response for task {task.id} ({task.title}): {ai_response[:200]}...")
             else:
                 raise Exception("No response from AI agent")
-                
+
         except Exception as e:
             logger.error(f"AI processing failed for task {task.id} ({task.title}): {e}")
             raise
@@ -440,10 +451,10 @@ class CoreAgent:
         ]
     
     
-    async def _handle_interrupt(self, task: Task, interrupts):
+    async def _handle_interrupt(self, task: Task, interrupts, phoenix_url: Optional[str] = None):
         """
         Unified interrupt handler for both user questions and tool approvals.
-        
+
         Handles all types of human-in-the-loop interrupts:
         - user_question: Agent asking for user input/decisions
         - tool_approval_request: Agent requesting permission to use tools
@@ -455,11 +466,11 @@ class CoreAgent:
                 task_id=str(task.id),
                 status="needs_review"
             )
-            
+
             # Parse interrupt data and determine type
             interrupt_data = self._parse_interrupt_data(interrupts)
             interrupt_type = interrupt_data.get("type", "unknown")
-            
+
             # Generate appropriate comment based on interrupt type
             if interrupt_type == "tool_approval_request":
                 comment = self._create_tool_approval_comment(interrupt_data)
@@ -468,13 +479,17 @@ class CoreAgent:
                 # Handle user_question and unknown types
                 comment = self._create_user_question_comment(interrupt_data)
                 log_message = "user question" if interrupt_type == "user_question" else f"unknown interrupt type '{interrupt_type}' (treated as user question)"
-            
+
+            # Append Phoenix trace URL if available
+            if phoenix_url:
+                comment += f"\n\n[View trace in Phoenix]({phoenix_url})"
+
             # Add the comment
             await update_task_tool(
                 task_id=str(task.id),
                 comment=comment
             )
-            
+
             logger.info(f"Moved task {task.id} ({task.title}) to NEEDS_REVIEW due to {log_message}")
             
         except Exception as e:

@@ -20,6 +20,7 @@ from models.chat import (
     ChatMessageDetail, TaskChatResponse
 )
 from utils.logging import get_logger, log_timing
+from utils.phoenix_integration import is_phoenix_enabled
 
 logger = get_logger(__name__)
 
@@ -523,11 +524,22 @@ async def stream_chat(chat_request: ChatRequest):
         log_timing("total_pre_stream_setup", request_start)
         logger.debug(f"Starting stream for thread_id: {chat_request.thread_id}, resume_from_interrupt: {resume_from_interrupt}")
 
-
         async def generate_response():
             """Generate SSE (Server-Sent Events) response stream."""
             first_token_time = None
             stream_start = time.time()
+            trace_info_sent = False  # Track if we've sent trace info
+
+            # Yield start event
+            start_event = {
+                "type": "start",
+                "data": {
+                    "thread_id": chat_request.thread_id,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            }
+            yield f"data: {json.dumps(start_event)}\n\n"
+
             # Yield memory tool calls first if they exist (for immediate display)
             # Skip memory tool injection if resuming from interrupt
             if not resume_from_interrupt and memory_tool_messages and len(memory_tool_messages) >= 2:
@@ -610,10 +622,26 @@ async def stream_chat(chat_request: ChatRequest):
                             for message in node_output["messages"]:
                                 if isinstance(message, AIMessage):
                                     logger.debug(f"Streaming AI message: {message.content[:50]}...")
-                                    
+
                                     # Generate timestamp for this specific message
                                     timestamp = datetime.now().isoformat()
-                                    
+
+                                    # Extract and send trace info from message metadata (captured in chat_agent.py)
+                                    if not trace_info_sent and is_phoenix_enabled():
+                                        metadata = getattr(message, 'additional_kwargs', {}).get('metadata', {})
+                                        phoenix_url = metadata.get('phoenix_url')
+                                        if phoenix_url:
+                                            trace_event = {
+                                                "type": "trace_info",
+                                                "data": {
+                                                    "phoenix_url": phoenix_url,
+                                                    "trace_id": metadata.get('trace_id'),
+                                                }
+                                            }
+                                            yield f"data: {json.dumps(trace_event)}\n\n"
+                                            trace_info_sent = True
+                                            logger.debug(f"Sent trace_info event: {phoenix_url}")
+
                                     # Send message content as it streams
                                     # Defensive check: ensure content is a string
                                     content = message.content
@@ -623,7 +651,7 @@ async def stream_chat(chat_request: ChatRequest):
                                             content = '\n\n'.join(str(item) for item in content)
                                         else:
                                             content = str(content)
-                                    
+
                                     # Skip empty messages and single punctuation to avoid displaying dots
                                     if content and content.strip() and not (content.strip() in ['.', '!', '?', ':', ';', ',']):
                                         event = {
@@ -632,9 +660,13 @@ async def stream_chat(chat_request: ChatRequest):
                                                 "role": "assistant",
                                                 "content": content,
                                                 "timestamp": timestamp,
-                                                "node": node_name
+                                                "node": node_name,
                                             }
                                         }
+                                        # Include metadata in message event for frontend persistence
+                                        msg_metadata = getattr(message, 'additional_kwargs', {}).get('metadata', {})
+                                        if msg_metadata:
+                                            event["data"]["metadata"] = msg_metadata
                                         yield f"data: {json.dumps(event)}\n\n"
                                 
                                 # Handle tool calls
@@ -700,7 +732,7 @@ async def stream_chat(chat_request: ChatRequest):
                 
                 # Send completion signal (frontend will poll for pending escalations)
                 yield f"data: {json.dumps({'type': 'complete', 'data': {'timestamp': datetime.now().isoformat()}})}\n\n"
-                
+
             except Exception as e:
                 logger.error(f"Error during streaming: {e}")
                 error_event = {
