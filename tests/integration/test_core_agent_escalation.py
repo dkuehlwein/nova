@@ -26,9 +26,8 @@ from uuid import uuid4
 from datetime import datetime
 from sqlalchemy import select, text
 
-# Disable LangSmith tracing to prevent gRPC issues
-os.environ["LANGCHAIN_TRACING_V2"] = "false"
-os.environ["LANGSMITH_TRACING"] = "false"
+# Disable Phoenix observability tracing for tests
+os.environ["PHOENIX_ENABLED"] = "false"
 
 
 # Skip entire module if infrastructure isn't available

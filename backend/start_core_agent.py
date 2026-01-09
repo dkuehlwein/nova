@@ -36,8 +36,9 @@ configure_logging(
     backup_count=settings.LOG_FILE_BACKUP_COUNT
 )
 
-# Configure LangSmith tracing
-os.environ["LANGSMITH_TRACING"] = "true"
+# Initialize Phoenix tracing for LLM observability
+from utils.phoenix_integration import init_phoenix_tracing
+init_phoenix_tracing(service_name="core-agent")
 
 # Global instances
 service_manager = ServiceManager("core-agent")
@@ -122,7 +123,11 @@ async def lifespan(app: FastAPI):
     await service_manager.cleanup_mcp()
     await service_manager.cleanup_database()
     await service_manager.close_pg_pool()
-    
+
+    # Shutdown Phoenix tracing
+    from utils.phoenix_integration import shutdown_phoenix_tracing
+    shutdown_phoenix_tracing()
+
     service_manager.logger.info("Nova Core Agent Service shutdown complete")
 
 

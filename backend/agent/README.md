@@ -27,10 +27,9 @@ GOOGLE_API_KEY="your-google-api-key"
 # Optional
 DATABASE_URL="postgresql://user:password@localhost:5432/nova"  # For persistence
 
-# LangSmith (Optional)
-LANGCHAIN_TRACING_V2="true"
-LANGCHAIN_API_KEY="your-langsmith-api-key"
-LANGCHAIN_PROJECT="nova-agent"
+# Phoenix Observability (Self-Hosted, runs via Docker Compose)
+PHOENIX_ENABLED="true"
+PHOENIX_HOST="http://localhost:6006"
 ```
 
 ### Agent Configuration
@@ -230,12 +229,21 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 ```
 
-### LangSmith Integration
+### Phoenix Observability (Self-Hosted)
 
-For debugging and monitoring:
+For debugging and monitoring, Nova uses Arize Phoenix (self-hosted):
 
 ```bash
-export LANGCHAIN_TRACING_V2="true"
-export LANGCHAIN_API_KEY="your-api-key"
-export LANGCHAIN_PROJECT="nova-debugging"
-``` 
+# Phoenix runs as part of Docker Compose - no API key needed
+export PHOENIX_ENABLED="true"
+export PHOENIX_HOST="http://localhost:6006"
+export PHOENIX_GRPC_PORT="4317"
+
+# Access the Phoenix UI at http://localhost:6006
+```
+
+Phoenix provides:
+- LLM trace visualization
+- Token usage and latency metrics
+- Agent execution graphs
+- No external API calls (fully on-prem) 

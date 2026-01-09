@@ -20,6 +20,7 @@ This directory contains Architecture Decision Records documenting significant te
 | [014](014-pluggable-skills-system.md) | Pluggable Skills System | Proposed | Dynamic workflow/skill loading system |
 | [015](015-litellm-mcp-gateway-migration.md) | LiteLLM MCP Gateway Migration | Implemented | Migrate MCP management to LiteLLM, enable enterprise federation |
 | [016](016-memory-management-ui.md) | Memory Management UI | Implemented | Settings tab for viewing, adding, and deleting memories |
+| [017](017-phoenix-observability-migration.md) | Phoenix Observability Migration | Implemented | Self-hosted LLM tracing with Arize Phoenix |
 
 ### Draft ADRs
 

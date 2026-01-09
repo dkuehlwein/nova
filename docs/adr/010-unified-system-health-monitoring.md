@@ -68,7 +68,8 @@ Implement a **Unified System Health Monitoring Architecture** with:
 
 ### External Services (any down = degraded)
 - MCP servers (dynamic from config)
-- API keys (Google, LangSmith)
+- API keys (Google)
+- Observability (Phoenix)
 
 ## Status Calculation
 

@@ -5,45 +5,12 @@ Handles all MCP tool interactions for Outlook email retrieval via LiteLLM.
 """
 import os
 import httpx
-from contextlib import contextmanager
 from typing import List, Dict, Any, Optional
 from mcp_client import mcp_manager
 from utils.logging import get_logger
+from utils.phoenix_integration import disable_phoenix_tracing
 
 logger = get_logger(__name__)
-
-
-@contextmanager
-def disable_langsmith_tracing():
-    """
-    Temporarily disable LangSmith tracing to prevent email polling from polluting traces.
-
-    Email fetching happens frequently via Celery and doesn't need to be traced.
-    """
-    original_tracing = os.environ.get("LANGCHAIN_TRACING_V2")
-    original_langsmith = os.environ.get("LANGSMITH_TRACING")
-    original_api_key = os.environ.get("LANGCHAIN_API_KEY")
-
-    try:
-        os.environ["LANGCHAIN_TRACING_V2"] = "false"
-        os.environ["LANGSMITH_TRACING"] = "false"
-        os.environ["LANGCHAIN_API_KEY"] = "disabled-for-outlook-fetching"
-        yield
-    finally:
-        if original_tracing is not None:
-            os.environ["LANGCHAIN_TRACING_V2"] = original_tracing
-        else:
-            os.environ.pop("LANGCHAIN_TRACING_V2", None)
-
-        if original_langsmith is not None:
-            os.environ["LANGSMITH_TRACING"] = original_langsmith
-        else:
-            os.environ.pop("LANGSMITH_TRACING", None)
-
-        if original_api_key is not None:
-            os.environ["LANGCHAIN_API_KEY"] = original_api_key
-        else:
-            os.environ.pop("LANGCHAIN_API_KEY", None)
 
 
 class OutlookFetcher:
@@ -325,7 +292,7 @@ class OutlookFetcher:
 
         try:
             # Call with tracing disabled
-            with disable_langsmith_tracing():
+            with disable_phoenix_tracing():
                 result = await tool.arun(kwargs)
 
             # Parse JSON string responses

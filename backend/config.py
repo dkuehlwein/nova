@@ -45,11 +45,11 @@ class Settings(BaseSettings):
     MEMORY_GROUP_ID: str = "nova"
     MEMORY_SEARCH_LIMIT: int = 10
 
-    # LangSmith Configuration
-    LANGCHAIN_TRACING_V2: Optional[str] = "true"
-    LANGCHAIN_ENDPOINT: Optional[str] = "https://api.smith.langchain.com"
-    LANGCHAIN_API_KEY: Optional[SecretStr] = None
-    LANGCHAIN_PROJECT: Optional[str] = None
+    # Phoenix Observability Configuration (Self-Hosted)
+    # Arize Phoenix for LLM tracing and observability
+    PHOENIX_ENABLED: bool = True
+    PHOENIX_HOST: str = "http://localhost:6006"
+    PHOENIX_GRPC_PORT: int = 4317
 
     # Service Ports
     CHAT_AGENT_PORT: int = 8000

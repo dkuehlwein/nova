@@ -45,6 +45,10 @@ configure_logging(
     backup_count=settings.LOG_FILE_BACKUP_COUNT
 )
 
+# Initialize Phoenix tracing for LLM observability
+from utils.phoenix_integration import init_phoenix_tracing
+init_phoenix_tracing(service_name="chat-agent")
+
 # Global instances
 service_manager = ServiceManager("chat-agent")
 
@@ -142,7 +146,11 @@ async def lifespan(app: FastAPI):
     await service_manager.cleanup_memory()    # Add memory cleanup
     await service_manager.close_pg_pool()
     await service_manager.cleanup_database()
-    
+
+    # Shutdown Phoenix tracing
+    from utils.phoenix_integration import shutdown_phoenix_tracing
+    shutdown_phoenix_tracing()
+
     service_manager.logger.info("Nova Backend Server shutdown complete")
 
 

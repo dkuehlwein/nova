@@ -339,9 +339,12 @@ async def get_system_status():
             },
             "api_keys_configured": {
                 "google": bool(app_settings.GOOGLE_API_KEY),
-                "langsmith": bool(app_settings.LANGCHAIN_API_KEY),
                 "huggingface": bool(app_settings.HF_TOKEN),
                 "openrouter": bool(app_settings.OPENROUTER_API_KEY)
+            },
+            "observability": {
+                "phoenix_enabled": app_settings.PHOENIX_ENABLED,
+                "phoenix_host": app_settings.PHOENIX_HOST,
             },
             "google_models_available": bool(app_settings.GOOGLE_API_KEY)  # Indicates if Gemini models should be available
         }
@@ -408,43 +411,6 @@ async def _validate_google_api_key(db_session: AsyncSession, api_key: str, setti
         return {"valid": False, "message": f"Google API key validation failed: {str(e)}", "service": "google"}
 
 
-async def _validate_langsmith_api_key(db_session: AsyncSession, api_key: str, settings) -> dict:
-    """Validate LangSmith API key using requests (sync API)."""
-    from datetime import datetime, timezone
-    try:
-        import requests
-        response = requests.get(
-            "https://api.smith.langchain.com/info",
-            headers={"x-api-key": api_key},
-            timeout=10
-        )
-        
-        now = datetime.now(timezone.utc).isoformat()
-        if response.status_code == 200:
-            await _cache_validation_result(db_session, settings, "langsmith_api_key", {
-                "validated": True,
-                "validated_at": now,
-                "validation_error": None,
-                "last_check": now
-            })
-            return {"valid": True, "message": "LangSmith API key is valid", "service": "langsmith"}
-        else:
-            await _cache_validation_result(db_session, settings, "langsmith_api_key", {
-                "validated": False,
-                "validated_at": None,
-                "validation_error": f"API returned status {response.status_code}",
-                "last_check": now
-            })
-            return {"valid": False, "message": f"LangSmith API key validation failed: {response.status_code}", "service": "langsmith"}
-    except Exception as e:
-        now = datetime.now(timezone.utc).isoformat()
-        await _cache_validation_result(db_session, settings, "langsmith_api_key", {
-            "validated": False,
-            "validated_at": None,
-            "validation_error": str(e),
-            "last_check": now
-        })
-        return {"valid": False, "message": f"LangSmith API key validation failed: {str(e)}", "service": "langsmith"}
 
 
 async def _validate_litellm_master_key(db_session: AsyncSession, api_key: str, settings) -> dict:
@@ -647,7 +613,6 @@ async def validate_api_key(
         # Dispatch to appropriate validation method
         validation_methods = {
             "google_api_key": _validate_google_api_key,
-            "langsmith_api_key": _validate_langsmith_api_key,
             "litellm_master_key": _validate_litellm_master_key,
             "huggingface_api_key": _validate_huggingface_api_key,
             "openrouter_api_key": _validate_openrouter_api_key,
@@ -726,7 +691,6 @@ async def save_api_keys(
         # Key mappings
         key_mappings = {
             "google_api_key": "GOOGLE_API_KEY",
-            "langsmith_api_key": "LANGCHAIN_API_KEY",
             "litellm_master_key": "LITELLM_MASTER_KEY",
             "huggingface_api_key": "HF_TOKEN",
             "openrouter_api_key": "OPENROUTER_API_KEY"
@@ -761,11 +725,11 @@ async def save_api_keys(
             # Update validation status cache to mark keys as configured
             now = datetime.now(timezone.utc).isoformat()
             for key_type in api_keys.keys():
-                if key_type in ["google_api_key", "langsmith_api_key"]:
+                if key_type == "google_api_key":
                     # Mark as configured and previously validated (since we only save validated keys)
                     if key_type not in settings.api_key_validation_status:
                         settings.api_key_validation_status[key_type] = {}
-                    
+
                     settings.api_key_validation_status[key_type].update({
                         "configured": True,
                         "configured_at": now,
@@ -918,89 +882,30 @@ async def get_google_api_status(
         raise HTTPException(status_code=500, detail="Failed to get Google API status")
 
 
-@router.get("/langsmith-api-status")
-async def get_langsmith_api_status(
-    force_refresh: bool = False,
-    session: AsyncSession = Depends(get_db_session)
-):
+@router.get("/phoenix-status")
+async def get_phoenix_status():
     """
-    Get the current status of LangSmith API key and availability.
-    Uses cached validation status unless force_refresh=True.
+    Get the current status of Phoenix observability service.
+    Phoenix is self-hosted and doesn't require API keys.
     """
     try:
         from config import settings as app_settings
-        from database.database import UserSettingsService
-        from datetime import datetime, timezone
-        import requests
-        
-        # Check if API key is configured
-        has_api_key = bool(app_settings.LANGCHAIN_API_KEY)
-        
-        # Get user settings to check cached validation status
-        settings = await UserSettingsService.get_user_settings(session)
-        if not settings:
-            # Create default settings if none exist
-            settings = await UserSettingsService.create_user_settings(session)
-        
-        cached_status = settings.api_key_validation_status.get("langsmith_api_key", {})
-        
-        # Use cached status unless force_refresh is requested or cache is empty
-        if not force_refresh and cached_status and has_api_key:
-            is_valid = cached_status.get("validated", False)
-            last_check = cached_status.get("last_check", "Unknown")
-            
-            logger.info("Using cached LangSmith API validation status", extra={"data": {
-                "cached": True,
-                "valid": is_valid,
-                "last_check": last_check
-            }})
-        else:
-            # Perform real-time validation
-            is_valid = False
-            
-            if has_api_key:
-                logger.info("Performing real-time LangSmith API validation", extra={"data": {"force_refresh": force_refresh}})
-                try:
-                    # Test LangSmith API using minimal permissions endpoint
-                    response = requests.get(
-                        "https://api.smith.langchain.com/info",
-                        headers={"x-api-key": app_settings.LANGCHAIN_API_KEY.get_secret_value()},
-                        timeout=10
-                    )
-                    
-                    is_valid = response.status_code == 200
-                except Exception as e:
-                    logger.warning(f"LangSmith API validation failed: {e}")
-                    is_valid = False
-                
-                # Cache the validation results
-                now = datetime.now(timezone.utc).isoformat()
-                new_status = {
-                    "validated": is_valid,
-                    "validated_at": now if is_valid else cached_status.get("validated_at"),
-                    "validation_error": None if is_valid else "API key validation failed",
-                    "last_check": now
-                }
-                
-                # Update cached status
-                settings.api_key_validation_status["langsmith_api_key"] = new_status
-                # Mark the JSONB field as modified so SQLAlchemy knows to update it
-                flag_modified(settings, "api_key_validation_status")
-                await UserSettingsService.update_user_settings(session, settings)
-                
-                logger.info("Cached LangSmith API validation results", extra={"data": new_status})
-        
+        from utils.phoenix_integration import check_phoenix_health
+
+        # Check Phoenix health
+        health = await check_phoenix_health()
+
         return {
-            "has_langsmith_api_key": has_api_key,
-            "langsmith_api_key_valid": is_valid,
-            "status": "ready" if is_valid else ("configured_invalid" if has_api_key else "not_configured"),
-            "cached": not force_refresh and bool(cached_status),
-            "last_check": cached_status.get("last_check", "Never") if not force_refresh else "Just now"
+            "phoenix_enabled": app_settings.PHOENIX_ENABLED,
+            "phoenix_host": app_settings.PHOENIX_HOST,
+            "phoenix_healthy": health.get("healthy", False),
+            "status": "ready" if health.get("healthy") else ("disabled" if not app_settings.PHOENIX_ENABLED else "unavailable"),
+            "error": health.get("error"),
         }
-        
+
     except Exception as e:
-        logger.error("Failed to get LangSmith API status", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to get LangSmith API status")
+        logger.error("Failed to get Phoenix status", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get Phoenix status")
 
 
 @router.get("/huggingface-api-status")

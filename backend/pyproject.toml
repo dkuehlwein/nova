@@ -43,6 +43,9 @@ dependencies = [
     "docker>=7.0.0",
     "mcp==1.9.1",
     "playwright>=1.40.0",
+    "arize-phoenix>=4.0.0",
+    "openinference-instrumentation-langchain>=0.1.0",
+    "opentelemetry-exporter-otlp>=1.0.0",
 ]
 requires-python = ">=3.13"
 

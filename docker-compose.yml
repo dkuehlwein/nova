@@ -13,6 +13,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/database/init.sql:/docker-entrypoint-initdb.d/init.sql
       - ./database/init-litellm.sql:/docker-entrypoint-initdb.d/init-litellm.sql
+      - ./database/init-phoenix.sql:/docker-entrypoint-initdb.d/init-phoenix.sql
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nova} -d ${POSTGRES_DB:-nova_kanban}" ]
       interval: 10s
@@ -343,10 +344,33 @@ services:
       timeout: 10s
       retries: 3
 
+  # Arize Phoenix - LLM Observability (Self-Hosted)
+  phoenix:
+    container_name: nova-phoenix
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "6006:6006"   # Web UI
+      - "4317:4317"   # OTLP gRPC endpoint
+    environment:
+      - PHOENIX_WORKING_DIR=/mnt/data
+      - PHOENIX_SQL_DATABASE_URL=postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_password}@postgres:5432/phoenix
+    volumes:
+      - phoenix_data:/mnt/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:6006" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   neo4j_data:
   redis_data:
+  phoenix_data:
 
 
 networks:

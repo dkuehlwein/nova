@@ -25,11 +25,8 @@ BACKEND_PATH = PROJECT_ROOT / "backend"
 if str(BACKEND_PATH) not in sys.path:
     sys.path.insert(0, str(BACKEND_PATH))
 
-# Disable LangSmith tracing for tests to avoid noise and gRPC connection issues
-os.environ["LANGSMITH_TRACING"] = "false"
-os.environ["LANGCHAIN_TRACING_V2"] = "false"
-os.environ["LANGCHAIN_API_KEY"] = ""
-os.environ["LANGCHAIN_PROJECT"] = ""
+# Disable Phoenix observability tracing for tests to avoid noise
+os.environ["PHOENIX_ENABLED"] = "false"
 
 # Import test cleanup utilities (available to all test types)
 from test_cleanup import TestDataCleaner

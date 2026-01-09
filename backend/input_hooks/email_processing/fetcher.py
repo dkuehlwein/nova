@@ -3,50 +3,13 @@ Email fetching and MCP communication for Nova.
 
 Handles all MCP tool interactions for email retrieval.
 """
-import os
-from contextlib import contextmanager
 from typing import List, Dict, Any, Optional
 from config import settings
 from mcp_client import mcp_manager
 from utils.logging import get_logger
+from utils.phoenix_integration import disable_phoenix_tracing
 
 logger = get_logger(__name__)
-
-
-@contextmanager
-def disable_langsmith_tracing():
-    """
-    Temporarily disable LangSmith tracing to prevent email polling from polluting traces.
-    
-    Email fetching happens frequently via Celery and doesn't need to be traced.
-    """
-    # Store original values
-    original_tracing = os.environ.get("LANGCHAIN_TRACING_V2")
-    original_langsmith = os.environ.get("LANGSMITH_TRACING")
-    original_api_key = os.environ.get("LANGCHAIN_API_KEY")
-    
-    try:
-        # Disable tracing by setting invalid API key and disabling tracing
-        os.environ["LANGCHAIN_TRACING_V2"] = "false"
-        os.environ["LANGSMITH_TRACING"] = "false"
-        os.environ["LANGCHAIN_API_KEY"] = "disabled-for-email-fetching"
-        yield
-    finally:
-        # Restore original values
-        if original_tracing is not None:
-            os.environ["LANGCHAIN_TRACING_V2"] = original_tracing
-        else:
-            os.environ.pop("LANGCHAIN_TRACING_V2", None)
-            
-        if original_langsmith is not None:
-            os.environ["LANGSMITH_TRACING"] = original_langsmith
-        else:
-            os.environ.pop("LANGSMITH_TRACING", None)
-            
-        if original_api_key is not None:
-            os.environ["LANGCHAIN_API_KEY"] = original_api_key
-        else:
-            os.environ.pop("LANGCHAIN_API_KEY", None)
 
 
 class EmailFetcher:
@@ -262,8 +225,8 @@ class EmailFetcher:
             mapped_kwargs[mapped_key] = param_value
         
         try:
-            # Call the tool with the mapped arguments (disable tracing to prevent LangSmith pollution)
-            with disable_langsmith_tracing():
+            # Call the tool with the mapped arguments (disable tracing to prevent trace pollution)
+            with disable_phoenix_tracing():
                 result = await tool.arun(mapped_kwargs)
             
             # Parse the result if it's a string (some MCP tools return JSON strings)

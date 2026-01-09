@@ -15,13 +15,12 @@ export function APIKeysTab() {
     gemini_models_available: number;
     status: string;
   } | null>(null);
-  const [langsmithApiStatus, setLangsmithApiStatus] = useState<{
-    has_langsmith_api_key: boolean;
-    langsmith_api_key_valid: boolean;
-    features_available: number;
+  const [phoenixStatus, setPhoenixStatus] = useState<{
+    phoenix_enabled: boolean;
+    phoenix_host: string;
+    phoenix_healthy: boolean;
     status: string;
-    cached?: boolean;
-    last_check?: string;
+    error?: string;
   } | null>(null);
   const [huggingfaceApiStatus, setHuggingfaceApiStatus] = useState<{
     has_huggingface_api_key: boolean;
@@ -56,7 +55,7 @@ export function APIKeysTab() {
     // Only fetch API status if we don't have cached status
     // These will use cached results by default
     fetchGoogleApiStatus();
-    fetchLangsmithApiStatus();
+    fetchPhoenixStatus();
     fetchHuggingfaceApiStatus();
     fetchLitellmApiStatus();
     fetchOpenrouterApiStatus();
@@ -82,23 +81,18 @@ export function APIKeysTab() {
     }
   };
 
-  const fetchLangsmithApiStatus = async (forceRefresh: boolean = false) => {
+  const fetchPhoenixStatus = async () => {
     try {
-      const url = forceRefresh
-        ? '/api/user-settings/langsmith-api-status?force_refresh=true'
-        : '/api/user-settings/langsmith-api-status';
-
-      const data = await apiRequest(url) as {
-        has_langsmith_api_key: boolean;
-        langsmith_api_key_valid: boolean;
-        features_available: number;
+      const data = await apiRequest('/api/user-settings/phoenix-status') as {
+        phoenix_enabled: boolean;
+        phoenix_host: string;
+        phoenix_healthy: boolean;
         status: string;
-        cached?: boolean;
-        last_check?: string;
+        error?: string;
       };
-      setLangsmithApiStatus(data);
+      setPhoenixStatus(data);
     } catch (error) {
-      console.error('Failed to load LangSmith API status:', error);
+      console.error('Failed to load Phoenix status:', error);
     }
   };
 
@@ -219,7 +213,7 @@ export function APIKeysTab() {
     }
   };
 
-  if (!googleApiStatus && !langsmithApiStatus && !huggingfaceApiStatus && !litellmApiStatus && !openrouterApiStatus) {
+  if (!googleApiStatus && !phoenixStatus && !huggingfaceApiStatus && !litellmApiStatus && !openrouterApiStatus) {
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
@@ -458,42 +452,54 @@ export function APIKeysTab() {
               )}
             </div>
 
-            {/* LangSmith API Key Section */}
+            {/* Phoenix Observability Section */}
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium">LangSmith API Key <span className="text-xs text-muted-foreground font-normal">(Optional)</span></p>
-                  <p className="text-sm text-muted-foreground">Enables AI debugging, tracing, and monitoring</p>
+                  <p className="font-medium">Phoenix Observability <span className="text-xs text-muted-foreground font-normal">(Self-Hosted)</span></p>
+                  <p className="text-sm text-muted-foreground">LLM tracing and debugging via Arize Phoenix</p>
                 </div>
                 <div className="flex items-center space-x-2">
-                  {langsmithApiStatus?.status === 'ready' && (() => {
+                  {phoenixStatus?.status === 'ready' && (() => {
                     const StatusIcon = getStatusIcon('operational');
                     return <StatusIcon className={`h-4 w-4 ${getStatusColor('operational')}`} />;
                   })()}
-                  {langsmithApiStatus?.status === 'configured_invalid' && (() => {
+                  {phoenixStatus?.status === 'unavailable' && (() => {
                     const StatusIcon = getStatusIcon('critical');
                     return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
                   })()}
-                  {langsmithApiStatus?.status !== 'ready' && (
-                    <Badge variant={langsmithApiStatus?.has_langsmith_api_key ?
-                      (langsmithApiStatus?.langsmith_api_key_valid ? "default" : "destructive") :
-                      "secondary"
-                    }>
-                      {langsmithApiStatus?.status === 'configured_invalid' ? 'Invalid' : 'Not configured'}
-                    </Badge>
-                  )}
+                  {phoenixStatus?.status === 'disabled' && (() => {
+                    const StatusIcon = getStatusIcon('degraded');
+                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('degraded')}`} />;
+                  })()}
+                  <Badge variant={phoenixStatus?.phoenix_healthy ? "default" :
+                    (phoenixStatus?.phoenix_enabled ? "destructive" : "secondary")
+                  }>
+                    {phoenixStatus?.status === 'ready' ? 'Connected' :
+                     phoenixStatus?.status === 'unavailable' ? 'Unavailable' :
+                     'Disabled'}
+                  </Badge>
                 </div>
               </div>
 
-              {langsmithApiStatus?.has_langsmith_api_key && (
+              {phoenixStatus?.phoenix_enabled && (
                 <div className="flex items-center space-x-2 mt-3">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => fetchLangsmithApiStatus(true)}
+                    onClick={() => fetchPhoenixStatus()}
                   >
                     Refresh Status
                   </Button>
+                  {phoenixStatus?.phoenix_healthy && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(phoenixStatus.phoenix_host, '_blank')}
+                    >
+                      Open Phoenix UI
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
