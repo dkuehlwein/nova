@@ -11,8 +11,35 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from utils.logging import get_logger
+from utils.redis_manager import get_sync_redis
 
 logger = get_logger("hooks_api")
+
+# Redis key pattern for hook stats (must match hook_tasks.py)
+HOOK_STATS_KEY = "hook:stats:{hook_name}"
+
+
+def _get_hook_stats_from_redis(hook_name: str) -> dict:
+    """Get hook statistics from Redis."""
+    try:
+        import json
+        redis_client = get_sync_redis()
+        if not redis_client:
+            return {}
+
+        key = HOOK_STATS_KEY.format(hook_name=hook_name)
+        data = redis_client.get(key)
+        if data:
+            return json.loads(data)
+        return {}
+    except Exception as e:
+        logger.warning(f"Failed to get hook stats from Redis: {e}")
+        return {}
+
+
+def _get_all_hook_stats_from_redis(hook_names: list) -> dict:
+    """Get stats for all hooks from Redis."""
+    return {name: _get_hook_stats_from_redis(name) for name in hook_names}
 
 router = APIRouter(prefix="/api/hooks", tags=["hooks"])
 
@@ -61,6 +88,17 @@ class TriggerResponse(BaseModel):
     queued_at: str
 
 
+def _ensure_hooks_initialized():
+    """Ensure the hook registry is initialized and return it."""
+    from input_hooks.hook_registry import input_hook_registry, initialize_hooks
+
+    if not input_hook_registry._initialized:
+        logger.info("Initializing hook registry from API")
+        initialize_hooks()
+
+    return input_hook_registry
+
+
 def _get_hook_status(hook, stats: dict) -> str:
     """Determine hook status based on config and stats."""
     if not hook.config.enabled:
@@ -86,12 +124,14 @@ async def list_hooks():
     List all registered hooks with their status and statistics.
     """
     try:
-        from input_hooks.hook_registry import input_hook_registry
+        input_hook_registry = _ensure_hooks_initialized()
 
         hooks_response = []
-        all_stats = input_hook_registry.get_all_hook_stats()
+        hook_names = input_hook_registry.list_hooks()
+        # Get stats from Redis (shared across processes)
+        all_stats = _get_all_hook_stats_from_redis(hook_names)
 
-        for hook_name in input_hook_registry.list_hooks():
+        for hook_name in hook_names:
             hook = input_hook_registry.get_hook(hook_name)
             if not hook:
                 continue
@@ -142,13 +182,14 @@ async def get_hook(hook_name: str):
     Get details for a specific hook.
     """
     try:
-        from input_hooks.hook_registry import input_hook_registry
+        input_hook_registry = _ensure_hooks_initialized()
 
         hook = input_hook_registry.get_hook(hook_name)
         if not hook:
             raise HTTPException(status_code=404, detail=f"Hook '{hook_name}' not found")
 
-        stats = input_hook_registry.get_hook_stats(hook_name) or {}
+        # Get stats from Redis (shared across processes)
+        stats = _get_hook_stats_from_redis(hook_name)
         config = hook.config
 
         # Get last run time from stats
@@ -195,8 +236,9 @@ async def update_hook(hook_name: str, update: HookConfigUpdate):
     Updates the hook configuration and triggers a Celery beat schedule reload.
     """
     try:
-        from input_hooks.hook_registry import input_hook_registry
         from utils.config_registry import config_registry
+
+        input_hook_registry = _ensure_hooks_initialized()
 
         hook = input_hook_registry.get_hook(hook_name)
         if not hook:
@@ -252,8 +294,9 @@ async def trigger_hook(hook_name: str):
     Queues a Celery task to process the hook's items.
     """
     try:
-        from input_hooks.hook_registry import input_hook_registry
         from tasks.hook_tasks import process_hook_items
+
+        input_hook_registry = _ensure_hooks_initialized()
 
         hook = input_hook_registry.get_hook(hook_name)
         if not hook:

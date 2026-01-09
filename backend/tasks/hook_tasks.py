@@ -13,7 +13,7 @@ from celery.exceptions import Retry
 
 from celery_app import celery_app
 from utils.logging import get_logger
-from utils.redis_manager import publish_sync
+from utils.redis_manager import publish_sync, get_sync_redis
 from input_hooks.hook_registry import input_hook_registry
 from models.events import (
     create_hook_processing_started_event,
@@ -24,6 +24,57 @@ from models.events import (
 from input_hooks.models import ProcessingResult
 
 logger = get_logger(__name__)
+
+# Redis key pattern for hook stats
+HOOK_STATS_KEY = "hook:stats:{hook_name}"
+HOOK_STATS_TTL = 86400 * 7  # 7 days
+
+
+def _update_hook_stats_in_redis(hook_name: str, result: Dict[str, Any], success: bool, error: Optional[str] = None) -> None:
+    """Update hook statistics in Redis for cross-process visibility."""
+    try:
+        import json
+        redis_client = get_sync_redis()
+        if not redis_client:
+            return
+
+        key = HOOK_STATS_KEY.format(hook_name=hook_name)
+
+        # Get existing stats or create new
+        existing = redis_client.get(key)
+        if existing:
+            stats = json.loads(existing)
+        else:
+            stats = {
+                "total_runs": 0,
+                "successful_runs": 0,
+                "failed_runs": 0,
+                "items_processed": 0,
+                "tasks_created": 0,
+                "tasks_updated": 0,
+                "last_run": None,
+                "last_error": None,
+            }
+
+        # Update stats
+        stats["total_runs"] += 1
+        if success:
+            stats["successful_runs"] += 1
+            stats["items_processed"] += result.get("items_processed", 0)
+            stats["tasks_created"] += result.get("tasks_created", 0)
+            stats["tasks_updated"] += result.get("tasks_updated", 0)
+            stats["last_error"] = None  # Clear error on success
+        else:
+            stats["failed_runs"] += 1
+            stats["last_error"] = error
+
+        stats["last_run"] = datetime.now(timezone.utc).isoformat()
+
+        # Store with TTL
+        redis_client.setex(key, HOOK_STATS_TTL, json.dumps(stats))
+
+    except Exception as e:
+        logger.warning(f"Failed to update hook stats in Redis: {e}")
 
 
 @celery_app.task(
@@ -206,6 +257,9 @@ async def _process_hook_items_async(hook_name: str, task_id: str) -> Dict[str, A
             "task_id": task_id
         }
         
+        # Update stats in Redis for cross-process visibility
+        _update_hook_stats_in_redis(hook_name, result_dict, success=True)
+
         # Publish completion event
         event = create_hook_processing_completed_event(
             hook_name=result.hook_name,
@@ -218,10 +272,13 @@ async def _process_hook_items_async(hook_name: str, task_id: str) -> Dict[str, A
             timestamp=result.timestamp.isoformat()
         )
         publish_sync(event)
-        
+
         return result_dict
         
     except Exception as e:
+        # Update stats in Redis with failure
+        _update_hook_stats_in_redis(hook_name, {}, success=False, error=str(e))
+
         # Publish failure event
         event = create_hook_processing_failed_event(
             hook_name=hook_name,

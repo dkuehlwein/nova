@@ -1,79 +1,51 @@
-# Nova Input Hooks Configuration
-# 
-# This file defines all input sources (email, calendar, etc.) that Nova monitors
-# and converts into tasks. Each hook can have its own polling schedule, task
-# creation settings, and source-specific configuration.
-
-# Global hook system settings
-default_polling_interval: 300  # 5 minutes
-default_queue_name: "hooks"
+default_polling_interval: 300
+default_queue_name: hooks
 enable_task_updates: true
-
-# Hook definitions
 hooks:
-  # Email hook - wraps existing email processing system
-  email:
-    name: "email"
-    hook_type: "email"
-    enabled: true
-    polling_interval: 10  # 10 seconds (for testing)
-    queue_name: "hooks"    # Use hooks queue for new architecture
-    create_tasks: true
-    update_existing_tasks: false  # Emails don't support updates yet
-    
-    # Email-specific settings
-    hook_settings:
-      max_per_fetch: 50
-      label_filter: null  # No label filtering by default
-      create_tasks: true  # Duplicate of above, for email processor compatibility
-
-  # Outlook Email hook - creates Nova tasks from Outlook emails
-  # Uses Outlook categories ("Nova Processed") to track which emails have been processed
-  outlook_email:
-    name: "outlook_email"
-    hook_type: "outlook_email"
-    enabled: true
-    polling_interval: 60  # Check every minute
-    queue_name: "hooks"
-    create_tasks: true
-    update_existing_tasks: false  # Emails don't support updates
-
-    # Outlook-specific settings
-    hook_settings:
-      max_per_fetch: 50
-      folder: "inbox"
-      since_date: "2026-01-06"  # Only process emails from Jan 6, 2026 onwards
-
-  # Calendar hook - automated meeting preparation
   calendar:
-    name: "calendar"
-    hook_type: "calendar"
-    enabled: true
-    polling_interval: 86400  # 24 hours (daily at 7 AM)
-    queue_name: "hooks"
-    create_tasks: true  # Creates prep meetings, not Nova tasks
-    update_existing_tasks: true  # Update prep meetings if meetings change
-    
+    create_tasks: true
+    enabled: false
     hook_settings:
-      calendar_ids: ["primary"]
-      look_ahead_days: 1  # Today only
-      min_meeting_duration: 15  # Skip meetings shorter than 15 minutes
-      include_all_day_events: false  # Skip all-day events
+      calendar_ids:
+      - primary
+      event_types:
+      - meeting
+      - appointment
+      - reminder
+      include_all_day_events: false
       include_recurring_events: true
-      prep_time_minutes: 15  # Create prep meeting 15 minutes before actual meeting
-
-  # Slack hook - placeholder for future implementation  
-  # slack:
-  #   name: "slack"
-  #   hook_type: "slack"
-  #   enabled: false  # Not implemented yet
-  #   polling_interval: 180  # 3 minutes
-  #   queue_name: "slack"
-  #   create_tasks: true
-  #   update_existing_tasks: false
-  #   
-  #   hook_settings:
-  #     channels: []
-  #     include_dms: false
-  #     include_mentions_only: true
-  #     message_types: ["message", "reminder"]
+      look_ahead_days: 1
+      min_meeting_duration: 15
+      prep_time_minutes: 15
+    hook_type: calendar
+    name: calendar
+    polling_interval: 86400
+    queue_name: hooks
+    task_template: null
+    update_existing_tasks: true
+  email:
+    create_tasks: true
+    enabled: false
+    hook_settings:
+      create_tasks: true
+      label_filter: null
+      max_per_fetch: 50
+    hook_type: email
+    name: email
+    polling_interval: 10
+    queue_name: hooks
+    task_template: null
+    update_existing_tasks: false
+  outlook_email:
+    create_tasks: true
+    enabled: true
+    hook_settings:
+      folder: 2026/Cohort 1
+      max_per_fetch: 50
+      since_date: '2026-01-06'
+    hook_type: outlook_email
+    name: outlook_email
+    polling_interval: 60
+    queue_name: hooks
+    task_template: null
+    update_existing_tasks: false
