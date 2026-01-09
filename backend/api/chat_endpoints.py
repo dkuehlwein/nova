@@ -345,29 +345,22 @@ async def get_checkpointer_from_service_manager():
         # Import here to avoid circular dependency
         from start_website import get_service_manager
         from utils.service_manager import create_postgres_checkpointer
-        
-        logger.info("Getting service manager...")
+
         service_manager = get_service_manager()
-        logger.info(f"Service manager: {service_manager}, pg_pool: {service_manager.pg_pool}")
-        
-        # The service manager is not unique and different from the one in the app lifespan.
+
+        # Initialize pg_pool if needed
         if service_manager.pg_pool is None:
-            logger.info("PostgreSQL pool is None, initializing...")
+            logger.debug("PostgreSQL pool is None, initializing...")
             await service_manager.init_pg_pool()
-            logger.info(f"After init_pg_pool, pg_pool: {service_manager.pg_pool}")
-        
+
         if service_manager.pg_pool:
-            logger.info("Using PostgreSQL checkpointer from ServiceManager", extra={
-                "data": {"pool_id": id(service_manager.pg_pool)}
-            })
             checkpointer = create_postgres_checkpointer(service_manager.pg_pool)
-            logger.info(f"Created checkpointer: {checkpointer}")
             return checkpointer
         else:
             # PostgreSQL is mandatory - raise error if not available
-            logger.error("PostgreSQL connection pool is still None after init")
+            logger.error("PostgreSQL connection pool is required but not available")
             raise RuntimeError("PostgreSQL connection pool is required but not available")
-            
+
     except Exception as e:
         logger.error(f"Error creating PostgreSQL checkpointer: {e}")
         raise RuntimeError(f"Failed to create PostgreSQL checkpointer: {str(e)}")
@@ -375,18 +368,24 @@ async def get_checkpointer_from_service_manager():
 
 @router.get("/health")
 async def health_check():
-    """Health check for chat service."""
+    """Lightweight health check for chat service.
+
+    Only verifies essential components without creating full agent.
+    Full agent creation is expensive and should not happen on every health check.
+    """
     from datetime import datetime
-    
+
     try:
-        # Check if we can create a chat agent
-        checkpointer = await get_checkpointer_from_service_manager()
-        from agent.chat_agent import create_chat_agent
-        chat_agent = await create_chat_agent(checkpointer=checkpointer, include_escalation=True)
-        
+        # Just verify the service manager and pg_pool are available
+        from start_website import get_service_manager
+        service_manager = get_service_manager()
+
+        pg_pool_ready = service_manager.pg_pool is not None
+
         return {
-            "status": "healthy",
-            "agent_ready": True,
+            "status": "healthy" if pg_pool_ready else "degraded",
+            "agent_ready": pg_pool_ready,  # Assume agent can be created if pg_pool is ready
+            "pg_pool_available": pg_pool_ready,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -394,6 +393,7 @@ async def health_check():
         return {
             "status": "unhealthy",
             "agent_ready": False,
+            "pg_pool_available": False,
             "timestamp": datetime.now().isoformat(),
             "error": str(e)
         }

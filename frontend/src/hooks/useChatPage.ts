@@ -152,7 +152,7 @@ export function useChatPage() {
     } catch (error) {
       console.error('Failed to load chat:', error);
     }
-  }, [chat, router]);
+  }, [chat.loadTaskChat, chat.loadChat, router]);
 
   // Handle delete chat
   const handleDeleteChat = useCallback(async (chatItem: ChatHistoryItem, e: React.MouseEvent) => {
@@ -199,14 +199,14 @@ export function useChatPage() {
     } finally {
       setDeletingChatId(null);
     }
-  }, [searchParams, router, chat]);
+  }, [searchParams, router, chat.clearChat]);
 
   // Handle new chat
   const handleNewChat = useCallback(() => {
     router.push('/chat');
     setTaskInfo(null);
     chat.clearChat();
-  }, [router, chat]);
+  }, [router, chat.clearChat]);
 
   // Sort chat history by last message timestamp (newest first)
   const sortedChatHistory = useMemo(() => {
@@ -218,6 +218,9 @@ export function useChatPage() {
         return timeB - timeA;
       });
   }, [chatHistory]);
+
+  // Extract stable function references from chat to avoid infinite loops
+  const { loadTaskChat, loadChat } = chat;
 
   // Initial data loading
   useEffect(() => {
@@ -238,9 +241,9 @@ export function useChatPage() {
           }
         };
         fetchTaskInfo();
-        chat.loadTaskChat(taskParam);
+        loadTaskChat(taskParam);
       } else {
-        chat.loadChat(threadParam);
+        loadChat(threadParam);
       }
     }
 
@@ -259,7 +262,7 @@ export function useChatPage() {
     };
 
     loadData();
-  }, [dataLoaded, searchParams, chat, loadChats]);
+  }, [dataLoaded, searchParams, loadTaskChat, loadChat, loadChats]);
 
   return {
     // From useChat

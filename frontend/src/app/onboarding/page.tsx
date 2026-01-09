@@ -162,7 +162,7 @@ export default function OnboardingPage() {
     
     setValidating(keyType);
     try {
-      const response = await apiRequest('/api/user-settings/validate-api-key', {
+      const response = await apiRequest('/api/api-keys/validate', {
         method: 'POST',
         body: JSON.stringify({
           key_type: keyType,
@@ -255,7 +255,7 @@ export default function OnboardingPage() {
       );
       
       if (Object.keys(validatedKeys).length > 0) {
-        await apiRequest('/api/user-settings/save-api-keys', {
+        await apiRequest('/api/api-keys/save', {
           method: 'POST',
           body: JSON.stringify({ api_keys: validatedKeys })
         });

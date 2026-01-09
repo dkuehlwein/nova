@@ -64,8 +64,8 @@ export function APIKeysTab() {
   const fetchGoogleApiStatus = async (forceRefresh: boolean = false) => {
     try {
       const url = forceRefresh
-        ? '/api/user-settings/google-api-status?force_refresh=true'
-        : '/api/user-settings/google-api-status';
+        ? '/api/api-keys/google-status?force_refresh=true'
+        : '/api/api-keys/google-status';
 
       const data = await apiRequest(url) as {
         has_google_api_key: boolean;
@@ -83,7 +83,7 @@ export function APIKeysTab() {
 
   const fetchPhoenixStatus = async () => {
     try {
-      const data = await apiRequest('/api/user-settings/phoenix-status') as {
+      const data = await apiRequest('/api/api-keys/phoenix-status') as {
         phoenix_enabled: boolean;
         phoenix_host: string;
         phoenix_healthy: boolean;
@@ -99,8 +99,8 @@ export function APIKeysTab() {
   const fetchHuggingfaceApiStatus = async (forceRefresh: boolean = false) => {
     try {
       const url = forceRefresh
-        ? '/api/user-settings/huggingface-api-status?force_refresh=true'
-        : '/api/user-settings/huggingface-api-status';
+        ? '/api/api-keys/huggingface-status?force_refresh=true'
+        : '/api/api-keys/huggingface-status';
 
       const data = await apiRequest(url) as {
         has_huggingface_api_key: boolean;
@@ -119,8 +119,8 @@ export function APIKeysTab() {
   const fetchLitellmApiStatus = async (forceRefresh: boolean = false) => {
     try {
       const url = forceRefresh
-        ? '/api/user-settings/litellm-api-status?force_refresh=true'
-        : '/api/user-settings/litellm-api-status';
+        ? '/api/api-keys/litellm-status?force_refresh=true'
+        : '/api/api-keys/litellm-status';
 
       const data = await apiRequest(url) as {
         has_litellm_master_key: boolean;
@@ -139,8 +139,8 @@ export function APIKeysTab() {
   const fetchOpenrouterApiStatus = async (forceRefresh: boolean = false) => {
     try {
       const url = forceRefresh
-        ? '/api/user-settings/openrouter-api-status?force_refresh=true'
-        : '/api/user-settings/openrouter-api-status';
+        ? '/api/api-keys/openrouter-status?force_refresh=true'
+        : '/api/api-keys/openrouter-status';
 
       const data = await apiRequest(url) as {
         has_openrouter_api_key: boolean;
@@ -159,7 +159,7 @@ export function APIKeysTab() {
   const validateGoogleApiKey = async (apiKey: string) => {
     setValidatingApiKey(true);
     try {
-      const response = await apiRequest('/api/user-settings/validate-api-key', {
+      const response = await apiRequest('/api/api-keys/validate', {
         method: 'POST',
         body: JSON.stringify({
           key_type: 'google_api_key',
@@ -188,7 +188,7 @@ export function APIKeysTab() {
       }
 
       // Save the validated key
-      await apiRequest('/api/user-settings/save-api-keys', {
+      await apiRequest('/api/api-keys/save', {
         method: 'POST',
         body: JSON.stringify({
           api_keys: {
