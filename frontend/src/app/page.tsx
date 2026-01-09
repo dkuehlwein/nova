@@ -12,7 +12,7 @@ import { useState, useEffect } from "react";
 import { apiRequest, API_ENDPOINTS } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, ArrowRight } from "lucide-react";
-import { MarkdownMessage } from "@/components/MarkdownMessage";
+import { MarkdownMessage } from "@/components/chat";
 
 interface PendingDecision {
   id: string;

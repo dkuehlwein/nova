@@ -2,7 +2,7 @@
 
 import Navbar from "@/components/Navbar";
 import { Plus, Calendar, Trash2, FileText, MessageCircle, Activity, Edit2, Check, X, MessageSquare } from "lucide-react";
-import { MarkdownMessage } from "@/components/MarkdownMessage";
+import { MarkdownMessage } from "@/components/chat";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
