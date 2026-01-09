@@ -23,6 +23,14 @@ interface Lane {
   tasks: Task[];
 }
 
+// Consolidated lane configuration - reduces 7 status lanes to 4 logical lanes
+const LANE_CONFIG = [
+  { id: 'inbox', title: 'Inbox', statuses: ['new', 'user_input_received'], color: 'bg-blue-500' },
+  { id: 'needs_review', title: 'Needs Review', statuses: ['needs_review'], color: 'bg-red-500' },
+  { id: 'in_progress', title: 'In Progress', statuses: ['in_progress'], color: 'bg-purple-500' },
+  { id: 'done', title: 'Done', statuses: ['done', 'failed'], color: 'bg-gray-500' },
+]
+
 interface CreateTaskData {
   title: string;
   description: string;
@@ -119,13 +127,36 @@ function KanbanPage() {
     }
   }, [searchParams, loading, urlTaskProcessed, handleTaskClick]);
 
-  // Convert API data to lanes format
-  const lanes: Lane[] = Object.entries(tasksByStatus || {}).map(([status, tasks]) => ({
-    id: status,
-    title: formatStatusName(status),
-    color: getStatusColor(status),
-    tasks: tasks || []
-  }));
+  // Convert API data to consolidated lanes format
+  const lanes: Lane[] = LANE_CONFIG.map(laneConfig => {
+    // Collect tasks from all statuses that belong to this lane
+    const laneTasks: Task[] = laneConfig.statuses.flatMap(status =>
+      (tasksByStatus?.[status] || [])
+    );
+
+    // Sort tasks: for 'done' lane, failed tasks first, then by date
+    if (laneConfig.id === 'done') {
+      laneTasks.sort((a, b) => {
+        // Failed tasks come first
+        if (a.status === 'failed' && b.status !== 'failed') return -1;
+        if (a.status !== 'failed' && b.status === 'failed') return 1;
+        // Then sort by updated_at descending (most recent first)
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      });
+    } else {
+      // Other lanes: sort by updated_at descending
+      laneTasks.sort((a, b) =>
+        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      );
+    }
+
+    return {
+      id: laneConfig.id,
+      title: laneConfig.title,
+      color: laneConfig.color,
+      tasks: laneTasks
+    };
+  });
 
   const handleCreateTask = async () => {
     if (!newTask.title.trim()) return;
@@ -288,7 +319,7 @@ function KanbanPage() {
 
   const TaskCard = ({ task }: { task: Task }) => (
     <div
-      className="group bg-card border border-border rounded-lg p-4 mb-3 cursor-pointer hover:shadow-md focus:ring-2 focus:ring-primary focus:outline-none transition-shadow"
+      className="group bg-background border border-border rounded-lg p-3 cursor-pointer hover:shadow-md hover:border-primary/30 focus:ring-2 focus:ring-primary focus:outline-none transition-all"
       onClick={() => handleTaskClick(task)}
       tabIndex={0}
       onKeyDown={(e) => {
@@ -298,32 +329,27 @@ function KanbanPage() {
         }
       }}
     >
-      {/* Title - full width */}
-      <h4 className="font-medium text-foreground text-sm mb-2 line-clamp-2">{task.title}</h4>
+      {/* Title row with status dot */}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <h4 className="font-medium text-foreground text-sm line-clamp-2 flex-1">{task.title}</h4>
+        <div
+          className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${getStatusColor(task.status)}`}
+          title={formatStatusName(task.status)}
+        />
+      </div>
 
       {/* Description - conditional */}
       {task.description && (
-        <div className="text-xs text-muted-foreground mb-3 line-clamp-2">
-          <MarkdownMessage content={task.description} className="text-xs" />
+        <div className="text-xs text-muted-foreground mb-2 line-clamp-2">
+          <MarkdownMessage content={task.description} className="text-xs [&_p]:m-0" />
         </div>
       )}
 
-      {/* Tags - conditional */}
-      {task.tags && task.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
-          {task.tags.map((tag: string) => (
-            <Badge key={tag} variant="secondary" className="text-xs px-1 py-0">
-              {tag}
-            </Badge>
-          ))}
-        </div>
-      )}
-
-      {/* Footer: Date + Actions (hover reveal) */}
-      <div className="flex items-center justify-between text-xs">
-        <div className="flex items-center space-x-1">
-          <Calendar className="h-3 w-3" />
-          <span className="text-muted-foreground">
+      {/* Footer: Date + Tags + Actions */}
+      <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
+        <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1">
+          <Calendar className="h-3 w-3 flex-shrink-0" />
+          <span className="flex-shrink-0">
             {task.completed_at
               ? new Date(task.completed_at).toLocaleDateString()
               : task.due_date
@@ -331,10 +357,26 @@ function KanbanPage() {
                 : new Date(task.updated_at).toLocaleDateString()
             }
           </span>
+          {/* Tags in footer */}
+          {task.tags && task.tags.length > 0 && (
+            <>
+              <span className="text-border">·</span>
+              <div className="flex items-center gap-1 min-w-0 overflow-hidden">
+                {task.tags.slice(0, 2).map((tag: string) => (
+                  <span key={tag} className="text-[10px] text-muted-foreground truncate max-w-[60px]">
+                    {tag}
+                  </span>
+                ))}
+                {task.tags.length > 2 && (
+                  <span className="text-[10px] text-muted-foreground">+{task.tags.length - 2}</span>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Actions - hidden by default, shown on hover */}
-        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity touch-reveal">
+        <div className="flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity touch-reveal flex-shrink-0">
           <Button
             variant="ghost"
             size="sm"
@@ -350,7 +392,7 @@ function KanbanPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                 onClick={(e) => e.stopPropagation()}
                 aria-label="Delete task"
               >
@@ -490,67 +532,84 @@ function KanbanPage() {
 
         {/* Task Detail Dialog */}
         <Dialog open={isTaskDetailOpen} onOpenChange={handleTaskDetailClose}>
-          <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-5xl h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
             {selectedTask && (
-              <div className="space-y-4">
-                <DialogHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                    {isEditingTitle ? (
-                      <div className="flex items-center space-x-2 mb-2">
-                        <Input
-                          value={editedTitle}
-                          onChange={(e) => setEditedTitle(e.target.value)}
-                          className="text-xl font-bold"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              handleSaveTitle();
-                            } else if (e.key === 'Escape') {
-                              cancelEditingTitle();
-                            }
-                          }}
-                          autoFocus
-                        />
-                        <Button size="sm" onClick={handleSaveTitle} disabled={!editedTitle.trim()}>
-                          <Check className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={cancelEditingTitle}>
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center space-x-2 mb-2 group">
-                        <DialogTitle className="text-xl font-bold text-foreground">{selectedTask.title}</DialogTitle>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={startEditingTitle}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
-                      <span>Created {new Date(selectedTask.created_at).toLocaleDateString()}</span>
-                      <span>•</span>
-                      <span>Updated {new Date(selectedTask.updated_at).toLocaleDateString()}</span>
-                      {(selectedTask.due_date || selectedTask.completed_at) && (
-                        <>
+              <>
+                {/* Sticky Header */}
+                <div className="flex-shrink-0 border-b border-border bg-background p-6 pb-4">
+                  <DialogHeader>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        {isEditingTitle ? (
+                          <div className="flex items-center space-x-2">
+                            <Input
+                              value={editedTitle}
+                              onChange={(e) => setEditedTitle(e.target.value)}
+                              className="text-xl font-bold"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSaveTitle();
+                                } else if (e.key === 'Escape') {
+                                  cancelEditingTitle();
+                                }
+                              }}
+                              autoFocus
+                            />
+                            <Button size="sm" onClick={handleSaveTitle} disabled={!editedTitle.trim()}>
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={cancelEditingTitle}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-2 group">
+                            <DialogTitle className="text-xl font-bold text-foreground truncate">{selectedTask.title}</DialogTitle>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={startEditingTitle}
+                              className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex-shrink-0"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                        <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground mt-2">
+                          <span>Created {new Date(selectedTask.created_at).toLocaleDateString()}</span>
                           <span>•</span>
-                          <span>
-                            {selectedTask.completed_at ? 'Completed' : 'Due'}: {' '}
-                            {selectedTask.completed_at 
-                              ? new Date(selectedTask.completed_at).toLocaleDateString()
-                              : selectedTask.due_date 
-                                ? new Date(selectedTask.due_date).toLocaleDateString()
-                                : 'Not set'
-                            }
-                          </span>
-                        </>
-                      )}
+                          <span>Updated {new Date(selectedTask.updated_at).toLocaleDateString()}</span>
+                          {(selectedTask.due_date || selectedTask.completed_at) && (
+                            <>
+                              <span>•</span>
+                              <span>
+                                {selectedTask.completed_at ? 'Completed' : 'Due'}: {' '}
+                                {selectedTask.completed_at
+                                  ? new Date(selectedTask.completed_at).toLocaleDateString()
+                                  : selectedTask.due_date
+                                    ? new Date(selectedTask.due_date).toLocaleDateString()
+                                    : 'Not set'
+                                }
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2 flex-shrink-0">
+                        <div className={`w-3 h-3 rounded-full ${getStatusColor(selectedTask.status)}`}></div>
+                        <Badge variant="secondary" className="text-sm font-medium">
+                          {formatStatusName(selectedTask.status)}
+                        </Badge>
+                      </div>
                     </div>
-                    {/* Tags in header */}
+                  </DialogHeader>
+                </div>
+
+                {/* Two-Column Content Area (single column on mobile) */}
+                <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+                  {/* Left Column - Details */}
+                  <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:border-r border-border">
+                    {/* Tags */}
                     {selectedTask.tags && selectedTask.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {selectedTask.tags.map((tag) => (
@@ -560,206 +619,202 @@ function KanbanPage() {
                         ))}
                       </div>
                     )}
-                  </div>
-                  <div className="flex flex-col items-end space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <div className={`w-3 h-3 rounded-full ${getStatusColor(selectedTask.status)}`}></div>
-                      <Badge variant="secondary" className="text-sm font-medium">
-                        {formatStatusName(selectedTask.status)}
-                      </Badge>
-                    </div>
-                    {/* Related entities in header */}
+
+                    {/* Projects */}
                     {selectedTask.projects && selectedTask.projects.length > 0 && (
-                      <div className="flex flex-col items-end space-y-1">
-                        <div className="text-xs text-muted-foreground">
-                          {selectedTask.projects.slice(0, 1).join(', ')}
-                          {selectedTask.projects.length > 1 && ` +${selectedTask.projects.length - 1}`}
+                      <div className="text-xs text-muted-foreground">
+                        <span className="font-medium">Projects:</span> {selectedTask.projects.join(', ')}
+                      </div>
+                    )}
+
+                    {/* Description */}
+                    <div className="bg-muted/30 border border-border rounded-lg p-4 group">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-medium text-muted-foreground">Description</Label>
+                        {!isEditingDescription && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={startEditingDescription}
+                            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity h-7 px-2"
+                          >
+                            <Edit2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                      {isEditingDescription ? (
+                        <div className="space-y-2">
+                          <Textarea
+                            value={editedDescription}
+                            onChange={(e) => setEditedDescription(e.target.value)}
+                            className="min-h-[100px] resize-none"
+                            placeholder="Enter task description..."
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') {
+                                cancelEditingDescription();
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <div className="flex items-center space-x-2">
+                            <Button size="sm" onClick={handleSaveDescription}>
+                              <Check className="h-4 w-4 mr-1" />
+                              Save
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={cancelEditingDescription}>
+                              <X className="h-4 w-4 mr-1" />
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-foreground leading-relaxed">
+                          <MarkdownMessage content={selectedTask.description || 'No description provided.'} className="text-sm" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Summary (if exists) */}
+                    {selectedTask.summary && (
+                      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                        <Label className="text-sm font-medium text-foreground mb-2 block flex items-center">
+                          <FileText className="h-3 w-3 mr-2" />
+                          Summary
+                        </Label>
+                        <div className="text-sm text-foreground leading-relaxed">
+                          <MarkdownMessage content={selectedTask.summary} className="text-sm" />
                         </div>
                       </div>
                     )}
                   </div>
-                </div>
-                </DialogHeader>
 
-                {/* Description */}
-                <div className="bg-muted/30 border border-border rounded-lg p-4 group">
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-sm font-medium text-muted-foreground">Description</Label>
-                    {!isEditingDescription && (
+                  {/* Right Column - Activity & Comments */}
+                  <div className="w-full md:w-[380px] flex-shrink-0 flex flex-col overflow-hidden bg-muted/20 border-t md:border-t-0 border-border">
+                    <div className="flex items-center justify-between p-4 border-b border-border bg-background/50">
+                      <Label className="text-sm font-semibold text-foreground flex items-center">
+                        <Activity className="h-4 w-4 mr-2" />
+                        Activity ({taskComments.length + taskActivity.filter(a => a.type !== 'comment_added').length})
+                      </Label>
                       <Button
-                        size="sm"
                         variant="ghost"
-                        onClick={startEditingDescription}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        size="sm"
+                        onClick={e => handleTaskChat(selectedTask, e)}
+                        className="hover:bg-muted h-8 px-2"
+                        aria-label="Open chat for this task"
                       >
-                        <Edit2 className="h-3 w-3" />
+                        <MessageSquare className="h-4 w-4 text-primary mr-1" />
+                        <span className="text-xs">Chat</span>
                       </Button>
-                    )}
-                  </div>
-                  {isEditingDescription ? (
-                    <div className="space-y-2">
-                      <Textarea
-                        value={editedDescription}
-                        onChange={(e) => setEditedDescription(e.target.value)}
-                        className="min-h-[100px] resize-none"
-                        placeholder="Enter task description..."
-                        onKeyDown={(e) => {
-                          if (e.key === 'Escape') {
-                            cancelEditingDescription();
-                          }
-                        }}
-                        autoFocus
-                      />
-                      <div className="flex items-center space-x-2">
-                        <Button size="sm" onClick={handleSaveDescription}>
-                          <Check className="h-4 w-4 mr-1" />
-                          Save
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={cancelEditingDescription}>
-                          <X className="h-4 w-4 mr-1" />
-                          Cancel
-                        </Button>
-                      </div>
                     </div>
-                  ) : (
-                    <div className="text-sm text-foreground leading-relaxed">
-                      <MarkdownMessage content={selectedTask.description || 'No description provided.'} className="text-sm" />
-                    </div>
-                  )}
-                </div>
 
-                {/* Summary (if exists) */}
-                {selectedTask.summary && (
-                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                    <Label className="text-sm font-medium text-foreground mb-2 block flex items-center">
-                      <FileText className="h-3 w-3 mr-2" />
-                      Summary
-                    </Label>
-                    <div className="text-sm text-foreground leading-relaxed">
-                      <MarkdownMessage content={selectedTask.summary} className="text-sm" />
-                    </div>
-                  </div>
-                )}
+                    {/* Scrollable Activity List */}
+                    <div className="flex-1 overflow-y-auto p-4">
+                      {(() => {
+                        // Combine and sort all activity items
+                        const allActivity: ActivityItem[] = [];
 
-                {/* Activity & Comments Section */}
-                <div className="bg-card border border-border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Label className="text-base font-semibold text-foreground flex items-center">
-                      <Activity className="h-4 w-4 mr-2" />
-                      Activity & Comments ({taskComments.length + taskActivity.filter(a => a.type !== 'comment_added').length})
-                    </Label>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={e => handleTaskChat(selectedTask, e)}
-                      className="hover:bg-muted rounded-full"
-                      aria-label="Open chat for this task"
-                    >
-                      <MessageSquare className="h-5 w-5 text-primary" />
-                    </Button>
-                  </div>
-                  
-                  {/* Combined Activity and Comments Timeline */}
-                  {(() => {
-                    // Combine and sort all activity items
-                    const allActivity: ActivityItem[] = [];
-                    
-                    // Add non-comment activities
-                    taskActivity.filter(a => a.type !== 'comment_added').forEach(activity => {
-                      allActivity.push({
-                        ...activity,
-                        itemType: 'activity' as const,
-                        description: activity.description || activity.title || 'Activity',
-                        time: getTimeAgo(activity.timestamp)
-                      });
-                    });
-                    
-                    // Add comments as activity items
-                    taskComments.forEach(comment => {
-                      allActivity.push({
-                        id: comment.id,
-                        timestamp: comment.created_at,
-                        itemType: 'comment' as const,
-                        author: comment.author,
-                        content: comment.content,
-                        description: `Comment by ${comment.author === 'user' ? 'You' : 'Nova'}`,
-                        time: getTimeAgo(comment.created_at)
-                      });
-                    });
-                    
-                    // Sort by timestamp (most recent first)
-                    allActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-                    
-                    return allActivity.length > 0 ? (
-                      <div className="space-y-3 mb-4">
-                        {allActivity.map((item, index) => (
-                          <div key={`${item.itemType}-${item.id || index}`} className="border-l-2 border-muted pl-4 py-2">
-                            {item.itemType === 'comment' ? (
-                              // Comment display
-                              <>
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="flex items-center space-x-2">
-                                    <MessageCircle className="h-3 w-3 text-muted-foreground" />
-                                    <span className="text-sm font-medium text-foreground">
-                                      {item.author === 'user' ? 'You' : 'Nova'} commented
+                        // Add non-comment activities
+                        taskActivity.filter(a => a.type !== 'comment_added').forEach(activity => {
+                          allActivity.push({
+                            ...activity,
+                            itemType: 'activity' as const,
+                            description: activity.description || activity.title || 'Activity',
+                            time: getTimeAgo(activity.timestamp)
+                          });
+                        });
+
+                        // Add comments as activity items
+                        taskComments.forEach(comment => {
+                          allActivity.push({
+                            id: comment.id,
+                            timestamp: comment.created_at,
+                            itemType: 'comment' as const,
+                            author: comment.author,
+                            content: comment.content,
+                            description: `Comment by ${comment.author === 'user' ? 'You' : 'Nova'}`,
+                            time: getTimeAgo(comment.created_at)
+                          });
+                        });
+
+                        // Sort by timestamp (most recent first)
+                        allActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+                        return allActivity.length > 0 ? (
+                          <div className="space-y-3">
+                            {allActivity.map((item, index) => (
+                              <div key={`${item.itemType}-${item.id || index}`} className="border-l-2 border-muted pl-3 py-2">
+                                {item.itemType === 'comment' ? (
+                                  // Comment display
+                                  <>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <div className="flex items-center space-x-2">
+                                        <MessageCircle className="h-3 w-3 text-muted-foreground" />
+                                        <span className="text-xs font-medium text-foreground">
+                                          {item.author === 'user' ? 'You' : 'Nova'}
+                                        </span>
+                                      </div>
+                                      <span className="text-xs text-muted-foreground">
+                                        {item.time}
+                                      </span>
+                                    </div>
+                                    <div className="text-sm text-foreground leading-relaxed">
+                                      <MarkdownMessage content={item.content || ''} className="text-sm" />
+                                    </div>
+                                  </>
+                                ) : (
+                                  // Activity display
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-2 min-w-0">
+                                      <Activity className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                      <span className="text-xs text-foreground truncate">
+                                        {item.description}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
+                                      {item.time}
                                     </span>
                                   </div>
-                                  <span className="text-xs text-muted-foreground">
-                                    {item.time}
-                                  </span>
-                                </div>
-                                <div className="text-sm text-foreground leading-relaxed">
-                                  <MarkdownMessage content={item.content || ''} className="text-sm" />
-                                </div>
-                              </>
-                            ) : (
-                              // Activity display
-                              <>
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="flex items-center space-x-2">
-                                    <Activity className="h-3 w-3 text-muted-foreground" />
-                                    <span className="text-sm font-medium text-foreground">
-                                      {item.description}
-                                    </span>
-                                  </div>
-                                  <span className="text-xs text-muted-foreground">
-                                    {item.time}
-                                  </span>
-                                </div>
-                              </>
-                            )}
+                                )}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground mb-4">No activity yet</div>
-                    );
-                  })()}
+                        ) : (
+                          <div className="text-sm text-muted-foreground text-center py-8">No activity yet</div>
+                        );
+                      })()}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </DialogContent>
         </Dialog>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
           {lanes.map((lane) => (
-            <div key={lane.id} className="bg-card border border-border rounded-lg">
-              <div className="p-4 border-b border-border">
+            <div key={lane.id} className="bg-card border border-border rounded-lg flex flex-col max-h-[calc(100vh-180px)]">
+              <div className="p-3 border-b border-border flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <div className={`w-3 h-3 rounded-full ${lane.color}`}></div>
+                    <div className={`w-2.5 h-2.5 rounded-full ${lane.color}`}></div>
                     <h3 className="font-semibold text-sm text-foreground">{lane.title}</h3>
                   </div>
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="secondary" className="text-xs h-5 min-w-[1.5rem] flex items-center justify-center">
                     {lane.tasks.length}
                   </Badge>
                 </div>
               </div>
-              
-              <div className="p-4 space-y-3">
-                {lane.tasks.map((task) => (
-                  <TaskCard key={task.id} task={task} />
-                ))}
+
+              <div className="p-3 space-y-2 overflow-y-auto flex-1">
+                {lane.tasks.length > 0 ? (
+                  lane.tasks.map((task) => (
+                    <TaskCard key={task.id} task={task} />
+                  ))
+                ) : (
+                  <div className="text-xs text-muted-foreground text-center py-4">
+                    No tasks
+                  </div>
+                )}
               </div>
             </div>
           ))}

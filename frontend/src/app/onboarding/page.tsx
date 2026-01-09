@@ -67,7 +67,6 @@ export default function OnboardingPage() {
   
   const [apiKeys, setApiKeys] = useState({
     google_api_key: '',
-    langsmith_api_key: '',
     litellm_master_key: '',
     huggingface_api_key: '',
     openrouter_api_key: ''
@@ -434,33 +433,6 @@ export default function OnboardingPage() {
                          className="text-primary hover:underline ml-1">
                         Get your API key →
                       </a>
-                    </p>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="langsmith_api_key">LangSmith API Key</Label>
-                      <div className="flex items-center space-x-2">
-                        {validating === 'langsmith_api_key' && (
-                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                        )}
-                        {apiKeyValidation.langsmith_api_key === true && (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        )}
-                        {apiKeyValidation.langsmith_api_key === false && apiKeys.langsmith_api_key && (
-                          <AlertCircle className="h-4 w-4 text-red-500" />
-                        )}
-                      </div>
-                    </div>
-                    <Input
-                      id="langsmith_api_key"
-                      type="password"
-                      value={apiKeys.langsmith_api_key}
-                      onChange={(e) => handleApiKeyChange('langsmith_api_key', e.target.value)}
-                      placeholder="Enter your LangSmith API key"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Optional: For advanced AI debugging and monitoring.
                     </p>
                   </div>
                   
