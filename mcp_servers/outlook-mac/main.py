@@ -201,11 +201,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Outlook Mac MCP Server')
     parser.add_argument('--host', default='127.0.0.1', help='Host to bind the server to')
     parser.add_argument('--port', type=int, default=9000, help='Port to bind the server to')
+    parser.add_argument('--folder', type=str, default=None,
+                        help='Target folder path instead of inbox (e.g., "2026/Cohort 1")')
 
     args = parser.parse_args()
 
-    # Initialize OutlookService
-    outlook_service = OutlookService()
+    # Initialize OutlookService with optional target folder
+    outlook_service = OutlookService(target_folder=args.folder)
 
     # Setup tools
     setup_tools(outlook_service)
@@ -213,6 +215,10 @@ if __name__ == "__main__":
     # --- Run FastMCP Server ---
     try:
         logger.info(f"Starting Outlook Mac MCP server on http://{args.host}:{args.port}")
+        if args.folder:
+            logger.info(f"Target folder: {args.folder}")
+        else:
+            logger.info("Using default inbox")
         logger.info(f"MCP endpoint: http://{args.host}:{args.port}/mcp")
         logger.info(f"Health endpoint: http://{args.host}:{args.port}/health")
 

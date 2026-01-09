@@ -25,12 +25,25 @@ class OutlookService:
     # Signature appended to all emails sent by Nova
     NOVA_EMAIL_SIGNATURE = "\n\n---\nThis email was sent by Nova, an AI assistant."
 
-    def __init__(self):
+    def __init__(self, target_folder: Optional[str] = None):
+        """
+        Initialize the Outlook service.
+
+        Args:
+            target_folder: Optional folder path to use instead of inbox.
+                          Use "/" to separate folder levels (e.g., "2026/Cohort 1").
+                          If None, uses the default inbox.
+        """
         self._outlook = None
         self._connected = False
         self._category_ensured = False
+        self._target_folder_path = target_folder
+        self._cached_target_folder = None
         # Don't connect at init - defer to first use to avoid blocking startup
-        logger.info("OutlookService initialized (lazy connection)")
+        if target_folder:
+            logger.info(f"OutlookService initialized with target folder: {target_folder}")
+        else:
+            logger.info("OutlookService initialized (lazy connection)")
 
     def _connect(self, timeout: float = 10.0) -> bool:
         """Establish connection to Outlook via appscript with timeout."""
@@ -78,6 +91,61 @@ class OutlookService:
         
         return {"connected": False, "error": "Outlook not initialized"}
 
+    def _get_mail_folder(self):
+        """
+        Get the target mail folder (either inbox or configured custom folder).
+
+        Returns the configured target folder if set, otherwise the default inbox.
+        """
+        if not self._target_folder_path:
+            return self._outlook.inbox
+
+        # Return cached folder if available
+        if self._cached_target_folder is not None:
+            return self._cached_target_folder
+
+        # Parse folder path and navigate to the target folder
+        folder_parts = self._target_folder_path.split("/")
+        logger.info(f"Looking for folder path: {folder_parts}")
+
+        # Find the folder by navigating the hierarchy
+        all_folders = self._outlook.mail_folders()
+
+        def find_folder_by_name(folders, name):
+            """Find a folder by name in a list of folders."""
+            for f in folders:
+                try:
+                    if f.name() == name:
+                        return f
+                except Exception:
+                    continue
+            return None
+
+        # Start with the first part of the path
+        current_folder = find_folder_by_name(all_folders, folder_parts[0])
+        if not current_folder:
+            logger.warning(f"Could not find folder '{folder_parts[0]}', falling back to inbox")
+            return self._outlook.inbox
+
+        # Navigate through remaining path parts
+        for part in folder_parts[1:]:
+            try:
+                # Get subfolders of current folder
+                subfolders = current_folder.mail_folders()
+                next_folder = find_folder_by_name(subfolders, part)
+                if next_folder:
+                    current_folder = next_folder
+                else:
+                    logger.warning(f"Could not find subfolder '{part}', falling back to inbox")
+                    return self._outlook.inbox
+            except Exception as e:
+                logger.warning(f"Error navigating to subfolder '{part}': {e}, falling back to inbox")
+                return self._outlook.inbox
+
+        logger.info(f"Using target folder: {self._target_folder_path}")
+        self._cached_target_folder = current_folder
+        return current_folder
+
     async def list_emails(
         self,
         folder: str = "inbox",
@@ -112,10 +180,9 @@ class OutlookService:
                     logger.warning(f"Invalid since_date format: {since_date}, expected YYYY-MM-DD")
 
             def _get_emails():
-                # Get the inbox folder
-                # In Outlook for Mac, we access the default account's inbox
-                inbox = self._outlook.inbox
-                messages = inbox.messages()
+                # Get the target mail folder (inbox or configured custom folder)
+                target_folder = self._get_mail_folder()
+                messages = target_folder.messages()
 
                 results = []
                 count = 0
@@ -221,9 +288,9 @@ class OutlookService:
             def _read_email():
                 from appscript import k
 
-                # Find the message by ID
-                inbox = self._outlook.inbox
-                messages = inbox.messages()
+                # Find the message by ID in the target folder
+                target_folder = self._get_mail_folder()
+                messages = target_folder.messages()
 
                 for msg in messages:
                     try:
@@ -586,9 +653,9 @@ class OutlookService:
             def _mark_processed():
                 from appscript import k
 
-                # Find the message by ID
-                inbox = self._outlook.inbox
-                messages = inbox.messages()
+                # Find the message by ID in the target folder
+                target_folder = self._get_mail_folder()
+                messages = target_folder.messages()
 
                 for msg in messages:
                     try:
@@ -662,8 +729,8 @@ class OutlookService:
             loop = asyncio.get_event_loop()
 
             def _check_processed():
-                inbox = self._outlook.inbox
-                messages = inbox.messages()
+                target_folder = self._get_mail_folder()
+                messages = target_folder.messages()
 
                 for msg in messages:
                     try:
