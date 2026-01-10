@@ -73,7 +73,7 @@ class TestRealCalendarConflictE2E:
         # =============================================================================
         try:
             async with httpx.AsyncClient() as client:
-                health_response = await client.get(f"{api_base_url}/api/system/health", timeout=5.0)
+                health_response = await client.get(f"{api_base_url}/health", timeout=5.0)
                 if health_response.status_code != 200:
                     pytest.skip(f"Nova API not available at {api_base_url} - requires full environment setup")
         except Exception:
@@ -90,11 +90,12 @@ class TestRealCalendarConflictE2E:
         if not all_tools:
             pytest.skip("No MCP tools available - check MCP configuration")
         
-        create_event_tool = next((t for t in all_tools if t.name == "create_calendar_event"), None)
-        list_events_tool = next((t for t in all_tools if t.name == "list_calendar_events"), None)
-        
+        # Use prefixed tool names per ADR-019
+        create_event_tool = next((t for t in all_tools if t.name == "gcal_create_event"), None)
+        list_events_tool = next((t for t in all_tools if t.name == "gcal_list_events"), None)
+
         if not create_event_tool or not list_events_tool:
-            pytest.skip("Required calendar tools (create_calendar_event, list_calendar_events) not found")
+            pytest.skip("Required calendar tools (gcal_create_event, gcal_list_events) not found")
         
         # Create initial event with timeout
         try:
@@ -126,9 +127,10 @@ class TestRealCalendarConflictE2E:
                 # =============================================================================
                 # STEP 2: EMAIL TRIGGER - Send kindergarten closure email
                 # =============================================================================
-                send_email_tool = next((t for t in all_tools if t.name == "send_email"), None)
+                # Use prefixed tool name per ADR-019
+                send_email_tool = next((t for t in all_tools if t.name == "gmail_send_email"), None)
                 if not send_email_tool:
-                    pytest.skip("send_email tool not available - check MCP configuration")
+                    pytest.skip("gmail_send_email tool not available - check MCP configuration")
                 
                 email_subject = f"URGENT: Kindergarten Closure E2E Test {int(time.time())}"
                 email_body = f"""
@@ -320,7 +322,7 @@ Kindergarten Management
                 # Clean up calendar events first
                 if initial_event_id:
                     try:
-                        delete_tool = next((t for t in all_tools if t.name == "delete_calendar_event"), None)
+                        delete_tool = next((t for t in all_tools if t.name == "gcal_delete_event"), None)
                         if delete_tool:
                             await delete_tool.arun({
                                 "calendar_id": "primary",
@@ -348,7 +350,7 @@ Kindergarten Management
                     
                     if kindergarten_event_id:
                         try:
-                            delete_tool = next((t for t in all_tools if t.name == "delete_calendar_event"), None)
+                            delete_tool = next((t for t in all_tools if t.name == "gcal_delete_event"), None)
                             if delete_tool:
                                 await delete_tool.arun({
                                     "calendar_id": "primary",

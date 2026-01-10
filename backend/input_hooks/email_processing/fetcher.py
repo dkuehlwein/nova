@@ -168,31 +168,39 @@ class EmailFetcher:
             return False
     
     async def _get_email_tools(self) -> Dict[str, Any]:
-        """Get email-related MCP tools using configurable interface mapping."""
+        """Get email-related MCP tools using configurable interface mapping.
+
+        Uses priority-based matching: tools are matched in the order they appear
+        in EMAIL_TOOL_INTERFACE, so prefixed tools (gmail_, outlook_) are preferred
+        over legacy unprefixed names.
+        """
         if self.mcp_tools is None:
             # Get all available MCP tools
             all_tools = await mcp_manager.get_tools()
-            
+
+            # Build a lookup dict of tool_name -> tool object
+            tool_by_name = {getattr(tool, 'name', ''): tool for tool in all_tools}
+
             # Import email interface configuration
             from .interface import EMAIL_TOOL_INTERFACE
-            
+
             self.mcp_tools = {}
             tool_mapping = {}
-            
-            # Map available tools to our interface
-            for tool in all_tools:
-                tool_name = getattr(tool, 'name', '')
-                for interface_name, possible_names in EMAIL_TOOL_INTERFACE.items():
-                    if tool_name in possible_names:
-                        self.mcp_tools[interface_name] = tool
+
+            # Map interface names to tools, respecting priority order
+            # First matching tool in possible_names list wins
+            for interface_name, possible_names in EMAIL_TOOL_INTERFACE.items():
+                for tool_name in possible_names:
+                    if tool_name in tool_by_name:
+                        self.mcp_tools[interface_name] = tool_by_name[tool_name]
                         tool_mapping[interface_name] = tool_name
-                        break
-            
+                        break  # Use the first matching tool (highest priority)
+
             logger.info(
                 f"Found {len(self.mcp_tools)} email tools: {tool_mapping}",
                 extra={"data": {"interface_mapping": tool_mapping}}
             )
-        
+
         return self.mcp_tools
     
     async def _call_email_tool(self, tool_name: str, **kwargs) -> Optional[Dict[str, Any]]:

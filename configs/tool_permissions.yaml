@@ -16,6 +16,7 @@ permissions:
   - mcp_tool(*)
   - send_email
   - gmail_send_email
+  - outlook_send_email
 settings:
   audit_enabled: true
   default_secure: true

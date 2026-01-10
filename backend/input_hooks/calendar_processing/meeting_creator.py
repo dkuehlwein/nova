@@ -67,11 +67,14 @@ class MeetingCreator:
             tools = await mcp_manager.get_tools()
             create_event_tool = None
             
-            # Find calendar create event tool
+            # Find calendar create event tool (supports both prefixed and legacy names)
             for tool in tools:
-                if hasattr(tool, 'name') and 'calendar' in tool.name.lower() and 'create' in tool.name.lower():
-                    create_event_tool = tool
-                    break
+                if hasattr(tool, 'name'):
+                    name_lower = tool.name.lower()
+                    # Match gcal_create_event or create_calendar_event patterns
+                    if name_lower == 'gcal_create_event' or ('calendar' in name_lower and 'create' in name_lower):
+                        create_event_tool = tool
+                        break
             
             if not create_event_tool:
                 logger.error("No calendar create event tool found in MCP servers")
@@ -142,11 +145,14 @@ class MeetingCreator:
             tools = await mcp_manager.get_tools()
             list_events_tool = None
             
-            # Find calendar list events tool
+            # Find calendar list events tool (supports both prefixed and legacy names)
             for tool in tools:
-                if hasattr(tool, 'name') and 'calendar' in tool.name.lower() and 'list' in tool.name.lower():
-                    list_events_tool = tool
-                    break
+                if hasattr(tool, 'name'):
+                    name_lower = tool.name.lower()
+                    # Match gcal_list_events or list_calendar_events patterns
+                    if name_lower == 'gcal_list_events' or ('calendar' in name_lower and 'list' in name_lower):
+                        list_events_tool = tool
+                        break
             
             if not list_events_tool:
                 logger.warning("No calendar list events tool found for checking existing prep meetings")
@@ -231,11 +237,14 @@ class MeetingCreator:
             tools = await mcp_manager.get_tools()
             update_event_tool = None
             
-            # Find calendar update event tool
+            # Find calendar update event tool (supports both prefixed and legacy names)
             for tool in tools:
-                if hasattr(tool, 'name') and 'calendar' in tool.name.lower() and 'update' in tool.name.lower():
-                    update_event_tool = tool
-                    break
+                if hasattr(tool, 'name'):
+                    name_lower = tool.name.lower()
+                    # Match gcal_update_event or update_calendar_event patterns
+                    if name_lower == 'gcal_update_event' or ('calendar' in name_lower and 'update' in name_lower):
+                        update_event_tool = tool
+                        break
             
             if not update_event_tool:
                 logger.error("No calendar update event tool found in MCP servers")

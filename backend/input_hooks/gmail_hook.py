@@ -46,14 +46,27 @@ class GmailInputHook(BaseInputHook):
                 from input_hooks.email_processing.fetcher import EmailFetcher
                 from input_hooks.email_processing.normalizer import EmailNormalizer
                 from input_hooks.email_processing.task_creator import EmailTaskCreator
-                
-                self._email_processor = EmailProcessor()
+
+                # Extract thread consolidation settings from hook config (ADR-019)
+                thread_enabled = getattr(self.config.hook_settings, 'thread_consolidation_enabled', False)
+                stabilization_mins = getattr(self.config.hook_settings, 'thread_stabilization_minutes', 15)
+
+                self._email_processor = EmailProcessor(
+                    thread_consolidation_enabled=thread_enabled,
+                    stabilization_minutes=stabilization_mins
+                )
                 self._email_fetcher = EmailFetcher()
                 self._email_normalizer = EmailNormalizer()
                 self._email_task_creator = EmailTaskCreator()
-                
-                logger.debug(f"Initialized email components for hook {self.hook_name}")
-                
+
+                logger.debug(
+                    f"Initialized email components for hook {self.hook_name}",
+                    extra={"data": {
+                        "thread_consolidation_enabled": thread_enabled,
+                        "stabilization_minutes": stabilization_mins
+                    }}
+                )
+
             except ImportError as e:
                 logger.error(f"Failed to import email processing components: {e}")
                 raise
@@ -180,32 +193,54 @@ class GmailInputHook(BaseInputHook):
     
     async def _create_task_from_item(self, item: NormalizedItem) -> str:
         """
-        Create task from email using existing EmailTaskCreator.
-        
-        Overrides base class to use existing email task creation logic.
+        Create task from email using EmailProcessor.
+
+        Uses EmailProcessor.process_email() to properly handle thread consolidation
+        (ADR-019) when enabled. The processor handles:
+        - Thread consolidation and stabilization windows
+        - Task title formatting ("Read Email: {subject}" or "Email Thread: ...")
+        - Task description with email metadata
+        - Marking emails as processed
         """
         try:
             self._ensure_email_components()
-            
-            # Use existing EmailTaskCreator which handles:
-            # - Task title formatting ("Read Email: {subject}")
-            # - Task description with email metadata  
-            # - Email-specific content parsing
-            task_id = await self._email_task_creator.create_task_from_email(item.content)
-            
-            if task_id:
-                logger.info(
-                    f"Created email task via hook {self.hook_name}",
-                    extra={"data": {
-                        "hook_name": self.hook_name,
-                        "email_id": item.source_id,
-                        "task_id": task_id,
-                        "subject": item.content.get("subject", "")[:100]
-                    }}
-                )
-            
-            return task_id
-            
+
+            # Use EmailProcessor.process_email() which handles thread consolidation
+            # This returns True if task was created/updated, False otherwise
+            result = await self._email_processor.process_email(item.content, self.config)
+
+            if result:
+                # Task was created - we need to get the task_id from ProcessedItem
+                # since process_email marks the email as processed with the task_id
+                from database.database import db_manager
+                from models.models import ProcessedItem
+                from sqlalchemy import select
+
+                async with db_manager.get_session() as session:
+                    stmt = select(ProcessedItem.task_id).where(
+                        ProcessedItem.source_type == "email",
+                        ProcessedItem.source_id == item.source_id
+                    )
+                    result_row = await session.execute(stmt)
+                    row = result_row.first()
+                    task_id = str(row[0]) if row else None
+
+                if task_id:
+                    logger.info(
+                        f"Created/updated email task via hook {self.hook_name}",
+                        extra={"data": {
+                            "hook_name": self.hook_name,
+                            "email_id": item.source_id,
+                            "task_id": task_id,
+                            "subject": item.content.get("subject", "")[:100],
+                            "thread_consolidation": self._email_processor.thread_consolidation_enabled
+                        }}
+                    )
+
+                return task_id
+
+            return None
+
         except Exception as e:
             logger.error(
                 f"Failed to create task from email in hook {self.hook_name}",
@@ -220,43 +255,23 @@ class GmailInputHook(BaseInputHook):
     
     async def _mark_item_processed(self, item: NormalizedItem, task_id: str) -> None:
         """
-        Mark email as processed using existing EmailProcessor logic.
-        
-        This ensures compatibility with existing processed_emails table
-        and any existing deduplication logic.
+        Mark email as processed.
+
+        NOTE: When using EmailProcessor.process_email() (with thread consolidation),
+        the processor already handles marking as processed internally.
+        This method is kept for compatibility with BaseInputHook but is now
+        essentially a no-op since the processor handles it.
         """
-        try:
-            # Use existing EmailTaskCreator metadata creation
-            self._ensure_email_components()
-            
-            metadata = await self._email_task_creator._create_metadata(item.content)
-            
-            # Use existing EmailProcessor method for marking as processed
-            await self._email_processor._mark_email_processed(
-                item.source_id, metadata, task_id
-            )
-            
-            logger.debug(
-                f"Marked email as processed via hook",
-                extra={"data": {
-                    "hook_name": self.hook_name,
-                    "email_id": item.source_id,
-                    "task_id": task_id
-                }}
-            )
-            
-        except Exception as e:
-            logger.error(
-                f"Failed to mark email as processed via hook",
-                extra={"data": {
-                    "hook_name": self.hook_name,
-                    "email_id": item.source_id,
-                    "task_id": task_id,
-                    "error": str(e)
-                }}
-            )
-            # Fallback to parent class method
-            await super()._mark_item_processed(item, task_id)
+        # EmailProcessor.process_email() already marks the email as processed
+        # via _mark_email_processed() internally. We just log for visibility.
+        logger.debug(
+            f"Email already marked as processed by EmailProcessor",
+            extra={"data": {
+                "hook_name": self.hook_name,
+                "email_id": item.source_id,
+                "task_id": task_id
+            }}
+        )
     
     async def health_check(self) -> Dict[str, Any]:
         """Perform health check for email hook."""

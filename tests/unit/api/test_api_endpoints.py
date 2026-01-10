@@ -160,11 +160,12 @@ class TestOverviewEndpoints:
         mock_task.project_names = []
         mock_task.thread_id = None
         mock_task.comments = []
-        
+        mock_task.task_metadata = {}  # Thread consolidation metadata
+
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [mock_task]
         mock_session.execute.return_value = mock_result
-        
+
         response = client.get("/api/pending-decisions")
         
         assert response.status_code == 200
@@ -202,6 +203,7 @@ class TestTaskEndpoints:
         mock_task.project_names = []
         mock_task.thread_id = None
         mock_task.comments = []
+        mock_task.task_metadata = {}  # Thread consolidation metadata
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [mock_task]
@@ -293,7 +295,9 @@ class TestTaskEndpoints:
         mock_task.person_emails = []
         mock_task.project_names = []
         mock_task.thread_id = None
-        
+        mock_task.task_metadata = {}  # Thread consolidation metadata
+        mock_task.comments = []  # Required for comments_count
+
         # Mock the session methods to simulate proper database behavior
         def mock_add(obj):
             # Simulate flush setting the ID and timestamps
@@ -339,6 +343,7 @@ class TestTaskEndpoints:
         mock_task.project_names = []
         mock_task.thread_id = None
         mock_task.comments = []
+        mock_task.task_metadata = {}  # Thread consolidation metadata
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_task

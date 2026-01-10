@@ -20,9 +20,20 @@ from typing import List, Dict, Any
 from backend.input_hooks.calendar_processing.fetcher import CalendarFetcher
 from backend.input_hooks.calendar_processing.analyzer import MeetingAnalyzer
 from backend.input_hooks.calendar_processing.processor import CalendarProcessor
-from backend.input_hooks.calendar_hook import CalendarInputHook
-from backend.input_hooks.models import CalendarHookConfig, CalendarHookSettings
+from backend.input_hooks.google_calendar_hook import GoogleCalendarInputHook
+from backend.input_hooks.models import GoogleCalendarHookConfig, GoogleCalendarHookSettings
 from backend.mcp_client import MCPClientManager
+
+
+@pytest.fixture(scope="module", autouse=True)
+def initialize_nova_configs():
+    """Initialize Nova configurations before running integration tests."""
+    from backend.utils.config_registry import config_registry
+    try:
+        config_registry.initialize_standard_configs()
+    except Exception:
+        pass  # May already be initialized
+    yield
 
 
 class TestRealCalendarIntegration:
@@ -46,10 +57,10 @@ class TestRealCalendarIntegration:
             tools = await mcp_manager.get_tools()
             assert len(tools) > 0, "No tools returned from MCP servers"
             
-            # Should have calendar tools
-            calendar_tools = [tool for tool in tools if 'calendar' in tool.name.lower()]
-            assert len(calendar_tools) > 0, "No calendar tools found in MCP servers"
-            
+            # Should have calendar tools (prefixed with gcal_ per ADR-019)
+            calendar_tools = [tool for tool in tools if tool.name.lower().startswith('gcal_')]
+            assert len(calendar_tools) > 0, "No calendar tools found in MCP servers (expected gcal_* prefix)"
+
             print(f"✅ Found {len(calendar_tools)} calendar tools: {[t.name for t in calendar_tools]}")
             
         except Exception as e:
@@ -73,12 +84,13 @@ class TestRealCalendarIntegration:
             
             calendar_tool = None
             for tool in tools:
-                if hasattr(tool, 'name') and 'calendar' in tool.name.lower() and 'list' in tool.name.lower():
+                # Use prefixed tool name per ADR-019
+                if hasattr(tool, 'name') and tool.name == 'gcal_list_events':
                     calendar_tool = tool
                     break
-            
+
             if not calendar_tool:
-                pytest.skip("Calendar list events tool not found")
+                pytest.skip("Calendar list events tool not found (expected gcal_list_events)")
             
             print(f"Testing calendar tool: {calendar_tool.name}")
             
@@ -163,12 +175,12 @@ class TestRealCalendarIntegration:
                 print("✅ Confirmed: MCP server returns direct string format")
                 print(f"  start: {event['start']}")
                 print(f"  end: {event['end']}")
-                
-                # Test that our analyzer can parse this format
-                analyzer = MeetingAnalyzer()
-                start_time = analyzer._parse_event_datetime(event['start'])
-                end_time = analyzer._parse_event_datetime(event['end'])
-                
+
+                # Test that our datetime parsing utility can parse this format
+                from backend.input_hooks.datetime_utils import parse_datetime
+                start_time = parse_datetime(event['start'], source_type="calendar")
+                end_time = parse_datetime(event['end'], source_type="calendar")
+
                 assert start_time is not None, f"Failed to parse start time: {event['start']}"
                 assert end_time is not None, f"Failed to parse end time: {event['end']}"
                 print(f"✅ Datetime parsing works: {start_time} to {end_time}")
@@ -192,13 +204,13 @@ class TestRealCalendarIntegration:
             processor = CalendarProcessor()
             
             # Create test config
-            config = CalendarHookConfig(
+            config = GoogleCalendarHookConfig(
                 name="test_real",
-                hook_type="calendar",
+                hook_type="google_calendar",
                 enabled=True,
                 polling_interval=86400,
                 create_tasks=False,
-                hook_settings=CalendarHookSettings(
+                hook_settings=GoogleCalendarHookSettings(
                     calendar_ids=["primary"],
                     look_ahead_days=1,
                     include_all_day_events=False,
@@ -245,13 +257,13 @@ class TestRealCalendarIntegration:
         """
         try:
             # Create real calendar hook
-            config = CalendarHookConfig(
+            config = GoogleCalendarHookConfig(
                 name="test_e2e",
-                hook_type="calendar", 
+                hook_type="google_calendar",
                 enabled=True,
                 polling_interval=86400,
                 create_tasks=False,
-                hook_settings=CalendarHookSettings(
+                hook_settings=GoogleCalendarHookSettings(
                     calendar_ids=["primary"],
                     look_ahead_days=1,
                     include_all_day_events=False,
@@ -259,8 +271,8 @@ class TestRealCalendarIntegration:
                     prep_time_minutes=15
                 )
             )
-            
-            calendar_hook = CalendarInputHook("test_e2e", config)
+
+            calendar_hook = GoogleCalendarInputHook("test_e2e", config)
             
             # Run the full hook processing pipeline
             result = await calendar_hook.process_items()
@@ -297,19 +309,19 @@ class TestRealCalendarIntegration:
         """Test how calendar hook handles real MCP server errors."""
         try:
             # Create calendar hook with invalid calendar ID to trigger errors
-            config = CalendarHookConfig(
+            config = GoogleCalendarHookConfig(
                 name="test_errors",
-                hook_type="calendar",
+                hook_type="google_calendar",
                 enabled=True,
                 polling_interval=86400,
                 create_tasks=False,
-                hook_settings=CalendarHookSettings(
+                hook_settings=GoogleCalendarHookSettings(
                     calendar_ids=["nonexistent_calendar_id_12345"],  # This should fail
                     look_ahead_days=1
                 )
             )
-            
-            calendar_hook = CalendarInputHook("test_errors", config)
+
+            calendar_hook = GoogleCalendarInputHook("test_errors", config)
             
             # This should handle the error gracefully
             result = await calendar_hook.process_items()
@@ -351,9 +363,10 @@ class TestMCPToolValidation:
             
             for tool in tools:
                 if hasattr(tool, 'name'):
-                    if 'calendar' in tool.name.lower() and 'list' in tool.name.lower():
+                    # Use prefixed tool names per ADR-019
+                    if tool.name == 'gcal_list_events':
                         list_events_tool = tool
-                    elif 'calendar' in tool.name.lower() and 'create' in tool.name.lower():
+                    elif tool.name == 'gcal_create_event':
                         create_event_tool = tool
             
             # Test list events tool parameter validation
@@ -399,8 +412,8 @@ class TestMCPToolValidation:
                     print(f"✅ Missing required parameters correctly rejected: {e}")
             
             assert list_events_tool is not None or create_event_tool is not None, \
-                "No calendar tools found to test"
-                
+                "No calendar tools found to test (expected gcal_list_events or gcal_create_event)"
+
         except Exception as e:
             pytest.skip(f"MCP tool validation test failed: {e}")
 

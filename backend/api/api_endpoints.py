@@ -43,6 +43,67 @@ from models.chat import TaskChatMessageCreate
 router = APIRouter()
 
 
+# === Helper Functions ===
+
+def task_to_response(task: Task) -> TaskResponse:
+    """
+    Convert a Task ORM model to TaskResponse Pydantic model.
+
+    Extracts thread consolidation fields from task_metadata (ADR-019).
+    """
+    metadata = task.task_metadata or {}
+
+    # Extract thread consolidation fields from metadata
+    email_thread_id = metadata.get('email_thread_id')
+    email_count = metadata.get('email_count')
+    is_thread_stabilizing = metadata.get('is_thread_stabilizing', False)
+    superseded_by_task_id = metadata.get('superseded_by_task_id')
+
+    # Parse stabilization end time if present
+    thread_stabilization_ends_at = None
+    stabilization_str = metadata.get('thread_stabilization_ends_at')
+    if stabilization_str:
+        try:
+            thread_stabilization_ends_at = datetime.fromisoformat(
+                stabilization_str.replace('Z', '+00:00')
+            ).replace(tzinfo=None)
+        except (ValueError, TypeError):
+            pass
+
+    # Parse superseded_by_task_id as UUID if present
+    superseded_by_uuid = None
+    if superseded_by_task_id:
+        try:
+            superseded_by_uuid = UUID(superseded_by_task_id)
+        except (ValueError, TypeError):
+            pass
+
+    return TaskResponse(
+        id=task.id,
+        title=task.title,
+        description=task.description,
+        summary=task.summary,
+        status=task.status,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+        due_date=task.due_date,
+        completed_at=task.completed_at,
+        tags=task.tags or [],
+        needs_decision=task.status == TaskStatus.NEEDS_REVIEW,
+        decision_type="task_review" if task.status == TaskStatus.NEEDS_REVIEW else None,
+        thread_id=task.thread_id,
+        persons=task.person_emails or [],
+        projects=task.project_names or [],
+        comments_count=len(task.comments) if hasattr(task, 'comments') and task.comments else 0,
+        # Thread consolidation fields (ADR-019)
+        email_thread_id=email_thread_id,
+        email_count=email_count,
+        is_thread_stabilizing=is_thread_stabilizing,
+        thread_stabilization_ends_at=thread_stabilization_ends_at,
+        superseded_by_task_id=superseded_by_uuid
+    )
+
+
 # === Overview Dashboard Endpoints ===
 
 @router.get("/api/task-dashboard", response_model=TaskDashboard)
@@ -211,28 +272,8 @@ async def get_pending_decisions():
             .order_by(Task.updated_at.desc())
         )
         tasks = result.scalars().all()
-        
-        response_tasks = []
-        for task in tasks:
-            response_tasks.append(TaskResponse(
-                id=task.id,
-                title=task.title,
-                description=task.description,
-                summary=task.summary,
-                status=task.status,
-                created_at=task.created_at,
-                updated_at=task.updated_at,
-                due_date=task.due_date,
-                completed_at=task.completed_at,
-                tags=task.tags or [],
-                needs_decision=True,
-                decision_type="task_review",
-                persons=task.person_emails or [],
-                projects=task.project_names or [],
-                comments_count=len(task.comments)
-            ))
-        
-        return response_tasks
+
+        return [task_to_response(task) for task in tasks]
 
 
 # === Task Management Endpoints ===
@@ -248,39 +289,16 @@ async def get_tasks(
         query = select(Task).options(
             selectinload(Task.comments)
         )
-        
+
         if status:
             query = query.where(Task.status == status)
-        
+
         query = query.order_by(Task.updated_at.desc()).limit(limit).offset(offset)
-        
+
         result = await session.execute(query)
         tasks = result.scalars().all()
-        
-        response_tasks = []
-        for task in tasks:
-            # Check if task has decisions pending (simplified logic)
-            needs_decision = task.status == TaskStatus.NEEDS_REVIEW
-            
-            response_tasks.append(TaskResponse(
-                id=task.id,
-                title=task.title,
-                description=task.description,
-                summary=task.summary,
-                status=task.status,
-                created_at=task.created_at,
-                updated_at=task.updated_at,
-                due_date=task.due_date,
-                completed_at=task.completed_at,
-                tags=task.tags or [],
-                needs_decision=needs_decision,
-                decision_type="task_review" if needs_decision else None,
-                persons=task.person_emails or [],
-                projects=task.project_names or [],
-                comments_count=len(task.comments)
-            ))
-        
-        return response_tasks
+
+        return [task_to_response(task) for task in tasks]
 
 
 
@@ -300,10 +318,10 @@ async def create_task(task_data: TaskCreate):
             project_names=task_data.project_names,
             thread_id=task_data.thread_id
         )
-        
+
         session.add(task)
         await session.commit()
-        
+
         # Invalidate cache and publish WebSocket event for real-time updates
         try:
             await invalidate_task_cache()
@@ -315,24 +333,8 @@ async def create_task(task_data: TaskCreate):
             ))
         except Exception as e:
             logging.warning(f"Failed to publish task creation event: {e}")
-        
-        return TaskResponse(
-            id=task.id,
-            title=task.title,
-            description=task.description,
-            summary=task.summary,
-            status=task.status,
-            created_at=task.created_at,
-            updated_at=task.updated_at,
-            due_date=task.due_date,
-            completed_at=task.completed_at,
-            tags=task.tags or [],
-            needs_decision=task.status == TaskStatus.NEEDS_REVIEW,
-            thread_id=task.thread_id,
-            persons=task.person_emails or [],
-            projects=task.project_names or [],
-            comments_count=0
-        )
+
+        return task_to_response(task)
 
 
 @router.get("/api/tasks/{task_id}", response_model=TaskResponse)
@@ -345,27 +347,11 @@ async def get_task(task_id: UUID):
             .where(Task.id == task_id)
         )
         task = result.scalar_one_or_none()
-        
+
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
-        
-        return TaskResponse(
-            id=task.id,
-            title=task.title,
-            description=task.description,
-            summary=task.summary,
-            status=task.status,
-            created_at=task.created_at,
-            updated_at=task.updated_at,
-            due_date=task.due_date,
-            completed_at=task.completed_at,
-            tags=task.tags or [],
-            needs_decision=task.status == TaskStatus.NEEDS_REVIEW,
-            thread_id=task.thread_id,
-            persons=task.person_emails or [],
-            projects=task.project_names or [],
-            comments_count=len(task.comments)
-        )
+
+        return task_to_response(task)
 
 
 @router.put("/api/tasks/{task_id}", response_model=TaskResponse)
@@ -432,24 +418,8 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
             ))
         except Exception as e:
             logging.warning(f"Failed to publish task update event: {e}")
-        
-        return TaskResponse(
-            id=task.id,
-            title=task.title,
-            description=task.description,
-            summary=task.summary,
-            status=task.status,
-            created_at=task.created_at,
-            updated_at=task.updated_at,
-            due_date=task.due_date,
-            completed_at=task.completed_at,
-            tags=task.tags or [],
-            needs_decision=task.status == TaskStatus.NEEDS_REVIEW,
-            thread_id=task.thread_id,
-            persons=task.person_emails or [],
-            projects=task.project_names or [],
-            comments_count=len(task.comments)
-        )
+
+        return task_to_response(task)
 
 
 async def add_task_completion_to_memory(session, task_id: UUID):

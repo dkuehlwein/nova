@@ -25,12 +25,17 @@ mcp = FastMCP(name="OutlookMacServer")
 
 
 def setup_tools(outlook_service: OutlookService):
-    """Set up all the MCP tools for the Outlook service."""
+    """Set up all the MCP tools for the Outlook service.
 
-    # === Email Tools ===
+    Tool Naming Convention:
+    - Email tools are prefixed with 'outlook_' to avoid conflicts with Gmail
+    - Calendar tools are prefixed with 'outlook_cal_' to avoid conflicts with Google Calendar
+    """
+
+    # === Email Tools (prefixed with outlook_) ===
 
     @mcp.tool()
-    async def list_emails(
+    async def outlook_list_emails(
         folder: str = "inbox",
         limit: int = 20,
         unread_only: bool = False,
@@ -53,9 +58,9 @@ def setup_tools(outlook_service: OutlookService):
         return await outlook_service.list_emails(folder, limit, unread_only, exclude_processed, since_date)
 
     @mcp.tool()
-    async def read_email(email_id: Union[str, int]) -> Dict[str, Any]:
+    async def outlook_read_email(email_id: Union[str, int]) -> Dict[str, Any]:
         """
-        Read the full content of an email by its ID.
+        Read the full content of an email by its ID in Outlook.
 
         Args:
             email_id: The unique identifier of the email to read (string or integer)
@@ -66,7 +71,7 @@ def setup_tools(outlook_service: OutlookService):
         return await outlook_service.read_email(str(email_id))
 
     @mcp.tool()
-    async def create_draft(
+    async def outlook_create_draft(
         recipients: List[str],
         subject: str,
         body: str,
@@ -87,7 +92,7 @@ def setup_tools(outlook_service: OutlookService):
         return await outlook_service.create_draft(recipients, subject, body, cc)
 
     @mcp.tool()
-    async def send_email(
+    async def outlook_send_email(
         recipients: List[str],
         subject: str,
         body: str,
@@ -97,7 +102,7 @@ def setup_tools(outlook_service: OutlookService):
         Send an email directly via Outlook. REQUIRES USER APPROVAL.
 
         This tool sends the email immediately without saving as draft first.
-        Use create_draft if you want to prepare an email for user review before sending.
+        Use outlook_create_draft if you want to prepare an email for user review before sending.
 
         Args:
             recipients: List of recipient email addresses
@@ -110,12 +115,12 @@ def setup_tools(outlook_service: OutlookService):
         """
         return await outlook_service.send_email(recipients, subject, body, cc)
 
-    # === Contact Lookup Tools ===
+    # === Contact Lookup Tools (prefixed with outlook_) ===
 
     @mcp.tool()
-    async def lookup_contact(name: str) -> Dict[str, Any]:
+    async def outlook_lookup_contact(name: str) -> Dict[str, Any]:
         """
-        Look up an email address for a person by name.
+        Look up an email address for a person by name in Outlook.
 
         Searches Outlook contacts and recent emails to find an email address
         for the given name. Useful for resolving names to emails when the
@@ -133,16 +138,16 @@ def setup_tools(outlook_service: OutlookService):
         """
         return await outlook_service.lookup_contact(name)
 
-    # === Calendar Tools ===
+    # === Calendar Tools (prefixed with outlook_cal_) ===
 
     @mcp.tool()
-    async def list_calendar_events(
+    async def outlook_cal_list_events(
         days_ahead: int = 7,
         limit: int = 50,
         calendar_name: Optional[str] = None
     ) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """
-        List upcoming calendar events from Outlook.
+        List upcoming calendar events from Outlook Calendar.
 
         Args:
             days_ahead: Number of days ahead to look for events (default: 7)

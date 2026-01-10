@@ -19,9 +19,9 @@ class OutlookFetcher:
     # Outlook MCP server name (as registered in LiteLLM)
     MCP_SERVER_NAME = "outlook_mac"
 
-    # Outlook MCP tool names (as returned by LiteLLM - no prefix)
-    TOOL_LIST_EMAILS = "list_emails"
-    TOOL_READ_EMAIL = "read_email"
+    # Outlook MCP tool names (prefixed per ADR-019)
+    TOOL_LIST_EMAILS = "outlook_list_emails"
+    TOOL_READ_EMAIL = "outlook_read_email"
 
     # Internal REST endpoint for marking emails (not an MCP tool)
     OUTLOOK_SERVER_URL = os.environ.get("OUTLOOK_MCP_URL", "http://localhost:9000")

@@ -70,6 +70,16 @@ class GmailHookSettings(BaseModel):
     max_per_fetch: int = Field(default=50, gt=0)
     label_filter: Optional[str] = None
     create_tasks: bool = True
+    # Thread consolidation settings (ADR-019)
+    thread_consolidation_enabled: bool = Field(
+        default=False,
+        description="Enable thread-based task grouping"
+    )
+    thread_stabilization_minutes: int = Field(
+        default=15,
+        gt=0,
+        description="Minutes to wait after last email before processing"
+    )
 
 
 class GmailHookConfig(HookConfig):
@@ -83,6 +93,16 @@ class OutlookEmailHookSettings(BaseModel):
     max_per_fetch: int = Field(default=50, gt=0)
     folder: str = "inbox"
     since_date: Optional[str] = None  # Only process emails from this date onwards (YYYY-MM-DD)
+    # Thread consolidation settings (ADR-019)
+    thread_consolidation_enabled: bool = Field(
+        default=False,
+        description="Enable thread-based task grouping"
+    )
+    thread_stabilization_minutes: int = Field(
+        default=15,
+        gt=0,
+        description="Minutes to wait after last email before processing"
+    )
 
 
 class OutlookEmailHookConfig(HookConfig):

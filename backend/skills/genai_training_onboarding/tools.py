@@ -134,7 +134,7 @@ async def resolve_participant_email(name: str) -> str:
     try:
         result = await mcp_manager.call_mcp_tool(
             server_name="outlook_mac",
-            tool_name="lookup_contact",
+            tool_name="outlook_lookup_contact",  # Prefixed per ADR-019
             arguments={"name": name},
         )
 
@@ -158,12 +158,12 @@ async def resolve_participant_email(name: str) -> str:
         return json.dumps({"found": False, "error": "Unexpected response format"})
 
     except Exception as e:
-        logger.error(f"Error calling lookup_contact: {e}")
+        logger.error(f"Error calling outlook_lookup_contact: {e}")
         return json.dumps(
             {
                 "found": False,
                 "error": str(e),
-                "suggestion": f"The lookup_contact tool may not be available. Ask the user for {name}'s email address.",
+                "suggestion": f"The outlook_lookup_contact tool may not be available. Ask the user for {name}'s email address.",
             }
         )
 

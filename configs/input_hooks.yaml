@@ -2,10 +2,26 @@ default_polling_interval: 300
 default_queue_name: hooks
 enable_task_updates: true
 hooks:
+  gmail:
+    create_tasks: true
+    display_name: Gmail
+    enabled: true
+    hook_settings:
+      create_tasks: true
+      label_filter: null
+      max_per_fetch: 50
+      thread_consolidation_enabled: true
+      thread_stabilization_minutes: 15
+    hook_type: gmail
+    name: gmail
+    polling_interval: 10
+    queue_name: hooks
+    task_template: null
+    update_existing_tasks: false
   google_calendar:
     create_tasks: true
     display_name: Google Calendar
-    enabled: false
+    enabled: true
     hook_settings:
       calendar_ids:
       - primary
@@ -24,20 +40,6 @@ hooks:
     queue_name: hooks
     task_template: null
     update_existing_tasks: true
-  gmail:
-    create_tasks: true
-    display_name: Gmail
-    enabled: false
-    hook_settings:
-      create_tasks: true
-      label_filter: null
-      max_per_fetch: 50
-    hook_type: gmail
-    name: gmail
-    polling_interval: 10
-    queue_name: hooks
-    task_template: null
-    update_existing_tasks: false
   outlook_email:
     create_tasks: true
     display_name: Outlook Email
@@ -46,6 +48,8 @@ hooks:
       folder: 2026/Cohort 1
       max_per_fetch: 50
       since_date: '2026-01-06'
+      thread_consolidation_enabled: true
+      thread_stabilization_minutes: 15
     hook_type: outlook_email
     name: outlook_email
     polling_interval: 60

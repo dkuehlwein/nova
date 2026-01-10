@@ -66,4 +66,11 @@ class TaskResponse(BaseModel):
     projects: List[str] = Field(default_factory=list, description="Associated project names for UI")
     comments_count: int = Field(0, description="Number of comments")
 
+    # Thread consolidation fields (ADR-019)
+    email_thread_id: Optional[str] = Field(None, description="Email thread ID for consolidated tasks")
+    email_count: Optional[int] = Field(None, description="Number of emails in consolidated thread")
+    is_thread_stabilizing: bool = Field(False, description="Whether task is waiting for thread to stabilize")
+    thread_stabilization_ends_at: Optional[datetime] = Field(None, description="When stabilization window ends")
+    superseded_by_task_id: Optional[UUID] = Field(None, description="ID of task that superseded this one")
+
     model_config = ConfigDict(from_attributes=True) 

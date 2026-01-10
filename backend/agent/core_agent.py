@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 
 from langchain_core.runnables import RunnableConfig
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, or_
 from sqlalchemy.orm import selectinload
 
 from agent.chat_agent import create_chat_agent
@@ -160,36 +160,60 @@ class CoreAgent:
             return status.status != AgentStatusEnum.IDLE
     
     async def _get_next_task(self) -> Optional[Task]:
-        """Get the next task to process using the specified logic."""
+        """Get the next task to process using the specified logic.
+
+        Skips tasks that are still in their thread stabilization window (ADR-019).
+        """
         async with db_manager.get_session() as session:
+            now = datetime.utcnow()
+
+            # Filter out tasks still stabilizing (ADR-019: Thread Consolidation)
+            # A task is NOT stabilizing if:
+            # - task_metadata is null
+            # - is_thread_stabilizing is not set (null) or missing
+            # - is_thread_stabilizing is false
+            # - thread_stabilization_ends_at is missing/null (defensive: allow processing)
+            # - thread_stabilization_ends_at has passed
+            not_stabilizing = or_(
+                Task.task_metadata.is_(None),
+                ~Task.task_metadata.has_key('is_thread_stabilizing'),
+                Task.task_metadata['is_thread_stabilizing'].astext.is_(None),
+                Task.task_metadata['is_thread_stabilizing'].astext == 'false',
+                ~Task.task_metadata.has_key('thread_stabilization_ends_at'),
+                Task.task_metadata['thread_stabilization_ends_at'].astext.is_(None),
+                Task.task_metadata['thread_stabilization_ends_at'].astext < now.isoformat()
+            )
+
             # First, try USER_INPUT_RECEIVED tasks (oldest first)
             result = await session.execute(
                 select(Task)
                 .options(selectinload(Task.comments))
                 .where(Task.status == TaskStatus.USER_INPUT_RECEIVED)
+                .where(not_stabilizing)
                 .order_by(Task.updated_at.asc())
                 .limit(1)
             )
             task = result.scalar_one_or_none()
-            
+
             if task:
                 logger.info(f"Selected USER_INPUT_RECEIVED task: {task.id} - {task.title}")
                 return task
-            
+
             # Then, try NEW tasks (oldest first)
             result = await session.execute(
                 select(Task)
                 .options(selectinload(Task.comments))
                 .where(Task.status == TaskStatus.NEW)
+                .where(not_stabilizing)
                 .order_by(Task.updated_at.asc())
                 .limit(1)
             )
             task = result.scalar_one_or_none()
-            
+
             if task:
                 logger.info(f"Selected NEW task: {task.id} - {task.title}")
                 return task
-            
+
             logger.info("No tasks available for processing")
             return None
     

@@ -5,7 +5,6 @@ Handles fetching calendar events from Google Calendar via MCP tools.
 Similar to EmailFetcher but focused on calendar events.
 """
 
-import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 
@@ -18,13 +17,14 @@ logger = get_logger(__name__)
 class CalendarFetcher:
     """
     Fetches calendar events from Google Calendar via MCP tools.
-    
+
     Handles the MCP integration for calendar data retrieval,
     similar to how EmailFetcher handles email MCP integration.
     """
-    
+
     def __init__(self):
-        self.tool_name = "google_calendar_list_events"
+        # Tool name follows ADR-019 naming convention: gcal_ prefix for Google Calendar
+        self.tool_name = "gcal_list_events"
         
     async def fetch_todays_events(self, calendar_id: str = "primary", 
                                  look_ahead_days: int = 1) -> List[Dict[str, Any]]:
@@ -61,13 +61,18 @@ class CalendarFetcher:
             # Get calendar MCP tools
             tools = await mcp_manager.get_tools()
             calendar_tool = None
-            
-            # Find calendar list events tool
+
+            # Find calendar list events tool (prefer prefixed gcal_list_events per ADR-019)
             for tool in tools:
-                if hasattr(tool, 'name') and 'calendar' in tool.name.lower() and 'list' in tool.name.lower():
+                tool_name = getattr(tool, 'name', '')
+                # Prefer the new prefixed name
+                if tool_name == self.tool_name:
                     calendar_tool = tool
                     break
-            
+                # Fallback to any calendar list tool for backwards compatibility
+                if 'calendar' in tool_name.lower() and 'list' in tool_name.lower():
+                    calendar_tool = tool
+
             if not calendar_tool:
                 logger.error("No calendar list events tool found in MCP servers")
                 return []
@@ -145,11 +150,14 @@ class CalendarFetcher:
             tools = await mcp_manager.get_tools()
             get_event_tool = None
             
-            # Find calendar get event tool
+            # Find calendar get event tool (supports both prefixed and legacy names)
             for tool in tools:
-                if hasattr(tool, 'name') and 'calendar' in tool.name.lower() and 'get' in tool.name.lower():
-                    get_event_tool = tool
-                    break
+                if hasattr(tool, 'name'):
+                    name_lower = tool.name.lower()
+                    # Match gcal_get_event or get_calendar_event patterns
+                    if name_lower == 'gcal_get_event' or ('calendar' in name_lower and 'get' in name_lower):
+                        get_event_tool = tool
+                        break
             
             if not get_event_tool:
                 logger.error("No calendar get event tool found in MCP servers")
