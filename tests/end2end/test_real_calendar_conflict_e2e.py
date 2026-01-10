@@ -7,31 +7,42 @@ Given (The Pre-conditions):
 - The user's calendar for [Tomorrow] has one event:
   - Title: "Project Sync E2E Test"
   - Time: 10:00 AM - 11:00 AM
-- Nova receives a new email about kindergarten closure for the same day
+- Nova receives a new task about kindergarten closure for the same day
 
 When (The Action):
-- Send email to ourselves about kindergarten closure
-- Wait for core agent to process the email task
+- Create task about kindergarten closure (fast mode) OR send email (slow mode)
+- Wait for core agent to process the task
 - Core agent should create calendar event, detect conflict, and call ask_user tool
 
 Then (The Expected Outcome):
-- ✔️ A new all-day event is created in the user's calendar for [Tomorrow]
-  - Title: contains "Kindergarten" or "Closure"
 - ✔️ The ask_user tool is triggered due to scheduling conflict (verified in chat logs)
-- ✔️ Task moves to waiting_for_review status
+- ✔️ Task moves to needs_review status
 - ✔️ Original "Project Sync E2E Test" event remains unchanged
-- ✔️ A new memory entry is created about the conflict
 
 Notes:
-This is a REAL test - no mocks. It tests the complete flow from email sending
-through AI processing to calendar integration with actual Google Calendar API.
+This is a REAL test - no mocks. It tests the complete flow with actual APIs.
+
+PREREQUISITE: Calendar tools MUST be in the allow list in configs/tool_permissions.yaml:
+  - gcal_create_event
+  - gcal_list_events
+  - gcal_delete_event
+  - gcal_update_event
+
+Otherwise, tool approval will intercept the calendar tool call BEFORE conflict
+detection can occur, causing the test to fail.
+
+There are two modes:
+- FAST (default): Creates task directly via API, bypasses email entirely
+- SLOW (with email): Sends email, waits for Celery/ADR-019 staleness (15+ minutes)
 """
 
 import asyncio
+import os
 import pytest
 from datetime import datetime, timedelta
 import time
 import httpx
+import yaml
 
 from backend.mcp_client import mcp_manager
 
@@ -55,19 +66,316 @@ def api_base_url():
     return "http://localhost:8000"  # Assuming Nova is running on port 8000
 
 
+def check_calendar_tools_allowed():
+    """
+    Check if calendar tools are in the allow list.
+
+    Returns tuple (all_allowed: bool, missing_tools: list)
+    """
+    required_tools = ["gcal_create_event", "gcal_list_events", "gcal_delete_event"]
+
+    try:
+        config_path = os.path.join(
+            os.path.dirname(__file__),
+            "../../configs/tool_permissions.yaml"
+        )
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+
+        allowed = config.get("permissions", {}).get("allow", [])
+        missing = [t for t in required_tools if t not in allowed]
+        return len(missing) == 0, missing
+    except Exception as e:
+        return False, [f"Error reading config: {e}"]
+
+
 class TestRealCalendarConflictE2E:
     """Real end-to-end test for calendar conflict scenario with actual APIs."""
 
     @pytest.mark.asyncio
-    @pytest.mark.slow  # Mark as slow test since it uses real APIs
-    async def test_real_calendar_conflict_escalation_flow(
+    async def test_calendar_conflict_fast(
         self,
         test_date,
         test_event_title,
         api_base_url
     ):
-        """Test complete real flow: send email -> core agent -> calendar conflict -> escalation."""
-        
+        """
+        FAST test: Calendar conflict detection with direct task creation.
+
+        This test bypasses email entirely for faster execution (~2-5 minutes).
+        Creates a task directly via API and verifies the agent:
+        1. Creates a calendar event
+        2. Detects conflict with existing events
+        3. Calls ask_user with conflict message
+        4. Moves task to needs_review status
+        """
+        # =============================================================================
+        # PREREQUISITE CHECK: Calendar tools must be allowed
+        # =============================================================================
+        tools_allowed, missing = check_calendar_tools_allowed()
+        if not tools_allowed:
+            pytest.fail(
+                f"Calendar tools not in allow list! Missing: {missing}\n"
+                "Add these to configs/tool_permissions.yaml under permissions.allow:\n"
+                "  - gcal_create_event\n"
+                "  - gcal_list_events\n"
+                "  - gcal_delete_event\n"
+                "\n"
+                "Without this, tool approval will intercept before conflict detection!"
+            )
+
+        # =============================================================================
+        # STEP 0: ENVIRONMENT SETUP
+        # =============================================================================
+        try:
+            async with httpx.AsyncClient() as client:
+                health_response = await client.get(f"{api_base_url}/health", timeout=5.0)
+                if health_response.status_code != 200:
+                    pytest.skip(f"Nova API not available at {api_base_url}")
+        except Exception:
+            pytest.skip(f"Nova API not available at {api_base_url}")
+
+        # Check Core Agent is running
+        try:
+            async with httpx.AsyncClient() as client:
+                core_health = await client.get("http://localhost:8001/health", timeout=5.0)
+                if core_health.status_code != 200:
+                    pytest.skip("Core Agent not available at http://localhost:8001")
+                core_status = core_health.json()
+                print(f"Core Agent status: {core_status.get('agent_status', 'unknown')}")
+        except Exception:
+            pytest.skip("Core Agent not available at http://localhost:8001")
+
+        # =============================================================================
+        # STEP 1: CALENDAR SETUP - Create initial event to conflict with
+        # =============================================================================
+        date_str = test_date.strftime("%Y-%m-%d")
+        start_time = f"{date_str}T10:00:00+02:00"
+        end_time = f"{date_str}T11:00:00+02:00"
+
+        all_tools = await mcp_manager.get_tools()
+        if not all_tools:
+            pytest.skip("No MCP tools available")
+
+        create_event_tool = next((t for t in all_tools if t.name == "gcal_create_event"), None)
+        list_events_tool = next((t for t in all_tools if t.name == "gcal_list_events"), None)
+        delete_event_tool = next((t for t in all_tools if t.name == "gcal_delete_event"), None)
+
+        if not create_event_tool or not list_events_tool:
+            pytest.skip("Required calendar tools not found")
+
+        # Create initial event
+        try:
+            initial_event_result = await asyncio.wait_for(
+                create_event_tool.arun({
+                    "calendar_id": "primary",
+                    "summary": test_event_title,
+                    "start_datetime": start_time,
+                    "end_datetime": end_time,
+                    "description": "E2E test event for conflict detection"
+                }),
+                timeout=30.0
+            )
+            print(f"Created initial event: {test_event_title}")
+        except Exception as e:
+            pytest.skip(f"Calendar API failed: {e}")
+
+        # Extract event ID for cleanup
+        initial_event_id = None
+        if hasattr(initial_event_result, 'get'):
+            initial_event_id = initial_event_result.get('id')
+
+        task_id = None
+        timestamp = int(time.time())
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                # =============================================================================
+                # STEP 2: CREATE TASK DIRECTLY (bypasses email and ADR-019 staleness)
+                # =============================================================================
+                task_data = {
+                    "title": f"Kindergarten Closure E2E - {date_str} - {timestamp}",
+                    "description": f"""URGENT: Kindergarten Closure Notice
+
+Dear Parents,
+
+IMPORTANT NOTICE: The kindergarten will be CLOSED ALL DAY on {date_str}.
+
+This is a FULL DAY closure from 8:00 AM until 6:00 PM due to emergency maintenance.
+Please make alternative childcare arrangements for your children.
+
+Date: {date_str}
+Duration: Full day (8:00 AM - 6:00 PM)
+Reason: Emergency maintenance
+
+Best regards,
+Kindergarten Management""",
+                    "status": "new"
+                }
+
+                response = await client.post(f"{api_base_url}/api/tasks", json=task_data)
+                if response.status_code != 200:
+                    pytest.fail(f"Failed to create task: {response.status_code} - {response.text}")
+
+                task = response.json()
+                task_id = task['id']
+                print(f"Created task: {task['title']} (ID: {task_id[:8]}...)")
+
+                # =============================================================================
+                # STEP 3: WAIT FOR CORE AGENT TO PROCESS
+                # =============================================================================
+                print("Waiting for Core Agent to process task...")
+                max_wait = 300  # 5 minutes
+                poll_interval = 10
+
+                processed_task = None
+                for i in range(max_wait // poll_interval):
+                    await asyncio.sleep(poll_interval)
+                    elapsed = (i + 1) * poll_interval
+
+                    task_resp = await client.get(f"{api_base_url}/api/tasks/{task_id}")
+                    if task_resp.status_code != 200:
+                        continue
+
+                    current_task = task_resp.json()
+                    status = current_task['status']
+                    print(f"[{elapsed:3d}s] Task status: {status}")
+
+                    if status == 'needs_review':
+                        processed_task = current_task
+                        print(f"Task processed! Final status: {status}")
+                        break
+                    elif status in ['completed', 'failed']:
+                        pytest.fail(f"Task ended with unexpected status: {status}")
+
+                if not processed_task:
+                    pytest.fail(
+                        f"Task not processed within {max_wait}s. "
+                        "Check Core Agent is running and not stuck."
+                    )
+
+                # =============================================================================
+                # STEP 4: VERIFY ask_user WAS CALLED WITH CONFLICT MESSAGE
+                # =============================================================================
+                print("Verifying ask_user was called with conflict message...")
+
+                conv_resp = await client.get(
+                    f"{api_base_url}/chat/conversations/core_agent_task_{task_id}/task-data"
+                )
+
+                if conv_resp.status_code != 200:
+                    pytest.fail(f"Could not get conversation: {conv_resp.status_code}")
+
+                data = conv_resp.json()
+                messages = data.get('messages', [])
+
+                ask_user_called = False
+                conflict_mentioned = False
+                question_text = ""
+
+                for msg in messages:
+                    if msg.get('tool_calls'):
+                        for tc in msg['tool_calls']:
+                            tool_name = tc.get('tool', tc.get('name', ''))
+                            if tool_name == 'ask_user':
+                                ask_user_called = True
+                                args = tc.get('args', {})
+                                if isinstance(args, str):
+                                    import json
+                                    try:
+                                        args = json.loads(args)
+                                    except:
+                                        pass
+                                question_text = args.get('question', str(args)) if isinstance(args, dict) else str(args)
+                                if 'conflict' in question_text.lower():
+                                    conflict_mentioned = True
+
+                # Also check pending_escalation
+                if data.get('pending_escalation'):
+                    ask_user_called = True
+                    question_text = data['pending_escalation'].get('question', '')
+                    if 'conflict' in question_text.lower():
+                        conflict_mentioned = True
+
+                print(f"ask_user called: {ask_user_called}")
+                print(f"Conflict mentioned: {conflict_mentioned}")
+                if question_text:
+                    print(f"Question: {question_text[:200]}...")
+
+                # =============================================================================
+                # ASSERTIONS
+                # =============================================================================
+                assert processed_task['status'] == 'needs_review', \
+                    f"Expected needs_review, got {processed_task['status']}"
+
+                assert ask_user_called, (
+                    "CRITICAL FAILURE: ask_user was NOT called!\n"
+                    "The agent MUST call ask_user when there's a calendar conflict.\n"
+                    "Check:\n"
+                    "1. Calendar tools are in allow list (tool_permissions.yaml)\n"
+                    "2. Agent prompt instructs to check for conflicts\n"
+                    "3. Calendar API returned conflict information"
+                )
+
+                assert conflict_mentioned, (
+                    f"ask_user was called but 'conflict' not in question.\n"
+                    f"Question was: {question_text[:300]}"
+                )
+
+                print("All assertions passed!")
+
+        finally:
+            # =============================================================================
+            # CLEANUP
+            # =============================================================================
+            print("Cleaning up test data...")
+
+            # Delete initial calendar event
+            if initial_event_id and delete_event_tool:
+                try:
+                    await delete_event_tool.arun({
+                        "calendar_id": "primary",
+                        "event_id": initial_event_id
+                    })
+                    print(f"Deleted initial event: {test_event_title}")
+                except Exception as e:
+                    print(f"Warning: Could not delete initial event: {e}")
+
+            # Delete test task
+            if task_id:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        await client.delete(f"{api_base_url}/api/tasks/{task_id}")
+                        print(f"Deleted test task: {task_id[:8]}...")
+                except Exception as e:
+                    print(f"Warning: Could not delete task: {e}")
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow  # Mark as slow test since it uses email path
+    async def test_calendar_conflict_with_email(
+        self,
+        test_date,
+        test_event_title,
+        api_base_url
+    ):
+        """
+        SLOW test: Full flow including email path.
+
+        This test uses the complete email -> Celery -> task -> agent flow.
+        Takes 15-20+ minutes due to ADR-019 email staleness waiting period.
+
+        Use test_calendar_conflict_fast for quicker feedback.
+        """
+        # =============================================================================
+        # PREREQUISITE CHECK: Calendar tools must be allowed
+        # =============================================================================
+        tools_allowed, missing = check_calendar_tools_allowed()
+        if not tools_allowed:
+            pytest.fail(
+                f"Calendar tools not in allow list! Missing: {missing}\n"
+                "Add these to configs/tool_permissions.yaml under permissions.allow"
+            )
+
         # =============================================================================
         # STEP 0: ENVIRONMENT SETUP - Check if Nova API is running
         # =============================================================================

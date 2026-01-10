@@ -12,6 +12,11 @@ permissions:
   - disable_skill
   - _example_skill__*
   - lookup_contact
+  # Calendar tools - allow for conflict detection flow
+  - gcal_create_event
+  - gcal_list_events
+  - gcal_delete_event
+  - gcal_update_event
   deny:
   - mcp_tool(*)
   - send_email

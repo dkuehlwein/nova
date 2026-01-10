@@ -16,6 +16,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import and_, func, or_, select, text, desc
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import instance_state
 
 from database.database import db_manager
 from models.models import (
@@ -94,7 +95,7 @@ def task_to_response(task: Task) -> TaskResponse:
         thread_id=task.thread_id,
         persons=task.person_emails or [],
         projects=task.project_names or [],
-        comments_count=len(task.comments) if hasattr(task, 'comments') and task.comments else 0,
+        comments_count=len(task.comments) if 'comments' not in instance_state(task).unloaded and task.comments is not None else 0,
         # Thread consolidation fields (ADR-019)
         email_thread_id=email_thread_id,
         email_count=email_count,

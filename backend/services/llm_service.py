@@ -212,7 +212,7 @@ class LLMModelService:
     
     async def initialize_gemini_models(self, session) -> int:
         """Initialize Gemini models if API key is valid. Returns count of successful additions."""
-        from api.settings_endpoints import get_google_api_status
+        from api.api_key_endpoints import get_google_api_status
         
         try:
             status_response = await get_google_api_status(force_refresh=True, session=session)
@@ -242,7 +242,7 @@ class LLMModelService:
     
     async def initialize_huggingface_models(self, session) -> int:
         """Initialize HuggingFace models if token is valid. Returns count of successful additions."""
-        from api.settings_endpoints import get_huggingface_api_status
+        from api.api_key_endpoints import get_huggingface_api_status
         
         try:
             status_response = await get_huggingface_api_status(force_refresh=True, session=session)
@@ -272,7 +272,7 @@ class LLMModelService:
     
     async def initialize_openrouter_models(self, session) -> int:
         """Initialize OpenRouter models if API key is valid. Returns count of successful additions."""
-        from api.settings_endpoints import get_openrouter_api_status
+        from api.api_key_endpoints import get_openrouter_api_status
         
         try:
             status_response = await get_openrouter_api_status(force_refresh=True, session=session)
