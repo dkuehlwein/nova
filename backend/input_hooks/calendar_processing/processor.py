@@ -10,7 +10,7 @@ from typing import List, Dict, Any
 from datetime import datetime, date
 
 from utils.logging import get_logger
-from ..models import CalendarMeetingInfo, CalendarHookConfig
+from ..models import CalendarMeetingInfo, GoogleCalendarHookConfig
 from .fetcher import CalendarFetcher  
 from .analyzer import MeetingAnalyzer
 from .memo_generator import MemoGenerator
@@ -41,7 +41,7 @@ class CalendarProcessor:
         """Set PostgreSQL connection pool for shared connections across components."""
         self._pg_pool = pg_pool
     
-    async def process_daily_meetings(self, config: CalendarHookConfig) -> Dict[str, Any]:
+    async def process_daily_meetings(self, config: GoogleCalendarHookConfig) -> Dict[str, Any]:
         """
         Process today's meetings for preparation.
         
@@ -151,7 +151,7 @@ class CalendarProcessor:
             
             return result
     
-    async def _fetch_todays_events(self, config: CalendarHookConfig) -> List[Dict[str, Any]]:
+    async def _fetch_todays_events(self, config: GoogleCalendarHookConfig) -> List[Dict[str, Any]]:
         """
         Fetch today's calendar events using configuration.
         
@@ -213,7 +213,7 @@ class CalendarProcessor:
             raise
     
     async def _analyze_meetings(self, raw_events: List[Dict[str, Any]], 
-                              config: CalendarHookConfig) -> List[CalendarMeetingInfo]:
+                              config: GoogleCalendarHookConfig) -> List[CalendarMeetingInfo]:
         """
         Analyze raw events to identify meetings needing preparation.
         
@@ -252,7 +252,7 @@ class CalendarProcessor:
             return []
     
     async def _process_single_meeting(self, meeting: CalendarMeetingInfo, 
-                                    config: CalendarHookConfig) -> Dict[str, Any]:
+                                    config: GoogleCalendarHookConfig) -> Dict[str, Any]:
         """
         Process a single meeting for preparation.
         

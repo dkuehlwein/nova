@@ -7,15 +7,15 @@ and converting them into Nova tasks with configurable polling and task managemen
 
 from .base_hook import BaseInputHook, ProcessingResult, NormalizedItem
 from .hook_registry import InputHookRegistry, input_hook_registry
-from .models import HookConfig, EmailHookConfig, CalendarHookConfig
+from .models import HookConfig, GmailHookConfig, GoogleCalendarHookConfig
 
 __all__ = [
     "BaseInputHook",
-    "ProcessingResult", 
+    "ProcessingResult",
     "NormalizedItem",
     "InputHookRegistry",
     "input_hook_registry",
     "HookConfig",
-    "EmailHookConfig",
-    "CalendarHookConfig",
+    "GmailHookConfig",
+    "GoogleCalendarHookConfig",
 ]

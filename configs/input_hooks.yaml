@@ -2,7 +2,7 @@ default_polling_interval: 300
 default_queue_name: hooks
 enable_task_updates: true
 hooks:
-  calendar:
+  google_calendar:
     create_tasks: true
     display_name: Google Calendar
     enabled: false
@@ -18,13 +18,13 @@ hooks:
       look_ahead_days: 1
       min_meeting_duration: 15
       prep_time_minutes: 15
-    hook_type: calendar
-    name: calendar
+    hook_type: google_calendar
+    name: google_calendar
     polling_interval: 86400
     queue_name: hooks
     task_template: null
     update_existing_tasks: true
-  email:
+  gmail:
     create_tasks: true
     display_name: Gmail
     enabled: false
@@ -32,8 +32,8 @@ hooks:
       create_tasks: true
       label_filter: null
       max_per_fetch: 50
-    hook_type: email
-    name: email
+    hook_type: gmail
+    name: gmail
     polling_interval: 10
     queue_name: hooks
     task_template: null

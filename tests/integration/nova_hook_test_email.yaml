@@ -1,6 +1,6 @@
-# Test configuration file for EmailInputHook testing
-name: "test_email"
-hook_type: "email"
+# Test configuration file for GmailInputHook testing
+name: "test_gmail"
+hook_type: "gmail"
 enabled: true
 polling_interval: 300
 create_tasks: true

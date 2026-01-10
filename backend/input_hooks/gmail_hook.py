@@ -1,34 +1,35 @@
 """
-Email Input Hook implementation.
+Gmail Input Hook implementation.
 
 Wraps the existing email processing system (EmailProcessor, EmailFetcher, etc.)
 to work with the new hook architecture while preserving all existing functionality.
+Uses Gmail API via MCP integration.
 """
 
 from typing import Dict, Any, List
 
 from utils.logging import get_logger
 from .base_hook import BaseInputHook
-from .models import EmailHookConfig, NormalizedItem
+from .models import GmailHookConfig, NormalizedItem
 from .datetime_utils import parse_datetime
 
 logger = get_logger(__name__)
 
 
-class EmailInputHook(BaseInputHook):
+class GmailInputHook(BaseInputHook):
     """
-    Email input hook that wraps existing EmailProcessor functionality.
-    
+    Gmail input hook that wraps existing EmailProcessor functionality.
+
     This hook reuses all existing email processing components:
     - EmailProcessor for orchestration
-    - EmailFetcher for MCP integration  
+    - EmailFetcher for MCP integration (Gmail API)
     - EmailNormalizer for format standardization
     - EmailTaskCreator for task creation
-    
+
     Zero code rewrite - just adapts the interfaces!
     """
-    
-    def __init__(self, hook_name: str, config: EmailHookConfig):
+
+    def __init__(self, hook_name: str, config: GmailHookConfig):
         super().__init__(hook_name, config)
         
         # Import here to avoid circular dependencies
@@ -272,7 +273,7 @@ class EmailInputHook(BaseInputHook):
             health.update({
                 "mcp_tools_available": True,  # If health_check passed
                 "email_processor_ready": self._email_processor is not None,
-                "hook_type": "email"
+                "hook_type": "gmail"
             })
             
             return health
@@ -282,6 +283,6 @@ class EmailInputHook(BaseInputHook):
             health.update({
                 "healthy": False,
                 "error": str(e),
-                "hook_type": "email"
+                "hook_type": "gmail"
             })
             return health

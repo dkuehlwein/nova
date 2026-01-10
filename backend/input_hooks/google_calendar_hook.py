@@ -1,8 +1,9 @@
 """
-Calendar Input Hook implementation.
+Google Calendar Input Hook implementation.
 
 Wraps the calendar processing system to work with Nova's hook architecture.
 Creates private preparation meetings instead of Nova tasks to keep the task list clean.
+Uses Google Calendar API via MCP integration.
 """
 
 from typing import Dict, Any, List
@@ -10,22 +11,22 @@ from datetime import datetime
 
 from utils.logging import get_logger
 from .base_hook import BaseInputHook
-from .models import CalendarHookConfig, NormalizedItem, CalendarMeetingInfo
+from .models import GoogleCalendarHookConfig, NormalizedItem, CalendarMeetingInfo
 from .calendar_processing.processor import CalendarProcessor
 
 logger = get_logger(__name__)
 
 
-class CalendarInputHook(BaseInputHook):
+class GoogleCalendarInputHook(BaseInputHook):
     """
-    Calendar input hook that creates preparation meetings.
-    
-    Unlike other hooks that create Nova tasks, this hook creates private 
+    Google Calendar input hook that creates preparation meetings.
+
+    Unlike other hooks that create Nova tasks, this hook creates private
     preparation meetings in your calendar with AI-generated memos as content.
     This keeps Nova's task system clean while providing meeting preparation.
     """
-    
-    def __init__(self, hook_name: str, config: CalendarHookConfig):
+
+    def __init__(self, hook_name: str, config: GoogleCalendarHookConfig):
         super().__init__(hook_name, config)
         
         # Calendar processing components
@@ -262,7 +263,7 @@ class CalendarInputHook(BaseInputHook):
             
             # Add calendar-specific health info
             health.update({
-                "hook_type": "calendar", 
+                "hook_type": "google_calendar",
                 "creates_prep_meetings": True,
                 "creates_nova_tasks": False,
                 "status": "Google Calendar MCP tools accessible"
@@ -275,6 +276,6 @@ class CalendarInputHook(BaseInputHook):
             health.update({
                 "healthy": False,
                 "error": str(e),
-                "hook_type": "calendar"
+                "hook_type": "google_calendar"
             })
             return health

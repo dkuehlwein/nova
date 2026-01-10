@@ -25,7 +25,7 @@ from backend.input_hooks.calendar_processing.fetcher import CalendarFetcher
 from backend.input_hooks.calendar_processing.analyzer import MeetingAnalyzer
 from backend.input_hooks.calendar_processing.meeting_creator import MeetingCreator
 from backend.input_hooks.calendar_processing.processor import CalendarProcessor
-from backend.input_hooks.models import CalendarMeetingInfo, CalendarHookConfig, CalendarHookSettings
+from backend.input_hooks.models import CalendarMeetingInfo, GoogleCalendarHookConfig, GoogleCalendarHookSettings
 
 
 class TestCalendarFetcherUnit:
@@ -405,13 +405,13 @@ class TestCalendarProcessorUnit:
     @pytest.fixture
     def sample_config(self):
         """Sample config for testing."""
-        return CalendarHookConfig(
+        return GoogleCalendarHookConfig(
             name="test_processor",
-            hook_type="calendar",
+            hook_type="google_calendar",
             enabled=True,
             polling_interval=86400,
             create_tasks=True,
-            hook_settings=CalendarHookSettings(
+            hook_settings=GoogleCalendarHookSettings(
                 calendar_ids=["primary"],
                 look_ahead_days=1,
                 min_meeting_duration=15,
@@ -505,13 +505,13 @@ class TestCalendarProcessorUnit:
     @pytest.mark.asyncio
     async def test_process_multiple_calendars(self):
         """Test processing events from multiple calendar IDs."""
-        config = CalendarHookConfig(
+        config = GoogleCalendarHookConfig(
             name="multi_calendar_test",
-            hook_type="calendar",
+            hook_type="google_calendar",
             enabled=True,
             polling_interval=86400,
             create_tasks=True,
-            hook_settings=CalendarHookSettings(
+            hook_settings=GoogleCalendarHookSettings(
                 calendar_ids=["primary", "work@example.com"],
                 look_ahead_days=1,
                 min_meeting_duration=15,

@@ -5,7 +5,7 @@
 **Updated**: 2025-12-31
 **Supersedes**: [ADR-006](archive/006-email-integration-architecture.md)
 
-> **Implementation Notes**: Registry-based hook architecture implemented. `BaseInputHook` and `InputHookRegistry` in `backend/input_hooks/`. EmailInputHook and CalendarInputHook operational. Configuration via `configs/input_hooks.yaml` with hot-reload. Celery integration with dynamic beat scheduling.
+> **Implementation Notes**: Registry-based hook architecture implemented. `BaseInputHook` and `InputHookRegistry` in `backend/input_hooks/`. GmailInputHook, GoogleCalendarInputHook, and OutlookEmailHook operational. Configuration via `configs/input_hooks.yaml` with hot-reload. Celery integration with dynamic beat scheduling.
 
 ---
 
@@ -43,9 +43,9 @@ Implement a **Registry-Based Hook Architecture** extending Nova's proven `Config
                               │
                     ┌─────────┴─────────────┐
                     ▼                       ▼
-        ┌───────────────────┐    ┌──────────────────────┐
-        │   EmailInputHook  │    │   CalendarInputHook  │
-        └───────────────────┘    └──────────────────────┘
+        ┌───────────────────┐    ┌──────────────────────────┐
+        │   GmailInputHook  │    │ GoogleCalendarInputHook  │
+        └───────────────────┘    └──────────────────────────┘
 ```
 
 ### Key Components
@@ -54,8 +54,9 @@ Implement a **Registry-Based Hook Architecture** extending Nova's proven `Config
 |-----------|----------|---------|
 | BaseInputHook | `backend/input_hooks/base_hook.py` | Abstract class for all hooks |
 | InputHookRegistry | `backend/input_hooks/hook_registry.py` | Centralized hook management |
-| EmailInputHook | `backend/input_hooks/email_hook.py` | Email → Task conversion |
-| CalendarInputHook | `backend/input_hooks/calendar_hook.py` | Calendar events processing |
+| GmailInputHook | `backend/input_hooks/gmail_hook.py` | Gmail → Task conversion |
+| GoogleCalendarInputHook | `backend/input_hooks/google_calendar_hook.py` | Google Calendar events processing |
+| OutlookEmailHook | `backend/input_hooks/outlook_email_hook.py` | Outlook email → Task conversion |
 | Hook Tasks | `backend/tasks/hook_tasks.py` | Generic Celery task |
 | Config | `configs/input_hooks.yaml` | Per-hook configuration |
 
@@ -64,9 +65,9 @@ Implement a **Registry-Based Hook Architecture** extending Nova's proven `Config
 ```yaml
 # configs/input_hooks.yaml
 hooks:
-  email:
-    name: "email"
-    hook_type: "email"
+  gmail:
+    name: "gmail"
+    hook_type: "gmail"
     enabled: true
     polling_interval: 300
     queue_name: "email"
@@ -75,9 +76,9 @@ hooks:
     hook_settings:
       max_per_fetch: 50
 
-  calendar:
-    name: "calendar"
-    hook_type: "calendar"
+  google_calendar:
+    name: "google_calendar"
+    hook_type: "google_calendar"
     enabled: true
     polling_interval: 600
     queue_name: "calendar"

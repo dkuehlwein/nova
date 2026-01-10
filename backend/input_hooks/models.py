@@ -65,17 +65,17 @@ class HookConfig(BaseModel):
         extra = "allow"  # Allow additional fields
 
 
-class EmailHookSettings(BaseModel):
-    """Email-specific hook settings."""
+class GmailHookSettings(BaseModel):
+    """Gmail-specific hook settings."""
     max_per_fetch: int = Field(default=50, gt=0)
     label_filter: Optional[str] = None
     create_tasks: bool = True
 
 
-class EmailHookConfig(HookConfig):
-    """Configuration for email input hooks."""
-    hook_type: Literal["email"] = "email"
-    hook_settings: EmailHookSettings = Field(default_factory=EmailHookSettings)
+class GmailHookConfig(HookConfig):
+    """Configuration for Gmail input hooks."""
+    hook_type: Literal["gmail"] = "gmail"
+    hook_settings: GmailHookSettings = Field(default_factory=GmailHookSettings)
 
 
 class OutlookEmailHookSettings(BaseModel):
@@ -91,8 +91,8 @@ class OutlookEmailHookConfig(HookConfig):
     hook_settings: OutlookEmailHookSettings = Field(default_factory=OutlookEmailHookSettings)
 
 
-class CalendarHookSettings(BaseModel):
-    """Calendar-specific hook settings."""
+class GoogleCalendarHookSettings(BaseModel):
+    """Google Calendar-specific hook settings."""
     calendar_ids: List[str] = ["primary"]
     look_ahead_days: int = Field(default=1, gt=0)
     event_types: List[str] = ["meeting", "appointment", "reminder"]
@@ -102,10 +102,10 @@ class CalendarHookSettings(BaseModel):
     prep_time_minutes: int = Field(default=15, gt=0)  # Minutes before meeting for prep
 
 
-class CalendarHookConfig(HookConfig):
-    """Configuration for calendar input hooks."""
-    hook_type: Literal["calendar"] = "calendar"
-    hook_settings: CalendarHookSettings = Field(default_factory=CalendarHookSettings)
+class GoogleCalendarHookConfig(HookConfig):
+    """Configuration for Google Calendar input hooks."""
+    hook_type: Literal["google_calendar"] = "google_calendar"
+    hook_settings: GoogleCalendarHookSettings = Field(default_factory=GoogleCalendarHookSettings)
 
 
 class CalendarMeetingInfo(BaseModel):
@@ -136,7 +136,7 @@ class CalendarMeetingInfo(BaseModel):
 
 
 # Union type for all possible hook configs
-AnyHookConfig = Union[EmailHookConfig, OutlookEmailHookConfig, CalendarHookConfig, HookConfig]
+AnyHookConfig = Union[GmailHookConfig, OutlookEmailHookConfig, GoogleCalendarHookConfig, HookConfig]
 
 
 class InputHooksConfig(BaseModel):
