@@ -170,74 +170,74 @@ if __name__ == "__main__":
     # === Gmail Tools ===
 
     @mcp.tool()
-    async def gmail_send_email(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
+    async def send_email(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
         """Sends an email via Gmail to one or more recipients. Subject and message are distinct."""
         return await workspace_service.gmail_tools.send_email(recipient_ids, subject, message)
 
     @mcp.tool()
-    async def gmail_get_unread_emails() -> Union[List[Dict[str, str]], Dict[str, str]]:
+    async def get_unread_emails() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Retrieves a list of unread emails from the Gmail primary inbox category."""
         return await workspace_service.gmail_tools.get_unread_emails()
 
     @mcp.tool()
-    async def gmail_read_email(email_id: str) -> Dict[str, str]:
-        """Retrieves the full content of a specific Gmail email. AUTOMATICALLY marks the email as read - no need to call gmail_mark_as_read separately."""
+    async def read_email(email_id: str) -> Dict[str, str]:
+        """Retrieves the full content of a specific email. AUTOMATICALLY marks the email as read."""
         return await workspace_service.gmail_tools.read_email(email_id)
 
     @mcp.tool()
-    async def gmail_trash_email(email_id: str) -> Union[str, Dict[str, str]]:
-        """Moves the specified Gmail email to the trash."""
+    async def trash_email(email_id: str) -> Union[str, Dict[str, str]]:
+        """Moves the specified email to the trash."""
         return await workspace_service.gmail_tools.trash_email(email_id)
 
     @mcp.tool()
-    async def gmail_mark_as_read(email_id: str) -> Union[str, Dict[str, str]]:
-        """Marks the specified Gmail email as read."""
+    async def mark_as_read(email_id: str) -> Union[str, Dict[str, str]]:
+        """Marks the specified email as read."""
         return await workspace_service.gmail_tools.mark_email_as_read(email_id)
 
     @mcp.tool()
-    async def gmail_create_draft(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
-        """Creates a Gmail draft email message for one or more recipients."""
+    async def create_draft(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
+        """Creates a draft email message for one or more recipients."""
         return await workspace_service.gmail_tools.create_draft(recipient_ids, subject, message)
 
     @mcp.tool()
-    async def gmail_list_drafts() -> Union[List[Dict[str, str]], Dict[str, str]]:
-        """Lists all Gmail draft emails with their ID, subject, and recipient."""
+    async def list_drafts() -> Union[List[Dict[str, str]], Dict[str, str]]:
+        """Lists all draft emails with their ID, subject, and recipient."""
         return await workspace_service.gmail_tools.list_drafts()
 
     @mcp.tool()
-    async def gmail_list_labels() -> Union[List[Dict[str, str]], Dict[str, str]]:
-        """Lists all labels in the Gmail mailbox."""
+    async def list_labels() -> Union[List[Dict[str, str]], Dict[str, str]]:
+        """Lists all labels in the mailbox."""
         return await workspace_service.gmail_tools.list_labels()
 
     @mcp.tool()
-    async def gmail_create_label(label_name: str) -> Dict[str, str]:
-        """Creates a new label in Gmail."""
+    async def create_label(label_name: str) -> Dict[str, str]:
+        """Creates a new label."""
         return await workspace_service.gmail_tools.create_label(label_name)
 
     # === Calendar Tools ===
-    
+
     @mcp.tool()
     async def list_calendars() -> Union[List[Dict[str, str]], Dict[str, str]]:
         """Lists all calendars accessible to the user."""
         return await workspace_service.calendar_tools.list_calendars()
 
     @mcp.tool()
-    async def create_calendar_event(calendar_id: str, summary: str, start_datetime: str, 
-                                  end_datetime: str, description: str = "", location: str = "",
-                                  attendees: Optional[List[str]] = None) -> Dict[str, str]:
+    async def create_event(calendar_id: str, summary: str, start_datetime: str,
+                          end_datetime: str, description: str = "", location: str = "",
+                          attendees: Optional[List[str]] = None) -> Dict[str, str]:
         """Creates a new calendar event. Datetime format: 2025-06-06T10:00:00 (ISO format)"""
         return await workspace_service.calendar_tools.create_event(
             calendar_id, summary, start_datetime, end_datetime, description, location, attendees
         )
 
     @mcp.tool()
-    async def list_calendar_events(calendar_id: str = 'primary', max_results: int = 50, 
-                                 time_min: Optional[str] = None) -> Union[List[Dict[str, Any]], Dict[str, str]]:
+    async def list_events(calendar_id: str = 'primary', max_results: int = 50,
+                         time_min: Optional[str] = None) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """Lists upcoming events from a calendar. If time_min not provided, uses current time."""
         return await workspace_service.calendar_tools.list_events(calendar_id, max_results, time_min)
 
     @mcp.tool()
-    async def create_quick_calendar_event(calendar_id: str, text: str) -> Dict[str, str]:
+    async def create_quick_event(calendar_id: str, text: str) -> Dict[str, str]:
         """Creates an event using natural language. Example: 'Meeting with John tomorrow at 2pm'"""
         return await workspace_service.calendar_tools.create_quick_event(calendar_id, text)
 

@@ -66,15 +66,15 @@ class TestOutlookFetcherUnit:
                 "is_read": False
             }
 
-            # Create mock tools (prefixed per ADR-019, with [server_name] in description)
+            # Create mock tools (prefixed per ADR-015: server_name-tool_name)
             list_tool = Mock()
-            list_tool.name = "outlook_list_emails"
-            list_tool.description = "[outlook_mac] List emails from Outlook"
+            list_tool.name = "outlook_mac-list_emails"
+            list_tool.description = "List emails from Outlook"
             list_tool.arun = AsyncMock(return_value=mock_emails)
 
             read_tool = Mock()
-            read_tool.name = "outlook_read_email"
-            read_tool.description = "[outlook_mac] Read email content"
+            read_tool.name = "outlook_mac-read_email"
+            read_tool.description = "Read email content"
             read_tool.arun = AsyncMock(return_value=mock_full_email)
 
             mock_mcp.get_tools = AsyncMock(return_value=[list_tool, read_tool])
@@ -86,7 +86,7 @@ class TestOutlookFetcherUnit:
             assert emails[0]["id"] == "email_123"
             assert emails[0]["subject"] == "Test Subject"
 
-            # Verify outlook_list_emails was called with exclude_processed=True
+            # Verify outlook_mac-list_emails was called with exclude_processed=True
             list_call_args = list_tool.arun.call_args[0][0]
             assert list_call_args.get("exclude_processed") is True
 
@@ -111,8 +111,8 @@ class TestOutlookFetcherUnit:
         """Test handling of empty inbox."""
         with patch('backend.input_hooks.outlook_processing.fetcher.mcp_manager') as mock_mcp:
             list_tool = Mock()
-            list_tool.name = "outlook_list_emails"
-            list_tool.description = "[outlook_mac] List emails"
+            list_tool.name = "outlook_mac-list_emails"
+            list_tool.description = "List emails"
             list_tool.arun = AsyncMock(return_value=[])
 
             mock_mcp.get_tools = AsyncMock(return_value=[list_tool])
@@ -127,8 +127,8 @@ class TestOutlookFetcherUnit:
         """Test graceful handling of error response from MCP - returns empty list."""
         with patch('backend.input_hooks.outlook_processing.fetcher.mcp_manager') as mock_mcp:
             list_tool = Mock()
-            list_tool.name = "outlook_list_emails"
-            list_tool.description = "[outlook_mac] List emails"
+            list_tool.name = "outlook_mac-list_emails"
+            list_tool.description = "List emails"
             list_tool.arun = AsyncMock(return_value={"error": "Outlook not connected"})
 
             mock_mcp.get_tools = AsyncMock(return_value=[list_tool])
@@ -189,8 +189,8 @@ class TestOutlookFetcherUnit:
         """Test health check with working Outlook connection."""
         with patch('backend.input_hooks.outlook_processing.fetcher.mcp_manager') as mock_mcp:
             list_tool = Mock()
-            list_tool.name = "outlook_list_emails"
-            list_tool.description = "[outlook_mac] List emails"
+            list_tool.name = "outlook_mac-list_emails"
+            list_tool.description = "List emails"
             list_tool.arun = AsyncMock(return_value=[])
 
             mock_mcp.get_tools = AsyncMock(return_value=[list_tool])
@@ -199,7 +199,7 @@ class TestOutlookFetcherUnit:
             health = await fetcher.health_check()
 
             assert health["healthy"] is True
-            assert "outlook_list_emails" in health["tools_available"]
+            assert "outlook_mac-list_emails" in health["tools_available"]
 
 
 class TestOutlookProcessorUnit:

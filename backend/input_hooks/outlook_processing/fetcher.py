@@ -19,9 +19,9 @@ class OutlookFetcher:
     # Outlook MCP server name (as registered in LiteLLM)
     MCP_SERVER_NAME = "outlook_mac"
 
-    # Outlook MCP tool names (prefixed per ADR-019)
-    TOOL_LIST_EMAILS = "outlook_list_emails"
-    TOOL_READ_EMAIL = "outlook_read_email"
+    # Outlook MCP tool names (prefixed per ADR-015)
+    TOOL_LIST_EMAILS = "outlook_mac-list_emails"
+    TOOL_READ_EMAIL = "outlook_mac-read_email"
 
     # Internal REST endpoint for marking emails (not an MCP tool)
     OUTLOOK_SERVER_URL = os.environ.get("OUTLOOK_MCP_URL", "http://localhost:9000")
@@ -257,11 +257,10 @@ class OutlookFetcher:
             self._tools_cache = {}
             for tool in all_tools:
                 tool_name = getattr(tool, 'name', '')
-                # LangChain tools have description prefixed with server name
-                tool_description = getattr(tool, 'description', '')
 
-                # Only cache Outlook tools - check if description starts with [outlook_mac]
-                if f"[{self.MCP_SERVER_NAME}]" in tool_description:
+                # Only cache Outlook tools - check if tool name starts with outlook_mac-
+                # Tool names are prefixed per ADR-015: server_name-tool_name
+                if tool_name.startswith(f"{self.MCP_SERVER_NAME}-"):
                     self._tools_cache[tool_name] = tool
 
             logger.info(

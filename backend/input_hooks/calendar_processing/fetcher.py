@@ -23,8 +23,8 @@ class CalendarFetcher:
     """
 
     def __init__(self):
-        # Tool name follows ADR-019 naming convention: gcal_ prefix for Google Calendar
-        self.tool_name = "gcal_list_events"
+        # Tool name follows ADR-015 MCP Tool Namespacing: server_name-tool_name
+        self.tool_name = "google_workspace-list_events"
         
     async def fetch_todays_events(self, calendar_id: str = "primary", 
                                  look_ahead_days: int = 1) -> List[Dict[str, Any]]:
@@ -62,15 +62,15 @@ class CalendarFetcher:
             tools = await mcp_manager.get_tools()
             calendar_tool = None
 
-            # Find calendar list events tool (prefer prefixed gcal_list_events per ADR-019)
+            # Find calendar list events tool (prefixed per ADR-015)
             for tool in tools:
                 tool_name = getattr(tool, 'name', '')
-                # Prefer the new prefixed name
+                # Look for the prefixed name: google_workspace-list_events
                 if tool_name == self.tool_name:
                     calendar_tool = tool
                     break
-                # Fallback to any calendar list tool for backwards compatibility
-                if 'calendar' in tool_name.lower() and 'list' in tool_name.lower():
+                # Fallback: any tool with calendar and list in the name
+                if 'list' in tool_name.lower() and 'event' in tool_name.lower():
                     calendar_tool = tool
 
             if not calendar_tool:
@@ -149,13 +149,13 @@ class CalendarFetcher:
             # Get calendar MCP tools
             tools = await mcp_manager.get_tools()
             get_event_tool = None
-            
-            # Find calendar get event tool (supports both prefixed and legacy names)
+
+            # Find calendar get event tool (prefixed per ADR-015)
             for tool in tools:
                 if hasattr(tool, 'name'):
                     name_lower = tool.name.lower()
-                    # Match gcal_get_event or get_calendar_event patterns
-                    if name_lower == 'gcal_get_event' or ('calendar' in name_lower and 'get' in name_lower):
+                    # Match google_workspace-get_event or similar
+                    if 'get' in name_lower and 'event' in name_lower:
                         get_event_tool = tool
                         break
             

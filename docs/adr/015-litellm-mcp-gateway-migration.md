@@ -249,6 +249,46 @@ curl -s -H "Authorization: Bearer sk-1234" http://localhost:4000/mcp-rest/tools/
 | Enterprise MCP not aggregating | Configure enterprise MCPs locally pointing to enterprise URLs |
 | Migration breaks existing setups | Provide migration script, keep YAML parser as fallback |
 
+## MCP Tool Namespacing Convention
+
+**Updated**: 2026-01-11
+
+To prevent tool name collisions when multiple MCP servers are registered, Nova applies automatic server-name prefixing to all MCP tools.
+
+### Format
+
+```
+{server_name}-{tool_name}
+```
+
+**Examples**:
+- `send_email` from `google_workspace` → `google_workspace-send_email`
+- `list_emails` from `outlook_mac` → `outlook_mac-list_emails`
+- `request_feature` from `feature_request` → `feature_request-request_feature`
+
+### Why Hyphen Separator?
+
+The hyphen (`-`) separator is compatible with Claude's tool name pattern: `^[a-zA-Z0-9_-]{1,128}$`
+
+This matches LiteLLM's built-in prefixing convention (implemented in PR #12271, #12430).
+
+### Implementation
+
+1. **MCP Servers**: Define tools with simple base names (no manual prefixes)
+   - ✅ `send_email`, `list_events`, `create_draft`
+   - ❌ `gmail_send_email`, `outlook_list_emails`
+
+2. **Nova's mcp_client.py**: Automatically prefixes tool names with `server_name-` when converting to LangChain tools
+
+3. **Tool Permissions**: Reference tools by their prefixed names in `configs/tool_permissions.yaml`
+
+### Benefits
+
+- **Automatic uniqueness**: No manual discipline required
+- **Clean MCP servers**: Servers have simple, reusable tool names
+- **Collision-proof**: Two servers can define `send_email` without conflict
+- **Industry standard**: Follows MCP protocol best practices
+
 ## Related ADRs
 
 - **ADR-011**: LiteLLM-First Model Management (extended to MCP)
@@ -256,4 +296,4 @@ curl -s -H "Authorization: Bearer sk-1234" http://localhost:4000/mcp-rest/tools/
 - **ADR-014**: Pluggable Skills System (skills may expose MCP-compatible tools)
 
 ---
-*Last reviewed: 2026-01-06*
+*Last reviewed: 2026-01-11*

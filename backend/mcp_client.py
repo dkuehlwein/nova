@@ -7,6 +7,7 @@ Nova queries LiteLLM's /mcp-rest/tools/list endpoint for tool discovery.
 
 import asyncio
 import httpx
+import time
 from typing import List, Dict, Any, Optional
 from langchain_core.tools import StructuredTool
 from pydantic import create_model
@@ -14,6 +15,26 @@ from config import settings
 from utils.logging import get_logger
 
 logger = get_logger("mcp-client")
+
+# Cache settings for MCP tools
+_TOOLS_CACHE_TTL_SECONDS = 60  # Cache tools for 60 seconds to reduce MCP server load
+
+
+def get_prefixed_tool_name(server_name: str, tool_name: str) -> str:
+    """
+    Generate prefixed tool name: server_name-tool_name
+
+    This ensures unique tool names across all MCP servers.
+    See ADR-015 MCP Tool Namespacing Convention.
+
+    Args:
+        server_name: MCP server name (e.g., "google_workspace", "outlook_mac")
+        tool_name: Base tool name from MCP server (e.g., "send_email", "list_events")
+
+    Returns:
+        Prefixed tool name (e.g., "google_workspace-send_email")
+    """
+    return f"{server_name}-{tool_name}"
 
 
 class MCPClientManager:
@@ -27,6 +48,9 @@ class MCPClientManager:
     def __init__(self):
         self._litellm_base_url = settings.LITELLM_BASE_URL
         self._litellm_api_key = settings.LITELLM_MASTER_KEY
+        # Cache for LangChain tools to reduce MCP server load
+        self._tools_cache: Optional[List[Any]] = None
+        self._tools_cache_timestamp: float = 0
 
     async def list_tools_from_litellm(self, timeout: float = 10.0) -> Dict[str, Any]:
         """
@@ -211,13 +235,29 @@ class MCPClientManager:
             logger.error(f"Error calling MCP tool {tool_name}: {e}")
             return {"error": str(e)}
 
-    async def get_tools(self) -> List[Any]:
+    async def get_tools(self, force_refresh: bool = False) -> List[Any]:
         """
         Get LangChain-compatible tools from LiteLLM's MCP Gateway.
 
         Fetches all tools from LiteLLM and converts them to LangChain
         StructuredTool objects that can be bound to the agent.
+
+        Uses a cache with TTL to reduce load on MCP servers - each call to
+        list_tools causes LiteLLM to connect to all MCP servers.
+
+        Args:
+            force_refresh: If True, bypass cache and fetch fresh tools
         """
+        # Check cache first (unless force refresh requested)
+        current_time = time.time()
+        cache_age = current_time - self._tools_cache_timestamp
+
+        if not force_refresh and self._tools_cache is not None and cache_age < _TOOLS_CACHE_TTL_SECONDS:
+            logger.debug(
+                f"Using cached MCP tools (age: {cache_age:.1f}s, TTL: {_TOOLS_CACHE_TTL_SECONDS}s)"
+            )
+            return self._tools_cache
+
         logger.info("Fetching MCP tools from LiteLLM")
 
         result = await self.list_tools_from_litellm()
@@ -245,10 +285,14 @@ class MCPClientManager:
                 else:
                     ArgsModel = create_model(f"{tool_name}Args")
 
-                # Create a closure to capture server_name and tool_name
-                def make_tool_func(srv_name: str, tl_name: str):
+                # Create prefixed tool name for uniqueness across MCP servers
+                prefixed_name = get_prefixed_tool_name(server_name, tool_name)
+
+                # Create a closure to capture server_name and original tool_name
+                # Note: We use the original tool_name for MCP calls, not the prefixed name
+                def make_tool_func(srv_name: str, original_tool_name: str):
                     async def tool_func(**kwargs) -> str:
-                        result = await self.call_mcp_tool(srv_name, tl_name, kwargs)
+                        result = await self.call_mcp_tool(srv_name, original_tool_name, kwargs)
                         if isinstance(result, dict):
                             import json
                             return json.dumps(result)
@@ -257,8 +301,8 @@ class MCPClientManager:
 
                 tool = StructuredTool.from_function(
                     coroutine=make_tool_func(server_name, tool_name),
-                    name=tool_name,
-                    description=f"[{server_name}] {description}",
+                    name=prefixed_name,  # Use prefixed name for LangChain
+                    description=description,  # Server name is now in the tool name
                     args_schema=ArgsModel,
                     return_direct=False
                 )
@@ -269,8 +313,18 @@ class MCPClientManager:
                 logger.warning(f"Failed to convert MCP tool {tool_data.get('name', 'unknown')}: {e}")
                 continue
 
-        logger.info(f"Successfully loaded {len(langchain_tools)} MCP tools from LiteLLM")
+        # Update cache
+        self._tools_cache = langchain_tools
+        self._tools_cache_timestamp = current_time
+
+        logger.info(f"Successfully loaded {len(langchain_tools)} MCP tools from LiteLLM (cached for {_TOOLS_CACHE_TTL_SECONDS}s)")
         return langchain_tools
+
+    def clear_tools_cache(self):
+        """Clear the tools cache to force a refresh on next get_tools() call."""
+        self._tools_cache = None
+        self._tools_cache_timestamp = 0
+        logger.info("MCP tools cache cleared")
 
 
 # Global instance for reuse

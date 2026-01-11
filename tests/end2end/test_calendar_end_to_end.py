@@ -53,11 +53,11 @@ class TestCalendarEndToEnd:
             # Find all required tools first
             for tool in tools:
                 if hasattr(tool, 'name'):
-                    if tool.name == 'gcal_create_event':
+                    if tool.name == 'google_workspace-create_event':
                         create_tool = tool
-                    elif tool.name == 'gcal_list_events':
+                    elif tool.name == 'google_workspace-list_events':
                         list_tool = tool
-                    elif tool.name == 'gcal_delete_event':
+                    elif tool.name == 'google_workspace-delete_event':
                         delete_tool = tool
 
             # CLEANUP: Delete old E2E test PREP meetings to avoid clutter
@@ -103,7 +103,7 @@ class TestCalendarEndToEnd:
                     print(f"⚠️ Failed to cleanup old meetings: {e}")
 
             if not create_tool or not list_tool:
-                pytest.skip("Required Google Calendar tools (gcal_create_event, gcal_list_events) not available via MCP")
+                pytest.skip("Required Google Calendar tools (google_workspace-create_event, google_workspace-list_events) not available via MCP")
             
             # CHECK: Look for existing E2E test meetings first
             existing_meeting = None

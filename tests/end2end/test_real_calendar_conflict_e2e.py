@@ -23,10 +23,10 @@ Notes:
 This is a REAL test - no mocks. It tests the complete flow with actual APIs.
 
 PREREQUISITE: Calendar tools MUST be in the allow list in configs/tool_permissions.yaml:
-  - gcal_create_event
-  - gcal_list_events
-  - gcal_delete_event
-  - gcal_update_event
+  - google_workspace-create_event
+  - google_workspace-list_events
+  - google_workspace-delete_event
+  - google_workspace-update_event
 
 Otherwise, tool approval will intercept the calendar tool call BEFORE conflict
 detection can occur, causing the test to fail.
@@ -72,7 +72,7 @@ def check_calendar_tools_allowed():
 
     Returns tuple (all_allowed: bool, missing_tools: list)
     """
-    required_tools = ["gcal_create_event", "gcal_list_events", "gcal_delete_event"]
+    required_tools = ["google_workspace-create_event", "google_workspace-list_events", "google_workspace-delete_event"]
 
     try:
         config_path = os.path.join(
@@ -117,9 +117,9 @@ class TestRealCalendarConflictE2E:
             pytest.fail(
                 f"Calendar tools not in allow list! Missing: {missing}\n"
                 "Add these to configs/tool_permissions.yaml under permissions.allow:\n"
-                "  - gcal_create_event\n"
-                "  - gcal_list_events\n"
-                "  - gcal_delete_event\n"
+                "  - google_workspace-create_event\n"
+                "  - google_workspace-list_events\n"
+                "  - google_workspace-delete_event\n"
                 "\n"
                 "Without this, tool approval will intercept before conflict detection!"
             )

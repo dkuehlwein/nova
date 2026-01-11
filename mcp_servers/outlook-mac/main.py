@@ -27,15 +27,14 @@ mcp = FastMCP(name="OutlookMacServer")
 def setup_tools(outlook_service: OutlookService):
     """Set up all the MCP tools for the Outlook service.
 
-    Tool Naming Convention:
-    - Email tools are prefixed with 'outlook_' to avoid conflicts with Gmail
-    - Calendar tools are prefixed with 'outlook_cal_' to avoid conflicts with Google Calendar
+    Tool names are simple base names without prefixes.
+    Nova's mcp_client.py automatically prefixes with server name (outlook_mac-).
     """
 
-    # === Email Tools (prefixed with outlook_) ===
+    # === Email Tools ===
 
     @mcp.tool()
-    async def outlook_list_emails(
+    async def list_emails(
         folder: str = "inbox",
         limit: int = 20,
         unread_only: bool = False,
@@ -43,7 +42,7 @@ def setup_tools(outlook_service: OutlookService):
         since_date: Optional[str] = None
     ) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """
-        List emails from the specified folder in Outlook.
+        List emails from the specified folder.
 
         Args:
             folder: Folder name to list emails from (default: inbox)
@@ -58,9 +57,9 @@ def setup_tools(outlook_service: OutlookService):
         return await outlook_service.list_emails(folder, limit, unread_only, exclude_processed, since_date)
 
     @mcp.tool()
-    async def outlook_read_email(email_id: Union[str, int]) -> Dict[str, Any]:
+    async def read_email(email_id: Union[str, int]) -> Dict[str, Any]:
         """
-        Read the full content of an email by its ID in Outlook.
+        Read the full content of an email by its ID.
 
         Args:
             email_id: The unique identifier of the email to read (string or integer)
@@ -71,14 +70,14 @@ def setup_tools(outlook_service: OutlookService):
         return await outlook_service.read_email(str(email_id))
 
     @mcp.tool()
-    async def outlook_create_draft(
+    async def create_draft(
         recipients: List[str],
         subject: str,
         body: str,
         cc: Optional[List[str]] = None
     ) -> Dict[str, str]:
         """
-        Create a draft email in Outlook. Does not send the email.
+        Create a draft email. Does not send the email.
 
         Args:
             recipients: List of recipient email addresses
@@ -92,17 +91,17 @@ def setup_tools(outlook_service: OutlookService):
         return await outlook_service.create_draft(recipients, subject, body, cc)
 
     @mcp.tool()
-    async def outlook_send_email(
+    async def send_email(
         recipients: List[str],
         subject: str,
         body: str,
         cc: Optional[List[str]] = None
     ) -> Dict[str, str]:
         """
-        Send an email directly via Outlook. REQUIRES USER APPROVAL.
+        Send an email directly. REQUIRES USER APPROVAL.
 
         This tool sends the email immediately without saving as draft first.
-        Use outlook_create_draft if you want to prepare an email for user review before sending.
+        Use create_draft if you want to prepare an email for user review before sending.
 
         Args:
             recipients: List of recipient email addresses
@@ -115,14 +114,14 @@ def setup_tools(outlook_service: OutlookService):
         """
         return await outlook_service.send_email(recipients, subject, body, cc)
 
-    # === Contact Lookup Tools (prefixed with outlook_) ===
+    # === Contact Lookup Tools ===
 
     @mcp.tool()
-    async def outlook_lookup_contact(name: str) -> Dict[str, Any]:
+    async def lookup_contact(name: str) -> Dict[str, Any]:
         """
-        Look up an email address for a person by name in Outlook.
+        Look up an email address for a person by name.
 
-        Searches Outlook contacts and recent emails to find an email address
+        Searches contacts and recent emails to find an email address
         for the given name. Useful for resolving names to emails when the
         user only provides names.
 
@@ -133,21 +132,21 @@ def setup_tools(outlook_service: OutlookService):
             Dict with:
             - found: True if email was found
             - email: The email address (if found)
-            - display_name: The full display name from Outlook
+            - display_name: The full display name
             - source: Where the email was found ("contacts" or "recent_emails")
         """
         return await outlook_service.lookup_contact(name)
 
-    # === Calendar Tools (prefixed with outlook_cal_) ===
+    # === Calendar Tools ===
 
     @mcp.tool()
-    async def outlook_cal_list_events(
+    async def list_calendar_events(
         days_ahead: int = 7,
         limit: int = 50,
         calendar_name: Optional[str] = None
     ) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """
-        List upcoming calendar events from Outlook Calendar.
+        List upcoming calendar events.
 
         Args:
             days_ahead: Number of days ahead to look for events (default: 7)

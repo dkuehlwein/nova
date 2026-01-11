@@ -63,7 +63,7 @@ class TestCalendarConflictDebug:
             mcp_tools = await mcp_manager.get_tools()
             mcp_tool_names = [t.name for t in mcp_tools]
 
-            required_mcp_tools = ["gcal_create_event", "gcal_list_events"]
+            required_mcp_tools = ["google_workspace-create_event", "google_workspace-list_events"]
             for tool in required_mcp_tools:
                 if tool in mcp_tool_names:
                     print(f"   ✅ {tool} tool available (MCP)")
@@ -115,10 +115,10 @@ class TestCalendarConflictDebug:
         print(f"   Time: 10:00 - 11:00")
 
         tools = await mcp_manager.get_tools()
-        create_tool = next((t for t in tools if t.name == "gcal_create_event"), None)
+        create_tool = next((t for t in tools if t.name == "google_workspace-create_event"), None)
 
         if not create_tool:
-            pytest.skip("gcal_create_event tool not available")
+            pytest.skip("google_workspace-create_event tool not available")
 
         event_data = {
             "calendar_id": "primary",

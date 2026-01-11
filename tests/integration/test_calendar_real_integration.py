@@ -57,9 +57,9 @@ class TestRealCalendarIntegration:
             tools = await mcp_manager.get_tools()
             assert len(tools) > 0, "No tools returned from MCP servers"
             
-            # Should have calendar tools (prefixed with gcal_ per ADR-019)
-            calendar_tools = [tool for tool in tools if tool.name.lower().startswith('gcal_')]
-            assert len(calendar_tools) > 0, "No calendar tools found in MCP servers (expected gcal_* prefix)"
+            # Should have calendar tools (prefixed with google_workspace- per ADR-015)
+            calendar_tools = [tool for tool in tools if tool.name.startswith('google_workspace-') and 'event' in tool.name]
+            assert len(calendar_tools) > 0, "No calendar tools found in MCP servers (expected google_workspace-* prefix)"
 
             print(f"✅ Found {len(calendar_tools)} calendar tools: {[t.name for t in calendar_tools]}")
             
@@ -84,13 +84,13 @@ class TestRealCalendarIntegration:
             
             calendar_tool = None
             for tool in tools:
-                # Use prefixed tool name per ADR-019
-                if hasattr(tool, 'name') and tool.name == 'gcal_list_events':
+                # Use prefixed tool name per ADR-015
+                if hasattr(tool, 'name') and tool.name == 'google_workspace-list_events':
                     calendar_tool = tool
                     break
 
             if not calendar_tool:
-                pytest.skip("Calendar list events tool not found (expected gcal_list_events)")
+                pytest.skip("Calendar list events tool not found (expected google_workspace-list_events)")
             
             print(f"Testing calendar tool: {calendar_tool.name}")
             

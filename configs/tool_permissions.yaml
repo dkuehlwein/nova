@@ -11,17 +11,19 @@ permissions:
   - enable_skill
   - disable_skill
   - _example_skill__*
-  - lookup_contact
-  # Calendar tools - allow for conflict detection flow
-  - gcal_create_event
-  - gcal_list_events
-  - gcal_delete_event
-  - gcal_update_event
+  # Contact lookup - allow without approval
+  - outlook_mac-lookup_contact
+  # Calendar tools - allow for conflict detection flow (prefixed names per ADR-015)
+  - google_workspace-create_event
+  - google_workspace-list_events
+  - google_workspace-delete_event
+  - google_workspace-update_event
+  - outlook_mac-list_calendar_events
   deny:
   - mcp_tool(*)
-  - send_email
-  - gmail_send_email
-  - outlook_send_email
+  # Email sending requires approval (prefixed names per ADR-015)
+  - google_workspace-send_email
+  - outlook_mac-send_email
 settings:
   audit_enabled: true
   default_secure: true
