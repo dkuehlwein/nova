@@ -40,7 +40,7 @@ The agent accepts runtime configuration through the `configurable` parameter:
 config = {
     "configurable": {
         "thread_id": "user-session-123",  # Required for persistence
-        "model_name": "gemini-2.5-flash-preview-04-17",  # Optional
+        "model_name": "gemini-3-flash-preview",  # Optional
         "temperature": 0.7  # Optional
     }
 }

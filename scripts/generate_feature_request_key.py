@@ -20,13 +20,10 @@ def generate_virtual_key():
     litellm_base_url = os.getenv("LITELLM_BASE_URL", "http://localhost:4000")
     master_key = os.getenv("LITELLM_MASTER_KEY", "sk-1234")
     
-    # Virtual key configuration
+    # Virtual key configuration (20B+ models only - smaller models are too weak)
     key_config = {
         "models": [
-            "gemini-2.5-flash",  # Primary model for feature analysis
-            "gemini-1.5-flash",  # Fallback model
-            "phi-4-Q4_K_M",      # Local model fallback
-            "smollm3-3b-Q4_K_M"  # Small local model
+            "gemini-3-flash-preview",  # Latest Gemini model (primary)
         ],
         "metadata": {
             "user": "feature-request-service",
@@ -41,7 +38,7 @@ def generate_virtual_key():
         "rpm_limit": 20,    # 20 requests per minute
         "max_parallel_requests": 2,  # Limit concurrent requests
         "aliases": {
-            "feature-analyzer": "gemini-2.5-flash"
+            "feature-analyzer": "gemini-3-flash-preview"
         }
     }
     

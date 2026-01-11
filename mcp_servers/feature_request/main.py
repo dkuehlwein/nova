@@ -21,7 +21,7 @@ load_dotenv()
 # Configuration
 LINEAR_API_KEY = os.getenv("LINEAR_API_KEY")
 LINEAR_API_URL = os.getenv("LINEAR_API_URL", "https://api.linear.app/graphql")
-ANALYZER_MODEL_NAME = os.getenv("ANALYZER_MODEL_NAME", "gemini-2.5-flash")
+ANALYZER_MODEL_NAME = os.getenv("ANALYZER_MODEL_NAME", "gemini-3-flash-preview")
 
 # Validate LiteLLM configuration
 litellm_config = validate_configuration()

@@ -41,34 +41,10 @@ class LLMModelService:
         }
     ]
     
-    HUGGINGFACE_MODELS = [
-        {
-            "model_name": "smollm3-3b",
-            "litellm_params": {
-                "model": "openai/HuggingFaceTB/SmolLM3-3B",
-                "api_base": "https://api-inference.huggingface.co/models/HuggingFaceTB/SmolLM3-3B/v1",
-                "temperature": 0.6,
-                "max_tokens": 2048
-            }
-        },
-        {
-            "model_name": "local/text-embedding-nomic-embed-text-v1.5",
-            "litellm_params": {
-                "model": "local/text-embedding-nomic-embed-text-v1.5"
-            }
-        }
-    ]
+    # HuggingFace models removed - small models (<20B) are too weak for production use
+    # Local embedding models are discovered dynamically via LM Studio/Ollama API
     
     OPENROUTER_MODELS = [
-        {
-            "model_name": "openai/gpt-oss-20b:free",
-            "litellm_params": {
-                "model": "openrouter/openai/gpt-oss-20b:free",
-                "api_base": "https://openrouter.ai/api/v1",
-                "temperature": 0.7,
-                "max_tokens": 2048
-            }
-        },
         {
             "model_name": "z-ai/glm-4.5-air:free",
             "litellm_params": {
@@ -103,8 +79,6 @@ class LLMModelService:
 
     FALLBACK_CONFIG = {
         "fallbacks": {
-            "SmolLM3-3B-128K-BF16": ["gemini-3-flash-preview"],
-            "phi-4-Q4_K_M": ["gemini-3-flash-preview"],
             "local-model": ["gemini-3-flash-preview"]
         }
     }
@@ -240,36 +214,8 @@ class LLMModelService:
         
         return success_count
     
-    async def initialize_huggingface_models(self, session) -> int:
-        """Initialize HuggingFace models if token is valid. Returns count of successful additions."""
-        from api.api_key_endpoints import get_huggingface_api_status
-        
-        try:
-            status_response = await get_huggingface_api_status(force_refresh=True, session=session)
-            if not status_response.get("huggingface_api_key_valid", False):
-                logger.info("HuggingFace token not valid - skipping HF model initialization")
-                return 0
-        except Exception as e:
-            logger.info(f"HuggingFace token validation failed: {e} - skipping HF model initialization")
-            return 0
-        
-        hf_token = settings.HF_TOKEN.get_secret_value() if settings.HF_TOKEN else None
-        
-        success_count = 0
-        for model_config in self.HUGGINGFACE_MODELS:
-            enhanced_config = model_config.copy()
-            enhanced_config["litellm_params"]["api_key"] = hf_token
-            
-            model_name = model_config["model_name"]
-            success, was_added = await self.add_model_to_litellm(enhanced_config)
-            if success:
-                if was_added:
-                    success_count += 1
-                    logger.info(f"Added new model: {model_name}")
-                # If not added, it already existed (logged by add_model_to_litellm)
-        
-        return success_count
-    
+    # HuggingFace model initialization removed - small models (<20B) are too weak for production use
+
     async def initialize_openrouter_models(self, session) -> int:
         """Initialize OpenRouter models if API key is valid. Returns count of successful additions."""
         from api.api_key_endpoints import get_openrouter_api_status
@@ -371,10 +317,6 @@ class LLMModelService:
             gemini_count = await self.initialize_gemini_models(db)
             total_models += gemini_count
 
-            # Initialize HuggingFace models
-            hf_count = await self.initialize_huggingface_models(db)
-            total_models += hf_count
-
             # Initialize OpenRouter models
             openrouter_count = await self.initialize_openrouter_models(db)
             total_models += openrouter_count
@@ -382,7 +324,7 @@ class LLMModelService:
             # Update fallback configuration if we have any models
             if total_models > 0:
                 await self.update_fallback_config()
-                logger.info(f"Successfully initialized {total_models} models: {local_count} local, {gemini_count} Gemini, {hf_count} HuggingFace, {openrouter_count} OpenRouter")
+                logger.info(f"Successfully initialized {total_models} models: {local_count} local, {gemini_count} Gemini, {openrouter_count} OpenRouter")
                 return True
             else:
                 logger.info("No working models available - check API keys")

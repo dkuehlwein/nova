@@ -18,7 +18,7 @@ class TestFeatureRequestAnalyzer:
     @pytest.fixture
     def analyzer(self):
         """Create a FeatureRequestAnalyzer instance for testing."""
-        return FeatureRequestAnalyzer("gemini-1.5-flash")
+        return FeatureRequestAnalyzer("gemini-3-flash-preview")
     
     @pytest.mark.asyncio
     async def test_analyze_request_create_action(self, analyzer):

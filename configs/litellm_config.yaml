@@ -6,7 +6,7 @@ model_list: []
 # Models are now managed dynamically:
 # - Gemini models: Added if Google API key is valid
 # - Local models: Discovered from external LLM API (e.g., LM Studio, Ollama)
-# - HuggingFace models: Added if HF token is valid and services are available
+# - OpenRouter models: Added if OpenRouter API key is valid
 
 general_settings:
   master_key: "sk-1234"

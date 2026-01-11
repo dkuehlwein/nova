@@ -5,6 +5,44 @@ from typing import Optional
 from pydantic import SecretStr
 
 
+# =============================================================================
+# Tier 1: Development Defaults - Single Source of Truth (ADR-004)
+# =============================================================================
+# All default values for user settings defined here to ensure consistency
+# across SQLAlchemy models, Pydantic models, and API endpoints.
+
+class Defaults:
+    """Default values for user settings. Single source of truth for Tier 1 defaults."""
+
+    # User Profile
+    TIMEZONE = "UTC"
+
+    # Agent Settings
+    AGENT_POLLING_INTERVAL = 30  # seconds
+    AGENT_ERROR_RETRY_INTERVAL = 60  # seconds
+
+    # Memory Settings
+    MEMORY_SEARCH_LIMIT = 10  # max results
+    MEMORY_TOKEN_LIMIT = 32768  # max tokens for LLM (2^15)
+
+    # Chat LLM Settings (Gemini-First - requires 20B+ models for production use)
+    CHAT_LLM_MODEL = "gemini-3-flash-preview"
+    CHAT_LLM_TEMPERATURE = 0.7  # Higher for creativity
+    CHAT_LLM_MAX_TOKENS = 32768  # 2^15
+
+    # Memory LLM Settings
+    MEMORY_LLM_MODEL = "gemini-3-flash-preview"
+    MEMORY_SMALL_LLM_MODEL = "gemini-3-flash-preview"  # Same model (small models too weak)
+    MEMORY_LLM_TEMPERATURE = 0.1  # Lower for factual accuracy
+    MEMORY_LLM_MAX_TOKENS = 32768  # 2^15
+
+    # Embedding Model
+    EMBEDDING_MODEL = "gemini-embedding-001"
+
+    # LiteLLM
+    LITELLM_BASE_URL = "http://localhost:4000"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=[".env", "../.env"], env_file_encoding="utf-8", extra="ignore"
@@ -17,9 +55,6 @@ class Settings(BaseSettings):
 
     # Google Generative AI Settings (using API Key)
     GOOGLE_API_KEY: Optional[SecretStr] = None
-
-    # HuggingFace API Token
-    HF_TOKEN: Optional[SecretStr] = None
 
     # OpenRouter API Key
     OPENROUTER_API_KEY: Optional[SecretStr] = None
@@ -77,10 +112,10 @@ class Settings(BaseSettings):
     LITELLM_MASTER_KEY: str = "sk-1234"  # Master key for LiteLLM API access
 
     # Default LLM Models (Tier 1: Development Defaults)
-    # Single source of truth for model defaults - all other code imports from here
-    DEFAULT_CHAT_MODEL: str = "gemini-3-flash-preview"
-    DEFAULT_MEMORY_MODEL: str = "gemini-3-flash-preview"
-    DEFAULT_EMBEDDING_MODEL: str = "gemini-embedding-001"
+    # References Defaults class above as single source of truth
+    DEFAULT_CHAT_MODEL: str = Defaults.CHAT_LLM_MODEL
+    DEFAULT_MEMORY_MODEL: str = Defaults.MEMORY_LLM_MODEL
+    DEFAULT_EMBEDDING_MODEL: str = Defaults.EMBEDDING_MODEL
 
     # External LLM API Configuration (Tier 2: Deployment Environment)
     # Generic OpenAI-compatible endpoint (e.g., LM Studio, Ollama, vLLM)

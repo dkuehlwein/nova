@@ -68,7 +68,6 @@ export default function OnboardingPage() {
   const [apiKeys, setApiKeys] = useState({
     google_api_key: '',
     litellm_master_key: '',
-    huggingface_api_key: '',
     openrouter_api_key: ''
   });
   
@@ -76,11 +75,12 @@ export default function OnboardingPage() {
   const [validating, setValidating] = useState<string | null>(null);
   
   // Model selection data
+  // Note: Canonical defaults defined in backend/models/user_settings.py Defaults class
   const [availableModels, setAvailableModels] = useState<AvailableModels | null>(null);
   const [modelSelection, setModelSelection] = useState({
-    chat_llm_model: 'local/openai/gpt-oss-20b',
-    memory_llm_model: 'local/openai/gpt-oss-20b',
-    embedding_model: 'local/qwen3-embedding-0.6b-dwq',
+    chat_llm_model: 'gemini-3-flash-preview',
+    memory_llm_model: 'gemini-3-flash-preview',
+    embedding_model: 'gemini-embedding-001',
     litellm_base_url: 'http://localhost:4000'
   });
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -460,37 +460,6 @@ export default function OnboardingPage() {
                     />
                     <p className="text-xs text-muted-foreground">
                       Required: Authentication key for your LiteLLM proxy service.
-                    </p>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="huggingface_api_key">HuggingFace API Key</Label>
-                      <div className="flex items-center space-x-2">
-                        {validating === 'huggingface_api_key' && (
-                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                        )}
-                        {apiKeyValidation.huggingface_api_key === true && (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        )}
-                        {apiKeyValidation.huggingface_api_key === false && apiKeys.huggingface_api_key && (
-                          <AlertCircle className="h-4 w-4 text-red-500" />
-                        )}
-                      </div>
-                    </div>
-                    <Input
-                      id="huggingface_api_key"
-                      type="password"
-                      value={apiKeys.huggingface_api_key}
-                      onChange={(e) => handleApiKeyChange('huggingface_api_key', e.target.value)}
-                      placeholder="Enter your HuggingFace API key"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Optional: For accessing HuggingFace models via LiteLLM. 
-                      <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" 
-                         className="text-primary hover:underline ml-1">
-                        Get your API key →
-                      </a>
                     </p>
                   </div>
                   

@@ -76,7 +76,6 @@ services:
       LLM_API_BASE_URL: ${LLM_API_BASE_URL:-http://host.docker.internal:1234}
       STORE_MODEL_IN_DB: "True"
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
-      HF_TOKEN: ${HF_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -333,7 +332,7 @@ services:
       - LITELLM_BASE_URL=http://litellm:4000
       - FEATURE_REQUEST_LITELLM_KEY=${FEATURE_REQUEST_LITELLM_KEY:-}
       - LINEAR_API_KEY=${LINEAR_API_KEY:-}
-      - ANALYZER_MODEL_NAME=${ANALYZER_MODEL_NAME:-gemini-2.5-flash}
+      - ANALYZER_MODEL_NAME=${ANALYZER_MODEL_NAME:-gemini-3-flash-preview}
     depends_on:
       litellm:
         condition: service_healthy

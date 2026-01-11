@@ -255,7 +255,7 @@ Detailed architectural decisions are documented in `docs/adr/`. Key ADRs:
 After starting Nova with `docker-compose up -d`, test the chat endpoint:
 
 ```bash
-# Test basic chat with Phi-4 model
+# Test basic chat (requires Gemini API key configured)
 curl -X POST "http://localhost:8000/chat/stream" \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"Hello! What time is it?"}]}'
@@ -275,21 +275,21 @@ curl -X POST "http://localhost:8000/chat/stream" \
 Change the LLM model via API:
 
 ```bash
-# Update user settings to use Phi-4 model (default)
+# Update user settings to use Gemini Flash (default)
 curl -X PATCH "http://localhost:8000/api/user-settings/" \
   -H "Content-Type: application/json" \
   -d '{
-    "chat_llm_model": "phi-4-Q4_K_M",
-    "chat_llm_temperature": 0.1,
-    "chat_llm_max_tokens": 2048
+    "chat_llm_model": "gemini-3-flash-preview",
+    "chat_llm_temperature": 0.7,
+    "chat_llm_max_tokens": 32768
   }'
 
-# Update user settings to use SmolLM3-3B model
+# Update user settings to use OpenRouter model
 curl -X PATCH "http://localhost:8000/api/user-settings/" \
   -H "Content-Type: application/json" \
   -d '{
-    "chat_llm_model": "smollm3-3b-Q4_K_M",
-    "chat_llm_temperature": 0.6,
+    "chat_llm_model": "z-ai/glm-4.5-air:free",
+    "chat_llm_temperature": 0.7,
     "chat_llm_max_tokens": 2048
   }'
 ```

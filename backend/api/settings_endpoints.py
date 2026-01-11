@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import Defaults
 from database.database import get_db_session
 from models.user_settings import (
     UserSettings,
@@ -182,11 +183,11 @@ async def update_user_settings(
 
 class OnboardingCompleteRequest(BaseModel):
     """Request model for completing onboarding with model selection."""
-    chat_llm_model: Optional[str] = Field(default="local/openai/gpt-oss-20b", description="Chat model selection")
-    memory_llm_model: Optional[str] = Field(default="local/openai/gpt-oss-20b", description="Memory model selection")
+    chat_llm_model: Optional[str] = Field(default=Defaults.CHAT_LLM_MODEL, description="Chat model selection")
+    memory_llm_model: Optional[str] = Field(default=Defaults.MEMORY_LLM_MODEL, description="Memory model selection")
     memory_small_llm_model: Optional[str] = Field(default=None, description="Memory small model selection (defaults to memory_llm_model if not set)")
-    embedding_model: Optional[str] = Field(default="local/text-embedding-nomic-embed-text-v1.5", description="Embedding model selection")
-    litellm_base_url: Optional[str] = Field(default="http://localhost:4000", description="LiteLLM base URL")
+    embedding_model: Optional[str] = Field(default=Defaults.EMBEDDING_MODEL, description="Embedding model selection")
+    litellm_base_url: Optional[str] = Field(default=Defaults.LITELLM_BASE_URL, description="LiteLLM base URL")
     litellm_master_key: Optional[str] = Field(default="sk-1234", description="LiteLLM master key")
 
 
@@ -341,7 +342,6 @@ async def get_system_status():
             },
             "api_keys_configured": {
                 "google": bool(app_settings.GOOGLE_API_KEY),
-                "huggingface": bool(app_settings.HF_TOKEN),
                 "openrouter": bool(app_settings.OPENROUTER_API_KEY)
             },
             "observability": {

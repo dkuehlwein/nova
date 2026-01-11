@@ -22,14 +22,6 @@ export function APIKeysTab() {
     status: string;
     error?: string;
   } | null>(null);
-  const [huggingfaceApiStatus, setHuggingfaceApiStatus] = useState<{
-    has_huggingface_api_key: boolean;
-    huggingface_api_key_valid: boolean;
-    username: string;
-    status: string;
-    cached?: boolean;
-    last_check?: string;
-  } | null>(null);
   const [litellmApiStatus, setLitellmApiStatus] = useState<{
     has_litellm_master_key: boolean;
     litellm_master_key_valid: boolean;
@@ -56,7 +48,6 @@ export function APIKeysTab() {
     // These will use cached results by default
     fetchGoogleApiStatus();
     fetchPhoenixStatus();
-    fetchHuggingfaceApiStatus();
     fetchLitellmApiStatus();
     fetchOpenrouterApiStatus();
   }, []);
@@ -93,26 +84,6 @@ export function APIKeysTab() {
       setPhoenixStatus(data);
     } catch (error) {
       console.error('Failed to load Phoenix status:', error);
-    }
-  };
-
-  const fetchHuggingfaceApiStatus = async (forceRefresh: boolean = false) => {
-    try {
-      const url = forceRefresh
-        ? '/api/api-keys/huggingface-status?force_refresh=true'
-        : '/api/api-keys/huggingface-status';
-
-      const data = await apiRequest(url) as {
-        has_huggingface_api_key: boolean;
-        huggingface_api_key_valid: boolean;
-        username: string;
-        status: string;
-        cached?: boolean;
-        last_check?: string;
-      };
-      setHuggingfaceApiStatus(data);
-    } catch (error) {
-      console.error('Failed to load HuggingFace API status:', error);
     }
   };
 
@@ -213,7 +184,7 @@ export function APIKeysTab() {
     }
   };
 
-  if (!googleApiStatus && !phoenixStatus && !huggingfaceApiStatus && !litellmApiStatus && !openrouterApiStatus) {
+  if (!googleApiStatus && !phoenixStatus && !litellmApiStatus && !openrouterApiStatus) {
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
@@ -368,46 +339,6 @@ export function APIKeysTab() {
                       Cancel
                     </Button>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* HuggingFace API Key Section */}
-            <div className="border-t border-border pt-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">HuggingFace API Key <span className="text-xs text-muted-foreground font-normal">(Optional)</span></p>
-                  <p className="text-sm text-muted-foreground">Enables access to HuggingFace models and embeddings</p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {huggingfaceApiStatus?.status === 'ready' && (() => {
-                    const StatusIcon = getStatusIcon('operational');
-                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('operational')}`} />;
-                  })()}
-                  {huggingfaceApiStatus?.status === 'configured_invalid' && (() => {
-                    const StatusIcon = getStatusIcon('critical');
-                    return <StatusIcon className={`h-4 w-4 ${getStatusColor('critical')}`} />;
-                  })()}
-                  {huggingfaceApiStatus?.status !== 'ready' && (
-                    <Badge variant={huggingfaceApiStatus?.has_huggingface_api_key ?
-                      (huggingfaceApiStatus?.huggingface_api_key_valid ? "default" : "destructive") :
-                      "secondary"
-                    }>
-                      {huggingfaceApiStatus?.status === 'configured_invalid' ? 'Invalid' : 'Not configured'}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-
-              {huggingfaceApiStatus?.has_huggingface_api_key && (
-                <div className="flex items-center space-x-2 mt-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fetchHuggingfaceApiStatus(true)}
-                  >
-                    Refresh Status
-                  </Button>
                 </div>
               )}
             </div>

@@ -10,7 +10,7 @@ from .llm_factory import create_feature_analyzer_llm
 class FeatureRequestAnalyzer:
     """AI analyzer for feature requests using LiteLLM gateway."""
     
-    def __init__(self, model_name: str = "gemini-2.5-flash"):
+    def __init__(self, model_name: str = "gemini-3-flash-preview"):
         self.model_name = model_name
         self.llm = None  # Lazy initialization for better testability
         self.system_prompt = self._create_system_prompt()
@@ -69,7 +69,7 @@ Please analyze this feature request and provide your response as JSON."""
                 self.llm = create_feature_analyzer_llm(
                     model=self.model_name,
                     temperature=0.1,  # Low temperature for consistent analysis
-                    max_tokens=2048
+                    max_tokens=8192  # 2^13
                 )
             
             # Create messages for LangChain

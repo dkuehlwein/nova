@@ -122,7 +122,6 @@ async def save_api_keys(
         key_mappings = {
             "google_api_key": "GOOGLE_API_KEY",
             "litellm_master_key": "LITELLM_MASTER_KEY",
-            "huggingface_api_key": "HF_TOKEN",
             "openrouter_api_key": "OPENROUTER_API_KEY"
         }
 
@@ -177,7 +176,7 @@ async def save_api_keys(
                 }
             )
 
-            provider_keys = {"GOOGLE_API_KEY", "HF_TOKEN", "OPENROUTER_API_KEY"}
+            provider_keys = {"GOOGLE_API_KEY", "OPENROUTER_API_KEY"}
             should_refresh_models = bool(set(updated_keys) & provider_keys)
 
             if should_refresh_models:
@@ -230,30 +229,6 @@ async def get_google_api_status(
     except Exception as e:
         logger.error("Failed to get Google API status", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get Google API status")
-
-
-@router.get("/huggingface-status")
-async def get_huggingface_api_status(
-    force_refresh: bool = False,
-    session: AsyncSession = Depends(get_db_session)
-):
-    """
-    Get the current status of HuggingFace API key and availability.
-    Uses cached validation status unless force_refresh=True.
-    """
-    from database.database import UserSettingsService
-    from services.external_service_status import huggingface_status_checker
-
-    try:
-        settings = await UserSettingsService.get_user_settings(session)
-        if not settings:
-            settings = await UserSettingsService.create_user_settings(session)
-
-        return await huggingface_status_checker.get_status(session, settings, force_refresh)
-
-    except Exception as e:
-        logger.error("Failed to get HuggingFace API status", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to get HuggingFace API status")
 
 
 @router.get("/litellm-status")

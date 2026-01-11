@@ -55,9 +55,9 @@ def get_litellm_config() -> Dict[str, str]:
 
 
 def create_feature_analyzer_llm(
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3-flash-preview",
     temperature: float = 0.1,
-    max_tokens: int = 2048
+    max_tokens: int = 8192  # 2^13
 ) -> ChatOpenAI:
     """
     Create LLM instance for feature request analysis via LiteLLM gateway.
@@ -90,15 +90,12 @@ def create_feature_analyzer_llm(
 def get_available_models() -> list[str]:
     """
     Get list of models available for feature analysis.
-    
+
     Returns:
-        List of model names available through LiteLLM
+        List of model names available through LiteLLM (20B+ models only)
     """
     return [
-        "gemini-2.5-flash",  # Primary model
-        "gemini-1.5-flash",  # Fallback model
-        "phi-4-Q4_K_M",      # Local model option
-        "smollm3-3b-Q4_K_M"  # Lightweight local model
+        "gemini-3-flash-preview",  # Latest Gemini model (primary)
     ]
 
 

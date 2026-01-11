@@ -119,49 +119,11 @@ async def validate_litellm_master_key(db_session: AsyncSession, api_key: str, se
         return {"valid": False, "message": f"LiteLLM master key validation failed: {str(e)}", "service": "litellm"}
 
 
-async def validate_huggingface_api_key(db_session: AsyncSession, api_key: str, settings) -> dict:
-    """Validate HuggingFace API key."""
-    try:
-        status, data = await http_request(
-            "https://huggingface.co/api/whoami",
-            {"Authorization": f"Bearer {api_key}"}
-        )
-
-        now = datetime.now(timezone.utc).isoformat()
-        if status == 200:
-            username = data.get("name", "unknown")
-            await cache_validation_result(db_session, settings, "huggingface_api_key", {
-                "validated": True,
-                "validated_at": now,
-                "validation_error": None,
-                "last_check": now,
-                "username": username
-            })
-            return {"valid": True, "message": f"HuggingFace API key is valid (user: {username})", "service": "huggingface"}
-        else:
-            await cache_validation_result(db_session, settings, "huggingface_api_key", {
-                "validated": False,
-                "validated_at": None,
-                "validation_error": f"HTTP {status}: {data.get('error', 'Unknown error')}",
-                "last_check": now
-            })
-            return {"valid": False, "message": f"HuggingFace API key validation failed: HTTP {status}", "service": "huggingface"}
-    except Exception as e:
-        now = datetime.now(timezone.utc).isoformat()
-        await cache_validation_result(db_session, settings, "huggingface_api_key", {
-            "validated": False,
-            "validated_at": None,
-            "validation_error": str(e),
-            "last_check": now
-        })
-        return {"valid": False, "message": f"HuggingFace API key validation failed: {str(e)}", "service": "huggingface"}
-
-
 async def validate_openrouter_api_key(db_session: AsyncSession, api_key: str, settings) -> dict:
     """Validate OpenRouter API key by testing a minimal completion request."""
     try:
         test_payload = {
-            "model": "openai/gpt-oss-20b:free",
+            "model": "z-ai/glm-4.5-air:free",
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 1
         }
@@ -216,6 +178,5 @@ async def validate_openrouter_api_key(db_session: AsyncSession, api_key: str, se
 VALIDATION_METHODS = {
     "google_api_key": validate_google_api_key,
     "litellm_master_key": validate_litellm_master_key,
-    "huggingface_api_key": validate_huggingface_api_key,
     "openrouter_api_key": validate_openrouter_api_key,
 }

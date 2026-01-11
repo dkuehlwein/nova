@@ -187,88 +187,6 @@ class GoogleAPIStatusChecker(ExternalServiceStatusChecker):
         }
 
 
-class HuggingFaceStatusChecker(ExternalServiceStatusChecker):
-    """Status checker for HuggingFace API."""
-
-    cache_key = "huggingface_api_key"
-    service_name = "HuggingFace"
-
-    def _has_api_key(self) -> bool:
-        from config import settings as app_settings
-        return bool(app_settings.HF_TOKEN)
-
-    async def _perform_check(self) -> dict:
-        from config import settings as app_settings
-
-        is_valid = False
-        username = "unknown"
-
-        try:
-            async with aiohttp.ClientSession() as client_session:
-                async with client_session.get(
-                    "https://huggingface.co/api/models?limit=1",
-                    headers={"Authorization": f"Bearer {app_settings.HF_TOKEN.get_secret_value()}"},
-                    timeout=10
-                ) as response:
-                    if response.status == 200:
-                        is_valid = True
-                        username = "valid"
-        except Exception as e:
-            logger.warning(f"HuggingFace API validation failed: {e}")
-
-        return {"valid": is_valid, "username": username}
-
-    def _format_cached_response(self, cached_status: dict, has_api_key: bool) -> dict:
-        is_valid = cached_status.get("validated", False)
-        username = cached_status.get("username", "unknown")
-        last_check = cached_status.get("last_check", "Unknown")
-
-        logger.info("Using cached HuggingFace API validation status", extra={"data": {
-            "cached": True,
-            "valid": is_valid,
-            "username": username,
-            "last_check": last_check
-        }})
-
-        return {
-            "has_huggingface_api_key": has_api_key,
-            "huggingface_api_key_valid": is_valid,
-            "username": username,
-            "status": "ready" if is_valid else "configured_invalid",
-            "cached": True,
-            "last_check": last_check
-        }
-
-    def _format_response(self, result: dict, has_api_key: bool, new_status: dict) -> dict:
-        return {
-            "has_huggingface_api_key": has_api_key,
-            "huggingface_api_key_valid": result["valid"],
-            "username": result["username"],
-            "status": "ready" if result["valid"] else "configured_invalid",
-            "cached": False,
-            "last_check": "Just now"
-        }
-
-    def _format_not_configured_response(self) -> dict:
-        return {
-            "has_huggingface_api_key": False,
-            "huggingface_api_key_valid": False,
-            "username": "unknown",
-            "status": "not_configured",
-            "cached": False,
-            "last_check": "Never"
-        }
-
-    def _build_cache_status(self, result: dict, now: str, cached_status: dict) -> dict:
-        return {
-            "validated": result["valid"],
-            "validated_at": now if result["valid"] else cached_status.get("validated_at"),
-            "validation_error": None if result["valid"] else "API key validation failed",
-            "last_check": now,
-            "username": result["username"]
-        }
-
-
 class LiteLLMStatusChecker(ExternalServiceStatusChecker):
     """Status checker for LiteLLM API."""
 
@@ -461,7 +379,6 @@ class PhoenixStatusChecker:
 
 # Singleton instances for use by endpoints
 google_status_checker = GoogleAPIStatusChecker()
-huggingface_status_checker = HuggingFaceStatusChecker()
 litellm_status_checker = LiteLLMStatusChecker()
 openrouter_status_checker = OpenRouterStatusChecker()
 phoenix_status_checker = PhoenixStatusChecker()

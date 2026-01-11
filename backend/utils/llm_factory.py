@@ -6,7 +6,7 @@ Centralized LLM creation logic to eliminate duplication between chat and memory 
 
 import time
 from typing import Dict, Any
-from config import settings
+from config import settings, Defaults
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -91,9 +91,9 @@ def get_chat_llm_config() -> Dict[str, Any]:
     except Exception:
         user_settings = {}
 
-    model_name = user_settings.get("chat_llm_model", settings.DEFAULT_CHAT_MODEL)
-    temperature = user_settings.get("chat_llm_temperature", 0.7)
-    max_tokens = user_settings.get("chat_llm_max_tokens", 4096)
+    model_name = user_settings.get("chat_llm_model", Defaults.CHAT_LLM_MODEL)
+    temperature = user_settings.get("chat_llm_temperature", Defaults.CHAT_LLM_TEMPERATURE)
+    max_tokens = user_settings.get("chat_llm_max_tokens", Defaults.CHAT_LLM_MAX_TOKENS)
 
     return {
         "model": model_name,
@@ -117,10 +117,10 @@ def get_memory_llm_config() -> Dict[str, Any]:
     except Exception:
         user_settings = {}
     
-    model_name = user_settings.get("memory_llm_model", settings.DEFAULT_MEMORY_MODEL)
+    model_name = user_settings.get("memory_llm_model", Defaults.MEMORY_LLM_MODEL)
     small_model_name = user_settings.get("memory_small_llm_model", model_name)  # Default to main model
-    temperature = user_settings.get("memory_llm_temperature", 0.1)
-    max_tokens = user_settings.get("memory_llm_max_tokens", 2048)
+    temperature = user_settings.get("memory_llm_temperature", Defaults.MEMORY_LLM_TEMPERATURE)
+    max_tokens = user_settings.get("memory_llm_max_tokens", Defaults.MEMORY_LLM_MAX_TOKENS)
     
     return {
         "model": model_name,
@@ -145,7 +145,7 @@ def get_embedding_config() -> Dict[str, Any]:
     except Exception:
         user_settings = {}
     
-    model_name = user_settings.get("embedding_model", settings.DEFAULT_EMBEDDING_MODEL)
+    model_name = user_settings.get("embedding_model", Defaults.EMBEDDING_MODEL)
     
     return {
         "embedding_model": model_name,
