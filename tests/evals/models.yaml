@@ -1,0 +1,52 @@
+# Model configuration for evaluation framework
+#
+# This file defines which models to test against.
+# Add new models here to include them in parametrized eval runs.
+#
+# Each model entry should have:
+#   - name: Model identifier used by LiteLLM
+#   - enabled: Whether to include in eval runs
+#   - description: Human-readable description
+#   - tags: Categories for filtering (e.g., ["fast", "production"])
+
+models:
+  # Default model (uses current user settings)
+  default:
+    name: "default"
+    enabled: true
+    description: "Use current model from user settings"
+    tags: ["default"]
+
+  # Add more models here as they become available
+  # Example:
+  # phi4:
+  #   name: "phi-4"
+  #   enabled: false
+  #   description: "Microsoft Phi-4 local model"
+  #   tags: ["local", "fast"]
+  #
+  # gemini-flash:
+  #   name: "gemini/gemini-2.0-flash"
+  #   enabled: false
+  #   description: "Google Gemini 2.0 Flash"
+  #   tags: ["cloud", "fast"]
+
+# Eval suite configuration
+eval_config:
+  # Number of trials for pass@k metrics
+  default_num_trials: 3
+
+  # Timeout for individual evals (seconds)
+  default_timeout: 300
+
+  # Fast eval suite settings (CI)
+  fast:
+    num_trials: 1
+    timeout: 120
+    use_real_mcp: false
+
+  # Slow eval suite settings (nightly)
+  slow:
+    num_trials: 5
+    timeout: 600
+    use_real_mcp: true
