@@ -64,6 +64,40 @@ docker-compose up -d nova-frontend
 
 ## Development Workflow
 
+### Git Branch & Commit Conventions
+
+**Branch naming:**
+- `feature/<description>` - New features (e.g., `feature/user-auth`)
+- `fix/<description>` - Bug fixes (e.g., `fix/memory-leak`)
+- `refactor/<description>` - Code refactoring (e.g., `refactor/api-cleanup`)
+- `docs/<description>` - Documentation only (e.g., `docs/api-reference`)
+- `test/<description>` - Test additions/changes (e.g., `test/memory-unit-tests`)
+- `chore/<description>` - Maintenance tasks (e.g., `chore/update-deps`)
+
+**Commit messages** (Conventional Commits):
+- `feat: <description>` - New feature
+- `fix: <description>` - Bug fix
+- `refactor: <description>` - Code refactoring (no behavior change)
+- `docs: <description>` - Documentation only
+- `test: <description>` - Adding/updating tests
+- `chore: <description>` - Maintenance (deps, configs, etc.)
+
+Optional scope for specificity: `feat(memory): Add edge type mapping`
+
+**PR workflow:**
+```bash
+# Create feature branch
+git checkout main && git pull origin main
+git checkout -b feature/my-feature
+
+# Work and commit
+git add . && git commit -m "feat: Add new feature"
+
+# Push and create PR
+git push -u origin feature/my-feature
+gh pr create --title "feat: Add new feature" --body "Description"
+```
+
 ### Feature Implementation Process
 1. **Pre-work**: Review relevant Architecture Decision Records (ADRs) in `docs/adr/`.
 2. **Implementation**:

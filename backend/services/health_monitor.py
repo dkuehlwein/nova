@@ -31,7 +31,7 @@ class HealthMonitorService:
         # Core Services (System fails if any of these are down)
         "chat_agent": {
             "type": "core",
-            "endpoint": f"http://{'nova-backend' if settings.POSTGRES_HOST != 'localhost' else 'localhost'}:8000/chat/health",
+            "endpoint": f"http://{'nova-backend' if settings.POSTGRES_HOST != 'localhost' else 'localhost'}:8000/health",
             "essential": True
         },
         "core_agent": {
