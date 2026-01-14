@@ -2,9 +2,9 @@
 
 **Status**: Accepted - Implemented
 **Date**: 2025-06
-**Updated**: 2025-12-31
+**Updated**: 2026-01-14
 
-> **Implementation Notes**: GraphitiManager singleton implemented in `backend/memory/graphiti_manager.py`. Memory tools (`search_memory`, `add_memory`) available to agents. Neo4j integrated via docker-compose. Uses LiteLLM routing per ADR-011.
+> **Implementation Notes**: GraphitiManager singleton implemented in `backend/memory/graphiti_manager.py`. Memory tools (`search_memory`, `add_memory`) available to agents. Neo4j integrated via docker-compose. Uses LiteLLM routing per ADR-011. Entity types aligned with schema.org vocabulary for semantic interoperability.
 
 ---
 
@@ -44,21 +44,40 @@ Integrate Graphiti as Nova's knowledge graph memory system with:
 | Memory Functions | `backend/memory/memory_functions.py` | Business logic for search/add operations |
 | Memory Tools | `backend/tools/memory_tools.py` | LangChain tools for agent access |
 | API Endpoints | `backend/api/memory_endpoints.py` | REST API for frontend |
-| Entity Types | `backend/memory/entity_types.py` | Custom node types (Person, Project, Email, Artifact) |
+| Entity Types | `backend/memory/entity_types.py` | Schema.org-aligned entity types with extraction guidance |
 | Pydantic Models | `backend/models/memory.py` | Request/response schemas |
 
-### Entity Types
+### Entity Types (Schema.org Aligned)
 
-- **Person**: name, email, role, company
-- **Project**: name, client, booking_code, status
-- **Email**: subject, sender, recipients, date
-- **Artifact**: name, type, path, description
+Entity types follow [schema.org](https://schema.org/) vocabulary for semantic clarity. These are **suggested types** — Graphiti can dynamically create additional types as needed.
 
-### Relationship Types
+| Type | Schema.org | Key Attributes | Purpose |
+|------|------------|----------------|---------|
+| **Organization** | [schema:Organization](https://schema.org/Organization) | name, organization_type, industry, url | Companies, departments, teams |
+| **Person** | [schema:Person](https://schema.org/Person) | name, email, job_title, telephone | Individuals in the knowledge graph |
+| **Project** | [schema:Project](https://schema.org/Project) | name, status, start_date, end_date | Work items and engagements |
+| **CourseInstance** | [schema:CourseInstance](https://schema.org/CourseInstance) | name, start_date, end_date, location, course_mode | Specific training/course offerings |
+| **Event** | [schema:Event](https://schema.org/Event) | name, event_type, start_date, end_date, location | Meetings, conferences, workshops |
+| **CreativeWork** | [schema:CreativeWork](https://schema.org/CreativeWork) | name, content_type, topics, audience, url | Presentations, demos, documents, videos |
+| **Identifier** | Custom | value, identifier_type | Project codes, booking codes, cost centers |
 
-- `WORKS_ON`, `MANAGES`, `CLIENT_OF` (Person ↔ Project)
-- `SENT`, `RECEIVED` (Person ↔ Email)
-- `CONTAINS`, `REFERENCES` (Email/Project ↔ Artifact)
+### Relationship Types (Edge Constraints)
+
+Edge types follow schema.org properties where possible. Defined in `NOVA_EDGE_TYPE_MAP`:
+
+| Source → Target | Allowed Edge Types |
+|-----------------|-------------------|
+| Person → Organization | `WORKS_FOR`, `MEMBER_OF`, `AFFILIATED_WITH` |
+| Person → Person | `REPORTS_TO`, `KNOWS`, `COLLEAGUE_OF` |
+| CourseInstance → Person | `ATTENDEE`, `INSTRUCTOR` |
+| Identifier → Project/CourseInstance | `IDENTIFIES` |
+| CreativeWork → Person | `AUTHOR`, `CONTRIBUTOR` |
+| CreativeWork → Organization | `ABOUT`, `PUBLISHER` |
+| CreativeWork → Project | `PART_OF`, `DOCUMENTS` |
+
+### Custom Extraction Instructions
+
+`NOVA_EXTRACTION_INSTRUCTIONS` provides LLM guidance for entity extraction from emails and documents, including rules for identifying people, organizations, training courses, identifiers, and inferring relationships from context.
 
 ## Integration Points
 
@@ -132,4 +151,4 @@ MEMORY_SEARCH_LIMIT=10
 - **ADR-011**: LiteLLM routing for memory LLM operations
 
 ---
-*Last reviewed: 2025-12-31*
+*Last reviewed: 2026-01-14*

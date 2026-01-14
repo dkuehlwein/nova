@@ -11,7 +11,11 @@ from typing import Dict, List, Any, Optional
 
 from memory import graphiti_manager
 from memory.graphiti_manager import MemorySearchError, MemoryAddError
-from memory.entity_types import NOVA_ENTITY_TYPES
+from memory.entity_types import (
+    NOVA_ENTITY_TYPES,
+    NOVA_EDGE_TYPE_MAP,
+    NOVA_EXTRACTION_INSTRUCTIONS,
+)
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -120,7 +124,9 @@ async def add_memory(
             source_description=source_description,
             reference_time=add_reference_time,
             group_id=add_group_id,
-            entity_types=NOVA_ENTITY_TYPES  # Suggested types - Graphiti can create new ones dynamically
+            entity_types=NOVA_ENTITY_TYPES,
+            edge_type_map=NOVA_EDGE_TYPE_MAP,
+            custom_extraction_instructions=NOVA_EXTRACTION_INSTRUCTIONS,
         )
         
         # Format response

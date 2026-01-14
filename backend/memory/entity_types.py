@@ -1,161 +1,243 @@
 """
-Nova Memory Entity Types
+Nova Memory Entity Types - schema.org Aligned
 
-Custom entity types for Nova's knowledge graph using Pydantic models.
-These types help Graphiti understand and structure the information Nova works with.
+Defines SUGGESTED entity types for Nova's knowledge graph using Pydantic models.
+These guide Graphiti's LLM extraction but don't constrain it - Graphiti can
+dynamically create additional types as needed.
 
-Entity Hierarchy:
-- Company: Base entity for organizations (clients, vendors, partners)
-  - Attributes: industry, relationship_type (client, vendor, partner)
-- Person: Individuals linked to companies via relationships
-- Project: Work items linked to companies and people
-- ProjectCode: Booking/billing codes for projects
-- Email: Communication records
-- Artifact: Files, documents, resources
+Design Philosophy:
+- Define core types that need structured attributes
+- Let Graphiti discover additional types dynamically
+- Use schema.org vocabulary for semantic clarity
+- Keep it minimal - only add types when you need specific attributes
+
+References:
+- schema.org: https://schema.org/
+- W3C ORG: https://www.w3.org/TR/vocab-org/
+- Graphiti: https://github.com/getzep/graphiti
+
+Type Selection Criteria:
+─────────────────────────────────────────────
+Only define a type here if you need:
+1. Specific structured attributes (not just a name)
+2. Consistent extraction across documents
+3. Type-specific business logic
+
+Types NOT defined here will still be extracted by Graphiti
+with a generic Entity type (name + labels).
 """
 
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 
 
-class Company(BaseModel):
-    """
-    Company entity - base type for all organizations.
+# =============================================================================
+# CORE ENTITY TYPES (schema.org aligned)
+# =============================================================================
+# Only types that need specific structured attributes
 
-    Whether a company is a client, vendor, or partner is expressed via:
-    1. The relationship_type attribute
-    2. Relationship edges in the graph (e.g., PROJECT -> HAS_CLIENT -> Company)
+class Organization(BaseModel):
     """
-    company_name: str = Field(..., description="Official company name")
-    industry: Optional[str] = Field(None, description="Industry sector (e.g., 'Technology', 'Finance', 'Healthcare')")
-    relationship_type: Optional[Literal["client", "vendor", "partner", "other"]] = Field(
-        None,
-        description="Primary relationship type with Nova's organization"
-    )
-    website: Optional[str] = Field(None, description="Company website URL")
-    notes: Optional[str] = Field(None, description="Additional context about the company")
+    Organization entity - aligned with schema.org/Organization.
+
+    Use for: companies, departments, teams, institutions.
+    Graphiti will automatically extract relationships like WORKS_FOR, MEMBER_OF.
+    """
+    name: str = Field(..., description="Official name")
+    organization_type: Optional[Literal["company", "department", "team", "institution", "other"]] = None
+    industry: Optional[str] = Field(None, description="Industry sector (e.g., 'Technology', 'Consulting')")
+    url: Optional[str] = None
 
 
 class Person(BaseModel):
     """
-    Person entity for individuals in the knowledge graph.
+    Person entity - aligned with schema.org/Person.
 
-    Company relationships are expressed via edges, not embedded here.
-    E.g., Person -> WORKS_FOR -> Company, Person -> CONTACT_AT -> Company
+    Contact info and role are important for a personal assistant.
+    Graphiti will automatically extract relationships to organizations.
     """
-    full_name: str = Field(..., description="Full name of the person")
-    email: Optional[str] = Field(None, description="Email address")
-    role: Optional[str] = Field(None, description="Job title or role")
-    phone: Optional[str] = Field(None, description="Phone number")
+    name: str = Field(..., description="Full name")
+    email: Optional[str] = None
+    job_title: Optional[str] = None
+    telephone: Optional[str] = None
+
+
+class CourseInstance(BaseModel):
+    """
+    Specific offering of a training/course - aligned with schema.org/CourseInstance.
+
+    Why CourseInstance over Course?
+    - Course = curriculum/program definition (rarely needed as structured data)
+    - CourseInstance = specific offering with dates/location (actionable for a PA)
+
+    The LLM will infer the parent Course relationship automatically.
+    """
+    name: str = Field(..., description="Instance name (often includes date/cohort)")
+    start_date: Optional[str] = Field(None, description="ISO format date")
+    end_date: Optional[str] = Field(None, description="ISO format date")
+    location: Optional[str] = None
+    course_mode: Optional[Literal["online", "onsite", "blended"]] = None
+
+
+class Event(BaseModel):
+    """
+    Time-bound occurrence - aligned with schema.org/Event.
+
+    Use for: meetings, conferences, workshops.
+    NOT for recurring training programs (use CourseInstance).
+    """
+    name: str = Field(..., description="Event name")
+    event_type: Optional[Literal["meeting", "conference", "workshop", "webinar", "presentation", "other"]] = None
+    start_date: Optional[str] = Field(None, description="ISO format datetime")
+    end_date: Optional[str] = Field(None, description="ISO format datetime")
+    location: Optional[str] = None
 
 
 class Project(BaseModel):
     """
-    Project entity for work items and engagements.
+    Collaborative endeavor - aligned with schema.org/Project (pending).
 
-    Client relationships are expressed via edges:
-    - Project -> HAS_CLIENT -> Company
-    - Project -> ASSIGNED_TO -> Person
-    - Project -> HAS_CODE -> ProjectCode
+    Use for: internal work items, client engagements, initiatives.
     """
-    project_name: str = Field(..., description="Name of the project")
-    description: Optional[str] = Field(None, description="Brief project description")
-    status: Optional[Literal["active", "completed", "on_hold", "cancelled"]] = Field(
-        None,
-        description="Current project status"
-    )
-    start_date: Optional[str] = Field(None, description="Project start date (ISO format)")
-    end_date: Optional[str] = Field(None, description="Project end date (ISO format)")
+    name: str = Field(..., description="Project name")
+    status: Optional[Literal["planned", "active", "completed", "on_hold", "cancelled"]] = None
+    start_date: Optional[str] = Field(None, description="ISO format date")
+    end_date: Optional[str] = Field(None, description="ISO format date")
 
 
-class ProjectCode(BaseModel):
+class Identifier(BaseModel):
     """
-    Project code / booking code entity.
+    Business identifier - project codes, booking codes, cost centers.
 
-    Used for time tracking, billing, and project identification.
-    Links to projects via edges: ProjectCode -> IDENTIFIES -> Project
+    Custom type (no direct schema.org equivalent).
+    Important for business context - links codes to what they identify.
     """
-    code: str = Field(..., description="The project/booking code (e.g., 'ACME-2024-001')")
-    code_type: Optional[Literal["booking", "billing", "internal", "external"]] = Field(
-        None,
-        description="Type of code"
-    )
-    description: Optional[str] = Field(None, description="What this code is used for")
-    valid_from: Optional[str] = Field(None, description="Code validity start date")
-    valid_until: Optional[str] = Field(None, description="Code validity end date")
+    value: str = Field(..., description="The identifier value (e.g., '740020199')")
+    identifier_type: Literal["project_code", "booking_code", "cost_center", "mtg_code", "other"]
 
 
-class Email(BaseModel):
-    """Email communication entity."""
-    subject: Optional[str] = Field(None, description="Email subject line")
-    sender: str = Field(..., description="Sender email address")
-    recipients: str = Field(..., description="Comma-separated recipient addresses")
-    date: Optional[str] = Field(None, description="Email date (ISO format)")
-    thread_id: Optional[str] = Field(None, description="Email thread identifier")
-
-
-class Artifact(BaseModel):
-    """File, document, or resource entity."""
-    artifact_name: str = Field(..., description="Name of the artifact")
-    artifact_type: Literal["file", "link", "document", "presentation", "spreadsheet", "image", "other"] = Field(
-        ...,
-        description="Type of artifact"
-    )
-    path: Optional[str] = Field(None, description="File path or URL")
-    description: Optional[str] = Field(None, description="What this artifact contains or is used for")
-    mime_type: Optional[str] = Field(None, description="MIME type if applicable")
-
-
-class Meeting(BaseModel):
-    """Meeting or calendar event entity."""
-    title: str = Field(..., description="Meeting title")
-    meeting_type: Optional[Literal["call", "video", "in_person", "workshop", "presentation"]] = Field(
-        None,
-        description="Type of meeting"
-    )
-    scheduled_time: Optional[str] = Field(None, description="Scheduled date/time (ISO format)")
-    duration_minutes: Optional[int] = Field(None, description="Meeting duration in minutes")
-    location: Optional[str] = Field(None, description="Meeting location or video link")
-
-
-class Task(BaseModel):
+class CreativeWork(BaseModel):
     """
-    Task entity for action items and todos.
+    Creative content - aligned with schema.org/CreativeWork.
 
-    Note: This is distinct from Nova's internal Task model in the database.
-    This represents tasks mentioned in conversations/emails for the knowledge graph.
+    Use for: presentations, demos, documents, videos, templates, code samples.
+    Enables queries like "find me an AI demo for finance".
+
+    schema.org subtypes we collapse into this:
+    - PresentationDigitalDocument, TextDigitalDocument, SpreadsheetDigitalDocument
+    - VideoObject, AudioObject, ImageObject
+    - SoftwareSourceCode
     """
-    task_title: str = Field(..., description="Brief task description")
-    status: Optional[Literal["pending", "in_progress", "completed", "cancelled"]] = Field(
-        None,
-        description="Task status"
-    )
-    priority: Optional[Literal["low", "medium", "high", "urgent"]] = Field(
-        None,
-        description="Task priority"
-    )
-    due_date: Optional[str] = Field(None, description="Due date (ISO format)")
+    name: str = Field(..., description="Asset name or title")
+    content_type: Optional[Literal["presentation", "document", "spreadsheet", "video", "audio", "image", "code", "demo", "template", "other"]] = None
+    topics: Optional[str] = Field(None, description="Comma-separated topics/tags (e.g., 'AI, finance, automation')")
+    audience: Optional[str] = Field(None, description="Target audience (e.g., 'executives', 'developers', 'finance team')")
+    url: Optional[str] = Field(None, description="URL, file path, or storage location")
+    date_created: Optional[str] = Field(None, description="ISO format date")
 
 
-# Entity types mapping for Graphiti
-# These are SUGGESTED types - Graphiti can dynamically create new entity types
-# as needed based on content analysis. This provides structure for common types.
+# =============================================================================
+# ENTITY TYPES REGISTRY
+# =============================================================================
+
 NOVA_ENTITY_TYPES = {
-    # Organizations
-    "Company": Company,
-
-    # People
+    "Organization": Organization,
     "Person": Person,
-
-    # Work items
+    "CourseInstance": CourseInstance,
+    "Event": Event,
     "Project": Project,
-    "ProjectCode": ProjectCode,
-    "Task": Task,
-
-    # Communications
-    "Email": Email,
-    "Meeting": Meeting,
-
-    # Resources
-    "Artifact": Artifact,
+    "Identifier": Identifier,
+    "CreativeWork": CreativeWork,
 }
+"""
+Entity types passed to Graphiti's add_episode().
+
+These are SUGGESTIONS - Graphiti will:
+1. Try to classify entities into these types
+2. Extract the structured attributes defined above
+3. Create new types dynamically if needed (with generic attributes)
+
+Types intentionally NOT included:
+- Course: CourseInstance captures actionable info; Course is just context
+- EmailMessage: Handled by email processing, not knowledge extraction
+- DigitalDocument: Generic artifacts don't need structured attributes
+"""
+
+
+# =============================================================================
+# EDGE TYPE CONSTRAINTS (optional)
+# =============================================================================
+
+NOVA_EDGE_TYPE_MAP = {
+    # (source_type, target_type) -> allowed edge types
+    # Only define if you need to CONSTRAIN what edges can be created
+    # Otherwise let Graphiti infer relationships freely
+
+    ("Person", "Organization"): ["WORKS_FOR", "MEMBER_OF", "AFFILIATED_WITH"],
+    ("Person", "Person"): ["REPORTS_TO", "KNOWS", "COLLEAGUE_OF"],
+    ("CourseInstance", "Person"): ["ATTENDEE", "INSTRUCTOR"],
+    ("Identifier", "Project"): ["IDENTIFIES"],
+    ("Identifier", "CourseInstance"): ["IDENTIFIES"],
+    ("CreativeWork", "Person"): ["AUTHOR", "CONTRIBUTOR"],
+    ("CreativeWork", "Organization"): ["ABOUT", "PUBLISHER"],
+    ("CreativeWork", "Project"): ["PART_OF", "DOCUMENTS"],
+}
+"""
+Optional edge type constraints.
+
+Only define mappings where you need to ensure consistency.
+Unmapped (source, target) pairs will use Graphiti's default behavior.
+
+Common edge types (schema.org aligned):
+- WORKS_FOR (schema:worksFor) - employment
+- MEMBER_OF (schema:memberOf) - membership
+- REPORTS_TO (org:reportsTo) - hierarchy
+- ATTENDEE (schema:attendee) - participation
+- INSTRUCTOR (schema:instructor) - teaching
+- IDENTIFIES (custom) - code → entity mapping
+"""
+
+
+# =============================================================================
+# CUSTOM EXTRACTION INSTRUCTIONS
+# =============================================================================
+
+NOVA_EXTRACTION_INSTRUCTIONS = """
+Extract entities using schema.org vocabulary (https://schema.org/).
+Use the provided entity types when appropriate; create new schema.org-aligned types if needed.
+
+EXTRACTION GUIDANCE:
+
+1. PEOPLE: Look beyond explicit mentions.
+   - Email signatures contain name, title, phone, organization
+   - CC/To lists reveal team members and stakeholders
+   - "Lisa's manager" or "reporting to John" reveals hierarchy
+
+2. ORGANIZATIONS: Distinguish levels.
+   - "Nextera Consulting" = company
+   - "Cloud & Infrastructure" = department
+   - "DL DE Cloud Services" = team (distribution lists are teams)
+
+3. IDENTIFIERS: Capture business codes with context.
+   - "MTG code: 740020199" → Identifier linked to what it funds
+   - "Project code for the bootcamp" → IDENTIFIES relationship
+
+4. RELATIONSHIPS: Infer from behavior, not just statements.
+   - Person answers questions about X → likely responsible for X
+   - Person waits for approval from Y → Y is superior/approver
+   - Person executes requests for Z → supports Z's initiative
+
+5. DATES: Always ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
+   Resolve relative dates ("next week", "last year") to absolute dates.
+
+6. GERMAN BUSINESS CONTEXT: Common patterns.
+   - "DL DE" prefix = German distribution list
+   - Email format: firstname.lastname@domain
+   - Titles after comma: "Müller, Anna" = Anna Müller
+"""
+"""
+Custom instructions passed to Graphiti's entity extraction prompt.
+
+This guides the LLM on WHAT to extract and HOW to interpret it,
+without needing to define rigid schemas for every possible type.
+"""
