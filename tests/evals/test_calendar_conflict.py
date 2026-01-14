@@ -230,19 +230,26 @@ class TestCalendarConflictEval:
             poll_interval = 10
             processed_task = None
 
+            print(f"\n[EVAL] Task created: {task_id}")
+            print(f"[EVAL] Calendar event: {calendar_context.get('event_title')}")
+            print(f"[EVAL] Waiting for core agent to process (max {max_wait}s)...")
+
             async with httpx.AsyncClient() as client:
                 for i in range(max_wait // poll_interval):
                     await asyncio.sleep(poll_interval)
 
                     task_resp = await client.get(f"{api_base_url}/api/tasks/{task_id}")
                     if task_resp.status_code != 200:
+                        print(f"[EVAL] Poll {i+1}: Task fetch failed ({task_resp.status_code})")
                         continue
 
                     current_task = task_resp.json()
                     status = current_task["status"]
+                    print(f"[EVAL] Poll {i+1}: Task status = {status}")
 
-                    if status == "needs_review":
+                    if status in ["needs_review", "done"]:
                         processed_task = current_task
+                        print(f"[EVAL] Task processed with final status: {status}")
                         break
                     elif status in ["completed", "failed"]:
                         pytest.fail(f"Task ended with unexpected status: {status}")
@@ -291,18 +298,34 @@ class TestCalendarConflictEval:
                         conflict_mentioned = True
 
             # Assertions (these are the grading criteria)
-            assert processed_task["status"] == "needs_review", \
-                f"Expected needs_review, got {processed_task['status']}"
+            # Grade 1: Task should be in needs_review (conflict requires human input)
+            print(f"\n[EVAL] === GRADING RESULTS ===")
+            print(f"[EVAL] Final task status: {processed_task['status']}")
+            print(f"[EVAL] ask_user called: {ask_user_called}")
+            print(f"[EVAL] 'conflict' mentioned: {conflict_mentioned}")
+            if question_text:
+                print(f"[EVAL] Question: {question_text[:200]}")
 
-            assert ask_user_called, (
-                "CRITICAL: ask_user was NOT called! "
-                "The agent MUST call ask_user when there's a calendar conflict."
+            assert processed_task["status"] == "needs_review", (
+                f"GRADE FAIL: Expected status 'needs_review', got '{processed_task['status']}'. "
+                f"When a calendar conflict is detected, the agent should escalate via ask_user "
+                f"which moves the task to needs_review."
             )
 
+            # Grade 2: ask_user tool must have been called
+            assert ask_user_called, (
+                "GRADE FAIL: ask_user was NOT called! "
+                "The agent MUST call ask_user when there's a calendar conflict to get user input."
+            )
+
+            # Grade 3: The question should mention 'conflict'
             assert conflict_mentioned, (
-                f"ask_user was called but 'conflict' not in question. "
+                f"GRADE FAIL: ask_user was called but 'conflict' not in question. "
+                f"The escalation should clearly mention the scheduling conflict. "
                 f"Question was: {question_text[:200]}"
             )
+
+            print("[EVAL] === ALL GRADES PASSED ===")
 
         finally:
             # Cleanup
