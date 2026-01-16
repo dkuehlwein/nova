@@ -190,7 +190,12 @@ class EvalRunner:
         )
 
     async def _get_agent(self, eval_case: EvalCase, model: str | None):
-        """Get or create the agent for this eval."""
+        """Get or create the agent for this eval.
+
+        Args:
+            eval_case: The evaluation case being run
+            model: Optional model name to use for this eval
+        """
         if self._agent is not None:
             return self._agent
 
@@ -201,6 +206,7 @@ class EvalRunner:
         self._agent = await create_chat_agent(
             pg_pool=self.pg_pool,
             include_escalation=(eval_case.agent_type == "core"),
+            model_override=model,
         )
 
         return self._agent
