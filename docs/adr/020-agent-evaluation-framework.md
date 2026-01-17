@@ -16,13 +16,6 @@ After reviewing Anthropic's "Demystifying Evals for AI Agents" article and analy
 - **Limited**: Only 3 end2end tests, all focused on calendar conflict detection
 - **Missing**: Multi-turn conversation testing, capacity/stress testing, agent capability evaluation
 
-**Previous Proposal:**
-The DRAFT DeepEval ADR proposed using an external evaluation framework. However, this approach:
-- Adds external dependency (DeepEval)
-- Doesn't align with Nova's existing test patterns (pytest, fixtures, ServiceManager)
-- Provides generic metrics rather than Nova-specific capability testing
-- Doesn't address multi-turn conversation testing or capacity testing
-
 ## Decision
 
 Build a **custom agent evaluation framework** based on Anthropic's evaluation methodology that integrates seamlessly with Nova's existing test infrastructure.
@@ -314,4 +307,21 @@ Out of scope for initial implementation but designed for:
 
 ---
 
-**Implementation Status**: Approved, ready for Phase 1 implementation
+**Implementation Status**: Phase 1 In Progress
+
+### Phase 1 Progress (2026-01-14)
+
+Implemented:
+- [x] Directory structure (`tests/evals/framework/`)
+- [x] `EvalCase` and `EvalResult` dataclasses (`eval_case.py`)
+- [x] Basic `EvalRunner` with single trial support (`eval_runner.py`)
+- [x] Initial graders: `check_task_status`, `check_tool_called`, `check_ask_user_for_conflict` (`graders.py`)
+- [x] Eval fixtures in `conftest.py` (DB setup, service manager, cleanup)
+- [x] Model configuration file (`models.yaml`)
+- [x] First eval case: Calendar conflict detection (`test_calendar_conflict.py`)
+
+Next steps:
+- [ ] Run first eval end-to-end with real LLM
+- [ ] Add k-trial support to EvalRunner
+- [ ] Implement transcript storage
+- [ ] Add more graders as needed

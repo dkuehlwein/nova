@@ -77,26 +77,40 @@ async def get_all_tools(use_cache=True, include_escalation=False) -> List[Any]:
     return _cached_tools
 
 
-async def get_llm(use_cache=True):
+async def get_llm(use_cache=True, model_override: str | None = None):
     """Get cached LLM or create new one if not cached.
-    
+
     Args:
         use_cache: If True, use cached LLM; if False, reload LLM
+        model_override: Optional model name to use instead of configured default.
+                       When specified, bypasses cache and creates a fresh LLM.
     """
     global _cached_llm
-    
+
+    # If model override is specified, create a fresh LLM with that model
+    if model_override:
+        logger.info(f"Creating LLM with model override: {model_override}")
+        config = {"configurable": {"chat_llm_model": model_override}}
+        return create_chat_llm(config)
+
     if not use_cache:
         _cached_llm = None
         logger.info("LLM cache cleared for reload")
-    
+
     if _cached_llm is None:
         _cached_llm = create_chat_llm()
         logger.debug("LLM created and cached for reuse")
-    
+
     return _cached_llm
 
 
-async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, include_escalation=False):
+async def create_chat_agent(
+    checkpointer=None,
+    pg_pool=None,
+    use_cache=True,
+    include_escalation=False,
+    model_override: str | None = None,
+):
     """Create LangGraph chat agent with dynamic skill loading support.
 
     This creates a custom StateGraph that supports per-turn dynamic tool binding
@@ -108,6 +122,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
         pg_pool: PostgreSQL connection pool (required if no checkpointer provided)
         use_cache: If True, use cached components; if False, reload everything
         include_escalation: If True, include ask_user tool (for task contexts)
+        model_override: Optional model name to use instead of configured default
 
     Returns:
         LangGraph chat agent with current tools/prompt and PostgreSQL checkpointer
@@ -151,7 +166,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
 
     # Get cached or fresh components
     t0 = time.time()
-    llm = await get_llm(use_cache=use_cache)
+    llm = await get_llm(use_cache=use_cache, model_override=model_override)
     log_timing("get_llm", t0)
 
     t0 = time.time()
