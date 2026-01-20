@@ -53,18 +53,92 @@ class ToolPermissionConfig:
                 }
             }
     
-    # Fields to ignore when generating permission patterns (dynamic IDs)
-    IGNORED_FIELDS = {"id", "task_id", "uuid", "execution_id", "thread_id", "run_id"}
+    # Field names that are always dynamic/user-specific (filter by name)
+    IGNORED_FIELD_NAMES = {
+        "id", "task_id", "uuid", "execution_id", "thread_id", "run_id",
+        "email", "username", "user_id", "user_identifier", "display_name",
+        "name", "title", "description", "content", "body", "message",
+        "password", "token", "secret", "key", "api_key",
+    }
+
+    # Enum-like values that represent operation types (keep these)
+    SEMANTIC_ARG_PATTERNS = {
+        "status", "type", "action", "mode", "state", "priority", "level",
+        "category", "kind", "role", "permission", "access", "visibility",
+    }
+
+    def _is_semantic_value(self, key: str, value: Any) -> bool:
+        """Determine if an argument represents a semantic operation type vs user data.
+
+        Returns True for values that define the "type" of operation:
+        - Boolean flags
+        - Short enum-like strings (e.g., "done", "in_progress", "high")
+        - Arguments with semantic field names (status, type, mode, etc.)
+
+        Returns False for user-specific data:
+        - Emails, URLs, long text
+        - Arguments with user-data field names (email, name, etc.)
+        """
+        key_lower = key.lower()
+
+        # Always filter out known user-data fields
+        if key_lower in self.IGNORED_FIELD_NAMES:
+            return False
+
+        # Always keep known semantic fields
+        if key_lower in self.SEMANTIC_ARG_PATTERNS:
+            return True
+
+        # Analyze the value itself
+        if isinstance(value, bool):
+            return True  # Booleans are semantic flags
+
+        if isinstance(value, (int, float)):
+            return True  # Numbers are usually semantic (limits, counts, etc.)
+
+        if isinstance(value, str):
+            # Filter out empty or whitespace-only strings
+            if not value or not value.strip():
+                return False
+            # Filter out obvious user data patterns
+            if "@" in value:  # Email
+                return False
+            if value.startswith(("http://", "https://")):  # URLs
+                return False
+            if len(value) > 30:  # Long text is likely user content
+                return False
+            if " " in value and len(value) > 15:  # Multi-word long strings
+                return False
+            # Short strings without spaces are likely enum values
+            return True
+
+        # Filter out complex types (lists, dicts)
+        if isinstance(value, (list, dict)):
+            return False
+
+        return False
 
     async def add_permission(self, tool_name: str, tool_args: Dict[str, Any] = None):
-        """Add new permission to allow list using Nova's ConfigRegistry."""
-        # Filter out dynamic ID fields to create a broader permission pattern
-        clean_args = None
+        """Add new permission to allow list using Nova's ConfigRegistry.
+
+        Filters tool_args to keep only semantic arguments (status, type, mode, etc.)
+        while removing user-specific data (emails, names, long text).
+        This creates permissions like "update_task(status=done)" instead of
+        overly specific ones with user data.
+        """
+        # Filter to keep only semantic arguments
+        semantic_args = None
         if tool_args:
-            clean_args = {k: v for k, v in tool_args.items() if k not in self.IGNORED_FIELDS}
-            
-        pattern = self._format_permission_pattern(tool_name, clean_args)
-        
+            semantic_args = {
+                k: v for k, v in tool_args.items()
+                if self._is_semantic_value(k, v)
+            }
+            # If no semantic args remain, use None (just tool name)
+            if not semantic_args:
+                semantic_args = None
+
+        pattern = self._format_permission_pattern(tool_name, semantic_args)
+
         try:
             config: ToolPermissionsConfig = get_config("tool_permissions")
             
@@ -93,7 +167,7 @@ class ToolPermissionConfig:
             logger.error(f"Failed to remove tool permission {pattern}: {e}")
             raise
     
-    def _format_permission_pattern(self, tool_name: str, tool_args: Dict[str, Any] = None) -> str:
+    def _format_permission_pattern(self, tool_name: str, tool_args: Dict[str, Any] | None = None) -> str:
         """Format tool call into permission pattern string."""
         if not tool_args:
             return tool_name

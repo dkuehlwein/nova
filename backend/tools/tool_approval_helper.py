@@ -94,6 +94,11 @@ def add_human_in_the_loop(
             try:
                 await permission_config.add_permission(tool.name, tool_input)
                 logger.info(f"Added always allow permission for {tool.name}")
+                # Clear the chat agent cache so the permission takes effect immediately
+                # Without this, the current chat would still use the old cached wrapped tools
+                from agent.chat_agent import clear_chat_agent_cache
+                clear_chat_agent_cache()
+                logger.info("Cleared chat agent cache for immediate permission effect")
             except Exception as e:
                 logger.error(f"Failed to add permission for {tool.name}: {e}")
             # Still execute the tool this time
