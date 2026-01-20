@@ -11,17 +11,16 @@ permissions:
   - enable_skill
   - disable_skill
   - _example_skill__*
-  # Contact lookup - allow without approval
   - outlook_mac-lookup_contact
-  # Calendar tools - allow for conflict detection flow (prefixed names per ADR-015)
   - google_workspace-create_event
   - google_workspace-list_events
   - google_workspace-delete_event
   - google_workspace-update_event
   - outlook_mac-list_calendar_events
+  - genai_training_onboarding__create_gitlab_user_account
+  - genai_training_onboarding__add_user_to_gitlab_project
   deny:
   - mcp_tool(*)
-  # Email sending requires approval (prefixed names per ADR-015)
   - google_workspace-send_email
   - outlook_mac-send_email
 settings:

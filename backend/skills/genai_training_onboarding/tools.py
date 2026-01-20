@@ -3,11 +3,11 @@ GenAI Training Onboarding skill tools.
 
 These tools help onboard training participants by:
 1. Resolving missing emails via Outlook contact lookup
-2. Creating IAM accounts in LAM
-3. Adding members to GitLab repositories
+2. Creating IAM accounts in LAM (LDAP Account Manager)
+3. Creating GitLab user accounts (linked to LDAP)
+4. Adding users to GitLab projects
 
-Note: Input parsing is done by the LLM directly (not a tool) since
-LLMs naturally handle mixed formats (names/emails/CSV/etc).
+Each operation is a separate tool for maximum flexibility and robustness.
 """
 
 import asyncio
@@ -34,6 +34,7 @@ def _import_skill_module(module_name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
 
 logger = get_logger(__name__)
 
@@ -110,9 +111,42 @@ def _validate_email(email: str) -> bool:
         return bool(re.match(pattern, email))
 
 
-# Note: build_participant_list and related parsing helpers were removed.
-# LLMs naturally parse mixed input formats (names/emails/mixed) into structured data.
-# Having parsing as a tool added unnecessary complexity and latency.
+def _generate_username(first_name: str, last_name: str) -> str:
+    """
+    Generate username from first and last name: first_initial + lastname.
+
+    Sanitizes special characters to ensure valid LDAP/GitLab usernames:
+    - Removes accents (é -> e, ü -> u)
+    - Removes apostrophes, hyphens, and other special characters
+    - Converts to lowercase
+    - Limits to 32 characters (common username length limit)
+    """
+    import unicodedata
+
+    def sanitize(name: str) -> str:
+        if not name:
+            return ""
+        # Normalize unicode (é -> e, ü -> u, etc.)
+        normalized = unicodedata.normalize("NFKD", name)
+        # Remove non-ASCII characters (accents become separate chars after NFKD)
+        ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
+        # Keep only alphanumeric characters
+        return re.sub(r"[^a-zA-Z0-9]", "", ascii_only).lower()
+
+    first = sanitize(first_name.strip()) if first_name else ""
+    last = sanitize(last_name.strip()) if last_name else ""
+
+    if first and last:
+        username = f"{first[0]}{last}"
+    elif last:
+        username = last
+    elif first:
+        username = first
+    else:
+        return ""
+
+    # Limit to 32 characters (common LDAP/GitLab limit)
+    return username[:32]
 
 
 @tool
@@ -134,277 +168,524 @@ async def resolve_participant_email(name: str) -> str:
     try:
         result = await mcp_manager.call_mcp_tool(
             server_name="outlook_mac",
-            tool_name="lookup_contact",  # Base name - prefixing is automatic per ADR-015
+            tool_name="lookup_contact",  # Base tool name (MCP server handles internally)
             arguments={"name": name},
         )
 
+        # MCP returns JSON string directly
         if isinstance(result, str):
-            try:
-                return result  # Already JSON string
-            except json.JSONDecodeError:
-                return json.dumps({"found": True, "result": result})
+            return result
 
         if isinstance(result, dict):
             if "error" in result:
-                return json.dumps(
-                    {
-                        "found": False,
-                        "error": result["error"],
-                        "suggestion": f"Ask the user for {name}'s email address",
-                    }
-                )
+                return json.dumps({
+                    "found": False,
+                    "error": result["error"],
+                    "name_searched": name,
+                    "next_action": f"Ask the user to provide the email address for {name}",
+                })
             return json.dumps(result)
 
-        return json.dumps({"found": False, "error": "Unexpected response format"})
+        return json.dumps({
+            "found": False,
+            "error": "Unexpected response format from contact lookup",
+            "name_searched": name,
+            "next_action": f"Ask the user to provide the email address for {name}",
+        })
 
     except Exception as e:
-        logger.error(f"Error calling outlook_mac-lookup_contact: {e}")
-        return json.dumps(
-            {
-                "found": False,
-                "error": str(e),
-                "suggestion": f"The outlook_mac-lookup_contact tool may not be available. Ask the user for {name}'s email address.",
-            }
-        )
+        logger.error(f"Error calling outlook_mac-lookup_contact: {e}", extra={"name": name, "error": str(e)})
+        return json.dumps({
+            "found": False,
+            "error": str(e),
+            "name_searched": name,
+            "next_action": f"The outlook_mac MCP server may not be available. Ask the user to provide the email address for {name}.",
+        })
 
 
 @tool
-async def execute_batch_onboarding(
-    participants: list,
+async def create_iam_account(
+    email: str,
+    first_name: str,
+    last_name: str,
+    username: Optional[str] = None,
     lam_url: Optional[str] = None,
-    gitlab_url: Optional[str] = None,
-    gitlab_project: Optional[str] = None,
-    skip_iam: bool = False,
-    skip_gitlab: bool = False,
+    max_retries: int = 2,
 ) -> str:
     """
-    Execute the batch onboarding for training participants.
+    Create a single IAM account in LAM (LDAP Account Manager).
 
-    For each participant:
-    1. Create IAM account in LAM (unless skip_iam=True)
-    2. Add as member to GitLab project (unless skip_gitlab=True)
+    This uses browser automation to interact with the LAM web interface.
+    SSO/MFA may be required - the browser will wait for manual completion.
 
     Args:
-        participants: List of participant dicts, each with 'email' (required) and optionally
-                     'name', 'first_name', 'last_name'. Example:
-                     [{"email": "john@example.com", "name": "John Doe"}]
-        lam_url: Override the default LAM URL
-        gitlab_url: Override the default GitLab URL
-        gitlab_project: Override the default GitLab project
-        skip_iam: Skip IAM account creation
-        skip_gitlab: Skip GitLab membership
-    """
-    # Import sibling modules (can't use relative imports - skill loaded via importlib)
-    gitlab_client = _import_skill_module("gitlab_client")
-    lam_automation = _import_skill_module("lam_automation")
+        email: User's email address (required)
+        first_name: User's first name
+        last_name: User's last name
+        username: Desired username (optional, auto-generated as first_initial+lastname if not provided)
+        lam_url: Override the default LAM URL from config
+        max_retries: Number of retry attempts on failure (default: 2)
 
-    add_gitlab_member = gitlab_client.add_gitlab_member
-    check_gitlab_connection = gitlab_client.check_gitlab_connection
-    create_gitlab_user = gitlab_client.create_gitlab_user
-    create_lam_account = lam_automation.create_lam_account
+    Returns:
+        JSON with:
+        - success: bool
+        - username: the created username
+        - error: error message if failed
+        - retries_used: number of retries attempted
+    """
+    # Import sibling module
+    lam_automation = _import_skill_module("lam_automation")
+    create_lam_account_impl = lam_automation.create_lam_account
 
     config = _load_skill_config()
     defaults = config.get("defaults", {})
     batch_config = config.get("batch", {})
 
-    # Get URLs
+    # Get URL and credentials
     lam_url = lam_url or defaults.get("lam_url")
-    gitlab_url = gitlab_url or defaults.get("gitlab_url")
-    gitlab_project = gitlab_project or defaults.get("gitlab_project")
-    gitlab_access = defaults.get("gitlab_access_level", "developer")
-
-    # Get credentials
     creds = _get_credentials()
 
-    # Filter out participants without emails and validate email format
-    valid_participants = []
-    invalid_emails = []
-    for p in participants:
-        email = p.get("email")
-        if email:
-            if _validate_email(email):
-                valid_participants.append(p)
-            else:
-                invalid_emails.append({"name": p.get("name", "Unknown"), "email": email})
+    # Validate inputs
+    if not email or not _validate_email(email):
+        return json.dumps({
+            "success": False,
+            "error": f"Invalid email address format: '{email}'",
+            "email_provided": email,
+            "next_action": "Ask the user to provide a valid email address for this participant.",
+        })
 
-    if invalid_emails:
-        logger.warning(f"Skipping participants with invalid emails: {invalid_emails}")
+    if not creds.get("lam_username") or not creds.get("lam_password"):
+        return json.dumps({
+            "success": False,
+            "error": "LAM credentials not configured",
+            "next_action": "This is a configuration issue. Tell the user: 'LAM credentials are not configured. Please set LAM_USERNAME and LAM_PASSWORD environment variables or add them to the skill config.yaml.'",
+        })
 
-    if not valid_participants:
-        return json.dumps({"error": "No participants with valid email addresses to onboard"})
+    # Generate username if not provided
+    if not username:
+        username = _generate_username(first_name, last_name)
+        if not username:
+            return json.dumps({
+                "success": False,
+                "error": "Cannot generate username without first_name or last_name",
+                "first_name_provided": first_name,
+                "last_name_provided": last_name,
+                "next_action": "Ask the user to provide the first name and last name for this participant.",
+            })
 
-    # Validate credentials
-    if not skip_iam:
-        if not creds.get("lam_username") or not creds.get("lam_password"):
-            return json.dumps(
-                {
-                    "error": "LAM credentials not configured. Set LAM_USERNAME and LAM_PASSWORD environment variables."
-                }
-            )
-
-    # Get SSL configuration
-    ssl_config = _get_ssl_config()
-
-    if not skip_gitlab:
-        if not creds.get("gitlab_token"):
-            return json.dumps(
-                {
-                    "error": "GitLab token not configured. Set GITLAB_PERSONAL_TOKEN environment variable."
-                }
-            )
-
-        # Check GitLab connection
-        # Note: This GitLab instance requires HTTP Basic Auth (LAM credentials) in addition to the PAT
-        basic_auth = (creds["lam_username"], creds["lam_password"]) if creds.get("lam_username") and creds.get("lam_password") else None
-        gitlab_check = await check_gitlab_connection(
-            gitlab_url, creds["gitlab_token"],
-            verify_ssl=ssl_config["verify_ssl"],
-            ca_bundle=ssl_config["ca_bundle"],
-            basic_auth=basic_auth
-        )
-        if not gitlab_check.get("connected"):
-            return json.dumps(
-                {
-                    "error": f"Cannot connect to GitLab: {gitlab_check.get('error', 'Unknown error')}"
-                }
-            )
-
-    # Process each participant
-    results = []
-    successful = 0
-    delay_ms = batch_config.get("delay_between_participants_ms", 1000)
-
-    for i, participant in enumerate(valid_participants):
-        result = {
-            "participant": participant,
-            "iam_created": False,
-            "iam_error": None,
-            "iam_password": None,
-            "gitlab_added": False,
-            "gitlab_error": None,
-        }
-
-        # Prepare user data
-        user_data = {
-            "first_name": participant.get("first_name", ""),
-            "last_name": participant.get("last_name", ""),
-            "email": participant["email"],
-            "username": participant.get("username"),
-        }
-
-        # Create IAM account
-        if not skip_iam:
-            try:
-                iam_result = await create_lam_account(
-                    lam_url=lam_url,
-                    admin_username=creds["lam_username"],
-                    admin_password=creds["lam_password"],
-                    user_data=user_data,
-                    headless=False,  # SSO requires visible browser for MFA
-                )
-                result["iam_created"] = iam_result.get("success", False)
-                if result["iam_created"]:
-                    result["iam_password"] = iam_result.get("password")
-                    result["iam_username"] = iam_result.get("username")
-                else:
-                    result["iam_error"] = iam_result.get("error", "Unknown error")
-            except Exception as e:
-                result["iam_error"] = str(e)
-
-        # Add to GitLab
-        if not skip_gitlab:
-            try:
-                # Use HTTP Basic Auth (LAM credentials) in addition to PAT
-                basic_auth = (creds["lam_username"], creds["lam_password"]) if creds.get("lam_username") and creds.get("lam_password") else None
-
-                # If IAM was created, also create GitLab user (they don't have one yet)
-                # If IAM was skipped, assume user already exists in both systems
-                if result.get("iam_created"):
-                    gitlab_username = result.get("iam_username")
-                    display_name = participant.get("name") or f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
-
-                    # Build LDAP DN for linking
-                    ldap_dn = f"uid={gitlab_username},ou=People,dc=pl,dc=s2-eu,dc=capgemini,dc=local"
-
-                    logger.info(f"Creating GitLab user: {gitlab_username} for {participant['email']}")
-                    create_result = await create_gitlab_user(
-                        gitlab_url=gitlab_url,
-                        token=creds["gitlab_token"],
-                        email=participant["email"],
-                        username=gitlab_username,
-                        name=display_name,
-                        ldap_dn=ldap_dn,
-                        verify_ssl=ssl_config["verify_ssl"],
-                        ca_bundle=ssl_config["ca_bundle"],
-                        basic_auth=basic_auth,
-                    )
-
-                    if not create_result.get("success"):
-                        result["gitlab_error"] = f"Failed to create GitLab user: {create_result.get('error', 'Unknown error')}"
-                        results.append(result)
-                        continue
-
-                    result["gitlab_user_created"] = True
-
-                # Now add to project
-                gitlab_result = await add_gitlab_member(
-                    gitlab_url=gitlab_url,
-                    token=creds["gitlab_token"],
-                    project_path=gitlab_project,
-                    user_identifier=participant["email"],
-                    access_level=gitlab_access,
-                    verify_ssl=ssl_config["verify_ssl"],
-                    ca_bundle=ssl_config["ca_bundle"],
-                    basic_auth=basic_auth,
-                )
-                result["gitlab_added"] = gitlab_result.get("success", False)
-                if not result["gitlab_added"]:
-                    result["gitlab_error"] = gitlab_result.get("error", "Unknown error")
-            except Exception as e:
-                result["gitlab_error"] = str(e)
-
-        # Count success
-        iam_ok = skip_iam or result["iam_created"]
-        gitlab_ok = skip_gitlab or result["gitlab_added"]
-        if iam_ok and gitlab_ok:
-            successful += 1
-
-        results.append(result)
-
-        # Delay between participants (except for last one)
-        if i < len(valid_participants) - 1 and delay_ms > 0:
-            await asyncio.sleep(delay_ms / 1000)
-
-    # Generate summary
-    summary = {
-        "status": "completed",
-        "total": len(valid_participants),
-        "successful": successful,
-        "failed": len(valid_participants) - successful,
-        "results": results,
+    # Prepare user data
+    user_data = {
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": email,
+        "username": username,
     }
 
-    # Add credentials section for successful IAM accounts (for user reference)
-    if not skip_iam:
-        new_accounts = [
-            {
-                "name": f"{r['participant'].get('first_name', '')} {r['participant'].get('last_name', '')}".strip(),
-                "email": r["participant"]["email"],
-                "username": r.get("iam_username", "N/A"),
-                "password": r.get("iam_password", "N/A"),
-            }
-            for r in results
-            if r["iam_created"]
-        ]
-        if new_accounts:
-            summary["new_iam_accounts"] = new_accounts
+    # Retry logic
+    max_retries = min(max_retries, batch_config.get("max_retries", 2))
+    last_error = None
+    retries_used = 0
 
-    return json.dumps(summary, indent=2)
+    for attempt in range(max_retries + 1):
+        try:
+            result = await create_lam_account_impl(
+                lam_url=lam_url,
+                admin_username=creds["lam_username"],
+                admin_password=creds["lam_password"],
+                user_data=user_data,
+                headless=False,  # SSO requires visible browser for MFA
+            )
+
+            if result.get("success"):
+                created_username = result.get("username", username)
+                return json.dumps({
+                    "success": True,
+                    "username": created_username,
+                    "email": email,
+                    "retries_used": retries_used,
+                    "summary": f"IAM account created successfully for {first_name} {last_name}.",
+                    "next_action": f"IAM account created. Now call create_gitlab_user_account with email='{email}', username='{created_username}', display_name='{first_name} {last_name}'.",
+                })
+            else:
+                last_error = result.get("error", "Unknown error")
+                # "Already exists" is actually a success - the account is there as needed
+                if "already exists" in last_error.lower():
+                    return json.dumps({
+                        "success": True,
+                        "already_exists": True,
+                        "username": username,
+                        "email": email,
+                        "note": "IAM account already exists",
+                        "retries_used": retries_used,
+                        "summary": f"IAM account for {username} already exists (this is fine).",
+                        "next_action": f"IAM account exists. Proceed to create_gitlab_user_account with username='{username}', email='{email}', display_name='{first_name} {last_name}'.",
+                    })
+
+        except Exception as e:
+            last_error = str(e)
+            logger.error(f"IAM account creation attempt {attempt + 1} failed: {e}")
+
+        retries_used = attempt + 1
+        if attempt < max_retries:
+            # Wait before retry with exponential backoff
+            await asyncio.sleep(min(2 ** attempt, 30))  # Cap at 30 seconds
+
+    return json.dumps({
+        "success": False,
+        "username": username,
+        "email": email,
+        "error": last_error,
+        "retries_used": retries_used,
+        "next_action": f"IAM account creation failed after {retries_used} attempts. Report this error to the user and ask if they want to retry or skip to GitLab user creation (if the IAM account might already exist).",
+    })
+
+
+@tool
+async def create_gitlab_user_account(
+    email: str,
+    username: str,
+    display_name: str,
+    gitlab_url: Optional[str] = None,
+    max_retries: int = 2,
+) -> str:
+    """
+    Create a GitLab user account linked to LDAP.
+
+    This creates the user in GitLab and links it to their LDAP account for SSO.
+    The user won't need a GitLab password - they'll authenticate via LDAP.
+
+    IMPORTANT: Call this AFTER create_iam_account succeeds, using the same username.
+
+    Args:
+        email: User's email address (must match IAM account)
+        username: GitLab username (should match IAM username for consistency)
+        display_name: User's display name (e.g., "John Smith")
+        gitlab_url: Override the default GitLab URL from config
+        max_retries: Number of retry attempts on failure (default: 2)
+
+    Returns:
+        JSON with:
+        - success: bool
+        - user_id: GitLab user ID if created
+        - username: the username
+        - error: error message if failed
+        - blocked: true if user exists but is blocked (needs admin intervention)
+    """
+    # Import sibling module
+    gitlab_client = _import_skill_module("gitlab_client")
+    create_gitlab_user_impl = gitlab_client.create_gitlab_user
+    search_user_by_email = gitlab_client.search_user_by_email
+    check_gitlab_connection = gitlab_client.check_gitlab_connection
+
+    config = _load_skill_config()
+    defaults = config.get("defaults", {})
+    batch_config = config.get("batch", {})
+
+    # Get URL and credentials
+    gitlab_url = gitlab_url or defaults.get("gitlab_url")
+    creds = _get_credentials()
+    ssl_config = _get_ssl_config()
+
+    # Validate inputs
+    if not email or not _validate_email(email):
+        return json.dumps({
+            "success": False,
+            "error": f"Invalid email address format: '{email}'",
+            "email_provided": email,
+            "next_action": "Ask the user to provide a valid email address.",
+        })
+
+    if not username:
+        return json.dumps({
+            "success": False,
+            "error": "Username is required but was not provided",
+            "next_action": "The username should come from the create_iam_account result. If IAM was skipped, ask the user for the username.",
+        })
+
+    if not creds.get("gitlab_token"):
+        return json.dumps({
+            "success": False,
+            "error": "GitLab token not configured",
+            "next_action": "This is a configuration issue. Tell the user: 'GitLab API token is not configured. Please set GITLAB_PERSONAL_TOKEN environment variable or add gitlab_token to the skill config.yaml.'",
+        })
+
+    # Set up auth (GitLab behind authenticated proxy needs both PAT and basic auth)
+    basic_auth = None
+    if creds.get("lam_username") and creds.get("lam_password"):
+        basic_auth = (creds["lam_username"], creds["lam_password"])
+
+    # Check GitLab connection first
+    connection_check = await check_gitlab_connection(
+        gitlab_url, creds["gitlab_token"],
+        verify_ssl=ssl_config["verify_ssl"],
+        ca_bundle=ssl_config["ca_bundle"],
+        basic_auth=basic_auth
+    )
+    if not connection_check.get("connected"):
+        return json.dumps({
+            "success": False,
+            "error": f"Cannot connect to GitLab: {connection_check.get('error', 'Unknown error')}",
+            "gitlab_url": gitlab_url,
+            "next_action": "GitLab connection failed. This could be a network issue or invalid token. Tell the user about the connection error and suggest checking the GitLab URL and token configuration.",
+        })
+
+    # Check if user already exists
+    existing_user = await search_user_by_email(
+        gitlab_url, creds["gitlab_token"], email,
+        verify_ssl=ssl_config["verify_ssl"],
+        ca_bundle=ssl_config["ca_bundle"],
+        basic_auth=basic_auth
+    )
+
+    if existing_user:
+        # User exists - this is actually success, proceed to next step
+        return json.dumps({
+            "success": True,
+            "already_exists": True,
+            "user_id": existing_user["id"],
+            "username": existing_user["username"],
+            "email": email,
+            "note": "User already exists in GitLab",
+            "next_action": f"GitLab user already exists. Proceed to add_user_to_gitlab_project with user_identifier='{email}'.",
+        })
+
+    # Build LDAP DN for linking (from config template)
+    ldap_dn_template = defaults.get(
+        "ldap_dn_template",
+        "uid={username},ou=People,dc=example,dc=com"  # Fallback for unconfigured systems
+    )
+    ldap_dn = ldap_dn_template.format(username=username)
+
+    # Retry logic
+    max_retries = min(max_retries, batch_config.get("max_retries", 2))
+    last_error = None
+    retries_used = 0
+
+    for attempt in range(max_retries + 1):
+        try:
+            result = await create_gitlab_user_impl(
+                gitlab_url=gitlab_url,
+                token=creds["gitlab_token"],
+                email=email,
+                username=username,
+                name=display_name,
+                ldap_dn=ldap_dn,
+                verify_ssl=ssl_config["verify_ssl"],
+                ca_bundle=ssl_config["ca_bundle"],
+                basic_auth=basic_auth,
+            )
+
+            if result.get("success"):
+                created_username = result.get("username", username)
+                return json.dumps({
+                    "success": True,
+                    "user_id": result.get("id"),
+                    "username": created_username,
+                    "email": email,
+                    "note": result.get("note"),
+                    "retries_used": retries_used,
+                    "summary": f"GitLab user account created successfully for {display_name} ({created_username}).",
+                    "next_action": f"GitLab user created. Now call add_user_to_gitlab_project with user_identifier='{email}'.",
+                })
+            else:
+                last_error = result.get("error", "Unknown error")
+                # Check for blocked user indication
+                if "blocked" in last_error.lower():
+                    return json.dumps({
+                        "success": False,
+                        "username": username,
+                        "email": email,
+                        "error": last_error,
+                        "blocked": True,
+                        "retries_used": retries_used,
+                        "next_action": f"STOP: User '{username}' is BLOCKED in GitLab. Tell the user: 'The user {display_name} ({username}) is blocked in GitLab. An admin must unblock them at: GitLab Admin > Users > search for '{username}' > Edit > Unblock.' Do NOT retry - this requires manual admin intervention.",
+                    })
+
+        except Exception as e:
+            last_error = str(e)
+            logger.error(f"GitLab user creation attempt {attempt + 1} failed: {e}", extra={"username": username, "email": email, "attempt": attempt + 1})
+
+        retries_used = attempt + 1
+        if attempt < max_retries:
+            await asyncio.sleep(min(2 ** attempt, 30))  # Cap at 30 seconds
+
+    return json.dumps({
+        "success": False,
+        "username": username,
+        "email": email,
+        "error": last_error,
+        "retries_used": retries_used,
+        "next_action": f"GitLab user creation failed after {retries_used} attempts. Report the error to the user: '{last_error}'. Ask if they want to retry or if an admin should check the GitLab system.",
+    })
+
+
+@tool
+async def add_user_to_gitlab_project(
+    user_identifier: str,
+    gitlab_project: Optional[str] = None,
+    access_level: Optional[str] = None,
+    gitlab_url: Optional[str] = None,
+    max_retries: int = 2,
+) -> str:
+    """
+    Add a user to a GitLab project with the specified access level.
+
+    This is the final step after IAM and GitLab user accounts are created.
+    The user will gain access to the training repository.
+
+    Args:
+        user_identifier: Email address or username of the user to add
+        gitlab_project: Project path (e.g., "group/project-name"). Uses config default if not specified.
+        access_level: Access level: guest, reporter, developer, maintainer. Uses config default if not specified.
+        gitlab_url: Override the default GitLab URL from config
+        max_retries: Number of retry attempts on failure (default: 2)
+
+    Returns:
+        JSON with:
+        - success: bool
+        - project: the project path
+        - access_level: the granted access level
+        - error: error message if failed
+        - already_member: true if user was already a member
+    """
+    # Import sibling module
+    gitlab_client = _import_skill_module("gitlab_client")
+    add_gitlab_member = gitlab_client.add_gitlab_member
+    check_gitlab_connection = gitlab_client.check_gitlab_connection
+
+    config = _load_skill_config()
+    defaults = config.get("defaults", {})
+    batch_config = config.get("batch", {})
+
+    # Get URL and credentials
+    gitlab_url = gitlab_url or defaults.get("gitlab_url")
+    gitlab_project = gitlab_project or defaults.get("gitlab_project")
+    access_level = access_level or defaults.get("gitlab_access_level", "developer")
+    creds = _get_credentials()
+    ssl_config = _get_ssl_config()
+
+    # Validate inputs
+    if not user_identifier:
+        return json.dumps({
+            "success": False,
+            "error": "user_identifier is required (email or username)",
+            "next_action": "Provide either the user's email address or GitLab username from the previous create_gitlab_user_account result.",
+        })
+
+    if not gitlab_project:
+        return json.dumps({
+            "success": False,
+            "error": "gitlab_project is required but not configured",
+            "next_action": "This is a configuration issue. Tell the user: 'The GitLab project path is not configured. Please add gitlab_project to the skill config.yaml (e.g., \"group/project-name\").'",
+        })
+
+    if not creds.get("gitlab_token"):
+        return json.dumps({
+            "success": False,
+            "error": "GitLab token not configured",
+            "next_action": "This is a configuration issue. Tell the user: 'GitLab API token is not configured. Please set GITLAB_PERSONAL_TOKEN environment variable or add gitlab_token to the skill config.yaml.'",
+        })
+
+    # Set up auth
+    basic_auth = None
+    if creds.get("lam_username") and creds.get("lam_password"):
+        basic_auth = (creds["lam_username"], creds["lam_password"])
+
+    # Check GitLab connection first
+    connection_check = await check_gitlab_connection(
+        gitlab_url, creds["gitlab_token"],
+        verify_ssl=ssl_config["verify_ssl"],
+        ca_bundle=ssl_config["ca_bundle"],
+        basic_auth=basic_auth
+    )
+    if not connection_check.get("connected"):
+        return json.dumps({
+            "success": False,
+            "error": f"Cannot connect to GitLab: {connection_check.get('error', 'Unknown error')}",
+            "gitlab_url": gitlab_url,
+            "next_action": "GitLab connection failed. Tell the user about the connection error and suggest checking network connectivity and GitLab token validity.",
+        })
+
+    # Retry logic
+    max_retries = min(max_retries, batch_config.get("max_retries", 2))
+    last_error = None
+    retries_used = 0
+
+    for attempt in range(max_retries + 1):
+        try:
+            result = await add_gitlab_member(
+                gitlab_url=gitlab_url,
+                token=creds["gitlab_token"],
+                project_path=gitlab_project,
+                user_identifier=user_identifier,
+                access_level=access_level,
+                verify_ssl=ssl_config["verify_ssl"],
+                ca_bundle=ssl_config["ca_bundle"],
+                basic_auth=basic_auth,
+            )
+
+            if result.get("success"):
+                response = {
+                    "success": True,
+                    "user": user_identifier,
+                    "project": gitlab_project,
+                    "access_level": access_level,
+                    "retries_used": retries_used,
+                    "summary": f"User '{user_identifier}' now has {access_level} access to project '{gitlab_project}'.",
+                }
+                if result.get("note"):
+                    response["already_member"] = True
+                    response["note"] = result["note"]
+                    response["summary"] = f"User '{user_identifier}' was already a member of project '{gitlab_project}'."
+                return json.dumps(response)
+            else:
+                last_error = result.get("error", "Unknown error")
+                # Check for user not found (might need GitLab user creation first)
+                if "not found" in last_error.lower():
+                    return json.dumps({
+                        "success": False,
+                        "user": user_identifier,
+                        "project": gitlab_project,
+                        "error": last_error,
+                        "user_not_found": True,
+                        "retries_used": retries_used,
+                        "next_action": f"User '{user_identifier}' was not found in GitLab. You must call create_gitlab_user_account first before adding them to a project. Go back and create the GitLab user account.",
+                    })
+                # Check for blocked user
+                if "blocked" in last_error.lower():
+                    return json.dumps({
+                        "success": False,
+                        "user": user_identifier,
+                        "project": gitlab_project,
+                        "error": last_error,
+                        "blocked": True,
+                        "retries_used": retries_used,
+                        "next_action": f"STOP: User '{user_identifier}' is BLOCKED in GitLab. Tell the user: 'This user is blocked and cannot be added to the project. An admin must unblock them at: GitLab Admin > Users > search for the user > Edit > Unblock.' Do NOT retry.",
+                    })
+
+        except Exception as e:
+            last_error = str(e)
+            logger.error(f"Add to project attempt {attempt + 1} failed: {e}", extra={"user": user_identifier, "project": gitlab_project, "attempt": attempt + 1})
+
+        retries_used = attempt + 1
+        if attempt < max_retries:
+            await asyncio.sleep(min(2 ** attempt, 30))  # Cap at 30 seconds
+
+    return json.dumps({
+        "success": False,
+        "user": user_identifier,
+        "project": gitlab_project,
+        "error": last_error,
+        "retries_used": retries_used,
+        "next_action": f"Failed to add user to project after {retries_used} attempts. Report the error to the user: '{last_error}'.",
+    })
 
 
 def get_tools():
     """Return all tools provided by this skill."""
     return [
         resolve_participant_email,
-        execute_batch_onboarding,
+        create_iam_account,
+        create_gitlab_user_account,
+        add_user_to_gitlab_project,
     ]
