@@ -449,12 +449,14 @@ async def create_gitlab_user_account(
             "next_action": f"GitLab user already exists. Proceed to add_user_to_gitlab_project with user_identifier='{email}'.",
         })
 
-    # Build LDAP DN for linking (from config template)
-    ldap_dn_template = defaults.get(
-        "ldap_dn_template",
-        "uid={username},ou=People,dc=example,dc=com"  # Fallback for unconfigured systems
-    )
-    ldap_dn = ldap_dn_template.format(username=username)
+    # LDAP linking disabled - let user's first SSO login establish the connection
+    # This avoids issues where GitLab LDAP sync blocks users that were created
+    # via API but haven't logged in yet.
+    # If you need LDAP linking, set ldap_dn_template in config.yaml
+    ldap_dn = None
+    ldap_dn_template = defaults.get("ldap_dn_template")
+    if ldap_dn_template:
+        ldap_dn = ldap_dn_template.format(username=username)
 
     # Retry logic
     max_retries = min(max_retries, batch_config.get("max_retries", 2))
@@ -681,6 +683,36 @@ async def add_user_to_gitlab_project(
     })
 
 
+@tool
+def clear_iam_session_cache() -> str:
+    """
+    Clear the cached SSO session for IAM/LAM authentication.
+
+    Use this if:
+    - SSO authentication is failing unexpectedly
+    - You need to switch to a different admin account
+    - The session has expired and is causing issues
+
+    After clearing, the next create_iam_account call will require fresh SSO login.
+
+    Returns:
+        JSON with success status and message
+    """
+    lam_automation = _import_skill_module("lam_automation")
+    cleared = lam_automation.clear_sso_session()
+
+    if cleared:
+        return json.dumps({
+            "success": True,
+            "message": "SSO session cache cleared. Next IAM account creation will require fresh SSO login.",
+        })
+    else:
+        return json.dumps({
+            "success": True,
+            "message": "No cached SSO session found (already cleared or never created).",
+        })
+
+
 def get_tools():
     """Return all tools provided by this skill."""
     return [
@@ -688,4 +720,5 @@ def get_tools():
         create_iam_account,
         create_gitlab_user_account,
         add_user_to_gitlab_project,
+        clear_iam_session_cache,
     ]

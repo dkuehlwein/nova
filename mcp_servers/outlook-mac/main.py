@@ -75,7 +75,7 @@ def setup_tools(outlook_service: OutlookService):
         subject: str,
         body: str,
         cc: Optional[List[str]] = None
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         """
         Create a draft email. Does not send the email.
 
@@ -96,7 +96,7 @@ def setup_tools(outlook_service: OutlookService):
         subject: str,
         body: str,
         cc: Optional[List[str]] = None
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         """
         Send an email directly. REQUIRES USER APPROVAL.
 
@@ -110,7 +110,7 @@ def setup_tools(outlook_service: OutlookService):
             cc: Optional list of CC recipient email addresses
 
         Returns:
-            Confirmation with send status
+            Confirmation with send status including recipients and subject
         """
         return await outlook_service.send_email(recipients, subject, body, cc)
 

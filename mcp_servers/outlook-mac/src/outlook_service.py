@@ -364,7 +364,7 @@ class OutlookService:
         subject: str,
         body: str,
         cc: Optional[List[str]] = None
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         """Create a draft email in Outlook."""
         try:
             if not await self._ensure_connected():
@@ -428,11 +428,11 @@ class OutlookService:
         subject: str,
         body: str,
         cc: Optional[List[str]] = None
-    ) -> str:
+    ) -> Dict[str, Any]:
         """Send an email directly via Outlook (requires user approval)."""
         try:
             if not await self._ensure_connected():
-                return "Error: Could not connect to Outlook. Is it running?"
+                return {"error": "Could not connect to Outlook. Is it running?"}
 
             loop = asyncio.get_event_loop()
             # Append Nova signature to identify AI-sent emails
@@ -472,21 +472,20 @@ class OutlookService:
                 # Send the email
                 msg.send()
 
-                # Format recipients as string for clear output
-                recipients_str = ", ".join(recipients)
-                cc_str = ", ".join(cc) if cc else None
-
-                if cc_str:
-                    return f"Email successfully sent to {recipients_str} (CC: {cc_str}) with subject: {subject}"
-                else:
-                    return f"Email successfully sent to {recipients_str} with subject: {subject}"
+                return {
+                    "status": "success",
+                    "message": f"Email sent to {', '.join(recipients)} with subject: {subject}",
+                    "recipients": recipients,
+                    "cc": cc or [],
+                    "subject": subject
+                }
 
             result = await loop.run_in_executor(None, _send_email)
             return result
 
         except Exception as e:
             logger.error(f"Error sending email: {e}")
-            return f"Error: Failed to send email: {str(e)}"
+            return {"error": f"Failed to send email: {str(e)}"}
 
     async def list_calendar_events(
         self,

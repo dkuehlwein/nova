@@ -4,17 +4,58 @@ LAM (LDAP Account Manager) automation using Playwright.
 This module provides browser automation to create user accounts in LAM 8.7.
 The selectors may need adjustment based on your specific LAM configuration.
 
+Session Caching:
+    This module uses Playwright's persistent browser context to cache SSO sessions.
+    After the first successful SSO login, subsequent calls will reuse the session
+    until it expires (typically 8-24 hours depending on SSO configuration).
+
+    The session is stored in: ~/.nova/lam_session/
+
 Reference: https://www.ldap-account-manager.org/
 """
 
 import asyncio
 import secrets
 import string
-from typing import Optional
-
+import time
+from pathlib import Path
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Session storage directory for persistent browser context
+SESSION_DIR = Path.home() / ".nova" / "lam_session"
+
+# Auth state file for explicit session persistence (storageState API)
+AUTH_STATE_FILE = SESSION_DIR / "auth_state.json"
+
+# Max session age before automatic clearing (8 hours in seconds)
+# SSO sessions typically expire after 8-24 hours
+MAX_SESSION_AGE_SECONDS = 8 * 60 * 60
+
+
+def clear_sso_session() -> bool:
+    """
+    Clear the cached SSO session.
+
+    Call this if authentication is failing or to force a fresh login.
+
+    Returns:
+        True if session was cleared, False if no session existed.
+    """
+    import shutil
+
+    if SESSION_DIR.exists():
+        try:
+            shutil.rmtree(SESSION_DIR)
+            logger.info("Cleared cached SSO session")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to clear SSO session: {e}")
+            # Try force cleanup as fallback
+            shutil.rmtree(SESSION_DIR, ignore_errors=True)
+            return False
+    return False
 
 
 def generate_password(length: int = 16) -> str:
@@ -59,6 +100,7 @@ async def create_lam_account(
         - The selectors in this script are based on LAM 8.7 default templates.
         - If SSO is detected, the browser will wait for manual login completion.
         - Set headless=False when SSO/MFA is required (default).
+        - SSO sessions are cached in ~/.nova/lam_session/ to avoid repeated passcode entry.
     """
     # Import here to allow the skill to load even if playwright isn't installed
     try:
@@ -81,15 +123,56 @@ async def create_lam_account(
 
     logger.info(f"Starting LAM account creation for: {username}")
 
+    # Check if cached session is too old and should be cleared
+    if AUTH_STATE_FILE.exists():
+        try:
+            session_age = time.time() - AUTH_STATE_FILE.stat().st_mtime
+            if session_age > MAX_SESSION_AGE_SECONDS:
+                logger.info(f"Auth state is {session_age / 3600:.1f} hours old, clearing...")
+                clear_sso_session()
+        except OSError:
+            pass  # Ignore stat errors
+
+    # Ensure session directory exists with restricted permissions (owner-only)
+    SESSION_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        SESSION_DIR.chmod(0o700)  # Only owner can read/write/execute
+    except OSError:
+        pass  # May fail on some filesystems, proceed anyway
+
     async with async_playwright() as p:
+        context = None
         browser = None
         try:
-            # Launch browser
-            browser = await p.chromium.launch(headless=headless)
-            context = await browser.new_context(
-                ignore_https_errors=True,  # Common for internal servers
-            )
-            page = await context.new_page()
+            # Use persistent context with explicit storageState for reliable session persistence
+            # Note: Chromium does not persist session cookies (those without Expires) by default
+            # See: https://github.com/microsoft/playwright/issues/36139
+            # The storageState API explicitly saves/restores all cookies including session cookies
+            storage_state = str(AUTH_STATE_FILE) if AUTH_STATE_FILE.exists() else None
+            if storage_state:
+                logger.info("Loading saved auth state from previous session")
+
+            async def launch_context(with_storage_state: bool = True):
+                return await p.chromium.launch_persistent_context(
+                    user_data_dir=str(SESSION_DIR),
+                    headless=headless,
+                    ignore_https_errors=True,  # Common for internal servers
+                    storage_state=storage_state if with_storage_state else None,
+                )
+
+            try:
+                context = await launch_context()
+            except Exception as e:
+                # Handle corrupted storage state by clearing and retrying
+                if storage_state:
+                    logger.warning(f"Failed to load auth state, clearing and retrying: {e}")
+                    clear_sso_session()
+                    context = await launch_context(with_storage_state=False)
+                else:
+                    raise  # Re-raise if not a storage state issue
+
+            browser = context.browser
+            page = context.pages[0] if context.pages else await context.new_page()
             page.set_default_timeout(timeout_ms)
 
             # Step 1: Navigate to LAM login page
@@ -114,6 +197,11 @@ async def create_lam_account(
                         wait_until="networkidle"
                     )
                     logger.info("SSO completed, now on LAM page")
+
+                    # Save auth state after successful SSO to avoid re-authentication
+                    # This persists all cookies including session cookies
+                    await context.storage_state(path=str(AUTH_STATE_FILE))
+                    logger.info("Saved SSO auth state for future sessions")
                 except PlaywrightTimeout:
                     return {
                         "success": False,
@@ -253,6 +341,11 @@ async def create_lam_account(
             }
 
         finally:
+            # Close both context and browser to prevent lock file issues
+            # See: https://github.com/microsoft/playwright/issues/35466
+            # Browsers persist in background for performance; explicit close releases locks
+            if context:
+                await context.close()
             if browser:
                 await browser.close()
 

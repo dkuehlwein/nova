@@ -351,10 +351,30 @@ async def create_gitlab_user(
 
             if response.status_code == 201:
                 user = response.json()
-                logger.info(f"Created GitLab user: {username} (ID: {user['id']})")
+                user_id = user["id"]
+                user_state = user.get("state", "unknown")
+                logger.info(f"Created GitLab user: {username} (ID: {user_id}, state: {user_state})")
+
+                # If user was created in blocked state, unblock them
+                # This can happen if GitLab has "User approval required" enabled
+                if user_state in ("blocked", "blocked_pending_approval"):
+                    logger.info(f"User {username} created as {user_state}, attempting to unblock...")
+                    unblock_response = await client.post(
+                        f"{gitlab_url}/api/v4/users/{user_id}/unblock",
+                        headers={"PRIVATE-TOKEN": token},
+                        timeout=timeout,
+                    )
+                    if unblock_response.status_code == 201:
+                        logger.info(f"Successfully unblocked user: {username}")
+                    else:
+                        logger.warning(
+                            f"Failed to unblock user {username}: {unblock_response.status_code} - "
+                            f"User may need manual activation by an admin"
+                        )
+
                 return {
                     "success": True,
-                    "id": user["id"],
+                    "id": user_id,
                     "username": user["username"],
                     "email": user["email"],
                 }
