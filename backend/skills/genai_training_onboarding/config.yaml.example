@@ -52,3 +52,12 @@ batch:
 timeouts:
   gitlab_api: 30
   lam_page_load: 30000  # milliseconds for Playwright
+
+# Browser automation settings
+browser:
+  # Domains for auto-selecting client certificates (avoids cert picker dialog)
+  # Add your SSO provider domains and internal server domains here
+  # These are used to build Chrome's --auto-select-certificate-for-urls flag
+  auto_cert_domains:
+    - "your-sso-provider.com"
+    - "your-company.com"

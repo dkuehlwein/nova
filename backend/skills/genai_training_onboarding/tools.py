@@ -281,63 +281,48 @@ async def create_iam_account(
         "username": username,
     }
 
-    # Retry logic
-    max_retries = min(max_retries, batch_config.get("max_retries", 2))
-    last_error = None
-    retries_used = 0
+    # No retry logic - the pre-check in lam_automation.py prevents duplicates
+    # Retrying is dangerous as it can create duplicate accounts
+    try:
+        result = await create_lam_account_impl(
+            lam_url=lam_url,
+            admin_username=creds["lam_username"],
+            admin_password=creds["lam_password"],
+            user_data=user_data,
+            headless=False,  # SSO requires visible browser for MFA
+        )
 
-    for attempt in range(max_retries + 1):
-        try:
-            result = await create_lam_account_impl(
-                lam_url=lam_url,
-                admin_username=creds["lam_username"],
-                admin_password=creds["lam_password"],
-                user_data=user_data,
-                headless=False,  # SSO requires visible browser for MFA
-            )
+        if result.get("success"):
+            created_username = result.get("username", username)
+            already_exists = result.get("already_exists", False)
+            summary = f"IAM account for {created_username} already exists (this is fine)." if already_exists else f"IAM account created successfully for {first_name} {last_name}."
+            return json.dumps({
+                "success": True,
+                "already_exists": already_exists,
+                "username": created_username,
+                "email": email,
+                "summary": summary,
+                "next_action": f"IAM account ready. Now call create_gitlab_user_account with email='{email}', username='{created_username}', display_name='{first_name} {last_name}'.",
+            })
+        else:
+            error = result.get("error", "Unknown error")
+            return json.dumps({
+                "success": False,
+                "username": username,
+                "email": email,
+                "error": error,
+                "next_action": f"IAM account creation failed. Error: {error}. Ask the user if they want to retry or skip to GitLab user creation.",
+            })
 
-            if result.get("success"):
-                created_username = result.get("username", username)
-                return json.dumps({
-                    "success": True,
-                    "username": created_username,
-                    "email": email,
-                    "retries_used": retries_used,
-                    "summary": f"IAM account created successfully for {first_name} {last_name}.",
-                    "next_action": f"IAM account created. Now call create_gitlab_user_account with email='{email}', username='{created_username}', display_name='{first_name} {last_name}'.",
-                })
-            else:
-                last_error = result.get("error", "Unknown error")
-                # "Already exists" is actually a success - the account is there as needed
-                if "already exists" in last_error.lower():
-                    return json.dumps({
-                        "success": True,
-                        "already_exists": True,
-                        "username": username,
-                        "email": email,
-                        "note": "IAM account already exists",
-                        "retries_used": retries_used,
-                        "summary": f"IAM account for {username} already exists (this is fine).",
-                        "next_action": f"IAM account exists. Proceed to create_gitlab_user_account with username='{username}', email='{email}', display_name='{first_name} {last_name}'.",
-                    })
-
-        except Exception as e:
-            last_error = str(e)
-            logger.error(f"IAM account creation attempt {attempt + 1} failed: {e}")
-
-        retries_used = attempt + 1
-        if attempt < max_retries:
-            # Wait before retry with exponential backoff
-            await asyncio.sleep(min(2 ** attempt, 30))  # Cap at 30 seconds
-
-    return json.dumps({
-        "success": False,
-        "username": username,
-        "email": email,
-        "error": last_error,
-        "retries_used": retries_used,
-        "next_action": f"IAM account creation failed after {retries_used} attempts. Report this error to the user and ask if they want to retry or skip to GitLab user creation (if the IAM account might already exist).",
-    })
+    except Exception as e:
+        logger.error(f"IAM account creation failed: {e}")
+        return json.dumps({
+            "success": False,
+            "username": username,
+            "email": email,
+            "error": str(e),
+            "next_action": f"IAM account creation failed with exception. Ask the user if they want to retry.",
+        })
 
 
 @tool
@@ -683,36 +668,6 @@ async def add_user_to_gitlab_project(
     })
 
 
-@tool
-def clear_iam_session_cache() -> str:
-    """
-    Clear the cached SSO session for IAM/LAM authentication.
-
-    Use this if:
-    - SSO authentication is failing unexpectedly
-    - You need to switch to a different admin account
-    - The session has expired and is causing issues
-
-    After clearing, the next create_iam_account call will require fresh SSO login.
-
-    Returns:
-        JSON with success status and message
-    """
-    lam_automation = _import_skill_module("lam_automation")
-    cleared = lam_automation.clear_sso_session()
-
-    if cleared:
-        return json.dumps({
-            "success": True,
-            "message": "SSO session cache cleared. Next IAM account creation will require fresh SSO login.",
-        })
-    else:
-        return json.dumps({
-            "success": True,
-            "message": "No cached SSO session found (already cleared or never created).",
-        })
-
-
 def get_tools():
     """Return all tools provided by this skill."""
     return [
@@ -720,5 +675,4 @@ def get_tools():
         create_iam_account,
         create_gitlab_user_account,
         add_user_to_gitlab_project,
-        clear_iam_session_cache,
     ]

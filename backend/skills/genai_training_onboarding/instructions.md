@@ -17,7 +17,7 @@ The user provides participants in any format - names, emails, CSV, mixed. Parse 
 
 ### 2. Resolve Missing Emails
 
-For entries without email, use `resolve_participant_email(name="Bob Jones")`.
+For entries without email, use `genai_training_onboarding__resolve_participant_email(name="Bob Jones")`.
 
 If lookup fails, ask the user for the email address.
 
@@ -27,7 +27,7 @@ For each participant with a complete email, execute these tools **in sequence**:
 
 #### Step A: Create IAM Account
 ```
-create_iam_account(
+genai_training_onboarding__create_iam_account(
     email="user@example.com",
     first_name="First",
     last_name="Last"
@@ -39,7 +39,7 @@ create_iam_account(
 
 #### Step B: Create GitLab User Account
 ```
-create_gitlab_user_account(
+genai_training_onboarding__create_gitlab_user_account(
     email="user@example.com",
     username="flast",  # Use username from step A
     display_name="First Last"
@@ -50,7 +50,7 @@ create_gitlab_user_account(
 
 #### Step C: Add to GitLab Project
 ```
-add_user_to_gitlab_project(
+genai_training_onboarding__add_user_to_gitlab_project(
     user_identifier="user@example.com"
 )
 ```
@@ -68,10 +68,10 @@ After processing all participants, provide a clear summary:
 
 | Tool | Purpose |
 |------|---------|
-| `resolve_participant_email` | Look up email via Outlook contacts |
-| `create_iam_account` | Create LDAP account in LAM |
-| `create_gitlab_user_account` | Create GitLab user linked to LDAP |
-| `add_user_to_gitlab_project` | Add user to training repository |
+| `genai_training_onboarding__resolve_participant_email` | Look up email via Outlook contacts |
+| `genai_training_onboarding__create_iam_account` | Create LDAP account in LAM |
+| `genai_training_onboarding__create_gitlab_user_account` | Create GitLab user linked to LDAP |
+| `genai_training_onboarding__add_user_to_gitlab_project` | Add user to training repository |
 
 ## Participant Format
 
@@ -99,7 +99,7 @@ After processing all participants, provide a clear summary:
 - Do NOT retry - this requires manual intervention
 
 ### User Not Found When Adding to Project
-- Make sure `create_gitlab_user_account` was called first
+- Make sure `genai_training_onboarding__create_gitlab_user_account` was called first
 - The user must exist in GitLab before they can be added to a project
 
 ## Partial Operations
@@ -107,14 +107,14 @@ After processing all participants, provide a clear summary:
 If the user wants to skip steps:
 
 - **Skip IAM creation**: User already has LDAP account
-  - Start from `create_gitlab_user_account`, but you need to know the username
+  - Start from `genai_training_onboarding__create_gitlab_user_account`, but you need to know the username
   - Ask user for the username if not obvious
 
 - **Skip GitLab user creation**: User already has GitLab account
-  - Go directly to `add_user_to_gitlab_project`
+  - Go directly to `genai_training_onboarding__add_user_to_gitlab_project`
 
 - **Only add to project**: User has both IAM and GitLab accounts
-  - Just call `add_user_to_gitlab_project`
+  - Just call `genai_training_onboarding__add_user_to_gitlab_project`
 
 ## Example Conversation
 
