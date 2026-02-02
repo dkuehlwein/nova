@@ -398,6 +398,83 @@ async def create_gitlab_user(
             return {"success": False, "error": str(e)}
 
 
+async def search_gitlab_projects(
+    gitlab_url: str,
+    token: str,
+    search_query: str,
+    membership: bool = True,
+    limit: int = 10,
+    verify_ssl: bool = True,
+    ca_bundle: Optional[str] = None,
+    timeout: float = 30.0,
+    basic_auth: Optional[tuple[str, str]] = None,
+) -> dict[str, any]:
+    """
+    Search for GitLab projects by name.
+
+    Uses: GET /api/v4/projects?search={query}&membership=true
+
+    Args:
+        gitlab_url: Base GitLab URL
+        token: GitLab personal access token
+        search_query: Project name or partial name to search for
+        membership: If True, only return projects the user has access to (default: True)
+        limit: Maximum number of results (default: 10)
+        verify_ssl: Whether to verify SSL certificates
+        ca_bundle: Optional path to CA bundle file
+        timeout: Request timeout in seconds
+        basic_auth: Optional (username, password) tuple for HTTP Basic Auth
+
+    Returns:
+        Dict with:
+        - success: bool
+        - projects: list of project dicts with id, path_with_namespace, name, description
+        - error: error message if failed
+    """
+    ssl_context = _get_ssl_context(verify_ssl, ca_bundle)
+    auth = httpx.BasicAuth(*basic_auth) if basic_auth else None
+
+    params = {
+        "search": search_query,
+        "per_page": limit,
+        "order_by": "name",
+        "sort": "asc",
+    }
+    if membership:
+        params["membership"] = "true"
+
+    async with httpx.AsyncClient(verify=ssl_context, auth=auth) as client:
+        try:
+            response = await client.get(
+                f"{gitlab_url}/api/v4/projects",
+                params=params,
+                headers={"PRIVATE-TOKEN": token},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            projects = response.json()
+
+            results = []
+            for project in projects:
+                results.append({
+                    "id": project["id"],
+                    "path_with_namespace": project["path_with_namespace"],
+                    "name": project["name"],
+                    "description": project.get("description", ""),
+                    "web_url": project.get("web_url", ""),
+                })
+
+            logger.info(f"Found {len(results)} projects matching '{search_query}'")
+            return {"success": True, "projects": results}
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"GitLab API error searching projects: {e.response.status_code}")
+            return {"success": False, "projects": [], "error": f"GitLab API error: {e.response.status_code}"}
+        except Exception as e:
+            logger.error(f"Error searching GitLab projects: {e}")
+            return {"success": False, "projects": [], "error": str(e)}
+
+
 async def check_gitlab_connection(
     gitlab_url: str,
     token: str,

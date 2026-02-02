@@ -1,0 +1,5 @@
+name: add_user_to_coe_gitlab
+version: "1.0.0"
+description: "Add users to CoE GitLab projects. Creates IAM/LDAP accounts and grants GitLab repository access. Use when adding users to GitLab projects, onboarding new team members, or setting up accounts for training programs."
+author: nova-team
+tags: [onboarding, iam, gitlab, coe]

@@ -1,8 +1,8 @@
 """
-GenAI Training Onboarding skill tools.
+Add User to CoE GitLab skill tools.
 
-These tools help onboard training participants by:
-1. Resolving missing emails via Outlook contact lookup
+These tools help add users to CoE (Center of Excellence) GitLab projects by:
+1. Resolving missing emails via MS Graph directory lookup
 2. Creating IAM accounts in LAM (LDAP Account Manager)
 3. Creating GitLab user accounts (linked to LDAP)
 4. Adding users to GitLab projects
@@ -89,7 +89,7 @@ def _get_credentials() -> dict:
     }
 
 
-def _get_ssl_config() -> dict:
+def _get_ssl_config() -> dict[str, any]:
     """Get SSL configuration from config.yaml."""
     config = _load_skill_config()
     ssl_config = config.get("ssl", {})
@@ -97,6 +97,26 @@ def _get_ssl_config() -> dict:
         "verify_ssl": ssl_config.get("verify_ssl", True),
         "ca_bundle": ssl_config.get("ca_bundle"),
     }
+
+
+def _get_gitlab_auth() -> tuple[dict[str, any], tuple[str, str] | None]:
+    """
+    Get GitLab authentication configuration.
+
+    Returns a tuple of (ssl_config, basic_auth) ready for use with GitLab API calls.
+    Basic auth is needed when GitLab is behind an authenticated proxy.
+
+    Returns:
+        (ssl_config, basic_auth): SSL config dict and optional (username, password) tuple
+    """
+    creds = _get_credentials()
+    ssl_config = _get_ssl_config()
+
+    basic_auth = None
+    if creds.get("lam_username") and creds.get("lam_password"):
+        basic_auth = (creds["lam_username"], creds["lam_password"])
+
+    return ssl_config, basic_auth
 
 
 def _validate_email(email: str) -> bool:
@@ -111,71 +131,113 @@ def _validate_email(email: str) -> bool:
         return bool(re.match(pattern, email))
 
 
-def _generate_username(first_name: str, last_name: str) -> str:
+def _sanitize_username(username: str, allow_hyphen: bool = True) -> str:
     """
-    Generate username from first and last name: first_initial + lastname.
+    Sanitize a username to ensure it's valid for Unix/LDAP/GitLab.
 
-    Sanitizes special characters to ensure valid LDAP/GitLab usernames:
-    - Removes accents (é -> e, ü -> u)
-    - Removes apostrophes, hyphens, and other special characters
-    - Converts to lowercase
-    - Limits to 32 characters (common username length limit)
+    Valid Unix usernames typically:
+    - Start with a letter or underscore
+    - Contain only lowercase letters, digits, underscores, hyphens
+    - Are limited to 32 characters
+
+    Args:
+        username: Raw username string (e.g., from mail_nickname or name)
+        allow_hyphen: If True, hyphens are preserved. If False, they're removed.
+                      Use False when generating from names (first_initial + lastname).
+
+    Returns:
+        Sanitized username safe for Unix systems, or empty string if input
+        contains no valid characters.
     """
     import unicodedata
 
-    def sanitize(name: str) -> str:
-        if not name:
-            return ""
-        # Normalize unicode (é -> e, ü -> u, etc.)
-        normalized = unicodedata.normalize("NFKD", name)
-        # Remove non-ASCII characters (accents become separate chars after NFKD)
-        ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
-        # Keep only alphanumeric characters
-        return re.sub(r"[^a-zA-Z0-9]", "", ascii_only).lower()
-
-    first = sanitize(first_name.strip()) if first_name else ""
-    last = sanitize(last_name.strip()) if last_name else ""
-
-    if first and last:
-        username = f"{first[0]}{last}"
-    elif last:
-        username = last
-    elif first:
-        username = first
-    else:
+    if not username:
         return ""
 
+    # Normalize unicode (é -> e, ü -> u, etc.)
+    normalized = unicodedata.normalize("NFKD", username)
+    # Remove non-ASCII characters (accents become separate chars after NFKD)
+    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
+    # Keep only valid username characters: letters, digits, underscore, and optionally hyphen
+    pattern = r"[^a-zA-Z0-9_-]" if allow_hyphen else r"[^a-zA-Z0-9_]"
+    sanitized = re.sub(pattern, "", ascii_only).lower()
+
+    # Ensure username starts with a letter or underscore (Unix requirement)
+    if sanitized and not sanitized[0].isalpha() and sanitized[0] != "_":
+        sanitized = "_" + sanitized
+
     # Limit to 32 characters (common LDAP/GitLab limit)
-    return username[:32]
+    return sanitized[:32]
 
 
 @tool
 async def resolve_participant_email(name: str) -> str:
     """
-    Look up an email address for a name using Outlook contact search.
+    Look up an email address and login name for a person using MS Graph directory search.
 
-    This calls the outlook_mac MCP server's lookup_contact tool.
-    If the tool is not available, it will return an error.
+    This calls the ms_graph MCP server's search_people tool which uses the User.Read.All
+    permission to search the organization directory.
+
+    Returns the mail_nickname field which should be used as the Unix username
+    during IAM account creation.
 
     Args:
         name: The person's name to look up
 
     Returns:
-        JSON with lookup results: found, email, display_name, or error
+        JSON with lookup results:
+        - found: bool
+        - email: email address
+        - display_name: full display name
+        - mail_nickname: short login name (use this as Unix username)
+        - first_name, last_name: parsed from display_name
+        - error: error message if not found
     """
     from mcp_client import mcp_manager
 
     try:
         result = await mcp_manager.call_mcp_tool(
-            server_name="outlook_mac",
-            tool_name="lookup_contact",  # Base tool name (MCP server handles internally)
-            arguments={"name": name},
+            server_name="ms_graph",
+            tool_name="search_people",  # Uses User.Read.All endpoint
+            arguments={"query": name, "limit": 1},
         )
 
-        # MCP returns JSON string directly
+        # Parse the result - MCP may return JSON string or dict
         if isinstance(result, str):
-            return result
+            try:
+                result = json.loads(result)
+            except json.JSONDecodeError:
+                pass
 
+        # Handle list response (search_people returns a list)
+        if isinstance(result, list):
+            if len(result) > 0:
+                user = result[0]
+                display_name = user.get("display_name", "")
+                # Parse first/last name from display_name
+                name_parts = display_name.split(" ", 1) if display_name else ["", ""]
+                first_name = name_parts[0] if len(name_parts) > 0 else ""
+                last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+                return json.dumps({
+                    "found": True,
+                    "email": user.get("email", ""),
+                    "display_name": display_name,
+                    "mail_nickname": user.get("mail_nickname", ""),
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "job_title": user.get("job_title", ""),
+                    "name_searched": name,
+                })
+            else:
+                return json.dumps({
+                    "found": False,
+                    "error": f"No user found for '{name}' in directory",
+                    "name_searched": name,
+                    "next_action": f"Ask the user to provide the email address for {name}",
+                })
+
+        # Handle dict response (error or single result)
         if isinstance(result, dict):
             if "error" in result:
                 return json.dumps({
@@ -184,22 +246,24 @@ async def resolve_participant_email(name: str) -> str:
                     "name_searched": name,
                     "next_action": f"Ask the user to provide the email address for {name}",
                 })
-            return json.dumps(result)
+            # Single user result
+            if result.get("found") or result.get("email"):
+                return json.dumps(result)
 
         return json.dumps({
             "found": False,
-            "error": "Unexpected response format from contact lookup",
+            "error": "Unexpected response format from MS Graph lookup",
             "name_searched": name,
             "next_action": f"Ask the user to provide the email address for {name}",
         })
 
     except Exception as e:
-        logger.error(f"Error calling outlook_mac-lookup_contact: {e}", extra={"name": name, "error": str(e)})
+        logger.error(f"Error calling ms_graph-search_people: {e}", extra={"name": name, "error": str(e)})
         return json.dumps({
             "found": False,
             "error": str(e),
             "name_searched": name,
-            "next_action": f"The outlook_mac MCP server may not be available. Ask the user to provide the email address for {name}.",
+            "next_action": f"The ms_graph MCP server may not be available. Ask the user to provide the email address for {name}.",
         })
 
 
@@ -208,9 +272,9 @@ async def create_iam_account(
     email: str,
     first_name: str,
     last_name: str,
+    mail_nickname: Optional[str] = None,
     username: Optional[str] = None,
     lam_url: Optional[str] = None,
-    max_retries: int = 2,
 ) -> str:
     """
     Create a single IAM account in LAM (LDAP Account Manager).
@@ -222,16 +286,23 @@ async def create_iam_account(
         email: User's email address (required)
         first_name: User's first name
         last_name: User's last name
-        username: Desired username (optional, auto-generated as first_initial+lastname if not provided)
+        mail_nickname: The mailNickname from MS Graph lookup (preferred for username).
+                       This is the short corporate login (e.g., "dkuehlwe") and will be
+                       converted to lowercase for the Unix username.
+        username: Explicit username override (optional, takes precedence over mail_nickname)
         lam_url: Override the default LAM URL from config
-        max_retries: Number of retry attempts on failure (default: 2)
+
+    Username priority:
+    1. Explicit username parameter (if provided)
+    2. mail_nickname.lower() from MS Graph (if provided)
+    3. Generated: first_initial + lastname (fallback)
 
     Returns:
         JSON with:
         - success: bool
         - username: the created username
         - error: error message if failed
-        - retries_used: number of retries attempted
+        - next_action: suggested next step for the agent
     """
     # Import sibling module
     lam_automation = _import_skill_module("lam_automation")
@@ -261,16 +332,25 @@ async def create_iam_account(
             "next_action": "This is a configuration issue. Tell the user: 'LAM credentials are not configured. Please set LAM_USERNAME and LAM_PASSWORD environment variables or add them to the skill config.yaml.'",
         })
 
-    # Generate username if not provided
+    # Determine username with priority: explicit > mail_nickname
     if not username:
-        username = _generate_username(first_name, last_name)
-        if not username:
+        if mail_nickname:
+            # Use mail_nickname from MS Graph (sanitized for Unix compatibility)
+            username = _sanitize_username(mail_nickname)
+            if not username:
+                return json.dumps({
+                    "success": False,
+                    "error": f"Invalid mail_nickname '{mail_nickname}' - contains no valid username characters",
+                    "mail_nickname_provided": mail_nickname,
+                    "next_action": "The mail_nickname from MS Graph is invalid. Ask the user to provide a username manually.",
+                })
+            logger.info(f"Using mail_nickname as username: {username} (sanitized from: {mail_nickname})")
+        else:
+            # No username and no mail_nickname - ask the user
             return json.dumps({
                 "success": False,
-                "error": "Cannot generate username without first_name or last_name",
-                "first_name_provided": first_name,
-                "last_name_provided": last_name,
-                "next_action": "Ask the user to provide the first name and last name for this participant.",
+                "error": "Username required: no mail_nickname provided",
+                "next_action": "Use resolve_participant_email first to get the mail_nickname from MS Graph, or ask the user to provide the username directly.",
             })
 
     # Prepare user data
@@ -369,7 +449,7 @@ async def create_gitlab_user_account(
     # Get URL and credentials
     gitlab_url = gitlab_url or defaults.get("gitlab_url")
     creds = _get_credentials()
-    ssl_config = _get_ssl_config()
+    ssl_config, basic_auth = _get_gitlab_auth()
 
     # Validate inputs
     if not email or not _validate_email(email):
@@ -393,11 +473,6 @@ async def create_gitlab_user_account(
             "error": "GitLab token not configured",
             "next_action": "This is a configuration issue. Tell the user: 'GitLab API token is not configured. Please set GITLAB_PERSONAL_TOKEN environment variable or add gitlab_token to the skill config.yaml.'",
         })
-
-    # Set up auth (GitLab behind authenticated proxy needs both PAT and basic auth)
-    basic_auth = None
-    if creds.get("lam_username") and creds.get("lam_password"):
-        basic_auth = (creds["lam_username"], creds["lam_password"])
 
     # Check GitLab connection first
     connection_check = await check_gitlab_connection(
@@ -507,6 +582,98 @@ async def create_gitlab_user_account(
 
 
 @tool
+async def search_gitlab_project(
+    search_query: str,
+    gitlab_url: Optional[str] = None,
+) -> str:
+    """
+    Search for GitLab projects by name.
+
+    Use this tool to find the exact project path when you only know a partial name
+    (e.g., "cohort2" to find "dkuehlwe/2026-genaitraining-cohort2").
+
+    Args:
+        search_query: Project name or partial name to search for (e.g., "cohort2", "training")
+
+    Returns:
+        JSON with:
+        - success: bool
+        - projects: list of matching projects with path_with_namespace, name, description
+        - count: number of matches found
+        - error: error message if failed
+
+    Example:
+        search_gitlab_project("cohort2")
+        -> {"success": true, "projects": [{"path_with_namespace": "dkuehlwe/2026-genaitraining-cohort2", ...}]}
+    """
+    # Import sibling module
+    gitlab_client = _import_skill_module("gitlab_client")
+    search_gitlab_projects = gitlab_client.search_gitlab_projects
+
+    config = _load_skill_config()
+    defaults = config.get("defaults", {})
+
+    # Get URL and credentials
+    gitlab_url = gitlab_url or defaults.get("gitlab_url")
+    creds = _get_credentials()
+    ssl_config, basic_auth = _get_gitlab_auth()
+
+    if not creds.get("gitlab_token"):
+        return json.dumps({
+            "success": False,
+            "error": "GitLab token not configured",
+            "next_action": "This is a configuration issue. Tell the user: 'GitLab API token is not configured.'",
+        })
+
+    try:
+        result = await search_gitlab_projects(
+            gitlab_url=gitlab_url,
+            token=creds["gitlab_token"],
+            search_query=search_query,
+            membership=True,  # Only projects user has access to
+            limit=10,
+            verify_ssl=ssl_config["verify_ssl"],
+            ca_bundle=ssl_config["ca_bundle"],
+            basic_auth=basic_auth,
+        )
+
+        if not result.get("success"):
+            return json.dumps({
+                "success": False,
+                "error": result.get("error", "Unknown error"),
+                "search_query": search_query,
+                "next_action": "GitLab project search failed. Ask the user for the exact project path.",
+            })
+
+        projects = result.get("projects", [])
+        if projects:
+            return json.dumps({
+                "success": True,
+                "count": len(projects),
+                "projects": projects,
+                "search_query": search_query,
+                "next_action": f"Found {len(projects)} project(s). Use the 'path_with_namespace' value when calling add_user_to_gitlab_project.",
+            })
+        else:
+            return json.dumps({
+                "success": True,
+                "count": 0,
+                "projects": [],
+                "search_query": search_query,
+                "next_action": f"No projects found matching '{search_query}'. Ask the user for the correct project name or path.",
+            })
+
+    except Exception as e:
+        logger.error(f"GitLab project search failed: {e}")
+        return json.dumps({
+            "success": False,
+            "error": str(e),
+            "search_query": search_query,
+            "next_action": "GitLab project search failed. Ask the user for the exact project path.",
+        })
+
+
+@tool
 async def add_user_to_gitlab_project(
     user_identifier: str,
     gitlab_project: Optional[str] = None,
@@ -522,7 +689,10 @@ async def add_user_to_gitlab_project(
 
     Args:
         user_identifier: Email address or username of the user to add
-        gitlab_project: Project path (e.g., "group/project-name"). Uses config default if not specified.
+        gitlab_project: Project path (e.g., "group/project-name") OR project name to search for.
+                        If the value contains "/", it's treated as an exact path.
+                        If no "/", it searches for matching projects and uses the first result.
+                        Uses config default if not specified.
         access_level: Access level: guest, reporter, developer, maintainer. Uses config default if not specified.
         gitlab_url: Override the default GitLab URL from config
         max_retries: Number of retry attempts on failure (default: 2)
@@ -539,6 +709,7 @@ async def add_user_to_gitlab_project(
     gitlab_client = _import_skill_module("gitlab_client")
     add_gitlab_member = gitlab_client.add_gitlab_member
     check_gitlab_connection = gitlab_client.check_gitlab_connection
+    search_gitlab_projects = gitlab_client.search_gitlab_projects
 
     config = _load_skill_config()
     defaults = config.get("defaults", {})
@@ -549,7 +720,7 @@ async def add_user_to_gitlab_project(
     gitlab_project = gitlab_project or defaults.get("gitlab_project")
     access_level = access_level or defaults.get("gitlab_access_level", "developer")
     creds = _get_credentials()
-    ssl_config = _get_ssl_config()
+    ssl_config, basic_auth = _get_gitlab_auth()
 
     # Validate inputs
     if not user_identifier:
@@ -573,10 +744,45 @@ async def add_user_to_gitlab_project(
             "next_action": "This is a configuration issue. Tell the user: 'GitLab API token is not configured. Please set GITLAB_PERSONAL_TOKEN environment variable or add gitlab_token to the skill config.yaml.'",
         })
 
-    # Set up auth
-    basic_auth = None
-    if creds.get("lam_username") and creds.get("lam_password"):
-        basic_auth = (creds["lam_username"], creds["lam_password"])
+    # If gitlab_project doesn't contain "/", treat it as a search query
+    if "/" not in gitlab_project:
+        logger.info(f"Searching for GitLab project matching: {gitlab_project}")
+        try:
+            result = await search_gitlab_projects(
+                gitlab_url=gitlab_url,
+                token=creds["gitlab_token"],
+                search_query=gitlab_project,
+                membership=True,
+                limit=5,
+                verify_ssl=ssl_config["verify_ssl"],
+                ca_bundle=ssl_config["ca_bundle"],
+                basic_auth=basic_auth,
+            )
+            if not result.get("success"):
+                return json.dumps({
+                    "success": False,
+                    "error": f"Failed to search for project '{gitlab_project}': {result.get('error', 'Unknown error')}",
+                    "next_action": "Project search failed. Provide the exact project path instead (e.g., 'group/project-name').",
+                })
+            projects = result.get("projects", [])
+            if projects:
+                # Use the first matching project
+                resolved_project = projects[0]["path_with_namespace"]
+                logger.info(f"Resolved project '{gitlab_project}' to '{resolved_project}'")
+                gitlab_project = resolved_project
+            else:
+                return json.dumps({
+                    "success": False,
+                    "error": f"No project found matching '{gitlab_project}'",
+                    "search_query": gitlab_project,
+                    "next_action": f"No projects found matching '{gitlab_project}'. Use search_gitlab_project to find available projects, or provide the exact project path (e.g., 'group/project-name').",
+                })
+        except Exception as e:
+            return json.dumps({
+                "success": False,
+                "error": f"Failed to search for project '{gitlab_project}': {str(e)}",
+                "next_action": "Project search failed. Provide the exact project path instead (e.g., 'group/project-name').",
+            })
 
     # Check GitLab connection first
     connection_check = await check_gitlab_connection(
@@ -674,5 +880,6 @@ def get_tools():
         resolve_participant_email,
         create_iam_account,
         create_gitlab_user_account,
+        search_gitlab_project,
         add_user_to_gitlab_project,
     ]
