@@ -248,3 +248,4 @@ llm_models/
 # Skill configs with credentials (each skill has config.yaml.example committed)
 backend/skills/*/config.yaml
 .auth_state.json
+mcp_servers/ms_graph/credentials/token_cache.json

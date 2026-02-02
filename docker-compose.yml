@@ -343,6 +343,34 @@ services:
       timeout: 10s
       retries: 3
 
+  # MS Graph MCP Server - Microsoft 365 integration
+  ms-graph:
+    container_name: nova-ms-graph
+    build:
+      context: ./mcp_servers/ms_graph
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "8400:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MS_GRAPH_CLIENT_ID=${MS_GRAPH_CLIENT_ID:-}
+      - MS_GRAPH_TENANT_ID=${MS_GRAPH_TENANT_ID:-}
+      - MS_GRAPH_CLIENT_SECRET=${MS_GRAPH_CLIENT_SECRET:-}
+      - MS_GRAPH_TOKEN_CACHE_PATH=/app/credentials/token_cache.json
+      - MS_GRAPH_REDIRECT_URI=http://localhost:8400/callback
+    volumes:
+      # Mount credentials directory for token persistence
+      - ./mcp_servers/ms_graph/credentials:/app/credentials
+    restart: "no"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Arize Phoenix - LLM Observability (Self-Hosted)
   phoenix:
     container_name: nova-phoenix

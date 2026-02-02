@@ -63,3 +63,9 @@ mcp_servers:
     url: http://host.docker.internal:9100/mcp
     transport: http
     description: "Local Outlook for Mac - Email and Calendar (via AppleScript)"
+
+  ms_graph:
+    url: http://nova-ms-graph:8000/mcp
+    transport: http
+    description: "Microsoft 365 - Email, Calendar, and People via MS Graph API"
+    # External port: 8400 (for OAuth callback at http://localhost:8400/callback)
