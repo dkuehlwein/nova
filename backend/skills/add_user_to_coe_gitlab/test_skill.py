@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Quick test script for the genai_training_onboarding skill.
+Quick test script for the add_user_to_coe_gitlab skill.
 
 Run from the backend directory:
-    cd backend && uv run python skills/genai_training_onboarding/test_skill.py
+    cd backend && uv run python skills/add_user_to_coe_gitlab/test_skill.py
 
 This tests:
 1. Module imports work correctly
@@ -25,15 +25,15 @@ def test_imports():
     print("Testing imports...")
 
     # Test tools.py imports
-    from skills.genai_training_onboarding.tools import get_tools
+    from skills.add_user_to_coe_gitlab.tools import get_tools
     print("  ✓ tools.py imported successfully")
 
     # Test gitlab_client imports
-    from skills.genai_training_onboarding.gitlab_client import add_gitlab_member, check_gitlab_connection
+    from skills.add_user_to_coe_gitlab.gitlab_client import add_gitlab_member, check_gitlab_connection
     print("  ✓ gitlab_client.py imported successfully")
 
     # Test lam_automation imports
-    from skills.genai_training_onboarding.lam_automation import create_lam_account
+    from skills.add_user_to_coe_gitlab.lam_automation import create_lam_account
     print("  ✓ lam_automation.py imported successfully")
 
 
@@ -41,7 +41,7 @@ def test_get_tools():
     """Test that get_tools() returns valid tools."""
     print("\nTesting get_tools()...")
 
-    from skills.genai_training_onboarding.tools import get_tools
+    from skills.add_user_to_coe_gitlab.tools import get_tools
 
     tools = get_tools()
     print(f"  Found {len(tools)} tools:")
@@ -66,7 +66,7 @@ async def test_execute_validation():
     """Test that execute_batch_onboarding validates credentials."""
     print("\nTesting execute_batch_onboarding validation...")
 
-    from skills.genai_training_onboarding.tools import execute_batch_onboarding
+    from skills.add_user_to_coe_gitlab.tools import execute_batch_onboarding
 
     participants = [{"email": "test@example.com", "name": "Test User"}]
 
@@ -92,7 +92,7 @@ def test_skill_manager_loading():
 
     # Check skill is discovered
     skills = manager.list_skills()
-    if "genai_training_onboarding" in skills:
+    if "add_user_to_coe_gitlab" in skills:
         print("  ✓ Skill discovered by SkillManager")
     else:
         print(f"  ✗ Skill not found. Available: {skills}")
@@ -100,7 +100,7 @@ def test_skill_manager_loading():
 
     # Try loading the skill
     async def load_test():
-        skill = await manager.load_skill("genai_training_onboarding")
+        skill = await manager.load_skill("add_user_to_coe_gitlab")
         print(f"  ✓ Skill loaded: {skill.manifest.name} v{skill.manifest.version}")
         print(f"  ✓ Instructions: {len(skill.instructions)} chars")
         print(f"  ✓ Tools: {len(skill.tools)}")
@@ -112,7 +112,7 @@ def test_skill_manager_loading():
 def main():
     """Run all tests."""
     print("=" * 60)
-    print("GenAI Training Onboarding Skill - Test Suite")
+    print("Add User to CoE GitLab Skill - Test Suite")
     print("=" * 60)
 
     all_passed = True

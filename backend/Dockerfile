@@ -1,9 +1,12 @@
-FROM python:3.13-slim
+FROM python:3.13-slim AS base
 
 WORKDIR /app
 
+# Build argument to control Playwright installation (set to "false" to skip)
+ARG INSTALL_PLAYWRIGHT=true
+
 # Install system dependencies including Docker CLI
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     curl \
     libpq-dev \
@@ -14,26 +17,26 @@ RUN apt-get update && apt-get install -y \
     && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
     && apt-get update \
-    && apt-get install -y docker-ce-cli \
+    && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN pip install uv
+# Install uv efficiently
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Copy project files (but exclude .venv first)
-COPY pyproject.toml ./
+# Copy only dependency files first (better layer caching)
+COPY pyproject.toml uv.lock* ./
+
+# Install dependencies (cached unless pyproject.toml changes)
+RUN uv venv && uv pip install -e .
+
+# Copy source code (separate layer for faster rebuilds)
 COPY . .
 
-# Remove any existing venv from host to prevent path issues
-RUN rm -rf .venv
-
-# Install dependencies fresh in container
-RUN uv venv
-RUN uv pip install -e .
-
-# Install Playwright browser dependencies and Chromium
+# Install Playwright browser dependencies and Chromium (optional)
 # Required for LAM automation (browser-based LDAP account creation)
-RUN apt-get update && apt-get install -y \
+# Skip with: docker build --build-arg INSTALL_PLAYWRIGHT=false
+RUN if [ "$INSTALL_PLAYWRIGHT" = "true" ]; then \
+    apt-get update && apt-get install -y --no-install-recommends \
     libnss3 \
     libnspr4 \
     libdbus-1-3 \
@@ -51,10 +54,9 @@ RUN apt-get update && apt-get install -y \
     libpango-1.0-0 \
     libcairo2 \
     libatspi2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Playwright Chromium browser
-RUN uv run playwright install chromium
+    && rm -rf /var/lib/apt/lists/* \
+    && uv run playwright install chromium; \
+    fi
 
 # Expose ports
 EXPOSE 8000

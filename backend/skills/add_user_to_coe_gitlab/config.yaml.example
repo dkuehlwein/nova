@@ -1,9 +1,9 @@
-# GenAI Training Onboarding Skill Configuration
+# Add User to CoE GitLab Skill Configuration
 # Copy this to config.yaml and fill in your values
 # config.yaml is gitignored - DO NOT commit credentials
 #
 # To test this skill:
-#   cd backend && uv run python skills/genai_training_onboarding/test_skill.py
+#   cd backend && uv run python skills/add_user_to_coe_gitlab/test_skill.py
 
 defaults:
   # LAM (LDAP Account Manager) settings

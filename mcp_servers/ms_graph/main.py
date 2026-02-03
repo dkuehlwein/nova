@@ -59,17 +59,111 @@ def setup_auth_endpoints():
 
     @mcp.custom_route("/auth/start", methods=["GET"])
     async def auth_start(request):
-        """Start OAuth flow - returns authorization URL."""
+        """Start OAuth flow - returns authorization URL or redirects."""
+        from fastapi.responses import HTMLResponse
+
         if not graph_auth:
-            return JSONResponse({
-                "error": "Server not configured",
-            }, status_code=500)
+            return HTMLResponse(content="""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>MS Graph - Configuration Error</title>
+                <style>
+                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; max-width: 600px; margin: 0 auto; background: #f5f5f5; }
+                    .card { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+                    h1 { color: #d32f2f; margin-top: 0; }
+                    p { color: #666; line-height: 1.6; }
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <h1>⚠️ Configuration Error</h1>
+                    <p>The MS Graph server is not configured. Please ensure the following environment variables are set:</p>
+                    <ul>
+                        <li><code>MS_GRAPH_CLIENT_ID</code></li>
+                        <li><code>MS_GRAPH_TENANT_ID</code></li>
+                        <li><code>MS_GRAPH_CLIENT_SECRET</code></li>
+                    </ul>
+                </div>
+            </body>
+            </html>
+            """, status_code=500)
+
+        # Check if already authenticated (unless force=true)
+        force_reauth = request.query_params.get("force") == "true"
+        if graph_auth.is_authenticated() and not force_reauth:
+            status = graph_auth.get_auth_status()
+            return HTMLResponse(content=f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>MS Graph - Already Authenticated</title>
+                <style>
+                    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; max-width: 600px; margin: 0 auto; background: #f5f5f5; }}
+                    .card {{ background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }}
+                    h1 {{ color: #2e7d32; margin-top: 0; }}
+                    p {{ color: #666; line-height: 1.6; }}
+                    .user {{ font-size: 1.2em; color: #333; font-weight: 500; }}
+                    .actions {{ margin-top: 24px; }}
+                    a {{ display: inline-block; padding: 12px 24px; background: #0078d4; color: white; text-decoration: none; border-radius: 6px; margin: 0 8px; }}
+                    a:hover {{ background: #106ebe; }}
+                    a.secondary {{ background: #666; }}
+                    a.secondary:hover {{ background: #555; }}
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <h1>✅ Already Authenticated</h1>
+                    <p>You are signed in as:</p>
+                    <p class="user">{status.get('user_email', 'Unknown')}</p>
+                    <p class="actions">
+                        <a href="/auth/start?force=true">Sign in as different user</a>
+                        <a href="/health" class="secondary">View Status</a>
+                    </p>
+                </div>
+            </body>
+            </html>
+            """)
 
         result = graph_auth.get_authorization_url()
-        return JSONResponse({
-            "auth_url": result["auth_url"],
-            "instructions": "Visit the auth_url in your browser to authenticate",
-        })
+        auth_url = result["auth_url"]
+
+        # Check if user wants JSON (for API clients)
+        accept = request.headers.get("accept", "")
+        if "application/json" in accept:
+            return JSONResponse({
+                "auth_url": auth_url,
+                "instructions": "Visit the auth_url in your browser to authenticate",
+            })
+
+        # Return nice HTML page with clickable link
+        return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>MS Graph - Sign In</title>
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; max-width: 600px; margin: 0 auto; background: #f5f5f5; }}
+                .card {{ background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }}
+                h1 {{ color: #0078d4; margin-top: 0; }}
+                p {{ color: #666; line-height: 1.6; }}
+                .btn {{ display: inline-block; padding: 16px 32px; background: #0078d4; color: white; text-decoration: none; border-radius: 8px; font-size: 1.1em; font-weight: 500; margin-top: 16px; }}
+                .btn:hover {{ background: #106ebe; }}
+                .logo {{ font-size: 48px; margin-bottom: 16px; }}
+                .note {{ font-size: 0.9em; color: #999; margin-top: 24px; }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div class="logo">🔐</div>
+                <h1>Sign in to Microsoft 365</h1>
+                <p>Nova needs access to your Microsoft 365 account to read emails, manage calendar events, and look up contacts.</p>
+                <a href="{auth_url}" class="btn">Sign in with Microsoft</a>
+                <p class="note">You'll be redirected to Microsoft's sign-in page.</p>
+            </div>
+        </body>
+        </html>
+        """)
 
     @mcp.custom_route("/callback", methods=["GET"])
     async def auth_callback(request):
@@ -108,18 +202,33 @@ def setup_auth_endpoints():
                 await graph_service.initialize()
 
             # Return success HTML page
+            from fastapi.responses import HTMLResponse
             html = f"""
             <!DOCTYPE html>
             <html>
-            <head><title>Authentication Successful</title></head>
-            <body style="font-family: sans-serif; padding: 40px; text-align: center;">
-                <h1>Authentication Successful!</h1>
-                <p>You are now logged in as: <strong>{result.get('user_email', 'Unknown')}</strong></p>
-                <p>You can close this window and return to your application.</p>
+            <head>
+                <title>Authentication Successful</title>
+                <style>
+                    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; max-width: 600px; margin: 0 auto; background: #f5f5f5; }}
+                    .card {{ background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }}
+                    h1 {{ color: #2e7d32; margin-top: 0; }}
+                    p {{ color: #666; line-height: 1.6; }}
+                    .user {{ font-size: 1.2em; color: #333; font-weight: 500; background: #e8f5e9; padding: 12px 20px; border-radius: 8px; display: inline-block; }}
+                    .success-icon {{ font-size: 48px; margin-bottom: 16px; }}
+                    .note {{ font-size: 0.9em; color: #999; margin-top: 24px; }}
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <div class="success-icon">✅</div>
+                    <h1>Authentication Successful!</h1>
+                    <p>You are now signed in as:</p>
+                    <p class="user">{result.get('user_email', 'Unknown')}</p>
+                    <p class="note">You can close this window and return to Nova.</p>
+                </div>
             </body>
             </html>
             """
-            from fastapi.responses import HTMLResponse
             return HTMLResponse(content=html, status_code=200)
         else:
             return JSONResponse({

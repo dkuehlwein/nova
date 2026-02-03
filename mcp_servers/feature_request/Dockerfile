@@ -16,7 +16,7 @@ RUN uv pip install --system -e .
 # Copy source code
 COPY main.py ./
 COPY src ./src
-COPY .env ./.env
+# Note: .env should be passed via docker-compose environment or mounted, not baked into image
 
 # Create non-root user
 RUN useradd -m -u 1001 mcp-user && chown -R mcp-user:mcp-user /app

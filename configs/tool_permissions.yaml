@@ -11,18 +11,29 @@ permissions:
   - enable_skill
   - disable_skill
   - _example_skill__*
-  - outlook_mac-lookup_contact
   - google_workspace-create_event
   - google_workspace-list_events
   - google_workspace-delete_event
   - google_workspace-update_event
-  - outlook_mac-list_calendar_events
-  - genai_training_onboarding__create_gitlab_user_account
-  - genai_training_onboarding__add_user_to_gitlab_project
+  # MS Graph (Microsoft 365) tools
+  - ms_graph-list_emails
+  - ms_graph-read_email
+  - ms_graph-create_draft
+  - ms_graph-list_calendar_events
+  - ms_graph-create_event
+  - ms_graph-update_event
+  - ms_graph-delete_event
+  - ms_graph-lookup_contact
+  - ms_graph-search_people
+  - ms_graph-get_user_profile
+  - add_user_to_coe_gitlab__create_gitlab_user_account
+  - add_user_to_coe_gitlab__add_user_to_gitlab_project
+  - add_user_to_coe_gitlab__resolve_participant_email
   deny:
   - mcp_tool(*)
   - google_workspace-send_email
   - outlook_mac-send_email
+  - ms_graph-send_email
 settings:
   audit_enabled: true
   default_secure: true
