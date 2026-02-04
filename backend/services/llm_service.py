@@ -144,6 +144,11 @@ class LLMModelService:
         """
         model_name = model_config['model_name']
         
+        # Ensure model_info has db_model: true for LiteLLM to persist and load from DB
+        if 'model_info' not in model_config:
+            model_config['model_info'] = {}
+        model_config['model_info']['db_model'] = True
+        
         # Check if model already exists
         model_exists = await self._model_exists_in_litellm(model_name)
         
@@ -159,11 +164,15 @@ class LLMModelService:
         return success, success  # If successful, it was added
     
     async def _model_exists_in_litellm(self, model_name: str) -> bool:
-        """Check if a model already exists in LiteLLM."""
+        """Check if a model already exists in LiteLLM.
+        
+        Uses /model/info endpoint which returns models from both the router
+        and database, unlike /models which only returns router models.
+        """
         try:
-            success, result = await self._make_litellm_request("GET", "/models")
+            success, result = await self._make_litellm_request("GET", "/model/info")
             if success and result:
-                existing_models = [model.get("id", "") for model in result.get("data", [])]
+                existing_models = [model.get("model_name", "") for model in result.get("data", [])]
                 exists = model_name in existing_models
                 logger.debug(f"Model existence check for '{model_name}': {exists} (found {len(existing_models)} total models)")
                 return exists
@@ -279,12 +288,21 @@ class LLMModelService:
                         if not model_id:
                             continue
 
+                        # Determine the api_base URL for LiteLLM
+                        # If running locally and LiteLLM is in Docker, we need to use
+                        # host.docker.internal so LiteLLM can reach the host's LM Studio
+                        api_base_for_litellm = settings.LLM_API_BASE_URL
+                        if "localhost" in api_base_for_litellm or "127.0.0.1" in api_base_for_litellm:
+                            # LiteLLM runs in Docker, so convert localhost to host.docker.internal
+                            api_base_for_litellm = api_base_for_litellm.replace("localhost", "host.docker.internal")
+                            api_base_for_litellm = api_base_for_litellm.replace("127.0.0.1", "host.docker.internal")
+
                         # Create model config for LiteLLM
                         model_config = {
                             "model_name": f"local/{model_id}",
                             "litellm_params": {
                                 "model": f"openai/{model_id}",
-                                "api_base": f"{settings.LLM_API_BASE_URL}/v1",
+                                "api_base": f"{api_base_for_litellm}/v1",
                                 "api_key": "no-key"
                             }
                         }
@@ -346,8 +364,9 @@ class LLMModelService:
         - all_models: Complete list of configured models
         """
         try:
-            # Get all configured models from LiteLLM
-            success, result = await self._make_litellm_request("GET", "models")
+            # Get all configured models from LiteLLM using /model/info
+            # which returns models from both router and database
+            success, result = await self._make_litellm_request("GET", "model/info")
             
             if not success or not result:
                 logger.error("Failed to fetch models from LiteLLM API")
@@ -355,23 +374,28 @@ class LLMModelService:
             
             models_data = result.get("data", [])
             
-            # Categorize models for UI
+            # Categorize models for UI, deduplicating by model_name
+            seen_models = set()
             chat_models = []
             embedding_models = []
             all_models = []
             
             for model in models_data:
-                model_id = model.get("id", "")
+                model_name = model.get("model_name", "")
+                if not model_name or model_name in seen_models:
+                    continue
+                seen_models.add(model_name)
+                
                 model_dict = {
-                    "model_name": model_id,
-                    "id": model_id,
-                    "owned_by": model.get("owned_by", "unknown")
+                    "model_name": model_name,
+                    "id": model_name,
+                    "owned_by": model.get("model_info", {}).get("litellm_provider", "unknown")
                 }
                 
                 all_models.append(model_dict)
                 
                 # Categorize by model type
-                if "embedding" in model_id.lower():
+                if "embedding" in model_name.lower():
                     embedding_models.append(model_dict)
                 else:
                     chat_models.append(model_dict)
