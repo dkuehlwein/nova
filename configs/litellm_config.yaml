@@ -18,10 +18,6 @@ general_settings:
   # Required for proper service authentication and spend tracking
   store_model_in_db: true
 
-  # Only store models in DB, not MCP servers (MCP servers are read from config file)
-  # This allows mcp_servers config to be used directly without needing to seed DB
-  supported_db_objects: ["model"]
-
   # Enable virtual key management for service authentication
   enable_key_management: true
   
