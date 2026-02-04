@@ -10,14 +10,18 @@ model_list: []
 
 general_settings:
   master_key: "sk-1234"
-  
+
   # Enable UI for monitoring
   ui_access_mode: "admin_only"
-  
+
   # Enable database persistence for virtual key management
   # Required for proper service authentication and spend tracking
   store_model_in_db: true
-  
+
+  # Only store models in DB, not MCP servers (MCP servers are read from config file)
+  # This allows mcp_servers config to be used directly without needing to seed DB
+  supported_db_objects: ["model"]
+
   # Enable virtual key management for service authentication
   enable_key_management: true
   
@@ -53,19 +57,23 @@ mcp_servers:
     url: http://nova-google-workspace:8000/mcp
     transport: http
     description: "Google Workspace - Gmail and Calendar operations"
+    allow_all_keys: true  # Make accessible to all API keys
 
   feature_request:
     url: http://nova-feature-request:8000/mcp
     transport: http
     description: "Linear integration for feature requests"
+    allow_all_keys: true  # Make accessible to all API keys
 
   outlook_mac:
     url: http://host.docker.internal:9100/mcp
     transport: http
     description: "Local Outlook for Mac - Email and Calendar (via AppleScript)"
+    allow_all_keys: true  # Make accessible to all API keys
 
   ms_graph:
     url: http://nova-ms-graph:8000/mcp
     transport: http
     description: "Microsoft 365 - Email, Calendar, and People via MS Graph API"
+    allow_all_keys: true  # Make accessible to all API keys
     # External port: 8400 (for OAuth callback at http://localhost:8400/callback)

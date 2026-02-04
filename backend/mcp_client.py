@@ -51,6 +51,8 @@ class MCPClientManager:
         # Cache for LangChain tools to reduce MCP server load
         self._tools_cache: Optional[List[Any]] = None
         self._tools_cache_timestamp: float = 0
+        # Cache for server_name -> server_id mapping
+        self._server_id_cache: Dict[str, str] = {}
 
     async def list_tools_from_litellm(self, timeout: float = 10.0) -> Dict[str, Any]:
         """
@@ -177,6 +179,51 @@ class MCPClientManager:
 
         return fields
 
+    async def get_server_id_by_name(self, server_name: str) -> Optional[str]:
+        """
+        Look up the server UUID by server name.
+
+        LiteLLM requires server_id (UUID) for API calls, not server_name.
+        This fetches the server list and finds the matching server.
+        Results are cached to avoid repeated API calls.
+
+        Args:
+            server_name: The server name (e.g., "ms_graph")
+
+        Returns:
+            The server UUID or None if not found
+        """
+        # Check cache first
+        if server_name in self._server_id_cache:
+            return self._server_id_cache[server_name]
+
+        url = f"{self._litellm_base_url}/v1/mcp/server"
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    url,
+                    headers={"Authorization": f"Bearer {self._litellm_api_key}"},
+                    timeout=10.0
+                )
+                if response.status_code == 200:
+                    servers = response.json()
+                    # Update cache with all servers
+                    for server in servers:
+                        name = server.get("server_name")
+                        alias = server.get("alias")
+                        sid = server.get("server_id")
+                        if name and sid:
+                            self._server_id_cache[name] = sid
+                        if alias and sid:
+                            self._server_id_cache[alias] = sid
+                    # Return the requested server
+                    return self._server_id_cache.get(server_name)
+                return None
+        except Exception as e:
+            logger.warning(f"Failed to look up server_id for {server_name}: {e}")
+            return None
+
     async def call_mcp_tool(
         self,
         server_name: str,
@@ -196,6 +243,13 @@ class MCPClientManager:
         """
         url = f"{self._litellm_base_url}/mcp-rest/tools/call"
 
+        # LiteLLM requires server_id (UUID), not server_name
+        # Try to look up the UUID, fall back to using name directly
+        server_id = await self.get_server_id_by_name(server_name)
+        if not server_id:
+            logger.warning(f"Could not find server_id for {server_name}, using name directly")
+            server_id = server_name
+
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -207,7 +261,7 @@ class MCPClientManager:
                     json={
                         "name": tool_name,
                         "arguments": arguments,
-                        "mcp_server": server_name
+                        "server_id": server_id
                     },
                     timeout=60.0  # Tool calls may take longer
                 )

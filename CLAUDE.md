@@ -57,6 +57,19 @@ docker-compose up -d nova-frontend
 
 ## Development Notes
 
+### Local Development vs Docker
+
+**For quick debugging and code iteration:**
+- Run backend services locally: `cd backend && uv run python start_website.py`
+- Docker containers use baked-in code - `docker-compose restart` does NOT load new code
+- To update code in Docker containers, you must rebuild: `docker-compose build nova-backend`
+- **Best practice**: Ask user to run `start_website.py` in a terminal for faster feedback loops
+
+**When to use Docker:**
+- Testing the full stack end-to-end
+- Testing container-specific issues (networking, volumes, env vars)
+- Final verification before deployment
+
 ### Local LLM Setup
 - Install LM Studio (or Ollama) on your Mac and load a model
 - LM Studio runs on port 1234 by default (configure via `LLM_API_BASE_URL` env var)
