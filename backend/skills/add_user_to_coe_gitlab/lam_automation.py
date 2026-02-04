@@ -236,7 +236,12 @@ async def create_lam_account(
 
             # Step 5: Fill in the account form
             # Field names based on LAM 8.7 configuration
+            # Reference: https://github.com/LDAPAccountManager/lam/blob/develop/lam/lib/modules/posixAccount.inc
             try:
+                # uid - Unix username (from MS Graph mail_nickname)
+                # This is the primary identifier for the LDAP/posixAccount entry
+                await page.fill("input[name='uid']", username)
+
                 # givenName - First name
                 await page.fill("input[name='givenName']", first_name)
 

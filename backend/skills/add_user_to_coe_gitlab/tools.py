@@ -214,10 +214,15 @@ async def resolve_participant_email(name: str) -> str:
             if len(result) > 0:
                 user = result[0]
                 display_name = user.get("display_name", "")
-                # Parse first/last name from display_name
-                name_parts = display_name.split(" ", 1) if display_name else ["", ""]
-                first_name = name_parts[0] if len(name_parts) > 0 else ""
-                last_name = name_parts[1] if len(name_parts) > 1 else ""
+                # Use givenName/surname from MS Graph (preferred)
+                # Fall back to parsing display_name only if those aren't available
+                first_name = user.get("given_name", "")
+                last_name = user.get("surname", "")
+                if not first_name and not last_name and display_name:
+                    # Fallback: parse from display_name (handles "First Last" format)
+                    name_parts = display_name.split(" ", 1)
+                    first_name = name_parts[0] if len(name_parts) > 0 else ""
+                    last_name = name_parts[1] if len(name_parts) > 1 else ""
 
                 return json.dumps({
                     "found": True,

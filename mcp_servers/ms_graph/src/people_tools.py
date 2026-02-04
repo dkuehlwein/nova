@@ -101,7 +101,7 @@ class PeopleTools:
             # User.Read.All is required for this endpoint
             params = {
                 "$filter": f"startswith(displayName,'{query}') or startswith(mail,'{query}')",
-                "$select": "id,displayName,mail,userPrincipalName,mailNickname,jobTitle,department,companyName",
+                "$select": "id,displayName,givenName,surname,mail,userPrincipalName,mailNickname,jobTitle,department,companyName",
                 "$top": limit,
             }
 
@@ -113,6 +113,8 @@ class PeopleTools:
             for user in data.get("value", []):
                 results.append({
                     "display_name": user.get("displayName", "Unknown"),
+                    "given_name": user.get("givenName", ""),
+                    "surname": user.get("surname", ""),
                     "email": user.get("mail") or user.get("userPrincipalName", ""),
                     "mail_nickname": user.get("mailNickname", ""),
                     "user_principal_name": user.get("userPrincipalName", ""),
