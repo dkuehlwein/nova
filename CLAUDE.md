@@ -6,26 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Backend Development
 ```bash
-# Install dependencies
-cd backend && uv sync
+cd backend && uv sync                              # Install dependencies
+cd backend && uv run python start_website.py      # Chat agent service (port 8000)
+cd backend && uv run python start_core_agent.py   # Core agent service (port 8001)
+cd backend && uv run python init_db.py            # Initialize database
+```
 
-# Run all tests
-cd backend && uv run pytest ../tests
-
-# Run unit tests only (fast, no DB required)
-cd backend && uv run pytest ../tests/unit -v
-
-# Run specific test
-cd backend && uv run pytest ../tests/unit/api/test_api_endpoints.py -v
-
-# Start chat agent service (port 8000)
-cd backend && uv run python start_website.py
-
-# Start core agent service (port 8001)
-cd backend && uv run python start_core_agent.py
-
-# Initialize database
-cd backend && uv run python init_db.py
+### Running Tests
+```bash
+cd backend && uv run pytest ../tests              # All tests
+cd backend && uv run pytest ../tests/unit -v     # Unit tests only (fast, no DB)
+cd backend && uv run pytest ../tests/integration -v  # Integration tests (requires DB/Redis)
+cd backend && uv run pytest ../tests -m "not slow"   # Skip slow tests
 ```
 
 ### Frontend Development
@@ -60,7 +52,7 @@ docker-compose up -d nova-frontend
 ### Local Development vs Docker
 
 **For quick debugging and code iteration:**
-- Run backend services locally: `cd backend && uv run python start_website.py`
+- Run backend services locally (see Backend Development commands above)
 - Docker containers use baked-in code - `docker-compose restart` does NOT load new code
 - To update code in Docker containers, you must rebuild: `docker-compose build nova-backend`
 - **Best practice**: Ask user to run `start_website.py` in a terminal for faster feedback loops
@@ -97,20 +89,6 @@ docker-compose up -d nova-frontend
 
 Optional scope for specificity: `feat(memory): Add edge type mapping`
 
-**PR workflow:**
-```bash
-# Create feature branch
-git checkout main && git pull origin main
-git checkout -b feature/my-feature
-
-# Work and commit
-git add . && git commit -m "feat: Add new feature"
-
-# Push and create PR
-git push -u origin feature/my-feature
-gh pr create --title "feat: Add new feature" --body "Description"
-```
-
 ### Feature Implementation Process
 1. **Pre-work**: Review relevant Architecture Decision Records (ADRs) in `docs/adr/`.
 2. **Implementation**:
@@ -130,7 +108,7 @@ Nova is an AI-powered kanban task management system with a dual-agent architectu
 2. **Core Agent Service** (`start_core_agent.py:8001`) - Autonomous task processing loop
 3. **Frontend** (`Next.js:3000`) - Web interface for task management (containerized)
 4. **Local LLM Infrastructure** - External LLM API (e.g., LM Studio on `1234`) + LiteLLM gateway (`4000`)
-5. **MCP Servers** - External tool integrations (Google Workspace, Feature Requests)
+5. **MCP Servers** - External tool integrations (Google Workspace, MS Graph, Feature Requests)
 
 ### Key Architectural Patterns
 
@@ -174,13 +152,18 @@ backend/
 │   └── prompts/           # Prompt files (.md) with hot-reload
 ├── api/                   # FastAPI Endpoints (single responsibility)
 │   ├── api_endpoints.py   # Task/Person/Project CRUD
+│   ├── api_key_endpoints.py # API key management
 │   ├── chat_endpoints.py  # Chat/agent interaction
 │   ├── config_endpoints.py # Configuration management
+│   ├── hooks_endpoints.py # Input hooks management
+│   ├── llm_endpoints.py   # LLM model management
 │   ├── mcp_endpoints.py   # MCP server management
 │   ├── memory_endpoints.py # Memory system endpoints
 │   ├── prompt_endpoints.py # Prompt management
 │   ├── settings_endpoints.py # User settings
+│   ├── skill_endpoints.py # Skill management
 │   ├── system_endpoints.py # System status and health
+│   ├── tool_permissions_endpoints.py # Tool approval permissions
 │   └── websocket_endpoints.py # Real-time connections
 ├── database/              # Database layer
 ├── models/                # Pydantic models
@@ -194,50 +177,15 @@ backend/
 
 ### Testing Strategy
 
-Nova uses a 3-tier test structure based on isolation level:
+Nova uses a 3-tier test structure (see "Running Tests" commands above):
 
 | Type | Directory | Requirements | Speed |
 |------|-----------|--------------|-------|
-| **Unit** | `tests/unit/` | None (isolated, all mocked) | Fast (ms) |
-| **Integration** | `tests/integration/` | PostgreSQL, Redis, config files | Medium (s) |
-| **End-to-End** | `tests/end2end/` | Full Docker stack | Slowest |
+| **Unit** | `tests/unit/` | None (isolated, all mocked) | Fast |
+| **Integration** | `tests/integration/` | PostgreSQL, Redis | Medium |
+| **End-to-End** | `tests/end2end/` | Full Docker stack | Slow |
 
-#### Running Tests
-```bash
-# Run all tests
-cd backend && uv run pytest ../tests
-
-# Run only fast unit tests (no DB required)
-cd backend && uv run pytest ../tests/unit -v
-
-# Run integration tests (requires DB/Redis)
-cd backend && uv run pytest ../tests/integration -v
-
-# Run specific test file
-cd backend && uv run pytest ../tests/unit/utils/test_logging.py -v
-
-# Skip slow tests
-cd backend && uv run pytest ../tests -m "not slow"
-```
-
-#### Test Directory Structure
-```
-tests/
-├── unit/           # Isolated tests (NOVA_SKIP_DB=1, all mocks)
-│   ├── agent/
-│   ├── api/
-│   ├── input_hooks/
-│   ├── memory/
-│   ├── skills/
-│   └── utils/
-├── integration/    # Tests requiring real services (DB, Redis, config)
-│   └── agent/
-└── end2end/        # Full Docker stack tests
-```
-
-#### Notes
-- **Async support**: All tests use pytest-asyncio
-- **End2End tests**: Rebuild Docker images before running (changes only propagate after rebuild)
+Notes: All tests use pytest-asyncio. Rebuild Docker images before E2E tests.
 
 ### Configuration Management
 - **Environment variables**: Defined in `config.py` (never access directly)
@@ -246,7 +194,8 @@ tests/
   - `SQLALCHEMY_DATABASE_URL`: PostgreSQL+asyncpg URL for SQLAlchemy
   - `POSTGRES_HOST`: Database host (defaults to "localhost", Docker sets to "postgres")
 - **MCP servers**: Configured in `configs/mcp_servers.yaml`
-- **User profile**: `configs/user_profile.yaml`
+- **Tool permissions**: `configs/tool_permissions.yaml`
+- **Input hooks**: `configs/input_hooks.yaml`
 - **Prompts**: `backend/agent/prompts/*.md` with hot-reload
 
 ### Key Technologies
@@ -295,71 +244,29 @@ Detailed architectural decisions are documented in `docs/adr/`. Key ADRs:
 - **ADR-011**: LiteLLM-first architecture for all LLM operations
 - **ADR-012**: Multi-input hooks for email/calendar (`input_hooks/`)
 - **ADR-013**: Tool approval system for human oversight (`tools/tool_approval_helper.py`)
+- **ADR-014**: Pluggable skills system (`skills/`)
+- **ADR-015**: LiteLLM-MCP gateway migration
+- **ADR-016**: Memory management UI
+- **ADR-017**: Phoenix observability migration
+- **ADR-018**: Service layer architecture (`services/`)
+- **ADR-019**: Email thread consolidation
 
-## Testing Chat and Tool Calling
+## Troubleshooting
 
-### Quick Chat Test
-After starting Nova with `docker-compose up -d`, test the chat endpoint:
-
-```bash
-# Test basic chat (requires Gemini API key configured)
-curl -X POST "http://localhost:8000/chat/stream" \
-  -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Hello! What time is it?"}]}'
-```
-
-### Tool Calling Test
-Test Nova's tool calling capabilities:
-
-```bash
-# Test tool calling (task creation and time lookup)
-curl -X POST "http://localhost:8000/chat/stream" \
-  -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Create a task called Test Task and tell me the current time"}]}'
-```
-
-### Update Model Settings
-Change the LLM model via API:
-
-```bash
-# Update user settings to use Gemini Flash (default)
-curl -X PATCH "http://localhost:8000/api/user-settings/" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "chat_llm_model": "gemini-3-flash-preview",
-    "chat_llm_temperature": 0.7,
-    "chat_llm_max_tokens": 32768
-  }'
-
-# Update user settings to use OpenRouter model
-curl -X PATCH "http://localhost:8000/api/user-settings/" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "chat_llm_model": "z-ai/glm-4.5-air:free",
-    "chat_llm_temperature": 0.7,
-    "chat_llm_max_tokens": 2048
-  }'
-```
-
-### Service Health Checks
-Verify all services are running:
-
-```bash
-# Check Nova backend
-curl http://localhost:8000/health
-
-# Check LM Studio (or your local LLM)
-curl http://localhost:1234/v1/models
-
-# Check LiteLLM gateway
-curl http://localhost:4000/health/readiness
-
-# Check user settings
-curl http://localhost:8000/api/user-settings/
-```
+### Key Endpoints for Debugging
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | Backend health check |
+| `GET /api/user-settings/` | Current user settings |
+| `PATCH /api/user-settings/` | Update LLM model/settings |
+| `POST /chat/stream` | Chat with streaming response |
+| `GET /api/system/status` | Full system status |
+| `GET :4000/health/readiness` | LiteLLM gateway health |
 
 ### Common Issues
-- **Tool calling fails**: Ensure your local LLM supports function calling (check model capabilities)
-
+- **Tool calling fails**: Ensure the LLM model supports function calling
 - **Settings not persisting**: Restart Nova backend after changing LLM settings
-- Use uv run to run python code, uv run pytest for tests. The venv is in the backend folder!
+- **Container code outdated**: Remember `docker-compose restart` doesn't reload code - rebuild with `docker-compose build`
+
+### Troubleshooting Examples
+<!-- Add curl examples here as issues are encountered and resolved -->
