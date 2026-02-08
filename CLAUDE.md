@@ -67,6 +67,13 @@ docker-compose up -d nova-frontend
 - LM Studio runs on port 1234 by default (configure via `LLM_API_BASE_URL` env var)
 - Models are discovered automatically by LiteLLM at startup
 
+### Requirement gathering 
+When asked to interview the user or gather requirements, use the AskUserQuestion tool (or equivalent interactive tool) instead of outputting a text-based list of questions.
+
+### No guessing
+Never guess at API field names, model names, or configuration values. Always verify assumptions by testing or reading documentation first. If you're unsure about a field (e.g., MS Graph fields, Azure model names), say so and propose a verification step rather than assuming.
+
+
 ## Development Workflow
 
 ### Git Branch & Commit Conventions
