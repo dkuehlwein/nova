@@ -253,6 +253,8 @@ Detailed architectural decisions are documented in `docs/adr/`. Key ADRs:
 
 ## Troubleshooting
 
+When debugging, do not guess at the root cause. Start by reproducing the issue, then trace the actual code path. If your first hypothesis is wrong, acknowledge it and investigate systematically rather than trying another guess.
+
 ### Key Endpoints for Debugging
 | Endpoint | Purpose |
 |----------|---------|
