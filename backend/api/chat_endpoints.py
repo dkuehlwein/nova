@@ -16,6 +16,7 @@ from models.chat import (
     ChatMessageDetail,
     ChatRequest,
     ChatSummary,
+    ChatTitleUpdateRequest,
     TaskChatResponse,
 )
 from services.chat_service import chat_service
@@ -238,3 +239,49 @@ async def respond_to_escalation(chat_id: str, response: dict):
         raise HTTPException(
             status_code=500, detail=f"Error responding to escalation: {str(e)}"
         )
+
+
+@router.post("/conversations/{chat_id}/generate-title")
+async def generate_chat_title(chat_id: str):
+    """Generate an LLM-based title for a chat conversation.
+
+    Called after the first assistant response in a new chat.
+    """
+    try:
+        checkpointer = await get_checkpointer_from_service_manager()
+        messages = await conversation_service.get_history(chat_id, checkpointer)
+
+        if not messages:
+            raise HTTPException(status_code=404, detail="Chat not found")
+
+        generated_title = await conversation_service.generate_title(chat_id, messages)
+
+        if generated_title:
+            return {"title": generated_title, "generated": True}
+
+        # Fallback to current behavior
+        fallback_title = await conversation_service.get_title(chat_id, messages)
+        return {"title": fallback_title, "generated": False}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating title for {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/conversations/{chat_id}/title")
+async def update_chat_title(chat_id: str, body: ChatTitleUpdateRequest):
+    """Update the title of a chat conversation manually."""
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Title cannot be blank")
+
+    try:
+        from services.chat_metadata_service import chat_metadata_service
+        await chat_metadata_service.set_title(chat_id, title)
+        return {"title": title}
+
+    except Exception as e:
+        logger.error(f"Error updating title for {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

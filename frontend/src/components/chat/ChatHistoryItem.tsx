@@ -1,6 +1,7 @@
 "use client";
 
-import { MessageSquare, Link, Trash2, Loader2 } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { MessageSquare, Link, Trash2, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { formatDate } from "@/lib/format-utils";
@@ -22,6 +23,7 @@ interface ChatHistoryItemProps {
   isDeleting: boolean;
   onSelect: (item: ChatHistoryItemData) => void;
   onDelete: (item: ChatHistoryItemData, e: React.MouseEvent) => void;
+  onRename?: (id: string, newTitle: string) => Promise<void>;
 }
 
 export function ChatHistoryItem({
@@ -29,20 +31,72 @@ export function ChatHistoryItem({
   isDeleting,
   onSelect,
   onDelete,
+  onRename,
 }: ChatHistoryItemProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(item.title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleStartEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditTitle(item.title);
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    const trimmed = editTitle.trim();
+    if (trimmed && trimmed !== item.title && onRename) {
+      try {
+        await onRename(item.id, trimmed);
+      } catch {
+        setEditTitle(item.title);
+      }
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSaveEdit();
+    } else if (e.key === 'Escape') {
+      setEditTitle(item.title);
+      setIsEditing(false);
+    }
+  };
+
   return (
     <div
-      onClick={() => onSelect(item)}
+      onClick={() => !isEditing && onSelect(item)}
       className="p-3 rounded-lg border hover:bg-muted cursor-pointer transition-colors group/chat relative"
     >
       <div className="flex items-start space-x-2">
         <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1">
-            <h4 className="text-sm font-medium truncate flex-1">
-              <MarkdownMessage content={item.title} disableLinks />
-            </h4>
-            {item.task_id && (
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                onBlur={handleSaveEdit}
+                onKeyDown={handleKeyDown}
+                onClick={(e) => e.stopPropagation()}
+                className="text-sm font-medium w-full bg-background border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            ) : (
+              <h4 className="text-sm font-medium truncate flex-1">
+                <MarkdownMessage content={item.title} disableLinks />
+              </h4>
+            )}
+            {item.task_id && !isEditing && (
               <span title="Connected to task">
                 <Link className="h-3 w-3 text-muted-foreground flex-shrink-0" />
               </span>
@@ -55,20 +109,33 @@ export function ChatHistoryItem({
             {formatDate(item.last_activity || item.updated_at)}
           </p>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0 opacity-0 group-hover/chat:opacity-100 transition-opacity text-muted-foreground hover:text-destructive flex-shrink-0"
-          onClick={(e) => onDelete(item, e)}
-          disabled={isDeleting}
-          title={item.task_id ? "Delete chat and task" : "Delete chat"}
-        >
-          {isDeleting ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Trash2 className="h-3 w-3" />
+        <div className="flex flex-col gap-0.5 flex-shrink-0">
+          {onRename && !isEditing && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 opacity-0 group-hover/chat:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+              onClick={handleStartEdit}
+              title="Rename chat"
+            >
+              <Pencil className="h-3 w-3" />
+            </Button>
           )}
-        </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 opacity-0 group-hover/chat:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+            onClick={(e) => onDelete(item, e)}
+            disabled={isDeleting}
+            title={item.task_id ? "Delete chat and task" : "Delete chat"}
+          >
+            {isDeleting ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Trash2 className="h-3 w-3" />
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );

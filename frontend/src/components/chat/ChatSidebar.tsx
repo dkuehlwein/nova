@@ -21,6 +21,7 @@ interface ChatSidebarProps {
   onChatSelect: (item: ChatHistoryItemData) => void;
   onDeleteChat: (item: ChatHistoryItemData, e: React.MouseEvent) => void;
   onLoadMore: () => void;
+  onRenameChat?: (id: string, newTitle: string) => Promise<void>;
 }
 
 export function ChatSidebar({
@@ -38,6 +39,7 @@ export function ChatSidebar({
   onChatSelect,
   onDeleteChat,
   onLoadMore,
+  onRenameChat,
 }: ChatSidebarProps) {
   // Filter out chats that need decisions (they show in pending section)
   const regularChats = chatHistory.filter(chat => !chat.needs_decision);
@@ -133,6 +135,7 @@ export function ChatSidebar({
                       isDeleting={deletingChatId === chatItem.id}
                       onSelect={onChatSelect}
                       onDelete={onDeleteChat}
+                      onRename={onRenameChat}
                     />
                   ))}
                 </div>

@@ -263,6 +263,526 @@ class TestCheckInterrupts:
         assert result["tool_name"] == "send_email"
 
 
+    @pytest.mark.asyncio
+    async def test_check_interrupts_tool_approval_resolves_tool_call_id_from_messages(self, service):
+        """Test that tool_call_id is resolved from messages when not in interrupt value.
+
+        This is the real-world case: the interrupt value from tool_approval_helper
+        does NOT include tool_call_id, so check_interrupts must find the matching
+        tool call in the message history by tool name.
+        """
+        # Interrupt value without tool_call_id (matches what tool_approval_helper sends)
+        mock_interrupt = MagicMock()
+        mock_interrupt.value = {
+            "type": "tool_approval_request",
+            "tool_name": "ms_graph_send_email",
+            "tool_args": {"recipients": ["user@example.com"], "subject": "Hi"},
+            "question": "Nova wants to use the tool: ms_graph_send_email",
+            "instructions": "Please approve or deny this tool action to continue.",
+        }
+
+        # Message history contains the AI tool call with the real tool_call_id
+        ai_msg = AIMessage(
+            content="I'll send that email for you.",
+            tool_calls=[{
+                "name": "ms_graph_send_email",
+                "args": {"recipients": ["user@example.com"], "subject": "Hi"},
+                "id": "call_abc123",
+                "type": "tool_call",
+            }],
+        )
+
+        mock_state = MagicMock()
+        mock_state.interrupts = [mock_interrupt]
+        mock_state.values = {"messages": [HumanMessage(content="Send email"), ai_msg]}
+        mock_state.next = []
+
+        mock_agent = AsyncMock()
+        mock_agent.aget_state.return_value = mock_state
+
+        result = await service.check_interrupts("test-thread", mock_agent)
+
+        assert result is not None
+        assert result["type"] == "tool_approval_request"
+        assert result["tool_name"] == "ms_graph_send_email"
+        assert result["tool_call_id"] == "call_abc123"
+
+    @pytest.mark.asyncio
+    async def test_check_interrupts_tool_approval_no_matching_tool_call(self, service):
+        """Test that tool_call_id is None when tool name not found in messages."""
+        mock_interrupt = MagicMock()
+        mock_interrupt.value = {
+            "type": "tool_approval_request",
+            "tool_name": "ms_graph_send_email",
+            "tool_args": {},
+        }
+
+        mock_state = MagicMock()
+        mock_state.interrupts = [mock_interrupt]
+        mock_state.values = {"messages": [HumanMessage(content="Send email")]}
+        mock_state.next = []
+
+        mock_agent = AsyncMock()
+        mock_agent.aget_state.return_value = mock_state
+
+        result = await service.check_interrupts("test-thread", mock_agent)
+
+        assert result is not None
+        assert result["type"] == "tool_approval_request"
+        assert result["tool_call_id"] is None
+
+    @pytest.mark.asyncio
+    async def test_check_interrupts_disambiguates_duplicate_tool_calls(self, service):
+        """When the same tool appears multiple times, match by args to find the right one.
+
+        Simulates: two ms_graph_send_email tool calls in one AIMessage with different
+        args. The interrupt's tool_args should select the correct tool_call_id.
+        """
+        tool_name = "ms_graph_send_email"
+        first_args = {"recipients": ["alice@example.com"], "subject": "First email"}
+        second_args = {"recipients": ["bob@example.com"], "subject": "Second email"}
+
+        # Interrupt targets the second tool call
+        mock_interrupt = MagicMock()
+        mock_interrupt.value = {
+            "type": "tool_approval_request",
+            "tool_name": tool_name,
+            "tool_args": second_args,
+        }
+
+        # AIMessage has both tool calls
+        ai_msg = MagicMock()
+        ai_msg.tool_calls = [
+            {"name": tool_name, "args": first_args, "id": "call_first"},
+            {"name": tool_name, "args": second_args, "id": "call_second"},
+        ]
+
+        mock_state = MagicMock()
+        mock_state.interrupts = [mock_interrupt]
+        mock_state.values = {"messages": [HumanMessage(content="Send emails"), ai_msg]}
+        mock_state.next = []
+
+        mock_agent = AsyncMock()
+        mock_agent.aget_state.return_value = mock_state
+
+        result = await service.check_interrupts("test-thread", mock_agent)
+
+        assert result is not None
+        assert result["type"] == "tool_approval_request"
+        assert result["tool_name"] == tool_name
+        # Must resolve to "call_second" (matching args), NOT "call_first"
+        assert result["tool_call_id"] == "call_second"
+
+    @pytest.mark.asyncio
+    async def test_check_interrupts_falls_back_to_name_when_args_mismatch(self, service):
+        """When tool_args don't match any tool call exactly, fall back to name-only match."""
+        tool_name = "ms_graph_send_email"
+        interrupt_args = {"recipients": ["user@example.com"]}
+        # Tool call has different args (extra field)
+        tool_call_args = {"recipients": ["user@example.com"], "body": "Hi there"}
+
+        mock_interrupt = MagicMock()
+        mock_interrupt.value = {
+            "type": "tool_approval_request",
+            "tool_name": tool_name,
+            "tool_args": interrupt_args,
+        }
+
+        ai_msg = MagicMock()
+        ai_msg.tool_calls = [
+            {"name": tool_name, "args": tool_call_args, "id": "call_only"},
+        ]
+
+        mock_state = MagicMock()
+        mock_state.interrupts = [mock_interrupt]
+        mock_state.values = {"messages": [HumanMessage(content="Send email"), ai_msg]}
+        mock_state.next = []
+
+        mock_agent = AsyncMock()
+        mock_agent.aget_state.return_value = mock_state
+
+        result = await service.check_interrupts("test-thread", mock_agent)
+
+        assert result is not None
+        assert result["type"] == "tool_approval_request"
+        # Falls back to name-only match since args don't match exactly
+        assert result["tool_call_id"] == "call_only"
+
+
+class TestResumeInterrupt:
+    """Test interrupt resumption and approval persistence."""
+
+    def _patch_langgraph_imports(self):
+        """Context manager to mock langgraph lazy imports used inside resume_interrupt."""
+        mock_command = MagicMock()
+        mock_module = MagicMock()
+        mock_module.Command = mock_command
+        return patch.dict("sys.modules", {
+            "langgraph.graph.graph": mock_module,
+        })
+
+    @pytest.mark.asyncio
+    async def test_uses_tool_call_id_from_request_body(self, service):
+        """Frontend sends tool_call_id with approval — backend uses it directly."""
+        mock_agent = AsyncMock()
+        mock_agent.aupdate_state = AsyncMock()
+        mock_agent.ainvoke = AsyncMock()
+
+        with self._patch_langgraph_imports(), \
+             patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
+             patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
+            mock_check.return_value = {
+                "type": "tool_approval_request",
+                "tool_name": "ms_graph-send_email",
+                "tool_call_id": None,
+            }
+            mock_meta_svc.record_approval = AsyncMock()
+
+            result = await service.resume_interrupt(
+                "test-thread",
+                {"type": "approve", "tool_call_id": "call_from_frontend"},
+                mock_agent,
+            )
+
+        assert result["success"] is True
+        mock_meta_svc.record_approval.assert_awaited_once_with("test-thread", "call_from_frontend")
+        # check_interrupts should NOT be called when request has tool_call_id
+        mock_check.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_records_approval_when_check_interrupts_fails(self, service):
+        """Approval is recorded even when check_interrupts returns None entirely."""
+        mock_agent = AsyncMock()
+        mock_agent.aupdate_state = AsyncMock()
+        mock_agent.ainvoke = AsyncMock()
+
+        with self._patch_langgraph_imports(), \
+             patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
+             patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
+            mock_check.return_value = None
+            mock_meta_svc.record_approval = AsyncMock()
+
+            result = await service.resume_interrupt(
+                "test-thread",
+                {"type": "approve", "tool_call_id": "call_from_frontend"},
+                mock_agent,
+            )
+
+        assert result["success"] is True
+        mock_meta_svc.record_approval.assert_awaited_once_with("test-thread", "call_from_frontend")
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_check_interrupts_tool_call_id(self, service):
+        """When request has no tool_call_id, falls back to check_interrupts."""
+        mock_agent = AsyncMock()
+        mock_agent.aupdate_state = AsyncMock()
+        mock_agent.ainvoke = AsyncMock()
+
+        with self._patch_langgraph_imports(), \
+             patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
+             patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
+            mock_check.return_value = {
+                "type": "tool_approval_request",
+                "tool_name": "send_email",
+                "tool_call_id": "call_from_state",
+            }
+            mock_meta_svc.record_approval = AsyncMock()
+
+            result = await service.resume_interrupt(
+                "test-thread",
+                {"type": "approve"},
+                mock_agent,
+            )
+
+        assert result["success"] is True
+        mock_meta_svc.record_approval.assert_awaited_once_with("test-thread", "call_from_state")
+
+    @pytest.mark.asyncio
+    async def test_skips_recording_when_no_tool_call_id_from_any_source(self, service):
+        """No recording when neither request nor check_interrupts has tool_call_id."""
+        mock_agent = AsyncMock()
+        mock_agent.aupdate_state = AsyncMock()
+        mock_agent.ainvoke = AsyncMock()
+
+        with self._patch_langgraph_imports(), \
+             patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
+             patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
+            mock_check.return_value = {
+                "type": "tool_approval_request",
+                "tool_name": "send_email",
+                "tool_call_id": None,
+            }
+            mock_meta_svc.record_approval = AsyncMock()
+
+            await service.resume_interrupt(
+                "test-thread", {"type": "approve"}, mock_agent
+            )
+
+        mock_meta_svc.record_approval.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_recording_on_deny(self, service):
+        """Denying a tool does not record an approval."""
+        mock_agent = AsyncMock()
+        mock_agent.aupdate_state = AsyncMock()
+        mock_agent.ainvoke = AsyncMock()
+
+        with self._patch_langgraph_imports(), \
+             patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
+            mock_meta_svc.record_approval = AsyncMock()
+
+            await service.resume_interrupt(
+                "test-thread", {"type": "deny"}, mock_agent
+            )
+
+        mock_meta_svc.record_approval.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_continues_on_metadata_failure(self, service):
+        """Metadata recording failure doesn't block the resume."""
+        mock_agent = AsyncMock()
+        mock_agent.aupdate_state = AsyncMock()
+        mock_agent.ainvoke = AsyncMock()
+
+        with self._patch_langgraph_imports(), \
+             patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
+            mock_meta_svc.record_approval = AsyncMock(side_effect=Exception("DB down"))
+
+            result = await service.resume_interrupt(
+                "test-thread",
+                {"type": "approve", "tool_call_id": "call_abc"},
+                mock_agent,
+            )
+
+        assert result["success"] is True
+
+
+class TestStreamChatApprovalPersistence:
+    """Test that stream_chat() persists tool approvals when resuming from interrupt.
+
+    Verifies that when approval flows through /chat/stream (Path B), stream_chat()
+    calls chat_metadata_service.record_approval() so the "Approved" badge survives
+    page reloads. Covers approve, always_allow, and deny scenarios.
+    """
+
+    def _make_interrupt_state(
+        self,
+        tool_name="ms_graph-send_email",
+        tool_call_id="call_tool_abc123",
+        tool_args=None,
+    ):
+        """Build mock agent state with a tool_approval_request interrupt.
+
+        Matches real-world behaviour: tool_approval_helper puts tool_name/tool_args
+        in the interrupt value, but NOT tool_call_id. The tool_call_id lives on the
+        AIMessage.tool_calls in the state messages and must be resolved from there.
+        """
+        if tool_args is None:
+            tool_args = {"recipients": ["user@example.com"], "subject": "Hello"}
+
+        mock_interrupt = MagicMock()
+        mock_interrupt.value = {
+            "type": "tool_approval_request",
+            "tool_name": tool_name,
+            "tool_args": tool_args,
+            # Note: no tool_call_id here — matches real tool_approval_helper.py
+        }
+
+        # The AIMessage in state.values.messages carries the tool_call_id
+        # Args on the tool call match the interrupt tool_args for proper disambiguation
+        ai_msg_with_tool_call = MagicMock()
+        ai_msg_with_tool_call.tool_calls = [
+            {"name": tool_name, "id": tool_call_id, "args": tool_args}
+        ]
+
+        state = MagicMock()
+        state.interrupts = [mock_interrupt]
+        state.values = {"messages": [ai_msg_with_tool_call]}
+        return state
+
+    def _make_mock_agent(self, state_with_interrupt):
+        """Build a mock chat agent that returns interrupt state then clean state."""
+        mock_state_no_interrupt = MagicMock()
+        mock_state_no_interrupt.interrupts = []
+
+        mock_agent = AsyncMock()
+        mock_agent.aget_state = AsyncMock(
+            side_effect=[state_with_interrupt, mock_state_no_interrupt]
+        )
+
+        ai_response = AIMessage(content="Email sent successfully.")
+
+        async def mock_astream(*args, **kwargs):
+            yield {"agent": {"messages": [ai_response]}}
+
+        mock_agent.astream = mock_astream
+        return mock_agent
+
+    def _make_mock_checkpointer(self):
+        """Build a mock checkpointer that indicates an existing conversation."""
+        mock_checkpointer = AsyncMock()
+        mock_checkpointer.aget.return_value = {
+            "channel_values": {
+                "messages": [HumanMessage(content="Send an email to user@example.com")]
+            }
+        }
+        return mock_checkpointer
+
+    async def _run_stream(self, service, thread_id, user_response, mock_agent, mock_checkpointer):
+        """Run stream_chat to completion and return collected events."""
+        chat_request = ChatRequest(
+            messages=[ChatMessage(role="user", content=user_response)],
+            thread_id=thread_id,
+        )
+        mock_command_cls = MagicMock()
+        mock_command_cls.return_value = MagicMock()
+
+        with patch.dict("sys.modules", {"langgraph.types": MagicMock(Command=mock_command_cls)}), \
+             patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
+            mock_meta_svc.record_approval = AsyncMock()
+
+            events = []
+            async for event in service.stream_chat(chat_request, mock_checkpointer, mock_agent):
+                events.append(event)
+
+            return events, mock_meta_svc
+
+    @pytest.mark.asyncio
+    async def test_stream_chat_records_approval_on_interrupt_resume(self, service):
+        """stream_chat must call record_approval when resuming a tool approval interrupt.
+
+        Uses real-world mock: tool_call_id is NOT in the interrupt value dict —
+        it must be resolved from the AIMessage.tool_calls in state messages.
+        """
+        thread_id = "test-thread-approval"
+        state = self._make_interrupt_state()
+        agent = self._make_mock_agent(state)
+        checkpointer = self._make_mock_checkpointer()
+
+        events, mock_meta_svc = await self._run_stream(
+            service, thread_id, "approve", agent, checkpointer
+        )
+
+        event_types = [e["type"] for e in events]
+        assert "start" in event_types
+        assert "complete" in event_types
+
+        mock_meta_svc.record_approval.assert_awaited_once_with(
+            thread_id, "call_tool_abc123"
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_chat_records_approval_on_always_allow(self, service):
+        """always_allow should also persist the approval."""
+        thread_id = "test-thread-always-allow"
+        state = self._make_interrupt_state()
+        agent = self._make_mock_agent(state)
+        checkpointer = self._make_mock_checkpointer()
+
+        events, mock_meta_svc = await self._run_stream(
+            service, thread_id, "always_allow", agent, checkpointer
+        )
+
+        mock_meta_svc.record_approval.assert_awaited_once_with(
+            thread_id, "call_tool_abc123"
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_chat_does_not_record_approval_on_deny(self, service):
+        """deny should NOT persist an approval."""
+        thread_id = "test-thread-deny"
+        state = self._make_interrupt_state()
+        agent = self._make_mock_agent(state)
+        checkpointer = self._make_mock_checkpointer()
+
+        events, mock_meta_svc = await self._run_stream(
+            service, thread_id, "deny", agent, checkpointer
+        )
+
+        mock_meta_svc.record_approval.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_stream_chat_disambiguates_tool_call_by_args(self, service):
+        """When the same tool is called multiple times, match by args to find the correct one.
+
+        Simulates: two ms_graph-send_email calls in message history with different args.
+        The interrupt's tool_args should match the second (most recent) call, not the first.
+        """
+        tool_name = "ms_graph-send_email"
+        first_args = {"recipients": ["alice@example.com"], "subject": "First"}
+        second_args = {"recipients": ["bob@example.com"], "subject": "Second"}
+
+        # Build state with two tool calls of the same name but different args
+        mock_interrupt = MagicMock()
+        mock_interrupt.value = {
+            "type": "tool_approval_request",
+            "tool_name": tool_name,
+            "tool_args": second_args,
+        }
+
+        ai_msg = MagicMock()
+        ai_msg.tool_calls = [
+            {"name": tool_name, "id": "call_first", "args": first_args},
+            {"name": tool_name, "id": "call_second", "args": second_args},
+        ]
+
+        state = MagicMock()
+        state.interrupts = [mock_interrupt]
+        state.values = {"messages": [ai_msg]}
+
+        agent = self._make_mock_agent(state)
+        checkpointer = self._make_mock_checkpointer()
+
+        events, mock_meta_svc = await self._run_stream(
+            service, "test-thread-disambig", "approve", agent, checkpointer
+        )
+
+        # Must resolve to "call_second" (matching args), NOT "call_first"
+        mock_meta_svc.record_approval.assert_awaited_once_with(
+            "test-thread-disambig", "call_second"
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_chat_falls_back_to_name_only_when_args_differ(self, service):
+        """When tool_args don't exactly match any tool call, fall back to name-only match.
+
+        This ensures backward compatibility when args are slightly different
+        (e.g., serialization differences).
+        """
+        tool_name = "ms_graph-send_email"
+        interrupt_args = {"recipients": ["user@example.com"], "subject": "Hello"}
+        # Tool call args differ slightly (extra field)
+        tool_call_args = {"recipients": ["user@example.com"], "subject": "Hello", "body": "Hi"}
+
+        mock_interrupt = MagicMock()
+        mock_interrupt.value = {
+            "type": "tool_approval_request",
+            "tool_name": tool_name,
+            "tool_args": interrupt_args,
+        }
+
+        ai_msg = MagicMock()
+        ai_msg.tool_calls = [
+            {"name": tool_name, "id": "call_fallback", "args": tool_call_args},
+        ]
+
+        state = MagicMock()
+        state.interrupts = [mock_interrupt]
+        state.values = {"messages": [ai_msg]}
+
+        agent = self._make_mock_agent(state)
+        checkpointer = self._make_mock_checkpointer()
+
+        events, mock_meta_svc = await self._run_stream(
+            service, "test-thread-fallback", "approve", agent, checkpointer
+        )
+
+        # Falls back to name-only match
+        mock_meta_svc.record_approval.assert_awaited_once_with(
+            "test-thread-fallback", "call_fallback"
+        )
+
+
 class TestGlobalInstance:
     """Test the global chat_service instance."""
 

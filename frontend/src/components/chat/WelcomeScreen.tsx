@@ -2,18 +2,16 @@
 
 import { Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useChatContext } from "@/contexts/ChatContext";
 
 interface WelcomeScreenProps {
   pendingDecisionsCount: number;
-  isLoading: boolean;
-  onSetMessage: (message: string) => void;
 }
 
 export function WelcomeScreen({
   pendingDecisionsCount,
-  isLoading,
-  onSetMessage,
 }: WelcomeScreenProps) {
+  const { onSetMessage, isLoading } = useChatContext();
   return (
     <div className="flex flex-col items-center justify-center h-full text-center">
       <div className="w-16 h-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center mb-4">

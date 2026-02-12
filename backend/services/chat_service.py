@@ -165,6 +165,7 @@ class ChatService:
         # Check if there's an active interrupt that needs to be resumed
         resume_from_interrupt = False
         user_response = None
+        pending_approval_tool_call_id = None
         try:
             t0 = time.time()
             state = await chat_agent.aget_state(config)
@@ -180,6 +181,37 @@ class ChatService:
                 )
                 resume_from_interrupt = True
                 user_response = chat_request.messages[-1].content
+
+                # Extract tool_call_id for approval persistence
+                for interrupt in state.interrupts:
+                    if hasattr(interrupt, "value") and isinstance(interrupt.value, dict):
+                        if interrupt.value.get("type") == "tool_approval_request":
+                            # Try interrupt value first, then resolve from messages
+                            pending_approval_tool_call_id = interrupt.value.get("tool_call_id")
+                            if not pending_approval_tool_call_id:
+                                tool_name = interrupt.value.get("tool_name")
+                                tool_args = interrupt.value.get("tool_args", {})
+                                if tool_name and state.values:
+                                    for msg in reversed(state.values.get("messages", [])):
+                                        if hasattr(msg, "tool_calls") and msg.tool_calls:
+                                            # Match by name AND args for disambiguation
+                                            match = next(
+                                                (tc for tc in msg.tool_calls
+                                                 if tc.get("name") == tool_name
+                                                 and tc.get("args", {}) == tool_args),
+                                                None,
+                                            )
+                                            # Fall back to name-only if args don't match
+                                            if not match:
+                                                match = next(
+                                                    (tc for tc in msg.tool_calls
+                                                     if tc.get("name") == tool_name),
+                                                    None,
+                                                )
+                                            if match:
+                                                pending_approval_tool_call_id = match.get("id")
+                                                break
+                            break
         except Exception as state_error:
             logger.warning(f"Could not check for interrupts: {state_error}")
 
@@ -421,6 +453,20 @@ class ChatService:
             except Exception as checkpoint_error:
                 logger.error(f"Error verifying checkpoints: {checkpoint_error}")
 
+            # Record tool approval if we resumed from a tool approval interrupt
+            if resume_from_interrupt and pending_approval_tool_call_id and user_response in ("approve", "always_allow"):
+                try:
+                    from services.chat_metadata_service import chat_metadata_service
+                    await chat_metadata_service.record_approval(
+                        chat_request.thread_id, pending_approval_tool_call_id
+                    )
+                    logger.info(
+                        f"Recorded tool approval for {chat_request.thread_id}, "
+                        f"tool_call_id={pending_approval_tool_call_id}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to record approval metadata in stream_chat: {e}")
+
             # Send completion signal
             yield {"type": "complete", "data": {"timestamp": datetime.now().isoformat()}}
 
@@ -452,18 +498,29 @@ class ChatService:
         try:
             state = await chat_agent.aget_state(config)
 
-            # Helper function to find most recent ask_user tool call
-            def find_escalation_tool_call():
+            # Helper function to find most recent tool call by name (and optionally args)
+            def find_tool_call(tool_name: str = "ask_user", tool_args: Optional[dict] = None):
                 if not state.values:
                     return None
                 for msg in reversed(state.values.get("messages", [])):
                     if hasattr(msg, "tool_calls") and msg.tool_calls:
-                        escalation_call = next(
-                            (tc for tc in msg.tool_calls if tc.get("name") == "ask_user"),
+                        if tool_args is not None:
+                            # Try name + args match first for disambiguation
+                            match = next(
+                                (tc for tc in msg.tool_calls
+                                 if tc.get("name") == tool_name
+                                 and tc.get("args", {}) == tool_args),
+                                None,
+                            )
+                            if match:
+                                return match
+                        # Fall back to name-only match
+                        match = next(
+                            (tc for tc in msg.tool_calls if tc.get("name") == tool_name),
                             None,
                         )
-                        if escalation_call:
-                            return escalation_call
+                        if match:
+                            return match
                 return None
 
             escalation_data = None
@@ -483,7 +540,7 @@ class ChatService:
 
             # If no active interrupts, check if waiting for resume
             if not escalation_data and state.next and "__interrupt__" in state.next:
-                escalation_call = find_escalation_tool_call()
+                escalation_call = find_tool_call("ask_user")
                 if escalation_call:
                     escalation_data = {
                         "question": escalation_call.get("args", {}).get(
@@ -496,9 +553,18 @@ class ChatService:
             if escalation_data:
                 tool_call_id = None
                 if "tool_call_id" not in escalation_data:
-                    escalation_call = find_escalation_tool_call()
-                    if escalation_call:
-                        tool_call_id = escalation_call.get("id")
+                    # For tool approvals, find the actual tool call by name (and args)
+                    if escalation_data.get("type") == "tool_approval_request":
+                        tool_name = escalation_data.get("tool_name")
+                        if tool_name:
+                            tc = find_tool_call(tool_name, escalation_data.get("tool_args"))
+                            if tc:
+                                tool_call_id = tc.get("id")
+                    else:
+                        # For user questions, find the ask_user call
+                        tc = find_tool_call("ask_user")
+                        if tc:
+                            tool_call_id = tc.get("id")
 
                 # Build escalation based on type
                 if escalation_data.get("type") == "tool_approval_request":
@@ -554,6 +620,35 @@ class ChatService:
             response_data = {"type": response["type"]}  # approve, always_allow, or deny
             if "response" in response:
                 response_data["message"] = response["response"]
+
+            # Record approval in chat metadata for persistence across reloads
+            if response["type"] in ("approve", "always_allow"):
+                try:
+                    # Prefer tool_call_id from request (sent by frontend) over
+                    # re-fetching from state, which can fail if find_tool_call
+                    # doesn't match the tool name in the interrupted state.
+                    tool_call_id = response.get("tool_call_id")
+                    if not tool_call_id:
+                        escalation = await self.check_interrupts(thread_id, chat_agent)
+                        if escalation:
+                            tool_call_id = escalation.get("tool_call_id")
+
+                    if tool_call_id:
+                        from services.chat_metadata_service import chat_metadata_service
+                        await chat_metadata_service.record_approval(
+                            thread_id, tool_call_id
+                        )
+                        logger.info(
+                            f"Recorded tool approval for {thread_id}, "
+                            f"tool_call_id={tool_call_id}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Could not determine tool_call_id for approval recording "
+                            f"in {thread_id}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to record approval metadata: {e}")
         else:
             # User question response (plain text)
             response_data = response.get("response", "")

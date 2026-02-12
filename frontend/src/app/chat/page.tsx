@@ -10,6 +10,7 @@ import {
 } from "@/components/chat";
 import { useChatPage } from "@/hooks/useChatPage";
 import { useChatMessage } from "@/hooks/useChatMessage";
+import { ChatContextProvider } from "@/contexts/ChatContext";
 import { useSearchParams } from "next/navigation";
 
 function ChatPage() {
@@ -28,6 +29,9 @@ function ChatPage() {
     stopStreaming,
     sendEscalationResponse,
     sendToolApprovalResponse,
+    approveToolOnce,
+    alwaysAllowTool,
+    denyTool,
 
     // User settings
     userSettings,
@@ -46,6 +50,11 @@ function ChatPage() {
     handleChatSelect,
     handleDeleteChat,
     handleNewChat,
+    generateChatTitle,
+    renameChat,
+
+    // Thread info
+    threadId,
   } = useChatPage();
 
   // Message interaction state
@@ -64,10 +73,16 @@ function ChatPage() {
   const handleSendMessage = useCallback(async () => {
     if (message.trim() && !isLoading) {
       const messageToSend = message;
+      const wasFirstMessage = messages.length === 0;
       setMessage("");
       await sendMessage(messageToSend, true);
+
+      // Generate title after first exchange
+      if (wasFirstMessage && threadId) {
+        generateChatTitle(threadId).catch(() => {});
+      }
     }
-  }, [message, isLoading, sendMessage]);
+  }, [message, isLoading, sendMessage, messages.length, threadId, generateChatTitle]);
 
   // Handle regenerate message
   const handleRegenerateMessage = useCallback(async (messageIndex: number) => {
@@ -93,27 +108,27 @@ function ChatPage() {
     if (taskId) {
       await sendEscalationResponse(taskId, "approve");
     } else {
-      await sendToolApprovalResponse("approve");
+      await approveToolOnce();
     }
-  }, [taskInfo, searchParams, sendEscalationResponse, sendToolApprovalResponse]);
+  }, [taskInfo, searchParams, sendEscalationResponse, approveToolOnce]);
 
   const handleEscalationDeny = useCallback(async () => {
     const taskId = taskInfo?.id || searchParams.get('task');
     if (taskId) {
       await sendEscalationResponse(taskId, "deny");
     } else {
-      await sendToolApprovalResponse("deny");
+      await denyTool();
     }
-  }, [taskInfo, searchParams, sendEscalationResponse, sendToolApprovalResponse]);
+  }, [taskInfo, searchParams, sendEscalationResponse, denyTool]);
 
   const handleEscalationAlwaysAllow = useCallback(async () => {
     const taskId = taskInfo?.id || searchParams.get('task');
     if (taskId) {
       await sendEscalationResponse(taskId, "always_allow");
     } else {
-      await sendToolApprovalResponse("always_allow");
+      await alwaysAllowTool();
     }
-  }, [taskInfo, searchParams, sendEscalationResponse, sendToolApprovalResponse]);
+  }, [taskInfo, searchParams, sendEscalationResponse, alwaysAllowTool]);
 
   // Auto-scroll effect
   useEffect(() => {
@@ -145,6 +160,7 @@ function ChatPage() {
           onChatSelect={handleChatSelect}
           onDeleteChat={handleDeleteChat}
           onLoadMore={loadMoreChats}
+          onRenameChat={renameChat}
         />
 
         <div className="flex-1 flex flex-col min-w-0">
@@ -156,24 +172,27 @@ function ChatPage() {
             userSettings={userSettings}
           />
 
-          <ChatMessageList
-            ref={messagesEndRef}
-            messages={messages}
-            pendingEscalation={pendingEscalation}
-            pendingDecisionsCount={pendingDecisions.length}
-            error={error}
-            isLoading={isLoading}
-            copiedMessageId={copiedMessageId}
-            ratedMessages={ratedMessages}
-            onCopyMessage={handleCopyMessage}
-            onRegenerateMessage={handleRegenerateMessage}
-            onRateMessage={handleRateMessage}
-            onEscalationSubmit={handleEscalationSubmit}
-            onEscalationApprove={handleEscalationApprove}
-            onEscalationDeny={handleEscalationDeny}
-            onEscalationAlwaysAllow={handleEscalationAlwaysAllow}
-            onSetMessage={setMessage}
-          />
+          <ChatContextProvider value={{
+            copiedMessageId,
+            ratedMessages,
+            onCopyMessage: handleCopyMessage,
+            onRegenerateMessage: handleRegenerateMessage,
+            onRateMessage: handleRateMessage,
+            onEscalationSubmit: handleEscalationSubmit,
+            onEscalationApprove: handleEscalationApprove,
+            onEscalationDeny: handleEscalationDeny,
+            onEscalationAlwaysAllow: handleEscalationAlwaysAllow,
+            onSetMessage: setMessage,
+            isLoading,
+          }}>
+            <ChatMessageList
+              ref={messagesEndRef}
+              messages={messages}
+              pendingEscalation={pendingEscalation}
+              pendingDecisionsCount={pendingDecisions.length}
+              error={error}
+            />
+          </ChatContextProvider>
 
           <ChatInput
             message={message}

@@ -73,6 +73,14 @@ When asked to interview the user or gather requirements, use the AskUserQuestion
 ### No guessing
 Never guess at API field names, model names, or configuration values. Always verify assumptions by testing or reading documentation first. If you're unsure about a field (e.g., MS Graph fields, Azure model names), say so and propose a verification step rather than assuming.
 
+### Bug Fix Process (Test-Driven)
+When the task is to fix a bug:
+1. **Reproduce first**: Write a failing test that reproduces the bug before writing any fix. Place the test in the appropriate test directory (`tests/unit/`, `tests/integration/`).
+2. **Fix the bug**: Implement the fix, preferably using a subagent (Task tool) for the implementation work.
+3. **Verify**: Run the test to confirm it passes. You are done only when the reproducing test is green.
+
+This ensures every bug fix comes with a regression test and the fix is verified.
+
 
 ## Development Workflow
 

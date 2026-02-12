@@ -80,7 +80,8 @@ export function getQueryClient() {
 export const queryClient = getQueryClient()
 
 // Helper function to invalidate queries when WebSocket events are received
-export const invalidateQueriesByEvent = (eventType: string, data: EventData) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const invalidateQueriesByEvent = (eventType: string, _data: EventData) => {
   const client = getQueryClient()
   
   switch (eventType) {
@@ -117,8 +118,8 @@ export const invalidateQueriesByEvent = (eventType: string, data: EventData) => 
       client.invalidateQueries({ queryKey: ['config-validation'] })
       break
     default:
-      // For unknown events, invalidate all queries to be safe
-      console.log(`Unknown event type: ${eventType}`, data)
+      // Silently handle unknown event types (e.g., hook_processing_started)
+      break
   }
 }
 

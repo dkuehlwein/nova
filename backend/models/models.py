@@ -176,6 +176,17 @@ class AgentStatus(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class ChatMetadata(Base):
+    """Metadata for chat conversations (titles, tool approvals)."""
+    __tablename__ = 'chat_metadata'
+
+    thread_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    custom_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    approved_tool_calls: Mapped[List[str]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class LLMModel(Base):
     """
     Model to store LLM model configurations for LiteLLM gateway.

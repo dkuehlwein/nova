@@ -98,4 +98,9 @@ class BackupFile(BaseModel):
 class BackupListResponse(BaseModel):
     """Response model for listing backup files."""
     backups: List[BackupFile] = Field(..., description="List of available backup files")
-    total_count: int = Field(..., description="Total number of backup files") 
+    total_count: int = Field(..., description="Total number of backup files")
+
+
+class ChatTitleUpdateRequest(BaseModel):
+    """Request model for updating a chat conversation title."""
+    title: str = Field(..., min_length=1, max_length=255, description="New title for the chat")

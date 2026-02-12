@@ -1,90 +1,59 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { apiRequest, API_ENDPOINTS, getApiBaseUrlSync } from '@/lib/api';
+import type {
+  ToolCall,
+  ChatMessage,
+  PendingEscalation,
+  ChatState,
+  StreamMessageData,
+  StreamToolData,
+  StreamErrorData,
+  StreamTraceData,
+  StreamEvent,
+} from '@/types/chat';
 
-export interface ToolCall {
-  tool: string;
-  args: Record<string, unknown>;
-  timestamp: string;
-  result?: string;
-  tool_call_id?: string;
-}
+// Re-export for backward compatibility
+export type { ToolCall, ChatMessage, PendingEscalation, ChatState, StreamEvent } from '@/types/chat';
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: string;
-  isStreaming?: boolean;
-  toolCalls?: ToolCall[];
-  metadata?: {
-    type?: string;
-    collapsible_content?: string;
-    is_collapsible?: boolean;
-    title?: string;
-    trace_id?: string;
-    phoenix_url?: string;
+// Helper to apply a buffered tool call or tool result to state
+function applyToolEvent(
+  prev: ChatState,
+  messageId: string,
+  event: { type: 'tool_call' | 'tool_result'; data: StreamToolData },
+  contentUpdate?: string,
+): ChatState {
+  return {
+    ...prev,
+    messages: prev.messages.map(msg => {
+      if (msg.id !== messageId) return msg;
+      if (event.type === 'tool_call') {
+        const toolData = event.data;
+        return {
+          ...msg,
+          content: contentUpdate ?? msg.content,
+          toolCalls: [
+            ...(msg.toolCalls || []),
+            {
+              tool: toolData.tool,
+              args: toolData.args || {},
+              timestamp: toolData.timestamp || new Date().toISOString(),
+              tool_call_id: toolData.tool_call_id,
+            },
+          ],
+        };
+      }
+      // tool_result
+      const resultData = event.data;
+      return {
+        ...msg,
+        toolCalls: (msg.toolCalls || []).map(tc =>
+          tc.tool_call_id === resultData.tool_call_id
+            ? { ...tc, result: resultData.result }
+            : tc
+        ),
+      };
+    }),
   };
-  phoenixUrl?: string;
-}
-
-export interface PendingEscalation {
-  question: string;
-  instructions: string;
-  tool_call_id?: string;
-  type?: 'user_question' | 'tool_approval_request';
-  tool_name?: string;
-  tool_args?: Record<string, unknown>;
-}
-
-export interface ChatState {
-  messages: ChatMessage[];
-  isLoading: boolean;
-  error: string | null;
-  isConnected: boolean;
-  pendingEscalation: PendingEscalation | null;
-  phoenixUrl: string | null;
-}
-
-interface StreamMessageData {
-  role: string;
-  content: string;
-  timestamp?: string;
-  metadata?: {
-    type?: string;
-    is_collapsible?: boolean;
-    title?: string;
-  };
-}
-
-interface StreamToolData {
-  tool: string;
-  args?: Record<string, unknown>;
-  result?: string;
-  tool_call_id?: string;
-  timestamp?: string;
-}
-
-interface StreamErrorData {
-  error: string;
-  details?: string;
-  tool_call_id?: string;
-}
-
-interface StreamStartData {
-  thread_id: string;
-  timestamp: string;
-  trace_id?: string;
-  phoenix_url?: string;
-}
-
-interface StreamTraceData {
-  trace_id?: string;
-  phoenix_url: string;
-}
-
-export interface StreamEvent {
-  type: 'start' | 'message' | 'tool_call' | 'tool_result' | 'complete' | 'error' | 'trace_info';
-  data: StreamStartData | StreamMessageData | StreamToolData | StreamErrorData | StreamTraceData | Record<string, unknown>;
 }
 
 export function useChat() {
@@ -92,7 +61,7 @@ export function useChat() {
     messages: [],
     isLoading: false,
     error: null,
-    isConnected: true, // Start as connected to avoid initial health check
+    isConnected: true, // Updated by health check on mount
     pendingEscalation: null,
     phoenixUrl: null,
   });
@@ -356,57 +325,13 @@ export function useChat() {
                           // Process any buffered tool calls now that we have message content
                           for (const bufferedEvent of bufferedToolCalls) {
                             if (bufferedEvent.type === 'tool_call') {
-                              const toolData = bufferedEvent.data as StreamToolData;
-
-                              // Insert tool marker into content at current position
-                              const marker = `\n\n[[TOOL:${toolCallIndex}]]\n\n`;
-                              assistantContent += marker;
+                              assistantContent += `\n\n[[TOOL:${toolCallIndex}]]\n\n`;
                               toolCallIndex++;
-
-                              // Add tool call to the assistant message
-                              setState(prev => ({
-                                ...prev,
-                                messages: prev.messages.map(msg =>
-                                  msg.id === assistantMessageId
-                                    ? {
-                                        ...msg,
-                                        content: assistantContent,
-                                        toolCalls: [
-                                          ...(msg.toolCalls || []),
-                                          {
-                                            tool: toolData.tool,
-                                            args: toolData.args || {},
-                                            timestamp: toolData.timestamp || new Date().toISOString(),
-                                            tool_call_id: toolData.tool_call_id,
-                                          }
-                                        ]
-                                      }
-                                    : msg
-                                ),
-                              }));
-                            } else if (bufferedEvent.type === 'tool_result') {
-                              const resultData = bufferedEvent.data as StreamToolData;
-                              setState(prev => ({
-                                ...prev,
-                                messages: prev.messages.map(msg => 
-                                  msg.id === assistantMessageId 
-                                    ? {
-                                        ...msg,
-                                        toolCalls: (msg.toolCalls || []).map(toolCall =>
-                                          toolCall.tool_call_id === resultData.tool_call_id
-                                            ? {
-                                                ...toolCall,
-                                                result: resultData.result,
-                                              }
-                                            : toolCall
-                                        )
-                                      }
-                                    : msg
-                                ),
-                              }));
                             }
+                            setState(prev => applyToolEvent(
+                              prev, assistantMessageId!, bufferedEvent, assistantContent
+                            ));
                           }
-                          // Clear the buffer after processing
                           bufferedToolCalls = [];
                         }
                       }
@@ -445,63 +370,31 @@ export function useChat() {
                         }
                       }
                       
-                      // Insert tool marker into content at current position
-                      const toolMarker = `\n\n[[TOOL:${toolCallIndex}]]\n\n`;
-                      assistantContent += toolMarker;
+                      // Insert tool marker into content and add tool call
+                      assistantContent += `\n\n[[TOOL:${toolCallIndex}]]\n\n`;
                       toolCallIndex++;
-
-                      // Add tool call to the assistant message
-                      setState(prev => ({
-                        ...prev,
-                        messages: prev.messages.map(msg =>
-                          msg.id === assistantMessageId
-                            ? {
-                                ...msg,
-                                content: assistantContent,
-                                toolCalls: [
-                                  ...(msg.toolCalls || []),
-                                  {
-                                    tool: toolData.tool,
-                                    args: toolData.args || {},
-                                    timestamp: toolData.timestamp || new Date().toISOString(),
-                                    tool_call_id: toolData.tool_call_id,
-                                  }
-                                ]
-                              }
-                            : msg
-                        ),
-                      }));
+                      setState(prev => applyToolEvent(
+                        prev, assistantMessageId!,
+                        { type: 'tool_call', data: toolData },
+                        assistantContent
+                      ));
                       break;
 
                     case 'tool_result':
                       const resultData = event.data as StreamToolData;
-                      
+
                       // If we haven't received message content yet, buffer this tool result
                       if (!hasReceivedMessageContent) {
                         bufferedToolCalls.push({type: 'tool_result', data: resultData});
                         break;
                       }
-                      
+
                       // If we've already received message content, process tool result immediately
                       if (assistantMessageId) {
-                        setState(prev => ({
-                          ...prev,
-                          messages: prev.messages.map(msg => 
-                            msg.id === assistantMessageId 
-                              ? {
-                                  ...msg,
-                                  toolCalls: (msg.toolCalls || []).map(toolCall =>
-                                    toolCall.tool_call_id === resultData.tool_call_id
-                                      ? {
-                                          ...toolCall,
-                                          result: resultData.result,
-                                        }
-                                      : toolCall
-                                  )
-                                }
-                              : msg
-                          ),
-                        }));
+                        setState(prev => applyToolEvent(
+                          prev, assistantMessageId!,
+                          { type: 'tool_result', data: resultData }
+                        ));
                       }
                       break;
 
@@ -509,45 +402,7 @@ export function useChat() {
                       // Process any remaining buffered tool calls before completing
                       if (bufferedToolCalls.length > 0 && assistantMessageId) {
                         for (const bufferedEvent of bufferedToolCalls) {
-                          if (bufferedEvent.type === 'tool_call') {
-                            const toolData = bufferedEvent.data as StreamToolData;
-                            setState(prev => ({
-                              ...prev,
-                              messages: prev.messages.map(msg =>
-                                msg.id === assistantMessageId
-                                  ? {
-                                      ...msg,
-                                      toolCalls: [
-                                        ...(msg.toolCalls || []),
-                                        {
-                                          tool: toolData.tool,
-                                          args: toolData.args || {},
-                                          timestamp: toolData.timestamp || new Date().toISOString(),
-                                          tool_call_id: toolData.tool_call_id,
-                                        }
-                                      ]
-                                    }
-                                  : msg
-                              ),
-                            }));
-                          } else if (bufferedEvent.type === 'tool_result') {
-                            const resultData = bufferedEvent.data as StreamToolData;
-                            setState(prev => ({
-                              ...prev,
-                              messages: prev.messages.map(msg =>
-                                msg.id === assistantMessageId
-                                  ? {
-                                      ...msg,
-                                      toolCalls: (msg.toolCalls || []).map(toolCall =>
-                                        toolCall.tool_call_id === resultData.tool_call_id
-                                          ? { ...toolCall, result: resultData.result }
-                                          : toolCall
-                                      )
-                                    }
-                                  : msg
-                              ),
-                            }));
-                          }
+                          setState(prev => applyToolEvent(prev, assistantMessageId!, bufferedEvent));
                         }
                         bufferedToolCalls = [];
                       }
@@ -641,6 +496,10 @@ export function useChat() {
                           });
                         }
                       }
+                      break;
+
+                    default:
+                      // Silently ignore unknown event types (e.g. hook_processing_started)
                       break;
                   }
                 } catch (parseError) {
@@ -889,26 +748,44 @@ export function useChat() {
     }
   }, [state.pendingEscalation, currentThreadId, loadTaskChat]);
 
+  // Mark the most recent pending tool call as approved in local message state
+  const markToolCallApproved = useCallback((toolCallId?: string) => {
+    if (!toolCallId) return;
+    setState(prev => ({
+      ...prev,
+      messages: prev.messages.map(msg => ({
+        ...msg,
+        toolCalls: msg.toolCalls?.map(tc =>
+          tc.tool_call_id === toolCallId ? { ...tc, approved: true } : tc
+        ),
+      })),
+    }));
+  }, []);
+
   // Tool approval specific responses
   const approveToolOnce = useCallback(async () => {
     if (!state.pendingEscalation || state.pendingEscalation.type !== 'tool_approval_request') {
       throw new Error('No pending tool approval to respond to');
     }
 
+    const approvedToolCallId = state.pendingEscalation.tool_call_id;
     setState(prev => ({ ...prev, isLoading: true, pendingEscalation: null }));
+    markToolCallApproved(approvedToolCallId);
 
     try {
       await apiRequest(API_ENDPOINTS.escalationResponse(currentThreadId), {
         method: 'POST',
-        body: JSON.stringify({ type: 'approve' }),
+        body: JSON.stringify({ type: 'approve', tool_call_id: approvedToolCallId }),
       });
 
-      // Reload task chat after approval
+      // Reload chat after approval
       setTimeout(async () => {
         try {
           if (currentThreadId.startsWith('core_agent_task_')) {
             const taskId = currentThreadId.replace('core_agent_task_', '');
             await loadTaskChat(taskId);
+          } else {
+            await loadChat(currentThreadId);
           }
         } catch (error) {
           console.warn('Failed to reload chat after tool approval:', error);
@@ -922,27 +799,31 @@ export function useChat() {
       setState(prev => ({ ...prev, error: errorMessage, isLoading: false }));
       throw error;
     }
-  }, [state.pendingEscalation, currentThreadId, loadTaskChat]);
+  }, [state.pendingEscalation, currentThreadId, loadTaskChat, loadChat]);
 
   const alwaysAllowTool = useCallback(async () => {
     if (!state.pendingEscalation || state.pendingEscalation.type !== 'tool_approval_request') {
       throw new Error('No pending tool approval to respond to');
     }
 
+    const approvedToolCallId = state.pendingEscalation.tool_call_id;
     setState(prev => ({ ...prev, isLoading: true, pendingEscalation: null }));
+    markToolCallApproved(approvedToolCallId);
 
     try {
       await apiRequest(API_ENDPOINTS.escalationResponse(currentThreadId), {
         method: 'POST',
-        body: JSON.stringify({ type: 'always_allow' }),
+        body: JSON.stringify({ type: 'always_allow', tool_call_id: approvedToolCallId }),
       });
 
-      // Reload task chat after approval
+      // Reload chat after approval
       setTimeout(async () => {
         try {
           if (currentThreadId.startsWith('core_agent_task_')) {
             const taskId = currentThreadId.replace('core_agent_task_', '');
             await loadTaskChat(taskId);
+          } else {
+            await loadChat(currentThreadId);
           }
         } catch (error) {
           console.warn('Failed to reload chat after tool approval:', error);
@@ -956,7 +837,7 @@ export function useChat() {
       setState(prev => ({ ...prev, error: errorMessage, isLoading: false }));
       throw error;
     }
-  }, [state.pendingEscalation, currentThreadId, loadTaskChat]);
+  }, [state.pendingEscalation, currentThreadId, loadTaskChat, loadChat]);
 
   const denyTool = useCallback(async () => {
     if (!state.pendingEscalation || state.pendingEscalation.type !== 'tool_approval_request') {
@@ -971,12 +852,14 @@ export function useChat() {
         body: JSON.stringify({ type: 'deny' }),
       });
 
-      // Reload task chat after denial
+      // Reload chat after denial
       setTimeout(async () => {
         try {
           if (currentThreadId.startsWith('core_agent_task_')) {
             const taskId = currentThreadId.replace('core_agent_task_', '');
             await loadTaskChat(taskId);
+          } else {
+            await loadChat(currentThreadId);
           }
         } catch (error) {
           console.warn('Failed to reload chat after tool denial:', error);
@@ -990,7 +873,40 @@ export function useChat() {
       setState(prev => ({ ...prev, error: errorMessage, isLoading: false }));
       throw error;
     }
-  }, [state.pendingEscalation, currentThreadId, loadTaskChat]);
+  }, [state.pendingEscalation, currentThreadId, loadTaskChat, loadChat]);
+
+  // Health check: verify backend connectivity on mount and periodically
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const baseUrl = getApiBaseUrlSync();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(`${baseUrl}${API_ENDPOINTS.health}`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        setState(prev => prev.isConnected === res.ok ? prev : { ...prev, isConnected: res.ok });
+      } catch {
+        setState(prev => prev.isConnected === false ? prev : { ...prev, isConnected: false });
+      }
+    };
+
+    checkHealth();
+    const intervalId = setInterval(checkHealth, 30_000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // Cleanup: abort any in-flight streaming request on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   return {
     // State

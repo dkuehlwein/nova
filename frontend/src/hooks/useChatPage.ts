@@ -134,6 +134,9 @@ export function useChatPage() {
     }
   }, [chatOffset, loadingMoreChats, hasMoreChats, loadChats]);
 
+  // Extract stable function references from chat to avoid infinite loops
+  const { loadTaskChat, loadChat, clearChat } = chat;
+
   // Handle chat selection
   const handleChatSelect = useCallback(async (chatItem: ChatHistoryItem) => {
     try {
@@ -142,17 +145,17 @@ export function useChatPage() {
         const newUrl = `/chat?thread=${threadId}&task=${chatItem.task_id}`;
         router.push(newUrl);
         setTaskInfo({ id: chatItem.task_id, title: chatItem.title });
-        await chat.loadTaskChat(chatItem.task_id);
+        await loadTaskChat(chatItem.task_id);
       } else {
         const newUrl = `/chat?thread=${chatItem.id}`;
         router.push(newUrl);
         setTaskInfo(null);
-        await chat.loadChat(chatItem.id);
+        await loadChat(chatItem.id);
       }
     } catch (error) {
       console.error('Failed to load chat:', error);
     }
-  }, [chat.loadTaskChat, chat.loadChat, router]);
+  }, [loadTaskChat, loadChat, router]);
 
   // Handle delete chat
   const handleDeleteChat = useCallback(async (chatItem: ChatHistoryItem, e: React.MouseEvent) => {
@@ -189,7 +192,7 @@ export function useChatPage() {
         const currentThread = searchParams.get('thread');
         if (currentThread === chatItem.id) {
           router.push('/chat');
-          chat.clearChat();
+          clearChat();
           setTaskInfo(null);
         }
       }
@@ -199,14 +202,14 @@ export function useChatPage() {
     } finally {
       setDeletingChatId(null);
     }
-  }, [searchParams, router, chat.clearChat]);
+  }, [searchParams, router, clearChat]);
 
   // Handle new chat
   const handleNewChat = useCallback(() => {
     router.push('/chat');
     setTaskInfo(null);
-    chat.clearChat();
-  }, [router, chat.clearChat]);
+    clearChat();
+  }, [router, clearChat]);
 
   // Sort chat history by last message timestamp (newest first)
   const sortedChatHistory = useMemo(() => {
@@ -219,19 +222,34 @@ export function useChatPage() {
       });
   }, [chatHistory]);
 
-  // Extract stable function references from chat to avoid infinite loops
-  const { loadTaskChat, loadChat } = chat;
-
   // Initial data loading
   useEffect(() => {
     if (dataLoaded) return;
 
-    const threadParam = searchParams.get('thread');
-    const taskParam = searchParams.get('task');
+    const initialize = async () => {
+      const threadParam = searchParams.get('thread');
+      const taskParam = searchParams.get('task');
 
-    if (threadParam) {
-      if (taskParam) {
-        const fetchTaskInfo = async () => {
+      // Load sidebar data (decisions + chat history) - independent of thread loading
+      const loadSidebarData = async () => {
+        try {
+          setLoadingDecisions(true);
+          const decisions = await apiRequest<PendingDecision[]>(API_ENDPOINTS.pendingDecisions);
+          setPendingDecisions(decisions);
+          await loadChats(0, true, decisions);
+        } catch (error) {
+          console.error('Failed to load chat data:', error);
+        } finally {
+          setLoadingDecisions(false);
+        }
+      };
+
+      // Load active thread data
+      const loadThreadData = async () => {
+        if (!threadParam) return;
+
+        if (taskParam) {
+          // Await task info before loading task chat
           try {
             const task = await apiRequest<{ id: string; title: string }>(`/api/tasks/${taskParam}`);
             setTaskInfo({ id: task.id, title: task.title });
@@ -239,30 +257,52 @@ export function useChatPage() {
             console.error(`Task ${taskParam} not found in database.`);
             setTaskInfo({ id: taskParam, title: `Orphaned Task ${taskParam.substring(0, 8)}` });
           }
-        };
-        fetchTaskInfo();
-        loadTaskChat(taskParam);
-      } else {
-        loadChat(threadParam);
-      }
-    }
+          await loadTaskChat(taskParam);
+        } else {
+          await loadChat(threadParam);
+        }
+      };
 
-    const loadData = async () => {
-      try {
-        setLoadingDecisions(true);
-        const decisions = await apiRequest<PendingDecision[]>(API_ENDPOINTS.pendingDecisions);
-        setPendingDecisions(decisions);
-        await loadChats(0, true, decisions);
-        setDataLoaded(true);
-      } catch (error) {
-        console.error('Failed to load chat data:', error);
-      } finally {
-        setLoadingDecisions(false);
-      }
+      // Run sidebar and thread loading in parallel (they're independent)
+      await Promise.all([loadSidebarData(), loadThreadData()]);
+      setDataLoaded(true);
     };
 
-    loadData();
+    initialize();
   }, [dataLoaded, searchParams, loadTaskChat, loadChat, loadChats]);
+
+  // Generate an LLM title for a chat and update sidebar
+  const generateChatTitle = useCallback(async (threadId: string) => {
+    try {
+      const result = await apiRequest<{ title: string; generated: boolean }>(
+        API_ENDPOINTS.generateTitle(threadId),
+        { method: 'POST' }
+      );
+      if (result.title) {
+        setChatHistory(prev => prev.map(ch =>
+          ch.id === threadId ? { ...ch, title: result.title } : ch
+        ));
+      }
+    } catch {
+      // Title generation is best-effort
+    }
+  }, []);
+
+  // Rename a chat (user-initiated)
+  const renameChat = useCallback(async (threadId: string, newTitle: string) => {
+    try {
+      await apiRequest(API_ENDPOINTS.updateTitle(threadId), {
+        method: 'PATCH',
+        body: JSON.stringify({ title: newTitle }),
+      });
+      setChatHistory(prev => prev.map(ch =>
+        ch.id === threadId ? { ...ch, title: newTitle } : ch
+      ));
+    } catch (error) {
+      console.error('Failed to rename chat:', error);
+      throw error;
+    }
+  }, []);
 
   return {
     // From useChat
@@ -280,6 +320,9 @@ export function useChatPage() {
     loadTaskChat: chat.loadTaskChat,
     sendEscalationResponse: chat.sendEscalationResponse,
     sendToolApprovalResponse: chat.sendToolApprovalResponse,
+    approveToolOnce: chat.approveToolOnce,
+    alwaysAllowTool: chat.alwaysAllowTool,
+    denyTool: chat.denyTool,
 
     // User settings
     userSettings,
@@ -298,5 +341,7 @@ export function useChatPage() {
     handleChatSelect,
     handleDeleteChat,
     handleNewChat,
+    generateChatTitle,
+    renameChat,
   };
 }

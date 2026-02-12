@@ -150,6 +150,10 @@ class ConversationService:
 
             logger.debug(f"Collected {len(tool_results)} tool results")
 
+            # Fetch approved tool call IDs from metadata
+            from services.chat_metadata_service import chat_metadata_service
+            approved_tool_call_ids = await chat_metadata_service.get_approved_tool_calls(thread_id)
+
             # Group messages by turn (separated by HumanMessage)
             turns = []
             current_turn = []
@@ -253,6 +257,9 @@ class ConversationService:
                                             "content"
                                         ]
 
+                                    if tool_call_id and tool_call_id in approved_tool_call_ids:
+                                        tool_call_obj["approved"] = True
+
                                     tool_index = len(all_tool_calls)
                                     merged_content_parts.append(TOOL_PLACEHOLDER_TEMPLATE.format(index=tool_index))
                                     all_tool_calls.append(tool_call_obj)
@@ -348,6 +355,12 @@ class ConversationService:
                 task_id = thread_id.replace(TASK_THREAD_PREFIX, "")
                 return f"Task Chat (ID: {task_id[:8]}...)"
 
+        # Check for custom title in metadata
+        from services.chat_metadata_service import chat_metadata_service
+        custom_title = await chat_metadata_service.get_title(thread_id)
+        if custom_title:
+            return custom_title
+
         # For regular chats, use first user message
         first_user_msg = next((msg for msg in messages if msg.sender == "user"), None)
         if first_user_msg:
@@ -355,6 +368,74 @@ class ConversationService:
             return title + "..." if len(first_user_msg.content) > 50 else title
 
         return "New Chat"
+
+    async def generate_title(
+        self, thread_id: str, messages: List[ChatMessageDetail]
+    ) -> Optional[str]:
+        """Generate an LLM-based title for a regular chat conversation.
+
+        Only generates for non-task chats with at least one user and assistant message.
+        Returns None if generation fails (caller should use fallback).
+        """
+        if thread_id.startswith(TASK_THREAD_PREFIX):
+            return None
+
+        user_msgs = [m for m in messages if m.sender == "user"]
+        assistant_msgs = [m for m in messages if m.sender == "assistant"]
+        if not user_msgs or not assistant_msgs:
+            return None
+
+        first_user = user_msgs[0].content[:500]
+        first_assistant = assistant_msgs[0].content[:500]
+
+        try:
+            import aiohttp
+            from utils.llm_factory import get_litellm_config, get_chat_llm_config
+
+            llm_config = get_chat_llm_config()
+            litellm_config = get_litellm_config()
+
+            url = f"{litellm_config['base_url']}/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {litellm_config['api_key']}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": llm_config["model"],
+                "messages": [{
+                    "role": "user",
+                    "content": (
+                        "Generate a short, descriptive title (max 6 words) for this conversation. "
+                        "Return ONLY the title text, nothing else.\n\n"
+                        f"User: {first_user}\n\n"
+                        f"Assistant: {first_assistant}"
+                    ),
+                }],
+                "max_tokens": 30,
+                "temperature": 0.3,
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers, json=payload) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.warning(f"LiteLLM title generation failed: {response.status} - {error_text}")
+                        return None
+                    result = await response.json()
+
+            title = result["choices"][0]["message"]["content"].strip().strip('"\'')
+            if len(title) > 60:
+                title = title[:57] + "..."
+
+            # Store the generated title
+            from services.chat_metadata_service import chat_metadata_service
+            await chat_metadata_service.set_title(thread_id, title)
+
+            return title
+
+        except Exception as e:
+            logger.warning(f"Failed to generate chat title for {thread_id}: {e}")
+            return None
 
     async def get_summary(
         self, thread_id: str, checkpointer: CheckpointerProtocol

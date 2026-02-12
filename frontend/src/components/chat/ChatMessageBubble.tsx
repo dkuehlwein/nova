@@ -1,33 +1,36 @@
 "use client";
 
+import { useCallback } from "react";
 import { Loader2, Copy, RotateCcw, Check, ThumbsUp, ThumbsDown, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { SystemMessage } from "./SystemMessage";
 import { formatTimestamp } from "@/lib/format-utils";
-import type { ChatMessage } from "@/hooks/useChat";
+import { useChatContext } from "@/contexts/ChatContext";
+import type { ChatMessage } from "@/types/chat";
 
 interface ChatMessageBubbleProps {
   message: ChatMessage;
   messageIndex: number;
-  copiedMessageId: string | null;
-  ratedMessages: Record<string, 'up' | 'down'>;
-  isLoading: boolean;
-  onCopy: (messageId: string, content: string) => void;
-  onRegenerate: (messageIndex: number) => void;
-  onRate: (messageId: string, rating: 'up' | 'down') => void;
 }
 
 export function ChatMessageBubble({
   message,
   messageIndex,
-  copiedMessageId,
-  ratedMessages,
-  isLoading,
-  onCopy,
-  onRegenerate,
-  onRate,
 }: ChatMessageBubbleProps) {
+  const {
+    copiedMessageId,
+    ratedMessages,
+    onCopyMessage: onCopy,
+    onRegenerateMessage,
+    onRateMessage: onRate,
+    isLoading,
+  } = useChatContext();
+
+  const onRegenerate = useCallback((index: number) => {
+    if (index === 0) return;
+    onRegenerateMessage(index);
+  }, [onRegenerateMessage]);
   // Handle system messages
   if (message.role === "system") {
     return (

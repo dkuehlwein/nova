@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
+import { useChatContext } from "@/contexts/ChatContext";
 
 interface EscalationBoxProps {
   question: string;
@@ -12,11 +13,6 @@ interface EscalationBoxProps {
   escalationType?: 'user_question' | 'tool_approval_request';
   toolName?: string;
   toolArgs?: Record<string, unknown>;
-  onSubmit: (response: string) => Promise<void>;
-  onApprove?: () => Promise<void>;
-  onDeny?: () => Promise<void>;
-  onAlwaysAllow?: () => Promise<void>;
-  isSubmitting?: boolean;
 }
 
 export function EscalationBox({
@@ -25,12 +21,14 @@ export function EscalationBox({
   escalationType = 'user_question',
   toolName,
   toolArgs,
-  onSubmit,
-  onApprove,
-  onDeny,
-  onAlwaysAllow,
-  isSubmitting = false
 }: EscalationBoxProps) {
+  const {
+    onEscalationSubmit: onSubmit,
+    onEscalationApprove: onApprove,
+    onEscalationDeny: onDeny,
+    onEscalationAlwaysAllow: onAlwaysAllow,
+    isLoading: isSubmitting,
+  } = useChatContext();
   const [response, setResponse] = useState("");
 
   const handleSubmit = async () => {

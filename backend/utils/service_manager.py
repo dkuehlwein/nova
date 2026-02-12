@@ -243,8 +243,10 @@ class ServiceManager:
                 async with db_manager.get_session() as session:
                     await session.execute(text("SELECT 1 FROM tasks LIMIT 1"))
                 self.logger.info("Database already initialized")
+                # Always sync schema to pick up new models (create_all is safe - uses checkfirst)
+                await db_manager.create_tables()
                 return
-                
+
             except Exception:
                 # Tables don't exist - run init_db
                 self.logger.info("Database needs initialization, running init_db...")

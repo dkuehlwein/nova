@@ -216,4 +216,6 @@ export const API_ENDPOINTS = {
   taskChatData: (id: string) => `/chat/conversations/${id}/task-data`,
   escalationResponse: (id: string) => `/chat/conversations/${id}/escalation-response`,
   deleteChat: (id: string) => `/chat/conversations/${id}`,
+  generateTitle: (id: string) => `/chat/conversations/${id}/generate-title`,
+  updateTitle: (id: string) => `/chat/conversations/${id}/title`,
 } as const; 

@@ -1,67 +1,28 @@
 "use client";
 
-import { forwardRef, useCallback } from "react";
+import { forwardRef } from "react";
 import { AlertTriangle } from "lucide-react";
 import { ChatMessageBubble } from "./ChatMessageBubble";
 import { EscalationBox } from "./EscalationBox";
 import { WelcomeScreen } from "./WelcomeScreen";
-import type { ChatMessage, PendingEscalation } from "@/hooks/useChat";
+import type { ChatMessage, PendingEscalation } from "@/types/chat";
 
 interface ChatMessageListProps {
   messages: ChatMessage[];
   pendingEscalation: PendingEscalation | null;
   pendingDecisionsCount: number;
   error: string | null;
-  isLoading: boolean;
-  copiedMessageId: string | null;
-  ratedMessages: Record<string, 'up' | 'down'>;
-  onCopyMessage: (id: string, content: string) => void;
-  onRegenerateMessage: (index: number) => void;
-  onRateMessage: (id: string, rating: 'up' | 'down') => void;
-  onEscalationSubmit: (response: string) => Promise<void>;
-  onEscalationApprove: () => Promise<void>;
-  onEscalationDeny: () => Promise<void>;
-  onEscalationAlwaysAllow: () => Promise<void>;
-  onSetMessage: (message: string) => void;
 }
 
 export const ChatMessageList = forwardRef<HTMLDivElement, ChatMessageListProps>(
   function ChatMessageList(
-    {
-      messages,
-      pendingEscalation,
-      pendingDecisionsCount,
-      error,
-      isLoading,
-      copiedMessageId,
-      ratedMessages,
-      onCopyMessage,
-      onRegenerateMessage,
-      onRateMessage,
-      onEscalationSubmit,
-      onEscalationApprove,
-      onEscalationDeny,
-      onEscalationAlwaysAllow,
-      onSetMessage,
-    },
+    { messages, pendingEscalation, pendingDecisionsCount, error },
     ref
   ) {
-    const handleRegenerate = useCallback((messageIndex: number) => {
-      if (messageIndex === 0) return;
-      const userMessage = messages[messageIndex - 1];
-      if (userMessage && userMessage.role === 'user') {
-        onRegenerateMessage(messageIndex);
-      }
-    }, [messages, onRegenerateMessage]);
-
     if (messages.length === 0) {
       return (
         <div className="flex-1 overflow-y-auto chat-container p-4">
-          <WelcomeScreen
-            pendingDecisionsCount={pendingDecisionsCount}
-            isLoading={isLoading}
-            onSetMessage={onSetMessage}
-          />
+          <WelcomeScreen pendingDecisionsCount={pendingDecisionsCount} />
         </div>
       );
     }
@@ -74,12 +35,6 @@ export const ChatMessageList = forwardRef<HTMLDivElement, ChatMessageListProps>(
               key={msg.id}
               message={msg}
               messageIndex={index}
-              copiedMessageId={copiedMessageId}
-              ratedMessages={ratedMessages}
-              isLoading={isLoading}
-              onCopy={onCopyMessage}
-              onRegenerate={handleRegenerate}
-              onRate={onRateMessage}
             />
           ))}
 
@@ -91,11 +46,6 @@ export const ChatMessageList = forwardRef<HTMLDivElement, ChatMessageListProps>(
               escalationType={pendingEscalation.type || 'user_question'}
               toolName={pendingEscalation.tool_name}
               toolArgs={pendingEscalation.tool_args}
-              onSubmit={onEscalationSubmit}
-              onApprove={onEscalationApprove}
-              onDeny={onEscalationDeny}
-              onAlwaysAllow={onEscalationAlwaysAllow}
-              isSubmitting={isLoading}
             />
           )}
 
