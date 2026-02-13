@@ -352,8 +352,10 @@ class OutlookService:
                 return {"error": f"Email with ID {email_id} not found"}
             
             result = await loop.run_in_executor(None, _read_email)
+            if not isinstance(result, dict):
+                return {"error": f"Unexpected result from read_email: {str(result)}"}
             return result
-            
+
         except Exception as e:
             logger.error(f"Error reading email: {e}")
             return {"error": f"Failed to read email: {str(e)}"}
@@ -416,6 +418,8 @@ class OutlookService:
                 }
 
             result = await loop.run_in_executor(None, _create_draft)
+            if not isinstance(result, dict):
+                return {"error": f"Unexpected result from create_draft: {str(result)}"}
             return result
 
         except Exception as e:
@@ -481,6 +485,8 @@ class OutlookService:
                 }
 
             result = await loop.run_in_executor(None, _send_email)
+            if not isinstance(result, dict):
+                return {"error": f"Unexpected result from send_email: {str(result)}"}
             return result
 
         except Exception as e:
@@ -865,6 +871,8 @@ class OutlookService:
                 }
 
             result = await loop.run_in_executor(None, _search_contacts_and_emails)
+            if not isinstance(result, dict):
+                return {"found": False, "error": f"Unexpected result: {str(result)}"}
             return result
 
         except Exception as e:
