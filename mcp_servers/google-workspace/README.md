@@ -79,12 +79,12 @@ If OAuth fails in WSL2, try these solutions:
 ## Available Tools
 
 ### Gmail Tools
-- `send_email(recipient_ids, subject, message)` - Send email
+- `send_email(recipients, subject, body)` - Send email
 - `get_unread_emails()` - Get unread emails from inbox
 - `read_email_content(email_id)` - Read specific email content
 - `mark_email_as_read(email_id)` - Mark email as read
 - `trash_email(email_id)` - Move email to trash
-- `create_draft_email(recipient_ids, subject, message)` - Create draft
+- `create_draft(recipients, subject, body)` - Create draft
 - `list_draft_emails()` - List all drafts
 - `search_all_emails(query, max_results)` - Search with Gmail syntax
 - `archive_email(email_id)` - Archive email

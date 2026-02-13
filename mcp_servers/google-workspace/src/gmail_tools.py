@@ -31,11 +31,11 @@ class GmailTools:
         self.gmail_service = gmail_service
         self.user_email = user_email
     
-    async def send_email(self, recipient_ids: List[str], subject: str, message: str) -> dict:
+    async def send_email(self, recipients: List[str], subject: str, body: str) -> dict:
         try:
             message_obj = EmailMessage()
-            message_obj.set_content(message)
-            message_obj['To'] = ", ".join(recipient_ids)
+            message_obj.set_content(body)
+            message_obj['To'] = ", ".join(recipients)
             message_obj['From'] = self.user_email
             message_obj['Subject'] = subject
             encoded_message = base64.urlsafe_b64encode(message_obj.as_bytes()).decode()
@@ -136,11 +136,11 @@ class GmailTools:
             logger.error(f"Error marking email {email_id} as read: {error}")
             return {"status": "error", "error_message": f"An HttpError occurred marking email {email_id} as read: {str(error)}"}
 
-    async def create_draft(self, recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
+    async def create_draft(self, recipients: List[str], subject: str, body: str) -> Dict[str, str]:
         try:
             message_obj = EmailMessage()
-            message_obj.set_content(message)
-            message_obj['To'] = ", ".join(recipient_ids)
+            message_obj.set_content(body)
+            message_obj['To'] = ", ".join(recipients)
             message_obj['From'] = self.user_email
             message_obj['Subject'] = subject
             encoded_message = base64.urlsafe_b64encode(message_obj.as_bytes()).decode()
