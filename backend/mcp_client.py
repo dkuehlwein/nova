@@ -151,29 +151,58 @@ class MCPClientManager:
         logger.info(f"Found {len(servers)} MCP servers via LiteLLM")
         return servers
 
-    def _convert_json_schema_to_pydantic_fields(self, schema: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert JSON Schema properties to Pydantic field definitions."""
-        properties = schema.get("properties", {})
-        required = set(schema.get("required", []))
-        fields = {}
+    def _resolve_json_schema_type(self, prop_schema: Dict[str, Any]) -> tuple:
+        """Resolve a JSON Schema property to a Python type, handling anyOf/oneOf.
 
+        Returns (python_type, nullable) tuple.
+        """
         type_mapping = {
             "string": str,
             "integer": int,
             "number": float,
             "boolean": bool,
             "array": list,
-            "object": dict
+            "object": dict,
         }
 
+        # Direct type
+        if "type" in prop_schema:
+            return type_mapping.get(prop_schema["type"], str), False
+
+        # anyOf / oneOf: pick the first non-null type, track if null is allowed
+        for key in ("anyOf", "oneOf"):
+            variants = prop_schema.get(key, [])
+            if not variants:
+                continue
+            resolved_type = str
+            nullable = False
+            for variant in variants:
+                vtype = variant.get("type")
+                if vtype == "null":
+                    nullable = True
+                elif vtype:
+                    resolved_type = type_mapping.get(vtype, str)
+            return resolved_type, nullable
+
+        return str, False
+
+    def _convert_json_schema_to_pydantic_fields(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert JSON Schema properties to Pydantic field definitions."""
+        properties = schema.get("properties", {})
+        required = set(schema.get("required", []))
+        fields = {}
+
         for prop_name, prop_schema in properties.items():
-            prop_type = prop_schema.get("type", "string")
-            python_type = type_mapping.get(prop_type, str)
+            python_type, nullable = self._resolve_json_schema_type(prop_schema)
+
+            if nullable:
+                python_type = Optional[python_type]
 
             default = prop_schema.get("default", ...)
             if prop_name not in required and default == ...:
                 default = None
-                python_type = Optional[python_type]
+                if not nullable:
+                    python_type = Optional[python_type]
 
             fields[prop_name] = (python_type, default)
 

@@ -239,22 +239,27 @@ class TestLangGraphToolApproval:
         assert expected_tools.issubset(tool_names), f"Missing Nova tools: {expected_tools - tool_names}"
 
         # Test that permissions are applied correctly based on default config
+        # Note: In test environment, ConfigRegistry is not initialized so the
+        # hardcoded default config is used (ToolPermissionsConfig.get_default_config()),
+        # which only pre-approves read-only tools: get_tasks, search_memory, get_task_by_id
         approval_tools = [t for t in tools if "[REQUIRES APPROVAL]" in t.description]
         pre_approved_tools = [t for t in tools if "[REQUIRES APPROVAL]" not in t.description]
 
-        # With default config, most task tools are pre-approved
-        # Only create_task should require approval by default
-        assert len(approval_tools) >= 1, f"Expected at least 1 approval tool, got {len(approval_tools)}"
-        assert len(pre_approved_tools) >= 5, f"Expected at least 5 pre-approved tools, got {len(pre_approved_tools)}"
+        # Default config pre-approves only read-only tools (get_tasks, get_task_by_id, search_memory)
+        # All write tools (create_task, update_task, add_memory, enable_skill, disable_skill) require approval
+        assert len(approval_tools) >= 5, f"Expected at least 5 approval tools, got {len(approval_tools)}"
+        assert len(pre_approved_tools) >= 3, f"Expected at least 3 pre-approved tools, got {len(pre_approved_tools)}"
 
         # Verify that read-only tools are pre-approved
         readonly_tools = {"get_tasks", "get_task_by_id", "search_memory"}
         readonly_tool_names = {t.name for t in pre_approved_tools}
         assert readonly_tools.issubset(readonly_tool_names), "Read-only tools should be pre-approved"
 
-        # Verify create_task requires approval (default config)
+        # Verify write tools require approval (default config)
         approval_tool_names = {t.name for t in approval_tools}
         assert "create_task" in approval_tool_names, "create_task should require approval"
+        assert "update_task" in approval_tool_names, "update_task should require approval with default config"
+        assert "add_memory" in approval_tool_names, "add_memory should require approval with default config"
 
 
 class TestToolPermissionConfiguration:

@@ -2,7 +2,7 @@
 Integration test for chat title generation against real LiteLLM.
 
 Reproduces NOV-114: generate_title() fails to produce a valid title because
-the configured LLM model (e.g. nemotron-3-nano) echoes the prompt back instead
+the configured LLM model echoes the prompt back instead
 of following instructions. This causes the title to never be persisted.
 
 Requires: LiteLLM running at localhost:4000, PostgreSQL running.
@@ -103,7 +103,7 @@ class TestTitleGenerationWithLiteLLM:
     async def test_generate_title_not_prompt_leak(self):
         """The generated title should not contain prompt instruction text.
 
-        Small models like nemotron-3-nano tend to echo instructions back.
+        Small local models tend to echo instructions back.
         The title should be an actual title, not prompt content.
         """
         from backend.services.conversation_service import ConversationService

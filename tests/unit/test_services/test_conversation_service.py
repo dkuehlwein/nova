@@ -603,7 +603,7 @@ class TestGenerateTitleSanitization:
     async def test_strips_thinking_tokens(self, service):
         """Test that thinking tokens from reasoning models are stripped.
 
-        Models like nemotron output <think>...</think> before the actual answer.
+        Reasoning models output <think>...</think> before the actual answer.
         The title should be extracted from after the closing tag.
         """
         messages = self._make_messages()
