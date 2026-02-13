@@ -18,7 +18,6 @@ permissions:
   # MS Graph (Microsoft 365) tools
   - ms_graph-list_emails
   - ms_graph-read_email
-  - ms_graph-create_draft
   - ms_graph-list_calendar_events
   - ms_graph-create_event
   - ms_graph-update_event
@@ -32,7 +31,7 @@ permissions:
   deny:
   - mcp_tool(*)
   - google_workspace-send_email
-  - outlook_mac-send_email
+  - ms_graph-create_draft
   - ms_graph-send_email
 settings:
   audit_enabled: true
