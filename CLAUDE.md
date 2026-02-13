@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Coding Principles
+
+### Think Before Coding
+- State assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+- Never guess at API field names, model names, or configuration values. Verify by testing or reading docs first.
+- When encountering integration issues with external libraries, check GitHub Issues and test API capabilities directly before writing workarounds.
+
+### Simplicity First
+- Minimum code that solves the problem. Nothing speculative.
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If 200 lines could be 50, rewrite it.
+
 ## Essential Development Commands
 
 ### Backend Development
@@ -69,9 +87,6 @@ docker-compose up -d nova-frontend
 
 ### Requirement gathering 
 When asked to interview the user or gather requirements, use the AskUserQuestion tool (or equivalent interactive tool) instead of outputting a text-based list of questions.
-
-### No guessing
-Never guess at API field names, model names, or configuration values. Always verify assumptions by testing or reading documentation first. If you're unsure about a field (e.g., MS Graph fields, Azure model names), say so and propose a verification step rather than assuming.
 
 ### Bug Fix Process (Test-Driven)
 When the task is to fix a bug:
@@ -147,16 +162,6 @@ Nova is an AI-powered kanban task management system with a dual-agent architectu
 - **Required fields**: timestamp, level, service, message, request_id
 - Pattern: `logger.info("message", extra={"data": {...}})`
 
-### Code Smells to Flag
-
-When working on the codebase, **proactively inform the user** if you notice any signs for bad code. e.g.:
-
-1. **Large files (>500 lines)**: Component/module files exceeding 500 lines should be split into smaller, focused modules
-2. **Mixed concerns**: Files containing multiple unrelated components or mixing UI with business logic
-3. **Duplicate code**: Similar patterns repeated across multiple files that could be abstracted
-4. **Deep nesting**: Components or functions with excessive nesting levels (>3-4 levels)
-5. **God components**: React components doing too many things - should be split by responsibility
-
 ### Directory Structure & Responsibilities
 
 ```
@@ -182,8 +187,10 @@ backend/
 │   └── websocket_endpoints.py # Real-time connections
 ├── database/              # Database layer
 ├── models/                # Pydantic models
-├── email_processing/      # Email fetching and processing
+├── input_hooks/           # Input hooks (email, calendar processing)
 ├── memory/               # Graph memory system (Graphiti)
+├── services/             # Service layer (health, chat, LLM, etc.)
+├── skills/               # Pluggable skills system
 ├── tasks/                # Celery background tasks
 ├── tools/                # LangChain tools for agents
 ├── utils/                # Shared utilities (service management, logging, etc.)
@@ -199,6 +206,7 @@ Nova uses a 3-tier test structure (see "Running Tests" commands above):
 | **Unit** | `tests/unit/` | None (isolated, all mocked) | Fast |
 | **Integration** | `tests/integration/` | PostgreSQL, Redis | Medium |
 | **End-to-End** | `tests/end2end/` | Full Docker stack | Slow |
+| **Evals** | `tests/evals/` | Eval framework | Varies |
 
 Notes: All tests use pytest-asyncio. Rebuild Docker images before E2E tests.
 
@@ -233,20 +241,6 @@ Notes: All tests use pytest-asyncio. Rebuild Docker images before E2E tests.
 - **Redis Events**: Pub/sub for service coordination via `utils/redis_manager.py`
 - **MCP Integration**: External tools via `mcp_client.py`
 - **Memory System**: Graph-based memory via `memory/graphiti_manager.py`
-
-### Common Patterns to Follow
-1. Use existing service infrastructure (ServiceManager, db_manager, etc.)
-2. Add structured logging with context to all operations
-3. Follow single responsibility principle for API endpoints
-4. Use async/await throughout for better performance
-5. Leverage hot-reload for prompts and configuration changes
-
-### Research Before Implementing
-When encountering integration issues with external libraries:
-1. **Check GitHub Issues first** - Search the library's issue tracker for similar problems before writing custom workarounds
-2. **Test API capabilities directly** - Use `curl` or simple test scripts to verify what the external service actually supports (e.g., test LM Studio's `response_format` support directly)
-3. **Understand the library's architecture** - Read the source code to understand where your override needs to hook in (e.g., graphiti-core's `_create_structured_completion` vs `_handle_structured_response`)
-4. **Avoid hardcoded fixes** - If a hack is needed, make it configurable or at least document why the proper solution doesn't work
 
 ### Architecture Decision Records (ADRs)
 Detailed architectural decisions are documented in `docs/adr/`. Key ADRs:
@@ -285,5 +279,3 @@ When debugging, do not guess at the root cause. Start by reproducing the issue, 
 - **Settings not persisting**: Restart Nova backend after changing LLM settings
 - **Container code outdated**: Remember `docker-compose restart` doesn't reload code - rebuild with `docker-compose build`
 
-### Troubleshooting Examples
-<!-- Add curl examples here as issues are encountered and resolved -->
