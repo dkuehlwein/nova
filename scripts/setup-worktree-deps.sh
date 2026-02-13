@@ -23,7 +23,7 @@ fi
 # Backend: run uv sync for a correct venv with proper paths
 if [ -f "$WORKTREE/backend/pyproject.toml" ]; then
     echo "Setting up Python venv in $WORKTREE/backend..."
-    (cd "$WORKTREE/backend" && uv sync)
+    (cd "$WORKTREE/backend" && uv sync --python 3.13)
     echo "Python venv ready."
 else
     echo "Skipping backend (no pyproject.toml found)."
