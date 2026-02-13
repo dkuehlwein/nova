@@ -42,19 +42,41 @@ If the ticket can't be found, tell the user and stop.
 If ambiguous, default to `feature/`.
 
 **Build the branch name**: `{prefix}{TICKET-ID}-{slugified-title}`
-- Slugify: lowercase, replace spaces/special chars with hyphens, trim to ~50 chars
+- Slugify: lowercase, replace spaces and special chars with hyphens, collapse multiple hyphens, strip leading/trailing hyphens, trim to ~50 chars at a word boundary
+- Only use characters valid in git branch names (alphanumeric, `-`, `/`, `.`)
 - Example: `fix/NOV-123-login-crash-on-empty-email`
 
 **Create the worktree**:
-1. Make sure we're in the main repo directory
-2. Fetch latest from remote: `git fetch origin`
-3. Create the branch and worktree in one command:
+1. Verify we're in a git repo with a valid `origin/main` (or `origin/master`)
+2. Check for uncommitted changes in the current worktree - warn the user if any exist
+3. Fetch latest from remote: `git fetch origin`
+4. Check if branch or worktree already exists:
+   - `git worktree list` to check for existing `../nova-{TICKET-ID}`
+   - `git branch --list {branch-name}` to check for existing branch
+   - If either exists, ask the user: reuse existing, pick a different name, or abort
+5. Create the branch and worktree:
    ```
    git worktree add ../nova-{TICKET-ID} -b {branch-name} origin/main
    ```
    - Worktree goes in a sibling directory named `nova-{TICKET-ID}` (e.g., `../nova-NOV-123`)
    - Branch is based off `origin/main`
-4. If the worktree or branch already exists, inform the user and ask how to proceed (reuse existing, or pick a different name)
+6. If any git operation fails (network, auth, conflicts), report the error clearly and stop - don't retry blindly
+
+**Symlink dependencies** (immediately after creating the worktree):
+
+Worktrees share source code via git but gitignored directories like `.venv` and `node_modules` are missing. Reinstalling from scratch is slow and usually unnecessary — symlink them from the main repo instead.
+
+```bash
+# Python venv
+ln -s "$(pwd)/backend/.venv" ../nova-{TICKET-ID}/backend/.venv
+
+# Node modules
+ln -s "$(pwd)/frontend/node_modules" ../nova-{TICKET-ID}/frontend/node_modules
+```
+
+Only create symlinks for directories that actually exist in the main repo. If `backend/.venv` doesn't exist, skip it (the user hasn't set up Python yet). Same for `node_modules`.
+
+**When NOT to symlink**: If the ticket explicitly involves changing dependencies (e.g., adding/removing packages, upgrading versions, modifying `pyproject.toml` or `package.json`), warn the user that a shared symlink may cause conflicts and ask whether they'd prefer a fresh install instead.
 
 ### Phase 3: Choose the Workflow
 
@@ -96,7 +118,8 @@ Ask the user to confirm or adjust the workflow choice.
 
 **Example subagent prompt structure:**
 ```
-You are working on Linear ticket {TICKET-ID}: "{title}"
+You are working on the Nova project - an AI-powered kanban task management system.
+Your task is Linear ticket {TICKET-ID}: "{title}"
 
 ## Ticket Details
 {full description}
@@ -104,16 +127,23 @@ You are working on Linear ticket {TICKET-ID}: "{title}"
 ## Acceptance Criteria
 {criteria from ticket}
 
+## Comments / Additional Context
+{any relevant comments from the ticket}
+
 ## Working Directory
-Work in: {absolute path to worktree}
+Work exclusively in: {absolute path to worktree}
 Branch: {branch-name}
+Read CLAUDE.md in the worktree root for architecture patterns, testing strategy, and conventions.
 
 ## Workflow
 Start by invoking the {recommended skill} skill to guide your approach.
 {Brief explanation of why this skill fits}
 
-When implementation is complete, run all relevant tests to verify.
-Do NOT commit or push - leave that for the user to review.
+## When Done
+1. Run all relevant tests to verify your changes (see CLAUDE.md for test commands)
+2. Summarize what you changed: which files, what approach, any decisions made
+3. List any open questions or follow-ups
+4. Do NOT commit or push - the user will review first
 ```
 
 Launch the subagent and let it work. Report back the results when it finishes.
@@ -125,3 +155,12 @@ Launch the subagent and let it work. Report back the results when it finishes.
 - **Respect existing worktrees.** If `../nova-{TICKET-ID}` already exists, ask before doing anything.
 - **The subagent does the work.** This skill's job is setup and orchestration only.
 - **No commits from subagent.** The subagent should write code and run tests, but leave committing to the user.
+
+## Common Mistakes
+
+- **Launching without confirmation** - Always show the summary and get user approval before spawning the subagent
+- **Wrong workflow for the ticket type** - Bugs almost always benefit from `/systematic-debugging` or `/tdd`. Don't use `/brainstorm` for a straightforward bug.
+- **Not checking for existing worktrees** - If `../nova-{TICKET-ID}` exists, the user may already be working on it. Ask first.
+- **Subagent modifying Linear** - The subagent should only write code and tests, not update ticket status or add comments
+- **Forgetting to pass acceptance criteria** - If the ticket has acceptance criteria, they MUST be in the subagent prompt. They drive the test plan.
+- **Skipping test verification** - The subagent must run tests before reporting completion. Untested changes are not done.
