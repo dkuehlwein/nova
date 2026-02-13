@@ -14,8 +14,8 @@ fi
 case "$FILE_PATH" in
   *.py)
     # Format with ruff (silently ignore failures)
-    ruff format "$FILE_PATH" 2>/dev/null || true
-    ruff check --fix "$FILE_PATH" 2>/dev/null || true
+    uv run ruff format "$FILE_PATH" 2>/dev/null || true
+    uv run ruff check --fix "$FILE_PATH" 2>/dev/null || true
     ;;
   *.ts|*.tsx|*.js|*.jsx|*.json|*.css)
     # Format with prettier (silently ignore failures)
