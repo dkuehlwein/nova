@@ -395,13 +395,24 @@ class ConversationService:
                 return False
         return True
 
+    def _title_from_message(self, content: str) -> str:
+        """Create a title by truncating the first user message."""
+        title = content[:50]
+        if len(content) > 50:
+            title += "..."
+        return title
+
     async def generate_title(
         self, thread_id: str, messages: List[ChatMessageDetail]
     ) -> Optional[str]:
-        """Generate an LLM-based title for a regular chat conversation.
+        """Generate a title for a regular chat conversation and persist it.
+
+        Tries LLM-based generation first. If the model returns unusable text
+        (e.g. prompt leak from small models), falls back to truncating the
+        first user message. Either way, the title is persisted to the database.
 
         Only generates for non-task chats with at least one user and assistant message.
-        Returns None if generation fails or the LLM returns unusable text.
+        Returns None only for task chats or chats without enough messages.
         """
         if thread_id.startswith(TASK_THREAD_PREFIX):
             return None
@@ -413,6 +424,7 @@ class ConversationService:
 
         first_user = user_msgs[0].content[:500]
         first_assistant = assistant_msgs[0].content[:500]
+        title = None
 
         try:
             import aiohttp
@@ -437,7 +449,6 @@ class ConversationService:
                         f"Assistant: {first_assistant}"
                     ),
                 }],
-                "max_tokens": 30,
                 "temperature": 0.3,
             }
 
@@ -447,27 +458,36 @@ class ConversationService:
                     if response.status != 200:
                         error_text = await response.text()
                         logger.warning(f"LiteLLM title generation failed: {response.status} - {error_text}")
-                        return None
-                    result = await response.json()
+                    else:
+                        result = await response.json()
+                        candidate = result["choices"][0]["message"]["content"].strip()
 
-            title = result["choices"][0]["message"]["content"].strip().strip('"\'')
+                        # Strip thinking tokens (e.g. nemotron outputs <think>...</think> before the answer)
+                        if "</think>" in candidate:
+                            candidate = candidate.split("</think>")[-1].strip()
 
-            if not self._is_valid_title(title):
-                logger.warning(f"LLM returned unusable title for {thread_id}: {title!r}")
-                return None
+                        candidate = candidate.strip('"\'')
 
-            if len(title) > 60:
-                title = title[:57] + "..."
-
-            # Store the generated title
-            from services.chat_metadata_service import chat_metadata_service
-            await chat_metadata_service.set_title(thread_id, title)
-
-            return title
+                        if self._is_valid_title(candidate):
+                            title = candidate
+                        else:
+                            logger.warning(f"LLM returned unusable title for {thread_id}: {candidate!r}")
 
         except Exception as e:
-            logger.warning(f"Failed to generate chat title for {thread_id}: {e}")
-            return None
+            logger.warning(f"LLM title generation failed for {thread_id}: {e}")
+
+        # Fall back to first user message if LLM didn't produce a valid title
+        if title is None:
+            title = self._title_from_message(first_user)
+
+        if len(title) > 60:
+            title = title[:57] + "..."
+
+        # Persist the title
+        from services.chat_metadata_service import chat_metadata_service
+        await chat_metadata_service.set_title(thread_id, title)
+
+        return title
 
     async def get_summary(
         self, thread_id: str, checkpointer: CheckpointerProtocol

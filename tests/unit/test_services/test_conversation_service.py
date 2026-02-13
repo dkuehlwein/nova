@@ -416,8 +416,8 @@ class TestGenerateTitle:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_generate_title_http_error_returns_none(self, service):
-        """Test that HTTP errors return None gracefully."""
+    async def test_generate_title_http_error_falls_back(self, service):
+        """Test that HTTP errors fall back to first user message title."""
         from backend.models.chat import ChatMessageDetail
 
         messages = [
@@ -444,10 +444,13 @@ class TestGenerateTitle:
 
         with patch("aiohttp.ClientSession", return_value=mock_session), \
              patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
-             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}):
+             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
+             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
             result = await service.generate_title("chat-123", messages)
 
-        assert result is None
+        # Falls back to first user message
+        assert result == "Hello"
+        mock_set_title.assert_called_once_with("chat-123", "Hello")
 
     @pytest.mark.asyncio
     async def test_generate_title_truncates_long_title(self, service):
@@ -523,9 +526,10 @@ class TestGenerateTitleSanitization:
 
     @pytest.mark.asyncio
     async def test_rejects_title_containing_prompt_text(self, service):
-        """Test that titles echoing the prompt instruction are rejected.
+        """Test that titles echoing the prompt instruction fall back to first message.
 
         Bug NOV-114: Some LLMs echo back the prompt instead of generating a title.
+        The fallback title (first user message) should be persisted instead.
         """
         messages = self._make_messages()
 
@@ -539,13 +543,13 @@ class TestGenerateTitleSanitization:
              patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
             result = await service.generate_title("chat-123", messages)
 
-        # Should reject the prompt echo and return None
-        assert result is None
-        mock_set_title.assert_not_called()
+        # Should fall back to first user message and persist it
+        assert result == "How do I deploy to Kubernetes?"
+        mock_set_title.assert_called_once_with("chat-123", "How do I deploy to Kubernetes?")
 
     @pytest.mark.asyncio
     async def test_rejects_title_with_instruction_language(self, service):
-        """Test that titles containing meta-instruction language are rejected."""
+        """Test that titles containing meta-instruction language fall back to first message."""
         messages = self._make_messages()
 
         # LLM returns instruction-like text
@@ -558,12 +562,13 @@ class TestGenerateTitleSanitization:
              patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
             result = await service.generate_title("chat-123", messages)
 
-        assert result is None
-        mock_set_title.assert_not_called()
+        # Should fall back to first user message and persist it
+        assert result == "How do I deploy to Kubernetes?"
+        mock_set_title.assert_called_once_with("chat-123", "How do I deploy to Kubernetes?")
 
     @pytest.mark.asyncio
     async def test_rejects_empty_title(self, service):
-        """Test that empty/whitespace-only titles are rejected."""
+        """Test that empty/whitespace-only LLM titles fall back to first message."""
         messages = self._make_messages()
 
         mock_session = self._mock_llm_response("   ")
@@ -574,8 +579,9 @@ class TestGenerateTitleSanitization:
              patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
             result = await service.generate_title("chat-123", messages)
 
-        assert result is None
-        mock_set_title.assert_not_called()
+        # Should fall back to first user message and persist it
+        assert result == "How do I deploy to Kubernetes?"
+        mock_set_title.assert_called_once_with("chat-123", "How do I deploy to Kubernetes?")
 
     @pytest.mark.asyncio
     async def test_accepts_valid_short_title(self, service):
@@ -583,6 +589,32 @@ class TestGenerateTitleSanitization:
         messages = self._make_messages()
 
         mock_session = self._mock_llm_response("Kubernetes Deployment Guide")
+
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
+             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
+             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
+             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
+            result = await service.generate_title("chat-123", messages)
+
+        assert result == "Kubernetes Deployment Guide"
+        mock_set_title.assert_called_once_with("chat-123", "Kubernetes Deployment Guide")
+
+    @pytest.mark.asyncio
+    async def test_strips_thinking_tokens(self, service):
+        """Test that thinking tokens from reasoning models are stripped.
+
+        Models like nemotron output <think>...</think> before the actual answer.
+        The title should be extracted from after the closing tag.
+        """
+        messages = self._make_messages()
+
+        thinking_response = (
+            "We need a short title for this conversation about Kubernetes deployment. "
+            "Something like 'Kubernetes Deployment Guide'.\n"
+            "</think>\n"
+            "Kubernetes Deployment Guide"
+        )
+        mock_session = self._mock_llm_response(thinking_response)
 
         with patch("aiohttp.ClientSession", return_value=mock_session), \
              patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
