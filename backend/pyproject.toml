@@ -69,4 +69,5 @@ dev = [
     "httpx>=0.28.1",
     "pytest>=8.3.5",
     "pytest-asyncio>=1.0.0",
+    "ruff>=0.15.1",
 ]
