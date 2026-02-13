@@ -490,6 +490,134 @@ class TestGenerateTitle:
         assert result.endswith("...")
 
 
+class TestGenerateTitleSanitization:
+    """Test that generate_title rejects bad LLM responses."""
+
+    def _make_messages(self):
+        from backend.models.chat import ChatMessageDetail
+        return [
+            ChatMessageDetail(
+                id="1", sender="user", content="How do I deploy to Kubernetes?",
+                created_at="2025-01-08T10:00:00Z", needs_decision=False,
+            ),
+            ChatMessageDetail(
+                id="2", sender="assistant", content="Here's how to deploy to K8s...",
+                created_at="2025-01-08T10:00:01Z", needs_decision=False,
+            ),
+        ]
+
+    def _mock_llm_response(self, content):
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={
+            "choices": [{"message": {"content": content}}]
+        })
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_response)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        return mock_session
+
+    @pytest.mark.asyncio
+    async def test_rejects_title_containing_prompt_text(self, service):
+        """Test that titles echoing the prompt instruction are rejected.
+
+        Bug NOV-114: Some LLMs echo back the prompt instead of generating a title.
+        """
+        messages = self._make_messages()
+
+        # LLM echoes back the prompt
+        echoed_prompt = "Generate a short, descriptive title (max 6 words) for this conversation."
+        mock_session = self._mock_llm_response(echoed_prompt)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
+             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
+             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
+             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
+            result = await service.generate_title("chat-123", messages)
+
+        # Should reject the prompt echo and return None
+        assert result is None
+        mock_set_title.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_title_with_instruction_language(self, service):
+        """Test that titles containing meta-instruction language are rejected."""
+        messages = self._make_messages()
+
+        # LLM returns instruction-like text
+        bad_title = "Return ONLY the title text, nothing else"
+        mock_session = self._mock_llm_response(bad_title)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
+             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
+             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
+             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
+            result = await service.generate_title("chat-123", messages)
+
+        assert result is None
+        mock_set_title.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_empty_title(self, service):
+        """Test that empty/whitespace-only titles are rejected."""
+        messages = self._make_messages()
+
+        mock_session = self._mock_llm_response("   ")
+
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
+             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
+             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
+             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
+            result = await service.generate_title("chat-123", messages)
+
+        assert result is None
+        mock_set_title.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_accepts_valid_short_title(self, service):
+        """Test that valid short titles are accepted."""
+        messages = self._make_messages()
+
+        mock_session = self._mock_llm_response("Kubernetes Deployment Guide")
+
+        with patch("aiohttp.ClientSession", return_value=mock_session), \
+             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
+             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
+             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
+            result = await service.generate_title("chat-123", messages)
+
+        assert result == "Kubernetes Deployment Guide"
+        mock_set_title.assert_called_once_with("chat-123", "Kubernetes Deployment Guide")
+
+
+class TestGetTitleErrorHandling:
+    """Test that get_title handles metadata service errors gracefully."""
+
+    @pytest.mark.asyncio
+    async def test_get_title_falls_back_on_metadata_error(self, service):
+        """Bug NOV-114: If chat_metadata_service.get_title() throws, get_title should
+        not crash -- it should fall back to the first user message."""
+        from backend.models.chat import ChatMessageDetail
+
+        messages = [
+            ChatMessageDetail(
+                id="1", sender="user", content="How do I fix my Docker build?",
+                created_at="2025-01-08T10:00:00Z", needs_decision=False,
+            ),
+        ]
+
+        with patch("services.chat_metadata_service.chat_metadata_service.get_title",
+                    new_callable=AsyncMock, side_effect=Exception("DB table does not exist")):
+            result = await service.get_title("chat-123", messages)
+
+        # Should fall back to first user message, not crash
+        assert result == "How do I fix my Docker build?"
+
+
 class TestGetSummary:
     """Test conversation summary building."""
 
