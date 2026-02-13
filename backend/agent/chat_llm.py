@@ -54,9 +54,9 @@ def _clean_tool_schema(tool_dict: Dict[str, Any]) -> Dict[str, Any]:
 class NovaChatOpenAI(ChatOpenAI):
     """ChatOpenAI wrapper that cleans tool schemas before binding.
 
-    Some local LLM providers (e.g., LM Studio with Nemotron models) fail
-    when tool schemas contain 'default': null values due to Jinja template
-    rendering issues. This wrapper removes those null defaults.
+    Some local LLM providers (e.g., LM Studio) fail when tool schemas
+    contain 'default': null values due to Jinja template rendering issues.
+    This wrapper removes those null defaults.
     """
 
     def bind_tools(

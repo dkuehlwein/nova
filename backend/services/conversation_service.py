@@ -462,7 +462,7 @@ class ConversationService:
                         result = await response.json()
                         candidate = result["choices"][0]["message"]["content"].strip()
 
-                        # Strip thinking tokens (e.g. nemotron outputs <think>...</think> before the answer)
+                        # Strip thinking tokens (reasoning models output <think>...</think> before the answer)
                         if "</think>" in candidate:
                             candidate = candidate.split("</think>")[-1].strip()
 
