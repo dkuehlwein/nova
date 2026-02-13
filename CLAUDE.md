@@ -243,6 +243,20 @@ Notes: All tests use pytest-asyncio. Rebuild Docker images before E2E tests.
 - **Memory System**: Graph-based memory via `memory/graphiti_manager.py`
 
 ### Architecture Decision Records (ADRs)
+
+**ADR Format Requirements:**
+- Header: Status, Date, Updated, Supersedes (if applicable)
+- Implementation Notes block
+- Sections: Context, Decision, Architecture, Key Components table, Consequences, Related ADRs
+- Footer: Last reviewed date
+- Target length: 100-200 lines, under 10KB
+- No full code blocks (reference file paths instead)
+- No emojis in documentation
+- No work packages or implementation diaries
+- Diagrams: simple ASCII, max 15-20 lines
+- Status must be one of: Proposed, Accepted, Implemented, Partial, Superseded
+- Update `docs/adr/README.md` index when adding a new ADR
+
 Detailed architectural decisions are documented in `docs/adr/`. Key ADRs:
 - **ADR-002**: Human-in-the-loop via `ask_user` tool and LangGraph interrupts
 - **ADR-003**: Graphiti memory system with Neo4j (`memory/graphiti_manager.py`)
