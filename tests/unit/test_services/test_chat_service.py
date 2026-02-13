@@ -409,17 +409,41 @@ class TestCheckInterrupts:
         assert result["tool_call_id"] == "call_only"
 
 
+class TestResumeInterruptImport:
+    """Test that resume_interrupt uses a valid import for Command.
+
+    Regression test for NOV-116: the original code imported Command from
+    'langgraph.graph.graph' which does not exist in langgraph >= 1.0.
+    The correct import is 'from langgraph.types import Command'.
+    """
+
+    @pytest.mark.asyncio
+    async def test_resume_interrupt_does_not_raise_import_error(self, service):
+        """resume_interrupt must not fail with ModuleNotFoundError on Command import.
+
+        This test does NOT mock 'langgraph.graph.graph' so the real import runs.
+        Before the fix, this raises:
+            ModuleNotFoundError: No module named 'langgraph.graph.graph'
+        """
+        mock_agent = AsyncMock()
+        mock_agent.aupdate_state = AsyncMock()
+        mock_agent.ainvoke = AsyncMock()
+
+        with patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
+            mock_meta_svc.record_approval = AsyncMock()
+
+            # Should NOT raise ModuleNotFoundError
+            result = await service.resume_interrupt(
+                "test-thread",
+                {"type": "approve", "tool_call_id": "call_abc"},
+                mock_agent,
+            )
+
+        assert result["success"] is True
+
+
 class TestResumeInterrupt:
     """Test interrupt resumption and approval persistence."""
-
-    def _patch_langgraph_imports(self):
-        """Context manager to mock langgraph lazy imports used inside resume_interrupt."""
-        mock_command = MagicMock()
-        mock_module = MagicMock()
-        mock_module.Command = mock_command
-        return patch.dict("sys.modules", {
-            "langgraph.graph.graph": mock_module,
-        })
 
     @pytest.mark.asyncio
     async def test_uses_tool_call_id_from_request_body(self, service):
@@ -428,8 +452,7 @@ class TestResumeInterrupt:
         mock_agent.aupdate_state = AsyncMock()
         mock_agent.ainvoke = AsyncMock()
 
-        with self._patch_langgraph_imports(), \
-             patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
+        with patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
              patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
             mock_check.return_value = {
                 "type": "tool_approval_request",
@@ -456,8 +479,7 @@ class TestResumeInterrupt:
         mock_agent.aupdate_state = AsyncMock()
         mock_agent.ainvoke = AsyncMock()
 
-        with self._patch_langgraph_imports(), \
-             patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
+        with patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
              patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
             mock_check.return_value = None
             mock_meta_svc.record_approval = AsyncMock()
@@ -478,8 +500,7 @@ class TestResumeInterrupt:
         mock_agent.aupdate_state = AsyncMock()
         mock_agent.ainvoke = AsyncMock()
 
-        with self._patch_langgraph_imports(), \
-             patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
+        with patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
              patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
             mock_check.return_value = {
                 "type": "tool_approval_request",
@@ -504,8 +525,7 @@ class TestResumeInterrupt:
         mock_agent.aupdate_state = AsyncMock()
         mock_agent.ainvoke = AsyncMock()
 
-        with self._patch_langgraph_imports(), \
-             patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
+        with patch.object(service, "check_interrupts", new_callable=AsyncMock) as mock_check, \
              patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
             mock_check.return_value = {
                 "type": "tool_approval_request",
@@ -527,8 +547,7 @@ class TestResumeInterrupt:
         mock_agent.aupdate_state = AsyncMock()
         mock_agent.ainvoke = AsyncMock()
 
-        with self._patch_langgraph_imports(), \
-             patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
+        with patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
             mock_meta_svc.record_approval = AsyncMock()
 
             await service.resume_interrupt(
@@ -544,8 +563,7 @@ class TestResumeInterrupt:
         mock_agent.aupdate_state = AsyncMock()
         mock_agent.ainvoke = AsyncMock()
 
-        with self._patch_langgraph_imports(), \
-             patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
+        with patch("services.chat_metadata_service.chat_metadata_service") as mock_meta_svc:
             mock_meta_svc.record_approval = AsyncMock(side_effect=Exception("DB down"))
 
             result = await service.resume_interrupt(

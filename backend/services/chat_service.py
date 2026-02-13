@@ -610,7 +610,7 @@ class ChatService:
             Dict with success status
         """
         from langchain_core.runnables import RunnableConfig
-        from langgraph.graph.graph import Command
+        from langgraph.types import Command
 
         config = RunnableConfig(configurable={"thread_id": thread_id})
 
