@@ -80,29 +80,70 @@ Evaluate the results:
   4. If **dismiss**: proceed to Phase 6.
   5. Loop a maximum of 3 iterations. After 3 rounds with issues still present, tell the user: "Code review loop limit reached. Please continue manually." Stop here.
 
-### Phase 6: Merge
+### Phase 6: Merge and Verify on Main
 
-Squash merge the PR:
-```
-gh pr merge --squash --delete-branch
-```
+Unit tests ran on the branch (Phase 2). Now merge locally and run integration tests on main before pushing.
 
-If the merge fails (e.g., conflicts or failing checks): stop and tell the user to resolve the issue manually. Do NOT force merge.
+**Note the PR number** from Phase 4 -- you'll need it for the commit message.
+
+1. **Switch to main and pull latest**:
+   ```
+   git checkout main
+   git pull origin main
+   ```
+
+2. **Squash merge the branch**:
+   ```
+   git merge --squash <branch-name>
+   ```
+   If this fails (conflicts): `git merge --abort`, switch back to the branch, and tell the user to resolve manually. Stop here.
+
+3. **Run integration tests on main**:
+   ```
+   cd backend && uv run pytest ../tests/integration -v
+   ```
+   - If tests **pass**: continue to step 4.
+   - If tests **fail**: reset main and go back to the branch:
+     ```
+     git reset --hard origin/main
+     git checkout <branch-name>
+     ```
+     Show the failures and tell the user to fix on the branch. Stop here.
+
+4. **Commit the squash merge** with both the PR number and ticket ID:
+   ```
+   git commit -m "fix: Resolve login crash (NOV-123) (#42)"
+   ```
+   Use conventional commit format. The PR number goes at the end in parentheses.
+
+5. **Push main**:
+   ```
+   git push origin main
+   ```
+   This automatically closes the PR on GitHub.
+
+6. **Delete the remote branch**:
+   ```
+   git push origin --delete <branch-name>
+   ```
 
 ### Phase 7: Update Ticket and Cleanup
 
 **Update the ticket**: set the Linear ticket status to "Done" using `update_issue`.
 
-**Check for worktree**: run `git worktree list` and check whether the current working directory is inside a git worktree (not the main repo).
+**Clean up the local branch**:
+```
+git branch -d <branch-name>
+```
 
-- If in a worktree:
-  1. Tell the user to `cd` back to the main repo directory first.
-  2. Then remove the worktree: `git worktree remove <worktree-path>`
+**Check for worktree**: run `git worktree list` and check whether the original working directory was a git worktree.
+
+- If in a worktree: remove it with `git worktree remove <worktree-path>`
 - If not in a worktree: skip cleanup.
 
 **Report completion**:
 ```
-Ticket NOV-123 done. PR #42 merged. Worktree cleaned up.
+Ticket NOV-123 done. PR #42 merged to main. Worktree cleaned up.
 ```
 
 ## Edge Cases
@@ -110,7 +151,8 @@ Ticket NOV-123 done. PR #42 merged. Worktree cleaned up.
 - **Not on a feature branch** (on `main` or `master`): stop immediately with an error message.
 - **No ticket ID in branch name**: ask the user for the ticket identifier.
 - **PR already exists**: reuse the existing PR instead of creating a new one.
-- **Merge conflicts**: stop and tell the user to resolve manually. Never force merge.
+- **Merge conflicts on squash**: `git merge --abort`, switch back to the branch, tell user to resolve.
+- **Integration tests fail on main**: `git reset --hard origin/main`, switch back to branch, show failures.
 - **Code review loop limit** (3 iterations): stop the loop and tell the user to continue manually.
 - **Not in a worktree**: skip the worktree cleanup step gracefully.
 
@@ -119,7 +161,8 @@ Ticket NOV-123 done. PR #42 merged. Worktree cleaned up.
 - **Proceeding with failing tests** - If tests fail in Phase 2, the pipeline stops. No exceptions.
 - **Not checking for an existing PR** - Always check `gh pr list --head <branch>` before creating a new PR. Duplicate PRs cause confusion.
 - **Skipping code review** - The code review step (Phase 5) is mandatory. Always invoke the skill.
-- **Force merging with conflicts** - If `gh pr merge` fails, stop. Never use `--admin` or force flags.
+- **Pushing main with failing integration tests** - If integration tests fail on main, reset immediately. Never push broken main.
+- **Forgetting to reset main on failure** - Always `git reset --hard origin/main` before switching back to the branch.
 - **Forgetting to update Linear ticket status** - Update to "In Review" after PR creation AND to "Done" after merge. Both updates matter.
 - **Removing worktree while still in it** - The user must `cd` out of the worktree directory before it can be removed.
 
