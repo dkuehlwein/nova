@@ -356,10 +356,13 @@ class ConversationService:
                 return f"Task Chat (ID: {task_id[:8]}...)"
 
         # Check for custom title in metadata
-        from services.chat_metadata_service import chat_metadata_service
-        custom_title = await chat_metadata_service.get_title(thread_id)
-        if custom_title:
-            return custom_title
+        try:
+            from services.chat_metadata_service import chat_metadata_service
+            custom_title = await chat_metadata_service.get_title(thread_id)
+            if custom_title:
+                return custom_title
+        except Exception as e:
+            logger.warning(f"Error fetching custom title for {thread_id}: {e}")
 
         # For regular chats, use first user message
         first_user_msg = next((msg for msg in messages if msg.sender == "user"), None)
@@ -369,13 +372,36 @@ class ConversationService:
 
         return "New Chat"
 
+    # Phrases that indicate the LLM echoed the prompt instead of generating a title
+    _PROMPT_LEAK_PHRASES = [
+        "generate a",
+        "descriptive title",
+        "return only",
+        "nothing else",
+        "max 6 words",
+        "for this conversation",
+    ]
+
+    def _is_valid_title(self, title: str) -> bool:
+        """Check whether an LLM-generated title is usable.
+
+        Rejects empty titles and titles that look like the prompt was echoed back.
+        """
+        if not title:
+            return False
+        lower = title.lower()
+        for phrase in self._PROMPT_LEAK_PHRASES:
+            if phrase in lower:
+                return False
+        return True
+
     async def generate_title(
         self, thread_id: str, messages: List[ChatMessageDetail]
     ) -> Optional[str]:
         """Generate an LLM-based title for a regular chat conversation.
 
         Only generates for non-task chats with at least one user and assistant message.
-        Returns None if generation fails (caller should use fallback).
+        Returns None if generation fails or the LLM returns unusable text.
         """
         if thread_id.startswith(TASK_THREAD_PREFIX):
             return None
@@ -415,7 +441,8 @@ class ConversationService:
                 "temperature": 0.3,
             }
 
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(url, headers=headers, json=payload) as response:
                     if response.status != 200:
                         error_text = await response.text()
@@ -424,6 +451,11 @@ class ConversationService:
                     result = await response.json()
 
             title = result["choices"][0]["message"]["content"].strip().strip('"\'')
+
+            if not self._is_valid_title(title):
+                logger.warning(f"LLM returned unusable title for {thread_id}: {title!r}")
+                return None
+
             if len(title) > 60:
                 title = title[:57] + "..."
 
