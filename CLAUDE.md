@@ -210,6 +210,17 @@ Nova uses a 3-tier test structure (see "Running Tests" commands above):
 
 Notes: All tests use pytest-asyncio. Rebuild Docker images before E2E tests.
 
+**Cross-system changes require integration tests:**
+- If a task touches multiple systems (e.g., API + database, agent + LiteLLM, tools + MCP), write integration tests that test real interactions — not just mocks.
+- Unit tests with mocks verify logic in isolation; they do NOT verify that systems work together. Both are needed.
+- Place integration tests in `tests/integration/`. Require real PostgreSQL/Redis via Docker.
+
+**Mock tests can hide real bugs:**
+- Never mock the module you're testing. Mock only external dependencies at the boundary.
+- If you mock an import (e.g., `patch("module.some_dependency")`), you won't catch breakage when the real dependency changes signature, return type, or behavior.
+- Prefer calling real code paths and only mocking at the outermost edges (DB, network, external APIs).
+- If a mock-only test passes but the feature is broken, the test is worthless — add an integration test.
+
 ### Configuration Management
 - **Environment variables**: Defined in `config.py` (never access directly)
 - **Database connections**: 
