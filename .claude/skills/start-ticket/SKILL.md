@@ -134,6 +134,20 @@ Work exclusively in: {absolute path to worktree}
 Branch: {branch-name}
 Read CLAUDE.md in the worktree root for architecture patterns, testing strategy, and conventions.
 
+## Implementation Plan
+Before writing any code, create a plan file at:
+  docs/plans/{TICKET-ID}-{slugified-title}.md
+
+The plan should contain:
+- Link to the Linear ticket
+- Your investigation/analysis notes (what you found in the code)
+- The approach you'll take and why
+- Key files you expect to modify
+- Open questions or risks
+
+This file gives you persistent context, and lets the user review your approach before you implement.
+Write the plan FIRST, then proceed with the workflow below.
+
 ## Workflow
 Start by invoking the {recommended skill} skill to guide your approach.
 {Brief explanation of why this skill fits}

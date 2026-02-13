@@ -119,6 +119,23 @@ This ensures every bug fix comes with a regression test and the fix is verified.
 
 Optional scope for specificity: `feat(memory): Add edge type mapping`
 
+### Implementation Plans
+
+Store implementation plans in `docs/plans/` as Markdown files, named by ticket ID: `{TICKET-ID}-{slug}.md` (e.g., `NOV-123-login-crash-fix.md`).
+
+**Why in-repo, not Linear:** Plans reference code paths, file names, and architectural details that belong next to the code. They give AI agents persistent context across sessions, are version-controlled, and are reviewable before implementation starts.
+
+**What goes in a plan:**
+- Link to Linear ticket
+- Investigation/analysis notes
+- Chosen approach and rationale
+- Key files to modify
+- Open questions or risks
+
+**What does NOT go in a plan:** Anything that outlives the ticket. If a plan contains an architectural decision worth preserving, extract it into an ADR in `docs/adr/`.
+
+**Lifecycle:** Plans are created during the planning phase (before implementation), live on the feature branch, and are committed with the work. After merge, they can be deleted or left as historical context — they're cheap.
+
 ### Feature Implementation Process
 1. **Pre-work**: Review relevant Architecture Decision Records (ADRs) in `docs/adr/`.
 2. **Implementation**:

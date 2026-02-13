@@ -98,11 +98,17 @@ Unit tests ran on the branch (Phase 2). Now merge locally and run integration te
    ```
    If this fails (conflicts): `git merge --abort`, switch back to the branch, and tell the user to resolve manually. Stop here.
 
-3. **Run integration tests on main**:
+3. **Remove the implementation plan** (if one exists):
+   ```
+   git rm docs/plans/{TICKET-ID}-*.md
+   ```
+   Plan files are ephemeral — they served their purpose during development and should not land on main. If no plan file exists, skip this step (the glob will simply match nothing).
+
+4. **Run integration tests on main**:
    ```
    cd backend && uv run pytest ../tests/integration -v
    ```
-   - If tests **pass**: continue to step 4.
+   - If tests **pass**: continue to step 5.
    - If tests **fail**: reset main and go back to the branch:
      ```
      git reset --hard origin/main
@@ -110,19 +116,19 @@ Unit tests ran on the branch (Phase 2). Now merge locally and run integration te
      ```
      Show the failures and tell the user to fix on the branch. Stop here.
 
-4. **Commit the squash merge** with both the PR number and ticket ID:
+5. **Commit the squash merge** with both the PR number and ticket ID:
    ```
    git commit -m "fix: Resolve login crash (NOV-123) (#42)"
    ```
    Use conventional commit format. The PR number goes at the end in parentheses.
 
-5. **Push main**:
+6. **Push main**:
    ```
    git push origin main
    ```
    This automatically closes the PR on GitHub.
 
-6. **Delete the remote branch**:
+7. **Delete the remote branch**:
    ```
    git push origin --delete <branch-name>
    ```
