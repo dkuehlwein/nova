@@ -250,6 +250,11 @@ class MCPClientManager:
             logger.warning(f"Could not find server_id for {server_name}, using name directly")
             server_id = server_name
 
+        # LiteLLM routes tool calls by tool name (not server_id).
+        # Must use prefixed name (server_name-tool_name) so LiteLLM routes
+        # to the correct MCP server when multiple servers share tool names.
+        prefixed_tool_name = get_prefixed_tool_name(server_name, tool_name)
+
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -259,7 +264,7 @@ class MCPClientManager:
                         "Content-Type": "application/json"
                     },
                     json={
-                        "name": tool_name,
+                        "name": prefixed_tool_name,
                         "arguments": arguments,
                         "server_id": server_id
                     },
@@ -343,7 +348,7 @@ class MCPClientManager:
                 prefixed_name = get_prefixed_tool_name(server_name, tool_name)
 
                 # Create a closure to capture server_name and original tool_name
-                # Note: We use the original tool_name for MCP calls, not the prefixed name
+                # call_mcp_tool handles prefixing internally for LiteLLM routing
                 def make_tool_func(srv_name: str, original_tool_name: str):
                     async def tool_func(**kwargs) -> str:
                         result = await self.call_mcp_tool(srv_name, original_tool_name, kwargs)

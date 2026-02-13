@@ -249,3 +249,4 @@ llm_models/
 backend/skills/*/config.yaml
 .auth_state.json
 mcp_servers/ms_graph/credentials/token_cache.json
+frontend/node_modules

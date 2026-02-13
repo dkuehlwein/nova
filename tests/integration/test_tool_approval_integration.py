@@ -108,7 +108,8 @@ class TestLangGraphToolApproval:
         def mock_is_tool_allowed(tool_name: str) -> bool:
             return tool_name == "allowed_tool"  # Only allowed_tool is pre-approved
 
-        with patch.object(permission_config, 'is_tool_allowed', side_effect=mock_is_tool_allowed):
+        with patch.object(permission_config, 'is_tool_allowed', side_effect=mock_is_tool_allowed), \
+             patch.object(permission_config, 'is_tool_denied', return_value=False):
             wrapped_tools = wrap_tools_for_approval(tools)
         
         # Should still have 2 tools

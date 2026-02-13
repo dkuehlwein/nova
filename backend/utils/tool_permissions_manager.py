@@ -207,6 +207,26 @@ class ToolPermissionConfig:
                 }
             }
     
+    def is_tool_denied(self, tool_name: str) -> bool:
+        """Check if a tool is explicitly denied (should be completely excluded).
+
+        Tools in the deny list are removed from the agent entirely - the agent
+        will never see or attempt to use them.
+        """
+        try:
+            permissions = self.get_permissions_sync()
+            deny_patterns = permissions["permissions"].get("deny", [])
+
+            for pattern in deny_patterns:
+                if self._matches_tool_pattern(tool_name, pattern):
+                    logger.debug(f"Tool {tool_name} is in deny list")
+                    return True
+
+            return False
+        except Exception as e:
+            logger.error(f"Error checking deny list for {tool_name}: {e}")
+            return False
+
     def is_tool_allowed(self, tool_name: str) -> bool:
         """Check if a tool is explicitly allowed (doesn't require approval).
 
@@ -214,16 +234,13 @@ class ToolPermissionConfig:
         Tools in the deny list are always blocked (require approval that will be denied).
         """
         try:
+            # Check deny list first - denied tools always require approval
+            if self.is_tool_denied(tool_name):
+                return False
+
             permissions = self.get_permissions_sync()
             allow_patterns = permissions["permissions"].get("allow", [])
-            deny_patterns = permissions["permissions"].get("deny", [])
             default_secure = permissions["settings"].get("default_secure", True)
-
-            # Check deny list first - denied tools always require approval
-            for pattern in deny_patterns:
-                if self._matches_tool_pattern(tool_name, pattern):
-                    logger.debug(f"Tool {tool_name} is in deny list")
-                    return False
 
             # Check allow list
             for pattern in allow_patterns:

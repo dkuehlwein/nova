@@ -143,20 +143,25 @@ def wrap_tools_for_approval(tools: list[BaseTool]) -> list[BaseTool]:
     Wrap tools that require approval with the human-in-the-loop pattern.
 
     Checks each tool against the permission config (allow/deny lists, default_secure).
+    Tools explicitly denied are removed entirely (the agent never sees them).
     Tools not explicitly allowed will be wrapped with approval requirement.
     """
     from utils.tool_permissions_manager import permission_config
 
     wrapped_tools = []
     wrapped_count = 0
+    denied_count = 0
 
     for tool in tools:
-        if not permission_config.is_tool_allowed(tool.name):
+        if permission_config.is_tool_denied(tool.name):
+            logger.info(f"Excluding denied tool '{tool.name}'")
+            denied_count += 1
+        elif not permission_config.is_tool_allowed(tool.name):
             logger.info(f"Wrapping tool '{tool.name}' for approval")
             wrapped_tools.append(add_human_in_the_loop(tool))
             wrapped_count += 1
         else:
             wrapped_tools.append(tool)
 
-    logger.info(f"Wrapped {wrapped_count}/{len(tools)} tools for approval")
+    logger.info(f"Tools: {len(wrapped_tools)} available ({wrapped_count} wrapped for approval, {denied_count} denied/excluded)")
     return wrapped_tools
