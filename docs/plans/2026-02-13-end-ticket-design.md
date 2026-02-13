@@ -1,5 +1,7 @@
 # End-Ticket Skill Design
 
+**Status: Implemented**
+
 ## Summary
 
 A skill that wraps up Linear ticket work: tests, commit, PR, code review, merge, ticket update, and worktree cleanup. The mirror of `start-ticket`.
