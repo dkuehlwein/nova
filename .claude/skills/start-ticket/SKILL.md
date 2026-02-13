@@ -62,21 +62,20 @@ If ambiguous, default to `feature/`.
    - Branch is based off `origin/main`
 6. If any git operation fails (network, auth, conflicts), report the error clearly and stop - don't retry blindly
 
-**Symlink dependencies** (immediately after creating the worktree):
+**Set up dependencies** (immediately after creating the worktree):
 
-Worktrees share source code via git but gitignored directories like `.venv` and `node_modules` are missing. Reinstalling from scratch is slow and usually unnecessary — symlink them from the main repo instead.
+Worktrees share source code via git but gitignored directories like `.venv` and `node_modules` are missing. Run the setup script to handle this:
 
 ```bash
-# Python venv
-ln -s "$(pwd)/backend/.venv" ../nova-{TICKET-ID}/backend/.venv
-
-# Node modules
-ln -s "$(pwd)/frontend/node_modules" ../nova-{TICKET-ID}/frontend/node_modules
+scripts/setup-worktree-deps.sh ../nova-{TICKET-ID}
 ```
 
-Only create symlinks for directories that actually exist in the main repo. If `backend/.venv` doesn't exist, skip it (the user hasn't set up Python yet). Same for `node_modules`.
+This script:
+- Creates a proper Python venv via `uv sync` (fast with cached packages, avoids broken symlink paths)
+- Symlinks `frontend/node_modules` from the main repo
+- Skips anything that doesn't exist or is already set up
 
-**When NOT to symlink**: If the ticket explicitly involves changing dependencies (e.g., adding/removing packages, upgrading versions, modifying `pyproject.toml` or `package.json`), warn the user that a shared symlink may cause conflicts and ask whether they'd prefer a fresh install instead.
+**When NOT to use the script**: If the ticket explicitly involves changing dependencies (e.g., adding/removing packages, upgrading versions, modifying `pyproject.toml` or `package.json`), warn the user that the shared `node_modules` symlink may cause conflicts and ask whether they'd prefer a fresh `npm install` instead.
 
 ### Phase 3: Choose the Workflow
 
