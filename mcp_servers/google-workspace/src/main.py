@@ -170,9 +170,9 @@ if __name__ == "__main__":
     # === Gmail Tools ===
 
     @mcp.tool()
-    async def send_email(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
-        """Sends an email via Gmail to one or more recipients. Subject and message are distinct."""
-        return await workspace_service.gmail_tools.send_email(recipient_ids, subject, message)
+    async def send_email(recipients: List[str], subject: str, body: str) -> Dict[str, str]:
+        """Sends an email via Gmail to one or more recipients."""
+        return await workspace_service.gmail_tools.send_email(recipients, subject, body)
 
     @mcp.tool()
     async def get_unread_emails() -> Union[List[Dict[str, str]], Dict[str, str]]:
@@ -195,9 +195,9 @@ if __name__ == "__main__":
         return await workspace_service.gmail_tools.mark_email_as_read(email_id)
 
     @mcp.tool()
-    async def create_draft(recipient_ids: List[str], subject: str, message: str) -> Dict[str, str]:
+    async def create_draft(recipients: List[str], subject: str, body: str) -> Dict[str, str]:
         """Creates a draft email message for one or more recipients."""
-        return await workspace_service.gmail_tools.create_draft(recipient_ids, subject, message)
+        return await workspace_service.gmail_tools.create_draft(recipients, subject, body)
 
     @mcp.tool()
     async def list_drafts() -> Union[List[Dict[str, str]], Dict[str, str]]:

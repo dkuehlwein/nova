@@ -457,9 +457,9 @@ Kindergarten Management
                 try:
                     email_result = await asyncio.wait_for(
                         send_email_tool.arun({
-                            "recipient_ids": ["nova.daniel.kuehlwein@gmail.com"],  # Send to ourselves
+                            "recipients": ["nova.daniel.kuehlwein@gmail.com"],  # Send to ourselves
                             "subject": email_subject,
-                            "message": email_body
+                            "body": email_body
                         }),
                         timeout=30.0  # 30 second timeout
                     )

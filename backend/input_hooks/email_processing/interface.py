@@ -55,12 +55,8 @@ EMAIL_TOOL_PARAMETERS = {
     "google_workspace-read_email": {
         "message_id": "email_id"
     },
-    "google_workspace-send_email": {
-        "recipients": "recipient_ids"
-    },
-    "google_workspace-create_draft": {
-        "recipients": "recipient_ids"
-    },
+    "google_workspace-send_email": {},
+    "google_workspace-create_draft": {},
 
     # Outlook Mac tools (prefixed per ADR-015)
     "outlook_mac-list_emails": {},
