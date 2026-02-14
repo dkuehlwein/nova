@@ -8,7 +8,6 @@ These tests are isolated unit tests that don't require external services
 """
 
 import os
-import shutil
 import sys
 
 # Add backend to path for imports before any other imports
@@ -33,8 +32,16 @@ def skill_tools_module():
     import importlib.util
     from pathlib import Path
 
-    module_path = Path(__file__).parent.parent.parent.parent / "backend" / "skills" / "add_user_to_coe_gitlab" / "tools.py"
-    spec = importlib.util.spec_from_file_location("add_user_to_coe_gitlab_tools", module_path)
+    module_path = (
+        Path(__file__).parent.parent.parent.parent
+        / "backend"
+        / "skills"
+        / "add_user_to_coe_gitlab"
+        / "tools.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "add_user_to_coe_gitlab_tools", module_path
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -46,7 +53,13 @@ def gitlab_client_module():
     import importlib.util
     from pathlib import Path
 
-    module_path = Path(__file__).parent.parent.parent.parent / "backend" / "skills" / "add_user_to_coe_gitlab" / "gitlab_client.py"
+    module_path = (
+        Path(__file__).parent.parent.parent.parent
+        / "backend"
+        / "skills"
+        / "add_user_to_coe_gitlab"
+        / "gitlab_client.py"
+    )
     spec = importlib.util.spec_from_file_location("gitlab_client", module_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -59,7 +72,13 @@ def lam_automation_module():
     import importlib.util
     from pathlib import Path
 
-    module_path = Path(__file__).parent.parent.parent.parent / "backend" / "skills" / "add_user_to_coe_gitlab" / "lam_automation.py"
+    module_path = (
+        Path(__file__).parent.parent.parent.parent
+        / "backend"
+        / "skills"
+        / "add_user_to_coe_gitlab"
+        / "lam_automation.py"
+    )
     spec = importlib.util.spec_from_file_location("lam_automation", module_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -188,7 +207,9 @@ class TestSearchGitlabProjectsErrorHandling:
 
             mock_client_instance = AsyncMock()
             mock_client_instance.get = AsyncMock(return_value=mock_response)
-            mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_client_instance.__aenter__ = AsyncMock(
+                return_value=mock_client_instance
+            )
             mock_client_instance.__aexit__ = AsyncMock(return_value=None)
             mock_client.return_value = mock_client_instance
 
@@ -208,13 +229,17 @@ class TestSearchGitlabProjectsErrorHandling:
         with patch.object(gitlab_client_module.httpx, "AsyncClient") as mock_client:
             mock_response = MagicMock()
             mock_response.status_code = 403
-            mock_response.raise_for_status.side_effect = gitlab_client_module.httpx.HTTPStatusError(
-                "Forbidden", request=MagicMock(), response=mock_response
+            mock_response.raise_for_status.side_effect = (
+                gitlab_client_module.httpx.HTTPStatusError(
+                    "Forbidden", request=MagicMock(), response=mock_response
+                )
             )
 
             mock_client_instance = AsyncMock()
             mock_client_instance.get = AsyncMock(return_value=mock_response)
-            mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_client_instance.__aenter__ = AsyncMock(
+                return_value=mock_client_instance
+            )
             mock_client_instance.__aexit__ = AsyncMock(return_value=None)
             mock_client.return_value = mock_client_instance
 
@@ -233,8 +258,12 @@ class TestSearchGitlabProjectsErrorHandling:
         """Should return dict with success=False on general exception."""
         with patch.object(gitlab_client_module.httpx, "AsyncClient") as mock_client:
             mock_client_instance = AsyncMock()
-            mock_client_instance.get = AsyncMock(side_effect=Exception("Connection failed"))
-            mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_client_instance.get = AsyncMock(
+                side_effect=Exception("Connection failed")
+            )
+            mock_client_instance.__aenter__ = AsyncMock(
+                return_value=mock_client_instance
+            )
             mock_client_instance.__aexit__ = AsyncMock(return_value=None)
             mock_client.return_value = mock_client_instance
 
@@ -265,12 +294,14 @@ class TestCreateIamAccountValidation:
                 },
             }
 
-            result = await skill_tools_module.create_iam_account.ainvoke({
-                "email": "test@example.com",
-                "first_name": "Test",
-                "last_name": "User",
-                "mail_nickname": "@#$%^",  # Invalid characters only
-            })
+            result = await skill_tools_module.create_iam_account.ainvoke(
+                {
+                    "email": "test@example.com",
+                    "first_name": "Test",
+                    "last_name": "User",
+                    "mail_nickname": "@#$%^",  # Invalid characters only
+                }
+            )
 
             result_dict = json.loads(result)
             assert result_dict["success"] is False
@@ -288,11 +319,13 @@ class TestCreateIamAccountValidation:
                 },
             }
 
-            result = await skill_tools_module.create_iam_account.ainvoke({
-                "email": "not-an-email",
-                "first_name": "Test",
-                "last_name": "User",
-            })
+            result = await skill_tools_module.create_iam_account.ainvoke(
+                {
+                    "email": "not-an-email",
+                    "first_name": "Test",
+                    "last_name": "User",
+                }
+            )
 
             result_dict = json.loads(result)
             assert result_dict["success"] is False
@@ -307,11 +340,13 @@ class TestCreateIamAccountValidation:
                 "credentials": {},  # No credentials
             }
 
-            result = await skill_tools_module.create_iam_account.ainvoke({
-                "email": "test@example.com",
-                "first_name": "Test",
-                "last_name": "User",
-            })
+            result = await skill_tools_module.create_iam_account.ainvoke(
+                {
+                    "email": "test@example.com",
+                    "first_name": "Test",
+                    "last_name": "User",
+                }
+            )
 
             result_dict = json.loads(result)
             assert result_dict["success"] is False
@@ -358,14 +393,18 @@ class TestPersistentBrowserProfile:
             assert result == Path.home() / "my-profile"
 
     @pytest.mark.asyncio
-    async def test_launches_persistent_context_with_profile_dir(self, lam_automation_module, tmp_path):
+    async def test_launches_persistent_context_with_profile_dir(
+        self, lam_automation_module, tmp_path
+    ):
         """create_lam_account should use launch_persistent_context with the profile dir."""
         profile_dir = tmp_path / "test-profile"
 
         # Mock Playwright's async_playwright context manager
         mock_page = AsyncMock()
         mock_page.url = "https://server.com/lam/templates/login.php"
-        mock_page.query_selector = AsyncMock(return_value=None)  # No passwd field = already authed
+        mock_page.query_selector = AsyncMock(
+            return_value=None
+        )  # No passwd field = already authed
         mock_page.content = AsyncMock(return_value="<html>Account was saved</html>")
         mock_page.goto = AsyncMock()
         mock_page.click = AsyncMock()
@@ -387,15 +426,31 @@ class TestPersistentBrowserProfile:
         mock_async_pw.__aenter__ = AsyncMock(return_value=mock_playwright)
         mock_async_pw.__aexit__ = AsyncMock(return_value=None)
 
-        with patch.object(lam_automation_module, "_get_profile_dir", return_value=profile_dir), \
-             patch.object(lam_automation_module, "_build_chrome_args_from_config", return_value=[]), \
-             patch("playwright.async_api.async_playwright", return_value=mock_async_pw):
-
+        with (
+            patch.object(
+                lam_automation_module, "_get_profile_dir", return_value=profile_dir
+            ),
+            patch.object(
+                lam_automation_module,
+                "_restore_sso_cookies",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch.object(
+                lam_automation_module, "_build_chrome_args_from_config", return_value=[]
+            ),
+            patch("playwright.async_api.async_playwright", return_value=mock_async_pw),
+        ):
             result = await lam_automation_module.create_lam_account(
                 lam_url="https://server.com/lam/templates/account/edit.php",
                 admin_username="admin",
                 admin_password="secret",
-                user_data={"first_name": "Test", "last_name": "User", "email": "t@example.com", "username": "tuser"},
+                user_data={
+                    "first_name": "Test",
+                    "last_name": "User",
+                    "email": "t@example.com",
+                    "username": "tuser",
+                },
             )
 
         # Verify launch_persistent_context was called with the profile dir
@@ -410,7 +465,9 @@ class TestPersistentBrowserProfile:
         assert result["success"] is True
 
     @pytest.mark.asyncio
-    async def test_corrupt_profile_triggers_retry(self, lam_automation_module, tmp_path):
+    async def test_corrupt_profile_triggers_retry(
+        self, lam_automation_module, tmp_path
+    ):
         """If persistent context launch fails, the profile should be wiped and retried."""
         profile_dir = tmp_path / "corrupt-profile"
         profile_dir.mkdir()
@@ -444,15 +501,31 @@ class TestPersistentBrowserProfile:
         mock_async_pw.__aenter__ = AsyncMock(return_value=mock_playwright)
         mock_async_pw.__aexit__ = AsyncMock(return_value=None)
 
-        with patch.object(lam_automation_module, "_get_profile_dir", return_value=profile_dir), \
-             patch.object(lam_automation_module, "_build_chrome_args_from_config", return_value=[]), \
-             patch("playwright.async_api.async_playwright", return_value=mock_async_pw):
-
+        with (
+            patch.object(
+                lam_automation_module, "_get_profile_dir", return_value=profile_dir
+            ),
+            patch.object(
+                lam_automation_module,
+                "_restore_sso_cookies",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch.object(
+                lam_automation_module, "_build_chrome_args_from_config", return_value=[]
+            ),
+            patch("playwright.async_api.async_playwright", return_value=mock_async_pw),
+        ):
             result = await lam_automation_module.create_lam_account(
                 lam_url="https://server.com/lam/templates/account/edit.php",
                 admin_username="admin",
                 admin_password="secret",
-                user_data={"first_name": "Test", "last_name": "User", "email": "t@example.com", "username": "tuser"},
+                user_data={
+                    "first_name": "Test",
+                    "last_name": "User",
+                    "email": "t@example.com",
+                    "username": "tuser",
+                },
             )
 
         # launch_persistent_context should have been called twice (first fails, second succeeds)
@@ -481,18 +554,119 @@ class TestPersistentBrowserProfile:
         mock_async_pw.__aenter__ = AsyncMock(return_value=mock_playwright)
         mock_async_pw.__aexit__ = AsyncMock(return_value=None)
 
-        with patch.object(lam_automation_module, "_get_profile_dir", return_value=profile_dir), \
-             patch.object(lam_automation_module, "_build_chrome_args_from_config", return_value=[]), \
-             patch("playwright.async_api.async_playwright", return_value=mock_async_pw):
-
+        with (
+            patch.object(
+                lam_automation_module, "_get_profile_dir", return_value=profile_dir
+            ),
+            patch.object(
+                lam_automation_module,
+                "_restore_sso_cookies",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch.object(
+                lam_automation_module, "_build_chrome_args_from_config", return_value=[]
+            ),
+            patch("playwright.async_api.async_playwright", return_value=mock_async_pw),
+        ):
             result = await lam_automation_module.create_lam_account(
                 lam_url="https://server.com/lam/templates/account/edit.php",
                 admin_username="admin",
                 admin_password="secret",
-                user_data={"first_name": "Test", "last_name": "User", "email": "t@example.com", "username": "tuser"},
+                user_data={
+                    "first_name": "Test",
+                    "last_name": "User",
+                    "email": "t@example.com",
+                    "username": "tuser",
+                },
             )
 
         # Context should still be closed despite the error
         mock_context.close.assert_called_once()
         assert result["success"] is False
         assert "Page creation failed" in result["error"]
+
+
+class TestSSOCookiePersistence:
+    """Tests for explicit SSO cookie save/restore (session cookies don't persist via user_data_dir)."""
+
+    @pytest.mark.asyncio
+    async def test_save_sso_cookies(self, lam_automation_module, tmp_path):
+        """storage_state should be saved to the state file after SSO."""
+        state_path = tmp_path / "sso-state.json"
+        mock_context = AsyncMock()
+        mock_context.storage_state = AsyncMock()
+
+        with patch.object(
+            lam_automation_module, "_get_storage_state_path", return_value=state_path
+        ):
+            await lam_automation_module._save_sso_cookies(mock_context)
+
+        mock_context.storage_state.assert_called_once_with(path=str(state_path))
+
+    @pytest.mark.asyncio
+    async def test_restore_sso_cookies_loads_from_file(
+        self, lam_automation_module, tmp_path
+    ):
+        """Saved SSO cookies should be loaded, LAM cookies should be filtered out."""
+        state_path = tmp_path / "sso-state.json"
+        sso_cookie = {
+            "name": "PF",
+            "value": "sso-token",
+            "domain": "sso.example.com",
+            "path": "/",
+        }
+        lam_cookie = {
+            "name": "PHPSESSID",
+            "value": "abc123",
+            "domain": "lam.example.com",
+            "path": "/",
+        }
+        state_path.write_text(json.dumps({"cookies": [sso_cookie, lam_cookie]}))
+
+        mock_context = AsyncMock()
+        mock_context.add_cookies = AsyncMock()
+
+        with patch.object(
+            lam_automation_module, "_get_storage_state_path", return_value=state_path
+        ):
+            result = await lam_automation_module._restore_sso_cookies(
+                mock_context,
+                lam_url="https://lam.example.com/lam/templates/account/edit.php",
+            )
+
+        assert result is True
+        # Only SSO cookie should be restored, not the LAM PHPSESSID
+        mock_context.add_cookies.assert_called_once_with([sso_cookie])
+
+    @pytest.mark.asyncio
+    async def test_restore_sso_cookies_no_file(self, lam_automation_module, tmp_path):
+        """If no state file exists, restore should return False and not call add_cookies."""
+        state_path = tmp_path / "nonexistent.json"
+        mock_context = AsyncMock()
+
+        with patch.object(
+            lam_automation_module, "_get_storage_state_path", return_value=state_path
+        ):
+            result = await lam_automation_module._restore_sso_cookies(mock_context)
+
+        assert result is False
+        mock_context.add_cookies.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_restore_sso_cookies_corrupt_file_is_deleted(
+        self, lam_automation_module, tmp_path
+    ):
+        """Corrupt state file should be deleted and restore should return False."""
+        state_path = tmp_path / "sso-state.json"
+        state_path.write_text("not valid json{{{")
+
+        mock_context = AsyncMock()
+
+        with patch.object(
+            lam_automation_module, "_get_storage_state_path", return_value=state_path
+        ):
+            result = await lam_automation_module._restore_sso_cookies(mock_context)
+
+        assert result is False
+        assert not state_path.exists()

@@ -11,6 +11,7 @@ Reference: https://www.ldap-account-manager.org/
 """
 
 import asyncio
+import json
 import secrets
 import shutil
 import string
@@ -57,6 +58,7 @@ def _build_lam_url(lam_url: str, template: str) -> str:
 def _load_config() -> dict:
     """Load skill configuration from config.yaml."""
     import yaml
+
     config_path = Path(__file__).parent / "config.yaml"
     if config_path.exists():
         with open(config_path) as f:
@@ -79,29 +81,85 @@ def _get_profile_dir() -> Path:
     return _DEFAULT_PROFILE_DIR
 
 
+def _get_storage_state_path() -> Path:
+    """Get the path for the SSO cookie storage state file."""
+    return _get_profile_dir().parent / "lam-sso-state.json"
+
+
+async def _restore_sso_cookies(context, lam_url: str = "") -> bool:
+    """
+    Restore saved SSO session cookies into the browser context.
+
+    PingOne uses session cookies (expires=-1) which Chromium does not persist
+    to disk, even with a user_data_dir. We explicitly save and restore them.
+
+    Filters out LAM cookies (e.g. PHPSESSID) to avoid stale LAM sessions
+    that bypass login but are expired server-side.
+
+    Returns True if cookies were restored.
+    """
+    state_path = _get_storage_state_path()
+    if not state_path.exists():
+        return False
+
+    # Extract LAM hostname to filter out its cookies
+    lam_host = ""
+    if lam_url:
+        from urllib.parse import urlparse
+
+        lam_host = urlparse(lam_url).hostname or ""
+
+    try:
+        state = json.loads(state_path.read_text())
+        cookies = state.get("cookies", [])
+        if lam_host:
+            cookies = [c for c in cookies if lam_host not in c.get("domain", "")]
+        if cookies:
+            await context.add_cookies(cookies)
+            logger.info(f"Restored {len(cookies)} SSO cookies from {state_path}")
+            return True
+    except Exception as e:
+        logger.warning(f"Failed to restore SSO cookies: {e}")
+        state_path.unlink(missing_ok=True)
+    return False
+
+
+async def _save_sso_cookies(context, state_path: Path | None = None) -> None:
+    """Save current cookies to disk so session cookies survive browser restarts."""
+    state_path = state_path or _get_storage_state_path()
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        await context.storage_state(path=str(state_path))
+        logger.info(f"Saved SSO cookies to {state_path}")
+    except Exception as e:
+        logger.warning(f"Failed to save SSO cookies: {e}")
+
+
 def _build_chrome_args_from_config() -> list[str]:
     """
     Build Chrome args for auto-selecting client certificates.
-    
+
     Reads domains from config.yaml (browser.auto_cert_domains) and builds
     Chrome's --auto-select-certificate-for-urls flags.
-    
+
     Returns:
         List of Chrome argument strings
     """
     config = _load_config()
     browser_config = config.get("browser", {})
     domains = browser_config.get("auto_cert_domains", [])
-    
+
     if not domains:
         return []
-    
+
     args = []
     for domain in domains:
         # Chrome expects pattern like: {"pattern":"https://[*.]domain.com","filter":{}}
-        pattern = f'{{"pattern":"https://[*.]{{domain}}","filter":{{}}}}'.replace("{domain}", domain)
-        args.append(f'--auto-select-certificate-for-urls={pattern}')
-    
+        pattern = '{"pattern":"https://[*.]{domain}","filter":{}}'.replace(
+            "{domain}", domain
+        )
+        args.append(f"--auto-select-certificate-for-urls={pattern}")
+
     return args
 
 
@@ -144,7 +202,10 @@ async def create_lam_account(
     """
     # Import here to allow the skill to load even if playwright isn't installed
     try:
-        from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+        from playwright.async_api import (
+            async_playwright,
+            TimeoutError as PlaywrightTimeout,
+        )
     except ImportError:
         return {
             "success": False,
@@ -186,7 +247,9 @@ async def create_lam_account(
                 )
             except Exception as launch_err:
                 # Corrupt profile -- wipe and retry once with a fresh profile
-                logger.warning(f"Persistent context launch failed, resetting profile: {launch_err}")
+                logger.warning(
+                    f"Persistent context launch failed, resetting profile: {launch_err}"
+                )
                 shutil.rmtree(profile_dir, ignore_errors=True)
                 profile_dir.mkdir(parents=True, exist_ok=True)
                 context = await p.chromium.launch_persistent_context(
@@ -195,6 +258,10 @@ async def create_lam_account(
                     args=chrome_args,
                     ignore_https_errors=True,
                 )
+
+            # Restore saved SSO session cookies (Chromium won't persist
+            # session cookies on its own, even with user_data_dir)
+            await _restore_sso_cookies(context, lam_url=lam_url)
 
             page = await context.new_page()
             page.set_default_timeout(timeout_ms)
@@ -218,19 +285,17 @@ async def create_lam_account(
                     await page.wait_for_url(
                         "**/lam/**",
                         timeout=sso_wait_timeout_ms,
-                        wait_until="networkidle"
+                        wait_until="networkidle",
                     )
                     logger.info("SSO completed, now on LAM page")
 
-                    # DEBUG: Dump cookie attributes to confirm session vs persistent
-                    cookies = await context.cookies()
-                    for c in cookies:
-                        logger.info(f"COOKIE DEBUG: name={c['name']} domain={c['domain']} expires={c.get('expires', 'NONE')} httpOnly={c.get('httpOnly')} secure={c.get('secure')}")
+                    # Save SSO cookies so they survive browser restarts
+                    await _save_sso_cookies(context)
                 except PlaywrightTimeout:
                     return {
                         "success": False,
                         "username": username,
-                        "error": f"SSO login timeout ({sso_wait_timeout_ms/1000}s). Please complete SSO faster or increase timeout.",
+                        "error": f"SSO login timeout ({sso_wait_timeout_ms / 1000}s). Please complete SSO faster or increase timeout.",
                     }
 
             # Step 3: LAM Profile Login (after SSO)
@@ -283,6 +348,7 @@ async def create_lam_account(
             # Step 5: Fill in the account form
             # Field names based on LAM 8.7 configuration
             # Reference: https://github.com/LDAPAccountManager/lam/blob/develop/lam/lib/modules/posixAccount.inc
+            logger.debug(f"Form page URL: {page.url}")
             try:
                 # uid - Unix username (from MS Graph mail_nickname)
                 # This is the primary identifier for the LDAP/posixAccount entry
@@ -301,10 +367,11 @@ async def create_lam_account(
                 # The password is set by the user during first login
 
             except PlaywrightTimeout as e:
+                logger.error(f"Form field timeout on page: {page.url}")
                 return {
                     "success": False,
                     "username": username,
-                    "error": f"Form field not found: {str(e)}. Check LAM form selectors.",
+                    "error": f"Form field not found on {page.url}: {str(e)}. Check LAM form selectors.",
                 }
 
             # Step 6: Submit the form (may require multiple saves if Unix attributes needed)
@@ -323,7 +390,9 @@ async def create_lam_account(
                 # FIRST: Check for "already in use" message - this appears on first save
                 # LAM shows "already in use." in a box at the top of the page
                 if "already exists" in page_lower or "already in use" in page_lower:
-                    logger.info(f"User with email {email} already exists in LAM (detected 'already in use' message)")
+                    logger.info(
+                        f"User with email {email} already exists in LAM (detected 'already in use' message)"
+                    )
                     return {
                         "success": True,  # This is actually success - the account exists
                         "already_exists": True,
@@ -335,10 +404,14 @@ async def create_lam_account(
                 # Check if LAM requires additional attributes (e.g., Unix tab)
                 # This happens when "Some required information is missing" appears
                 if "required" in page_lower and "missing" in page_lower:
-                    logger.info("LAM requires additional attributes, checking for Unix tab...")
+                    logger.info(
+                        "LAM requires additional attributes, checking for Unix tab..."
+                    )
 
                     # Look for the Unix tab link and click it
-                    unix_tab = await page.query_selector("a[href*='unix'], a:has-text('Unix'), button:has-text('Unix')")
+                    unix_tab = await page.query_selector(
+                        "a[href*='unix'], a:has-text('Unix'), button:has-text('Unix')"
+                    )
                     if unix_tab:
                         logger.info("Clicking Unix tab to fill required attributes")
                         await unix_tab.click()
@@ -349,14 +422,20 @@ async def create_lam_account(
                         # Some LAM configs require just visiting the tab, others need field interaction
 
                         # Check if there are empty required fields and try to trigger auto-generation
-                        uid_number_field = await page.query_selector("input[name='uidNumber']")
+                        uid_number_field = await page.query_selector(
+                            "input[name='uidNumber']"
+                        )
                         if uid_number_field:
                             # Check if it's empty - if so, LAM should auto-generate on blur
                             uid_value = await uid_number_field.get_attribute("value")
                             if not uid_value:
-                                logger.debug("uidNumber is empty, triggering field interaction")
+                                logger.debug(
+                                    "uidNumber is empty, triggering field interaction"
+                                )
                                 await uid_number_field.click()
-                                await uid_number_field.press("Tab")  # Trigger blur to auto-generate
+                                await uid_number_field.press(
+                                    "Tab"
+                                )  # Trigger blur to auto-generate
                                 await page.wait_for_timeout(500)  # Brief wait for JS
 
                         # Now click Save again
@@ -371,8 +450,14 @@ async def create_lam_account(
                 # Check if still showing required/missing after our Unix tab attempt
                 if "required" in page_lower and "missing" in page_lower:
                     # Try to extract which fields are missing
-                    error_elem = await page.query_selector(".error, .alert-danger, .msg-error, .statusMessage")
-                    error_msg = await error_elem.text_content() if error_elem else "Required fields still missing"
+                    error_elem = await page.query_selector(
+                        ".error, .alert-danger, .msg-error, .statusMessage"
+                    )
+                    error_msg = (
+                        await error_elem.text_content()
+                        if error_elem
+                        else "Required fields still missing"
+                    )
                     return {
                         "success": False,
                         "username": username,
@@ -381,8 +466,14 @@ async def create_lam_account(
 
                 if "error" in page_content.lower():
                     # Try to extract error message
-                    error_elem = await page.query_selector(".error, .alert-danger, .msg-error")
-                    error_msg = await error_elem.text_content() if error_elem else "Unknown error"
+                    error_elem = await page.query_selector(
+                        ".error, .alert-danger, .msg-error"
+                    )
+                    error_msg = (
+                        await error_elem.text_content()
+                        if error_elem
+                        else "Unknown error"
+                    )
                     return {
                         "success": False,
                         "username": username,
@@ -403,7 +494,9 @@ async def create_lam_account(
 
                 # If we're back on the user list, that usually means success
                 if "list.php" in page.url and "type=user" in page.url:
-                    logger.info(f"Redirected to user list - assuming success for {username}")
+                    logger.info(
+                        f"Redirected to user list - assuming success for {username}"
+                    )
                     return {
                         "success": True,
                         "username": username,
@@ -411,7 +504,7 @@ async def create_lam_account(
                         "message": "Account creation completed (redirected to user list)",
                     }
 
-                # If we can't determine success/failure from page content, 
+                # If we can't determine success/failure from page content,
                 # log the page content for debugging and assume failure
                 logger.warning(f"Could not confirm account creation for {username}")
                 logger.debug(f"Page URL: {page.url}")
@@ -518,7 +611,9 @@ if __name__ == "__main__":
 
     async def test():
         result = await create_lam_account(
-            lam_url=os.environ.get("LAM_URL", "https://example.com/lam/templates/account/edit.php"),
+            lam_url=os.environ.get(
+                "LAM_URL", "https://example.com/lam/templates/account/edit.php"
+            ),
             admin_username=os.environ.get("LAM_USERNAME", "admin"),
             admin_password=os.environ.get("LAM_PASSWORD", "password"),
             user_data={
