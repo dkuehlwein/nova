@@ -55,6 +55,12 @@ timeouts:
 
 # Browser automation settings
 browser:
+  # Persistent Chromium profile directory for retaining SSO session cookies.
+  # After completing PingOne SSO once, subsequent calls reuse the session.
+  # Delete this directory to force a fresh SSO login.
+  # Default: ~/.cache/nova/lam-chromium-profile/
+  # profile_dir: "~/.cache/nova/lam-chromium-profile"
+
   # Domains for auto-selecting client certificates (avoids cert picker dialog)
   # Add your SSO provider domains and internal server domains here
   # These are used to build Chrome's --auto-select-certificate-for-urls flag

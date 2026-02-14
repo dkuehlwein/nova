@@ -4,16 +4,23 @@ LAM (LDAP Account Manager) automation using Playwright.
 This module provides browser automation to create user accounts in LAM 8.7.
 The selectors may need adjustment based on your specific LAM configuration.
 
+Uses a persistent Chromium profile to retain PingOne SSO session cookies
+across invocations, so users only need to complete MFA once per session.
+
 Reference: https://www.ldap-account-manager.org/
 """
 
 import asyncio
 import secrets
+import shutil
 import string
 from pathlib import Path
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Default location for the persistent Chromium profile
+_DEFAULT_PROFILE_DIR = Path.home() / ".cache" / "nova" / "lam-chromium-profile"
 
 
 def generate_password(length: int = 16) -> str:
@@ -55,6 +62,21 @@ def _load_config() -> dict:
         with open(config_path) as f:
             return yaml.safe_load(f) or {}
     return {}
+
+
+def _get_profile_dir() -> Path:
+    """
+    Get the persistent browser profile directory from config or default.
+
+    Reads browser.profile_dir from config.yaml. Falls back to
+    ~/.cache/nova/lam-chromium-profile/.
+    """
+    config = _load_config()
+    browser_config = config.get("browser", {})
+    custom_dir = browser_config.get("profile_dir")
+    if custom_dir:
+        return Path(custom_dir).expanduser()
+    return _DEFAULT_PROFILE_DIR
 
 
 def _build_chrome_args_from_config() -> list[str]:
@@ -143,18 +165,37 @@ async def create_lam_account(
 
     async with async_playwright() as p:
         context = None
-        browser = None
         try:
             # Chrome args for enterprise SSO environments:
             # Auto-select client certificates for known SSO domains (avoids cert picker dialog)
             # Domains are loaded from config.yaml (browser.auto_cert_domains)
             chrome_args = _build_chrome_args_from_config()
 
-            browser = await p.chromium.launch(
-                headless=headless,
-                args=chrome_args,
-            )
-            context = await browser.new_context(ignore_https_errors=True)
+            # Use a persistent Chromium profile so PingOne SSO cookies survive
+            # across invocations. This avoids repeated MFA prompts when creating
+            # multiple accounts in the same session.
+            profile_dir = _get_profile_dir()
+            profile_dir.mkdir(parents=True, exist_ok=True)
+
+            try:
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir=str(profile_dir),
+                    headless=headless,
+                    args=chrome_args,
+                    ignore_https_errors=True,
+                )
+            except Exception as launch_err:
+                # Corrupt profile -- wipe and retry once with a fresh profile
+                logger.warning(f"Persistent context launch failed, resetting profile: {launch_err}")
+                shutil.rmtree(profile_dir, ignore_errors=True)
+                profile_dir.mkdir(parents=True, exist_ok=True)
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir=str(profile_dir),
+                    headless=headless,
+                    args=chrome_args,
+                    ignore_https_errors=True,
+                )
+
             page = await context.new_page()
             page.set_default_timeout(timeout_ms)
 
@@ -393,13 +434,10 @@ async def create_lam_account(
             }
 
         finally:
-            # Close both context and browser to prevent lock file issues
+            # Closing the persistent context also closes the underlying browser.
             # See: https://github.com/microsoft/playwright/issues/35466
-            # Browsers persist in background for performance; explicit close releases locks
             if context:
                 await context.close()
-            if browser:
-                await browser.close()
 
 
 async def check_lam_connection(

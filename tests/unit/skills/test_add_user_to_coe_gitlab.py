@@ -8,6 +8,7 @@ These tests are isolated unit tests that don't require external services
 """
 
 import os
+import shutil
 import sys
 
 # Add backend to path for imports before any other imports
@@ -19,6 +20,7 @@ if backend_path not in sys.path:
 os.environ.setdefault("NOVA_SKIP_DB", "1")
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
@@ -46,6 +48,19 @@ def gitlab_client_module():
 
     module_path = Path(__file__).parent.parent.parent.parent / "backend" / "skills" / "add_user_to_coe_gitlab" / "gitlab_client.py"
     spec = importlib.util.spec_from_file_location("gitlab_client", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def lam_automation_module():
+    """Import the LAM automation module."""
+    import importlib.util
+    from pathlib import Path
+
+    module_path = Path(__file__).parent.parent.parent.parent / "backend" / "skills" / "add_user_to_coe_gitlab" / "lam_automation.py"
+    spec = importlib.util.spec_from_file_location("lam_automation", module_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -317,3 +332,167 @@ class TestGetTools:
         assert "create_gitlab_user_account" in tool_names
         assert "search_gitlab_project" in tool_names
         assert "add_user_to_gitlab_project" in tool_names
+
+
+class TestPersistentBrowserProfile:
+    """Tests for SSO session persistence via Chromium persistent context."""
+
+    def test_get_profile_dir_returns_default(self, lam_automation_module):
+        """Default profile dir should be ~/.cache/nova/lam-chromium-profile/."""
+        with patch.object(lam_automation_module, "_load_config", return_value={}):
+            result = lam_automation_module._get_profile_dir()
+            assert result == Path.home() / ".cache" / "nova" / "lam-chromium-profile"
+
+    def test_get_profile_dir_respects_config(self, lam_automation_module):
+        """Custom profile_dir from config should be used when set."""
+        config = {"browser": {"profile_dir": "/tmp/custom-profile"}}
+        with patch.object(lam_automation_module, "_load_config", return_value=config):
+            result = lam_automation_module._get_profile_dir()
+            assert result == Path("/tmp/custom-profile")
+
+    def test_get_profile_dir_expands_tilde(self, lam_automation_module):
+        """Tilde in profile_dir should be expanded to home directory."""
+        config = {"browser": {"profile_dir": "~/my-profile"}}
+        with patch.object(lam_automation_module, "_load_config", return_value=config):
+            result = lam_automation_module._get_profile_dir()
+            assert result == Path.home() / "my-profile"
+
+    @pytest.mark.asyncio
+    async def test_launches_persistent_context_with_profile_dir(self, lam_automation_module, tmp_path):
+        """create_lam_account should use launch_persistent_context with the profile dir."""
+        profile_dir = tmp_path / "test-profile"
+
+        # Mock Playwright's async_playwright context manager
+        mock_page = AsyncMock()
+        mock_page.url = "https://server.com/lam/templates/login.php"
+        mock_page.query_selector = AsyncMock(return_value=None)  # No passwd field = already authed
+        mock_page.content = AsyncMock(return_value="<html>Account was saved</html>")
+        mock_page.goto = AsyncMock()
+        mock_page.click = AsyncMock()
+        mock_page.fill = AsyncMock()
+        mock_page.wait_for_load_state = AsyncMock()
+        mock_page.set_default_timeout = MagicMock()
+
+        mock_context = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+        mock_context.close = AsyncMock()
+
+        mock_chromium = AsyncMock()
+        mock_chromium.launch_persistent_context = AsyncMock(return_value=mock_context)
+
+        mock_playwright = AsyncMock()
+        mock_playwright.chromium = mock_chromium
+
+        mock_async_pw = AsyncMock()
+        mock_async_pw.__aenter__ = AsyncMock(return_value=mock_playwright)
+        mock_async_pw.__aexit__ = AsyncMock(return_value=None)
+
+        with patch.object(lam_automation_module, "_get_profile_dir", return_value=profile_dir), \
+             patch.object(lam_automation_module, "_build_chrome_args_from_config", return_value=[]), \
+             patch("playwright.async_api.async_playwright", return_value=mock_async_pw):
+
+            result = await lam_automation_module.create_lam_account(
+                lam_url="https://server.com/lam/templates/account/edit.php",
+                admin_username="admin",
+                admin_password="secret",
+                user_data={"first_name": "Test", "last_name": "User", "email": "t@example.com", "username": "tuser"},
+            )
+
+        # Verify launch_persistent_context was called with the profile dir
+        mock_chromium.launch_persistent_context.assert_called_once()
+        call_kwargs = mock_chromium.launch_persistent_context.call_args
+        assert call_kwargs.kwargs["user_data_dir"] == str(profile_dir)
+        assert call_kwargs.kwargs["ignore_https_errors"] is True
+
+        # Verify context was closed
+        mock_context.close.assert_called_once()
+
+        assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_corrupt_profile_triggers_retry(self, lam_automation_module, tmp_path):
+        """If persistent context launch fails, the profile should be wiped and retried."""
+        profile_dir = tmp_path / "corrupt-profile"
+        profile_dir.mkdir()
+        # Place a sentinel file so we can verify the directory was wiped
+        (profile_dir / "sentinel.txt").write_text("corrupt")
+
+        mock_page = AsyncMock()
+        mock_page.url = "https://server.com/lam/templates/login.php"
+        mock_page.query_selector = AsyncMock(return_value=None)
+        mock_page.content = AsyncMock(return_value="<html>Account was saved</html>")
+        mock_page.goto = AsyncMock()
+        mock_page.click = AsyncMock()
+        mock_page.fill = AsyncMock()
+        mock_page.wait_for_load_state = AsyncMock()
+        mock_page.set_default_timeout = MagicMock()
+
+        mock_context = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+        mock_context.close = AsyncMock()
+
+        mock_chromium = AsyncMock()
+        # First call fails (corrupt profile), second call succeeds
+        mock_chromium.launch_persistent_context = AsyncMock(
+            side_effect=[Exception("Failed to open profile"), mock_context]
+        )
+
+        mock_playwright = AsyncMock()
+        mock_playwright.chromium = mock_chromium
+
+        mock_async_pw = AsyncMock()
+        mock_async_pw.__aenter__ = AsyncMock(return_value=mock_playwright)
+        mock_async_pw.__aexit__ = AsyncMock(return_value=None)
+
+        with patch.object(lam_automation_module, "_get_profile_dir", return_value=profile_dir), \
+             patch.object(lam_automation_module, "_build_chrome_args_from_config", return_value=[]), \
+             patch("playwright.async_api.async_playwright", return_value=mock_async_pw):
+
+            result = await lam_automation_module.create_lam_account(
+                lam_url="https://server.com/lam/templates/account/edit.php",
+                admin_username="admin",
+                admin_password="secret",
+                user_data={"first_name": "Test", "last_name": "User", "email": "t@example.com", "username": "tuser"},
+            )
+
+        # launch_persistent_context should have been called twice (first fails, second succeeds)
+        assert mock_chromium.launch_persistent_context.call_count == 2
+        # The sentinel file should have been removed by the profile wipe
+        assert not (profile_dir / "sentinel.txt").exists()
+        # The function should still succeed
+        assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_context_closed_on_error(self, lam_automation_module, tmp_path):
+        """Context should be closed even when an error occurs during automation."""
+        profile_dir = tmp_path / "test-profile"
+
+        mock_context = AsyncMock()
+        mock_context.new_page = AsyncMock(side_effect=Exception("Page creation failed"))
+        mock_context.close = AsyncMock()
+
+        mock_chromium = AsyncMock()
+        mock_chromium.launch_persistent_context = AsyncMock(return_value=mock_context)
+
+        mock_playwright = AsyncMock()
+        mock_playwright.chromium = mock_chromium
+
+        mock_async_pw = AsyncMock()
+        mock_async_pw.__aenter__ = AsyncMock(return_value=mock_playwright)
+        mock_async_pw.__aexit__ = AsyncMock(return_value=None)
+
+        with patch.object(lam_automation_module, "_get_profile_dir", return_value=profile_dir), \
+             patch.object(lam_automation_module, "_build_chrome_args_from_config", return_value=[]), \
+             patch("playwright.async_api.async_playwright", return_value=mock_async_pw):
+
+            result = await lam_automation_module.create_lam_account(
+                lam_url="https://server.com/lam/templates/account/edit.php",
+                admin_username="admin",
+                admin_password="secret",
+                user_data={"first_name": "Test", "last_name": "User", "email": "t@example.com", "username": "tuser"},
+            )
+
+        # Context should still be closed despite the error
+        mock_context.close.assert_called_once()
+        assert result["success"] is False
+        assert "Page creation failed" in result["error"]
