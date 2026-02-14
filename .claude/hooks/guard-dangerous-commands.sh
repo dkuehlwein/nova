@@ -33,6 +33,30 @@ if echo "$STRIPPED" | grep -qE 'git\s+reset\s+--hard'; then
   exit 2
 fi
 
+# git clean (deletes untracked files permanently)
+if echo "$STRIPPED" | grep -qE 'git\s+clean\s+-[a-zA-Z]*f'; then
+  echo "BLOCKED: git clean -f permanently deletes untracked files. Review with git clean -n first." >&2
+  exit 2
+fi
+
+# git checkout . / git restore . (discards all working tree changes)
+if echo "$STRIPPED" | grep -qE 'git\s+(checkout|restore)\s+\.'; then
+  echo "BLOCKED: git checkout/restore . discards all working tree changes. Use git stash instead." >&2
+  exit 2
+fi
+
+# git branch -D (force-delete branch without merge check)
+if echo "$STRIPPED" | grep -qE 'git\s+branch\s+-[a-zA-Z]*D'; then
+  echo "BLOCKED: git branch -D force-deletes without checking merge status. Use -d for safe delete." >&2
+  exit 2
+fi
+
+# git push --force on any branch (non-main already blocked above)
+if echo "$STRIPPED" | grep -qE 'git\s+push\s+.*(-f|--force)'; then
+  echo "BLOCKED: git push --force can overwrite remote history. Use --force-with-lease instead." >&2
+  exit 2
+fi
+
 # DROP TABLE / DROP DATABASE
 if echo "$STRIPPED" | grep -qiE 'DROP\s+(TABLE|DATABASE)'; then
   echo "BLOCKED: DROP TABLE/DATABASE detected. This is destructive and irreversible." >&2

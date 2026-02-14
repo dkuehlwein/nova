@@ -20,6 +20,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - No error handling for impossible scenarios.
 - If 200 lines could be 50, rewrite it.
 
+### Running Python Code
+- **Never run `python` or `python3` directly.** These are not auto-approved for safety.
+- **Always write code to a script file first**, then run it with `uv run python script.py` (from the `backend/` directory).
+- This ensures all code is visible and reviewable via the Write tool before execution.
+- For one-off scripts, use `scripts/` directory. For tests, use `tests/`.
+
 ## Essential Development Commands
 
 ### Backend Development
