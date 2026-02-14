@@ -221,6 +221,11 @@ async def create_lam_account(
                         wait_until="networkidle"
                     )
                     logger.info("SSO completed, now on LAM page")
+
+                    # DEBUG: Dump cookie attributes to confirm session vs persistent
+                    cookies = await context.cookies()
+                    for c in cookies:
+                        logger.info(f"COOKIE DEBUG: name={c['name']} domain={c['domain']} expires={c.get('expires', 'NONE')} httpOnly={c.get('httpOnly')} secure={c.get('secure')}")
                 except PlaywrightTimeout:
                     return {
                         "success": False,
