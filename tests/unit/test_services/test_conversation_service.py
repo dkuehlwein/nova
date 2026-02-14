@@ -302,7 +302,7 @@ class TestGetTitle:
 
     @pytest.mark.asyncio
     async def test_get_title_truncates_long_message(self, service):
-        """Test that long titles are truncated."""
+        """Test that long titles are truncated at ~70 chars."""
         from backend.models.chat import ChatMessageDetail
 
         long_content = "A" * 100  # 100 character message
@@ -319,8 +319,68 @@ class TestGetTitle:
         with patch("services.chat_metadata_service.chat_metadata_service.get_title", new_callable=AsyncMock, return_value=None):
             result = await service.get_title("chat-123", messages)
 
-        assert len(result) == 53  # 50 chars + "..."
+        assert len(result) == 73  # 70 chars + "..."
         assert result.endswith("...")
+
+    @pytest.mark.asyncio
+    async def test_get_title_skips_ai_messages_uses_first_user_message(self, service):
+        """NOV-114: Title must use first USER message, not first AI message.
+
+        When the AI's first message is an internal system message like
+        "Before answering you, let me search my memory...", the title
+        must skip it and use the first human message instead.
+        """
+        from backend.models.chat import ChatMessageDetail
+
+        messages = [
+            ChatMessageDetail(
+                id="1",
+                sender="assistant",
+                content="Before answering you, let me search my memory for relevant information...",
+                created_at="2025-01-08T10:00:00Z",
+                needs_decision=False,
+            ),
+            ChatMessageDetail(
+                id="2",
+                sender="user",
+                content="How do I deploy to Kubernetes?",
+                created_at="2025-01-08T10:00:01Z",
+                needs_decision=False,
+            ),
+            ChatMessageDetail(
+                id="3",
+                sender="assistant",
+                content="Here is how to deploy to Kubernetes...",
+                created_at="2025-01-08T10:00:02Z",
+                needs_decision=False,
+            ),
+        ]
+
+        with patch("services.chat_metadata_service.chat_metadata_service.get_title", new_callable=AsyncMock, return_value=None):
+            result = await service.get_title("chat-123", messages)
+
+        assert result == "How do I deploy to Kubernetes?"
+        assert "memory" not in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_get_title_only_ai_messages_returns_new_chat(self, service):
+        """When there are only AI/assistant messages and no user messages, return 'New Chat'."""
+        from backend.models.chat import ChatMessageDetail
+
+        messages = [
+            ChatMessageDetail(
+                id="1",
+                sender="assistant",
+                content="Before answering you, let me search my memory...",
+                created_at="2025-01-08T10:00:00Z",
+                needs_decision=False,
+            ),
+        ]
+
+        with patch("services.chat_metadata_service.chat_metadata_service.get_title", new_callable=AsyncMock, return_value=None):
+            result = await service.get_title("chat-123", messages)
+
+        assert result == "New Chat"
 
     @pytest.mark.asyncio
     async def test_get_title_no_messages(self, service):
@@ -355,11 +415,11 @@ class TestGetTitle:
 
 
 class TestGenerateTitle:
-    """Test LLM-based title generation."""
+    """Test title generation and persistence."""
 
     @pytest.mark.asyncio
-    async def test_generate_title_success(self, service):
-        """Test successful title generation via LiteLLM HTTP API."""
+    async def test_generate_title_returns_first_user_message(self, service):
+        """generate_title() should return a title based on the first user message."""
         from backend.models.chat import ChatMessageDetail
 
         messages = [
@@ -373,27 +433,11 @@ class TestGenerateTitle:
             ),
         ]
 
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": "Kubernetes Deployment Guide"}}]
-        })
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=False)
-
-        mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=mock_response)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session), \
-             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
-             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
-             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
+        with patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
             result = await service.generate_title("chat-123", messages)
 
-        assert result == "Kubernetes Deployment Guide"
-        mock_set_title.assert_called_once_with("chat-123", "Kubernetes Deployment Guide")
+        assert result == "How do I deploy to Kubernetes?"
+        mock_set_title.assert_called_once_with("chat-123", "How do I deploy to Kubernetes?")
 
     @pytest.mark.asyncio
     async def test_generate_title_skips_task_chats(self, service):
@@ -402,228 +446,105 @@ class TestGenerateTitle:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_generate_title_needs_both_messages(self, service):
-        """Test that both user and assistant messages are needed."""
+    async def test_generate_title_works_with_user_only(self, service):
+        """generate_title() should work even when only user messages exist.
+
+        NOV-114: The old implementation required both user AND assistant messages,
+        returning None for user-only conversations. This meant new chats got no
+        persisted title until the assistant responded.
+        """
         from backend.models.chat import ChatMessageDetail
 
-        user_only = [
+        messages = [
             ChatMessageDetail(
-                id="1", sender="user", content="Hello",
+                id="1", sender="user", content="Hello, help me with my tasks",
                 created_at="2025-01-08T10:00:00Z", needs_decision=False,
             ),
         ]
-        result = await service.generate_title("chat-123", user_only)
+
+        with patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
+            result = await service.generate_title("chat-123", messages)
+
+        assert result == "Hello, help me with my tasks"
+        mock_set_title.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_generate_title_skips_ai_messages(self, service):
+        """generate_title() must use first user message, not first AI message.
+
+        NOV-114: The AI often starts with "Before answering you, let me search
+        my memory..." which must never appear as the title.
+        """
+        from backend.models.chat import ChatMessageDetail
+
+        messages = [
+            ChatMessageDetail(
+                id="1", sender="assistant",
+                content="Before answering you, let me search my memory for relevant information...",
+                created_at="2025-01-08T10:00:00Z", needs_decision=False,
+            ),
+            ChatMessageDetail(
+                id="2", sender="user", content="What meetings do I have today?",
+                created_at="2025-01-08T10:00:01Z", needs_decision=False,
+            ),
+        ]
+
+        with patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
+            result = await service.generate_title("chat-123", messages)
+
+        assert result == "What meetings do I have today?"
+        assert "memory" not in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_generate_title_truncates_long_message(self, service):
+        """generate_title() should truncate long user messages to ~70 chars."""
+        from backend.models.chat import ChatMessageDetail
+
+        long_content = "A" * 100
+        messages = [
+            ChatMessageDetail(
+                id="1", sender="user", content=long_content,
+                created_at="2025-01-08T10:00:00Z", needs_decision=False,
+            ),
+        ]
+
+        with patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock):
+            result = await service.generate_title("chat-123", messages)
+
+        assert len(result) == 73  # 70 + "..."
+        assert result.endswith("...")
+
+    @pytest.mark.asyncio
+    async def test_generate_title_no_user_messages_returns_none(self, service):
+        """generate_title() returns None when there are no user messages at all."""
+        from backend.models.chat import ChatMessageDetail
+
+        messages = [
+            ChatMessageDetail(
+                id="1", sender="assistant", content="I'm ready to help!",
+                created_at="2025-01-08T10:00:00Z", needs_decision=False,
+            ),
+        ]
+
+        result = await service.generate_title("chat-123", messages)
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_generate_title_http_error_falls_back(self, service):
-        """Test that HTTP errors fall back to first user message title."""
+    async def test_generate_title_persists_to_metadata(self, service):
+        """generate_title() must persist the title via chat_metadata_service."""
         from backend.models.chat import ChatMessageDetail
 
         messages = [
             ChatMessageDetail(
-                id="1", sender="user", content="Hello",
+                id="1", sender="user", content="Schedule a meeting for Monday",
                 created_at="2025-01-08T10:00:00Z", needs_decision=False,
-            ),
-            ChatMessageDetail(
-                id="2", sender="assistant", content="Hi there!",
-                created_at="2025-01-08T10:00:01Z", needs_decision=False,
             ),
         ]
 
-        mock_response = MagicMock()
-        mock_response.status = 500
-        mock_response.text = AsyncMock(return_value="Internal Server Error")
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=False)
+        with patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
+            await service.generate_title("chat-123", messages)
 
-        mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=mock_response)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session), \
-             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
-             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
-             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
-            result = await service.generate_title("chat-123", messages)
-
-        # Falls back to first user message
-        assert result == "Hello"
-        mock_set_title.assert_called_once_with("chat-123", "Hello")
-
-    @pytest.mark.asyncio
-    async def test_generate_title_truncates_long_title(self, service):
-        """Test that generated titles over 60 chars are truncated."""
-        from backend.models.chat import ChatMessageDetail
-
-        messages = [
-            ChatMessageDetail(
-                id="1", sender="user", content="Tell me everything",
-                created_at="2025-01-08T10:00:00Z", needs_decision=False,
-            ),
-            ChatMessageDetail(
-                id="2", sender="assistant", content="Sure, here's a lot of info...",
-                created_at="2025-01-08T10:00:01Z", needs_decision=False,
-            ),
-        ]
-
-        long_title = "A" * 80
-
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": long_title}}]
-        })
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=False)
-
-        mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=mock_response)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session), \
-             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
-             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
-             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock):
-            result = await service.generate_title("chat-123", messages)
-
-        assert len(result) == 60
-        assert result.endswith("...")
-
-
-class TestGenerateTitleSanitization:
-    """Test that generate_title rejects bad LLM responses."""
-
-    def _make_messages(self):
-        from backend.models.chat import ChatMessageDetail
-        return [
-            ChatMessageDetail(
-                id="1", sender="user", content="How do I deploy to Kubernetes?",
-                created_at="2025-01-08T10:00:00Z", needs_decision=False,
-            ),
-            ChatMessageDetail(
-                id="2", sender="assistant", content="Here's how to deploy to K8s...",
-                created_at="2025-01-08T10:00:01Z", needs_decision=False,
-            ),
-        ]
-
-    def _mock_llm_response(self, content):
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": content}}]
-        })
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=False)
-
-        mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=mock_response)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=False)
-        return mock_session
-
-    @pytest.mark.asyncio
-    async def test_rejects_title_containing_prompt_text(self, service):
-        """Test that titles echoing the prompt instruction fall back to first message.
-
-        Bug NOV-114: Some LLMs echo back the prompt instead of generating a title.
-        The fallback title (first user message) should be persisted instead.
-        """
-        messages = self._make_messages()
-
-        # LLM echoes back the prompt
-        echoed_prompt = "Generate a short, descriptive title (max 6 words) for this conversation."
-        mock_session = self._mock_llm_response(echoed_prompt)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session), \
-             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
-             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
-             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
-            result = await service.generate_title("chat-123", messages)
-
-        # Should fall back to first user message and persist it
-        assert result == "How do I deploy to Kubernetes?"
-        mock_set_title.assert_called_once_with("chat-123", "How do I deploy to Kubernetes?")
-
-    @pytest.mark.asyncio
-    async def test_rejects_title_with_instruction_language(self, service):
-        """Test that titles containing meta-instruction language fall back to first message."""
-        messages = self._make_messages()
-
-        # LLM returns instruction-like text
-        bad_title = "Return ONLY the title text, nothing else"
-        mock_session = self._mock_llm_response(bad_title)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session), \
-             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
-             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
-             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
-            result = await service.generate_title("chat-123", messages)
-
-        # Should fall back to first user message and persist it
-        assert result == "How do I deploy to Kubernetes?"
-        mock_set_title.assert_called_once_with("chat-123", "How do I deploy to Kubernetes?")
-
-    @pytest.mark.asyncio
-    async def test_rejects_empty_title(self, service):
-        """Test that empty/whitespace-only LLM titles fall back to first message."""
-        messages = self._make_messages()
-
-        mock_session = self._mock_llm_response("   ")
-
-        with patch("aiohttp.ClientSession", return_value=mock_session), \
-             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
-             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
-             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
-            result = await service.generate_title("chat-123", messages)
-
-        # Should fall back to first user message and persist it
-        assert result == "How do I deploy to Kubernetes?"
-        mock_set_title.assert_called_once_with("chat-123", "How do I deploy to Kubernetes?")
-
-    @pytest.mark.asyncio
-    async def test_accepts_valid_short_title(self, service):
-        """Test that valid short titles are accepted."""
-        messages = self._make_messages()
-
-        mock_session = self._mock_llm_response("Kubernetes Deployment Guide")
-
-        with patch("aiohttp.ClientSession", return_value=mock_session), \
-             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
-             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
-             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
-            result = await service.generate_title("chat-123", messages)
-
-        assert result == "Kubernetes Deployment Guide"
-        mock_set_title.assert_called_once_with("chat-123", "Kubernetes Deployment Guide")
-
-    @pytest.mark.asyncio
-    async def test_strips_thinking_tokens(self, service):
-        """Test that thinking tokens from reasoning models are stripped.
-
-        Reasoning models output <think>...</think> before the actual answer.
-        The title should be extracted from after the closing tag.
-        """
-        messages = self._make_messages()
-
-        thinking_response = (
-            "We need a short title for this conversation about Kubernetes deployment. "
-            "Something like 'Kubernetes Deployment Guide'.\n"
-            "</think>\n"
-            "Kubernetes Deployment Guide"
-        )
-        mock_session = self._mock_llm_response(thinking_response)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session), \
-             patch("utils.llm_factory.get_chat_llm_config", return_value={"model": "test-model"}), \
-             patch("utils.llm_factory.get_litellm_config", return_value={"base_url": "http://localhost:4000", "api_key": "sk-test"}), \
-             patch("services.chat_metadata_service.chat_metadata_service.set_title", new_callable=AsyncMock) as mock_set_title:
-            result = await service.generate_title("chat-123", messages)
-
-        assert result == "Kubernetes Deployment Guide"
-        mock_set_title.assert_called_once_with("chat-123", "Kubernetes Deployment Guide")
+        mock_set_title.assert_called_once_with("chat-123", "Schedule a meeting for Monday")
 
 
 class TestGetTitleErrorHandling:

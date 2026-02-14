@@ -243,9 +243,10 @@ async def respond_to_escalation(chat_id: str, response: dict):
 
 @router.post("/conversations/{chat_id}/generate-title")
 async def generate_chat_title(chat_id: str):
-    """Generate an LLM-based title for a chat conversation.
+    """Generate a title for a chat conversation and persist it.
 
-    Called after the first assistant response in a new chat.
+    Called after the first message in a new chat. Uses the first user
+    message as the title.
     """
     try:
         checkpointer = await get_checkpointer_from_service_manager()
@@ -254,12 +255,12 @@ async def generate_chat_title(chat_id: str):
         if not messages:
             raise HTTPException(status_code=404, detail="Chat not found")
 
-        generated_title = await conversation_service.generate_title(chat_id, messages)
+        title = await conversation_service.generate_title(chat_id, messages)
 
-        if generated_title:
-            return {"title": generated_title, "generated": True}
+        if title:
+            return {"title": title, "generated": True}
 
-        # Fallback to current behavior
+        # No user messages yet - use get_title fallback
         fallback_title = await conversation_service.get_title(chat_id, messages)
         return {"title": fallback_title, "generated": False}
 

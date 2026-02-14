@@ -367,123 +367,34 @@ class ConversationService:
         # For regular chats, use first user message
         first_user_msg = next((msg for msg in messages if msg.sender == "user"), None)
         if first_user_msg:
-            title = first_user_msg.content[:50]
-            return title + "..." if len(first_user_msg.content) > 50 else title
+            return self._truncate_title(first_user_msg.content)
 
         return "New Chat"
 
-    # Phrases that indicate the LLM echoed the prompt instead of generating a title
-    _PROMPT_LEAK_PHRASES = [
-        "generate a",
-        "descriptive title",
-        "return only",
-        "nothing else",
-        "max 6 words",
-        "for this conversation",
-    ]
-
-    def _is_valid_title(self, title: str) -> bool:
-        """Check whether an LLM-generated title is usable.
-
-        Rejects empty titles and titles that look like the prompt was echoed back.
-        """
-        if not title:
-            return False
-        lower = title.lower()
-        for phrase in self._PROMPT_LEAK_PHRASES:
-            if phrase in lower:
-                return False
-        return True
-
-    def _title_from_message(self, content: str) -> str:
-        """Create a title by truncating the first user message."""
-        title = content[:50]
-        if len(content) > 50:
-            title += "..."
-        return title
+    @staticmethod
+    def _truncate_title(content: str, max_length: int = 70) -> str:
+        """Truncate content to max_length chars, adding ellipsis if needed."""
+        if len(content) <= max_length:
+            return content
+        return content[:max_length] + "..."
 
     async def generate_title(
         self, thread_id: str, messages: List[ChatMessageDetail]
     ) -> Optional[str]:
-        """Generate a title for a regular chat conversation and persist it.
+        """Generate and persist a title for a chat conversation.
 
-        Tries LLM-based generation first. If the model returns unusable text
-        (e.g. prompt leak from small models), falls back to truncating the
-        first user message. Either way, the title is persisted to the database.
-
-        Only generates for non-task chats with at least one user and assistant message.
-        Returns None only for task chats or chats without enough messages.
+        Uses the first user message as the title. Returns None for task chats
+        or conversations with no user messages.
         """
         if thread_id.startswith(TASK_THREAD_PREFIX):
             return None
 
-        user_msgs = [m for m in messages if m.sender == "user"]
-        assistant_msgs = [m for m in messages if m.sender == "assistant"]
-        if not user_msgs or not assistant_msgs:
+        first_user_msg = next((m for m in messages if m.sender == "user"), None)
+        if not first_user_msg:
             return None
 
-        first_user = user_msgs[0].content[:500]
-        first_assistant = assistant_msgs[0].content[:500]
-        title = None
+        title = self._truncate_title(first_user_msg.content)
 
-        try:
-            import aiohttp
-            from utils.llm_factory import get_litellm_config, get_chat_llm_config
-
-            llm_config = get_chat_llm_config()
-            litellm_config = get_litellm_config()
-
-            url = f"{litellm_config['base_url']}/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {litellm_config['api_key']}",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "model": llm_config["model"],
-                "messages": [{
-                    "role": "user",
-                    "content": (
-                        "Generate a short, descriptive title (max 6 words) for this conversation. "
-                        "Return ONLY the title text, nothing else.\n\n"
-                        f"User: {first_user}\n\n"
-                        f"Assistant: {first_assistant}"
-                    ),
-                }],
-                "temperature": 0.3,
-            }
-
-            timeout = aiohttp.ClientTimeout(total=15)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(url, headers=headers, json=payload) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.warning(f"LiteLLM title generation failed: {response.status} - {error_text}")
-                    else:
-                        result = await response.json()
-                        candidate = result["choices"][0]["message"]["content"].strip()
-
-                        # Strip thinking tokens (reasoning models output <think>...</think> before the answer)
-                        if "</think>" in candidate:
-                            candidate = candidate.split("</think>")[-1].strip()
-
-                        candidate = candidate.strip('"\'')
-
-                        if self._is_valid_title(candidate):
-                            title = candidate
-                        else:
-                            logger.warning(f"LLM returned unusable title for {thread_id}: {candidate!r}")
-
-        except Exception as e:
-            logger.warning(f"LLM title generation failed for {thread_id}: {e}")
-
-        # Fall back to first user message if LLM didn't produce a valid title
-        if title is None:
-            title = self._title_from_message(first_user)
-
-        if len(title) > 60:
-            title = title[:57] + "..."
-
-        # Persist the title
         from services.chat_metadata_service import chat_metadata_service
         await chat_metadata_service.set_title(thread_id, title)
 
