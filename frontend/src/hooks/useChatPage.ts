@@ -160,7 +160,7 @@ export function useChatPage() {
       } catch (error) {
         console.error('Failed to load chat:', error);
       } finally {
-        setLoadingChatId(null);
+        setLoadingChatId((prev) => (prev === chatItem.id ? null : prev));
       }
     },
     [loadTaskChat, loadChat, router],
