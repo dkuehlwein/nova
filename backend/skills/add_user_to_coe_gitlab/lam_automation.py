@@ -15,6 +15,8 @@ import json
 import secrets
 import shutil
 import string
+import sys
+import types
 from pathlib import Path
 from utils.logging import get_logger
 
@@ -22,6 +24,23 @@ logger = get_logger(__name__)
 
 # Default location for the persistent Chromium profile
 _DEFAULT_PROFILE_DIR = Path.home() / ".cache" / "nova" / "lam-chromium-profile"
+
+# Key used in sys.modules to store the browser cache across module re-imports.
+# sys.modules is process-global and survives re-imports via _import_skill_module().
+_BROWSER_CACHE_KEY = "_nova_lam_browser"
+
+
+def _get_browser_cache():
+    """Get the process-level browser cache (survives module re-imports)."""
+    cache = sys.modules.get(_BROWSER_CACHE_KEY)
+    if cache is None:
+        cache = types.SimpleNamespace(
+            playwright_obj=None,  # Playwright instance (from async_playwright().__aenter__())
+            context=None,  # BrowserContext (persistent)
+            profile_dir=None,  # Path used for this context
+        )
+        sys.modules[_BROWSER_CACHE_KEY] = cache
+    return cache
 
 
 def generate_password(length: int = 16) -> str:
@@ -135,32 +154,90 @@ async def _save_sso_cookies(context, state_path: Path | None = None) -> None:
         logger.warning(f"Failed to save SSO cookies: {e}")
 
 
-def _build_chrome_args_from_config() -> list[str]:
-    """
-    Build Chrome args for auto-selecting client certificates.
 
-    Reads domains from config.yaml (browser.auto_cert_domains) and builds
-    Chrome's --auto-select-certificate-for-urls flags.
+async def _get_or_create_browser_context(headless: bool = False, timeout_ms: int = 30000):
+    """
+    Return a cached Playwright BrowserContext, creating one if needed.
+
+    The context is stored in sys.modules so it survives module re-imports
+    (Nova's skill loader re-imports tools on every invocation). This keeps
+    the browser alive across tool calls, preserving cert selection and SSO
+    cookies in-memory.
+
+    Args:
+        headless: Run browser in headless mode
+        timeout_ms: Default timeout for page operations
 
     Returns:
-        List of Chrome argument strings
+        A Playwright BrowserContext (persistent)
     """
-    config = _load_config()
-    browser_config = config.get("browser", {})
-    domains = browser_config.get("auto_cert_domains", [])
+    from playwright.async_api import async_playwright
 
-    if not domains:
-        return []
+    cache = _get_browser_cache()
 
-    args = []
-    for domain in domains:
-        # Chrome expects pattern like: {"pattern":"https://[*.]domain.com","filter":{}}
-        pattern = '{"pattern":"https://[*.]{domain}","filter":{}}'.replace(
-            "{domain}", domain
+    # Check if cached context is still alive
+    if cache.context is not None:
+        try:
+            # is_connected() checks if the browser process is still running
+            if cache.context.browser and cache.context.browser.is_connected():
+                logger.debug("Reusing cached browser context")
+                return cache.context
+        except Exception:
+            pass
+        # Dead context - clean up
+        logger.info("Cached browser context is dead, recreating")
+        cache.context = None
+        if cache.playwright_obj:
+            try:
+                await cache.playwright_obj.stop()
+            except Exception:
+                pass
+            cache.playwright_obj = None
+
+    # Create new Playwright instance and persistent context
+    pw = await async_playwright().start()
+    profile_dir = _get_profile_dir()
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        context = await pw.chromium.launch_persistent_context(
+            user_data_dir=str(profile_dir),
+            headless=headless,
+            ignore_https_errors=True,
         )
-        args.append(f"--auto-select-certificate-for-urls={pattern}")
+    except Exception as launch_err:
+        # Corrupt profile - wipe and retry once
+        logger.warning(f"Persistent context launch failed, resetting profile: {launch_err}")
+        shutil.rmtree(profile_dir, ignore_errors=True)
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        context = await pw.chromium.launch_persistent_context(
+            user_data_dir=str(profile_dir),
+            headless=headless,
+            ignore_https_errors=True,
+        )
 
-    return args
+    cache.playwright_obj = pw
+    cache.context = context
+    cache.profile_dir = profile_dir
+    logger.info("Created new persistent browser context")
+    return context
+
+
+async def close_lam_browser():
+    """Close the cached browser (called on process shutdown or explicitly)."""
+    cache = _get_browser_cache()
+    if cache.context:
+        try:
+            await cache.context.close()
+        except Exception:
+            pass
+        cache.context = None
+    if cache.playwright_obj:
+        try:
+            await cache.playwright_obj.stop()
+        except Exception:
+            pass
+        cache.playwright_obj = None
 
 
 async def create_lam_account(
@@ -202,10 +279,7 @@ async def create_lam_account(
     """
     # Import here to allow the skill to load even if playwright isn't installed
     try:
-        from playwright.async_api import (
-            async_playwright,
-            TimeoutError as PlaywrightTimeout,
-        )
+        from playwright.async_api import TimeoutError as PlaywrightTimeout
     except ImportError:
         return {
             "success": False,
@@ -224,318 +298,217 @@ async def create_lam_account(
 
     logger.info(f"Starting LAM account creation for: {username}")
 
-    async with async_playwright() as p:
-        context = None
+    page = None
+    try:
+        context = await _get_or_create_browser_context(headless, timeout_ms)
+
+        # Restore saved SSO session cookies on first use (fallback for
+        # when the process restarted and the browser cache was lost)
+        await _restore_sso_cookies(context, lam_url=lam_url)
+
+        page = await context.new_page()
+        page.set_default_timeout(timeout_ms)
+
+        # Step 1: Navigate to LAM login page
+        login_url = _build_lam_url(lam_url, "login.php")
+        logger.debug(f"Navigating to LAM login: {login_url}")
+
+        await page.goto(login_url, wait_until="networkidle")
+
+        # Step 2: Handle SSO/MFA if redirected
+        current_url = page.url
+        if "lam" not in current_url.lower():
+            logger.info(f"SSO detected at: {current_url}")
+            logger.info("Waiting for user to complete SSO/MFA login...")
+
+            try:
+                await page.wait_for_url(
+                    "**/lam/**",
+                    timeout=sso_wait_timeout_ms,
+                    wait_until="networkidle",
+                )
+                logger.info("SSO completed, now on LAM page")
+
+                # Save SSO cookies so they survive process restarts
+                await _save_sso_cookies(context)
+            except PlaywrightTimeout:
+                return {
+                    "success": False,
+                    "username": username,
+                    "error": f"SSO login timeout ({sso_wait_timeout_ms / 1000}s). Please complete SSO faster or increase timeout.",
+                }
+
+        # Step 3: LAM Profile Login (after SSO)
         try:
-            # Chrome args for enterprise SSO environments:
-            # Auto-select client certificates for known SSO domains (avoids cert picker dialog)
-            # Domains are loaded from config.yaml (browser.auto_cert_domains)
-            chrome_args = _build_chrome_args_from_config()
-
-            # Use a persistent Chromium profile so PingOne SSO cookies survive
-            # across invocations. This avoids repeated MFA prompts when creating
-            # multiple accounts in the same session.
-            profile_dir = _get_profile_dir()
-            profile_dir.mkdir(parents=True, exist_ok=True)
-
-            try:
-                context = await p.chromium.launch_persistent_context(
-                    user_data_dir=str(profile_dir),
-                    headless=headless,
-                    args=chrome_args,
-                    ignore_https_errors=True,
-                )
-            except Exception as launch_err:
-                # Corrupt profile -- wipe and retry once with a fresh profile
-                logger.warning(
-                    f"Persistent context launch failed, resetting profile: {launch_err}"
-                )
-                shutil.rmtree(profile_dir, ignore_errors=True)
-                profile_dir.mkdir(parents=True, exist_ok=True)
-                context = await p.chromium.launch_persistent_context(
-                    user_data_dir=str(profile_dir),
-                    headless=headless,
-                    args=chrome_args,
-                    ignore_https_errors=True,
-                )
-
-            # Restore saved SSO session cookies (Chromium won't persist
-            # session cookies on its own, even with user_data_dir)
-            await _restore_sso_cookies(context, lam_url=lam_url)
-
-            page = await context.new_page()
-            page.set_default_timeout(timeout_ms)
-
-            # Step 1: Navigate to LAM login page
-            # The login page is typically at /lam/templates/login.php
-            login_url = _build_lam_url(lam_url, "login.php")
-            logger.debug(f"Navigating to LAM login: {login_url}")
-
-            await page.goto(login_url, wait_until="networkidle")
-
-            # Step 2: Handle SSO/MFA if redirected
-            # Check if we're on an SSO page (not LAM)
-            current_url = page.url
-            if "lam" not in current_url.lower():
-                logger.info(f"SSO detected at: {current_url}")
-                logger.info("Waiting for user to complete SSO/MFA login...")
-
-                # Wait for SSO completion - user will be redirected back to LAM
-                try:
-                    await page.wait_for_url(
-                        "**/lam/**",
-                        timeout=sso_wait_timeout_ms,
-                        wait_until="networkidle",
-                    )
-                    logger.info("SSO completed, now on LAM page")
-
-                    # Save SSO cookies so they survive browser restarts
-                    await _save_sso_cookies(context)
-                except PlaywrightTimeout:
-                    return {
-                        "success": False,
-                        "username": username,
-                        "error": f"SSO login timeout ({sso_wait_timeout_ms / 1000}s). Please complete SSO faster or increase timeout.",
-                    }
-
-            # Step 3: LAM Profile Login (after SSO)
-            # LAM uses a profile selection + password form
-            try:
-                # Check if we're on the LAM login page (not the main interface)
-                passwd_field = await page.query_selector("input[name='passwd']")
-                if passwd_field:
-                    logger.debug("Found LAM profile password field")
-
-                    # Enter LAM profile password
-                    await page.fill("input[name='passwd']", admin_password)
-
-                    # Submit login form
-                    await page.click("button[type='submit'], input[type='submit']")
-
-                    # Wait for navigation after login
-                    await page.wait_for_load_state("networkidle")
-                else:
-                    logger.debug("No LAM profile login needed, already authenticated")
-
-            except PlaywrightTimeout:
-                return {
-                    "success": False,
-                    "username": username,
-                    "error": "LAM login form interaction failed.",
-                }
-
-            # Step 4: Navigate to user list and click "New user"
-            # Note: We don't pre-check for existing users because LAM's search doesn't
-            # support filtering by email. Instead, we rely on LAM's warning when
-            # attempting to create a user with an existing email.
-            # LAM requires clicking the "New user" button from the list page
-            list_url = _build_lam_url(lam_url, "lists/list.php?type=user")
-            logger.debug(f"Navigating to user list: {list_url}")
-            await page.goto(list_url, wait_until="networkidle")
-
-            # Click "New user" button
-            try:
-                await page.click('button[name="new"]')
+            passwd_field = await page.query_selector("input[name='passwd']")
+            if passwd_field:
+                logger.debug("Found LAM profile password field")
+                await page.fill("input[name='passwd']", admin_password)
+                await page.click("button[type='submit'], input[type='submit']")
                 await page.wait_for_load_state("networkidle")
-                logger.debug(f"New user form URL: {page.url}")
-            except PlaywrightTimeout:
-                return {
-                    "success": False,
-                    "username": username,
-                    "error": "Could not find 'New user' button on the list page.",
-                }
-
-            # Step 5: Fill in the account form
-            # Field names based on LAM 8.7 configuration
-            # Reference: https://github.com/LDAPAccountManager/lam/blob/develop/lam/lib/modules/posixAccount.inc
-            logger.debug(f"Form page URL: {page.url}")
-            try:
-                # uid - Unix username (from MS Graph mail_nickname)
-                # This is the primary identifier for the LDAP/posixAccount entry
-                await page.fill("input[name='uid']", username)
-
-                # givenName - First name
-                await page.fill("input[name='givenName']", first_name)
-
-                # sn - Surname/Last name
-                await page.fill("input[name='sn']", last_name)
-
-                # mail_0 - Email (LAM uses indexed names for multi-value fields)
-                await page.fill("input[name='mail_0']", email)
-
-                # Note: Password fields are in a modal and not needed for this LAM config
-                # The password is set by the user during first login
-
-            except PlaywrightTimeout as e:
-                logger.error(f"Form field timeout on page: {page.url}")
-                return {
-                    "success": False,
-                    "username": username,
-                    "error": f"Form field not found on {page.url}: {str(e)}. Check LAM form selectors.",
-                }
-
-            # Step 6: Submit the form (may require multiple saves if Unix attributes needed)
-            try:
-                # LAM's save button is named 'accountContainerSaveAccount'
-                await page.click("button[name='accountContainerSaveAccount']")
-
-                # Wait for response
-                await page.wait_for_load_state("networkidle")
-
-                # Check for success indicator
-                # LAM typically shows a success message or redirects to account list
-                page_content = await page.content()
-                page_lower = page_content.lower()
-
-                # FIRST: Check for "already in use" message - this appears on first save
-                # LAM shows "already in use." in a box at the top of the page
-                if "already exists" in page_lower or "already in use" in page_lower:
-                    logger.info(
-                        f"User with email {email} already exists in LAM (detected 'already in use' message)"
-                    )
-                    return {
-                        "success": True,  # This is actually success - the account exists
-                        "already_exists": True,
-                        "username": username,
-                        "email": email,
-                        "message": "User already exists in LDAP - no action needed",
-                    }
-
-                # Check if LAM requires additional attributes (e.g., Unix tab)
-                # This happens when "Some required information is missing" appears
-                if "required" in page_lower and "missing" in page_lower:
-                    logger.info(
-                        "LAM requires additional attributes, checking for Unix tab..."
-                    )
-
-                    # Look for the Unix tab link and click it
-                    unix_tab = await page.query_selector(
-                        "a[href*='unix'], a:has-text('Unix'), button:has-text('Unix')"
-                    )
-                    if unix_tab:
-                        logger.info("Clicking Unix tab to fill required attributes")
-                        await unix_tab.click()
-                        await page.wait_for_load_state("networkidle")
-
-                        # Unix attributes are typically auto-generated by LAM
-                        # but we need to ensure the tab is visited before saving
-                        # Some LAM configs require just visiting the tab, others need field interaction
-
-                        # Check if there are empty required fields and try to trigger auto-generation
-                        uid_number_field = await page.query_selector(
-                            "input[name='uidNumber']"
-                        )
-                        if uid_number_field:
-                            # Check if it's empty - if so, LAM should auto-generate on blur
-                            uid_value = await uid_number_field.get_attribute("value")
-                            if not uid_value:
-                                logger.debug(
-                                    "uidNumber is empty, triggering field interaction"
-                                )
-                                await uid_number_field.click()
-                                await uid_number_field.press(
-                                    "Tab"
-                                )  # Trigger blur to auto-generate
-                                await page.wait_for_timeout(500)  # Brief wait for JS
-
-                        # Now click Save again
-                        logger.info("Clicking Save again after visiting Unix tab")
-                        await page.click("button[name='accountContainerSaveAccount']")
-                        await page.wait_for_load_state("networkidle")
-
-                        # Re-check page content after second save
-                        page_content = await page.content()
-                        page_lower = page_content.lower()
-
-                # Check if still showing required/missing after our Unix tab attempt
-                if "required" in page_lower and "missing" in page_lower:
-                    # Try to extract which fields are missing
-                    error_elem = await page.query_selector(
-                        ".error, .alert-danger, .msg-error, .statusMessage"
-                    )
-                    error_msg = (
-                        await error_elem.text_content()
-                        if error_elem
-                        else "Required fields still missing"
-                    )
-                    return {
-                        "success": False,
-                        "username": username,
-                        "error": f"LAM requires additional attributes: {error_msg}. Manual intervention may be needed.",
-                    }
-
-                if "error" in page_content.lower():
-                    # Try to extract error message
-                    error_elem = await page.query_selector(
-                        ".error, .alert-danger, .msg-error"
-                    )
-                    error_msg = (
-                        await error_elem.text_content()
-                        if error_elem
-                        else "Unknown error"
-                    )
-                    return {
-                        "success": False,
-                        "username": username,
-                        "error": f"LAM error: {error_msg}",
-                    }
-
-                # Success indicators
-                # LAM shows "Account was saved" or similar on success
-                if "saved" in page_content.lower() or "created" in page_content.lower():
-                    logger.info(f"Successfully created LAM account: {username}")
-                    return {
-                        "success": True,
-                        "username": username,
-                        "email": email,
-                        "message": "Account was created successfully",
-                        # Note: Password is not set in LAM - user sets it on first login
-                    }
-
-                # If we're back on the user list, that usually means success
-                if "list.php" in page.url and "type=user" in page.url:
-                    logger.info(
-                        f"Redirected to user list - assuming success for {username}"
-                    )
-                    return {
-                        "success": True,
-                        "username": username,
-                        "email": email,
-                        "message": "Account creation completed (redirected to user list)",
-                    }
-
-                # If we can't determine success/failure from page content,
-                # log the page content for debugging and assume failure
-                logger.warning(f"Could not confirm account creation for {username}")
-                logger.debug(f"Page URL: {page.url}")
-                logger.debug(f"Page content sample: {page_content[:1000]}")
-                return {
-                    "success": False,
-                    "username": username,
-                    "error": "Could not determine if account was created. Check LAM manually.",
-                    "page_url": page.url,
-                }
-
-            except PlaywrightTimeout:
-                return {
-                    "success": False,
-                    "username": username,
-                    "error": "Form submission timed out",
-                }
-
-        except Exception as e:
-            logger.error(f"LAM automation error: {e}")
+            else:
+                logger.debug("No LAM profile login needed, already authenticated")
+        except PlaywrightTimeout:
             return {
                 "success": False,
                 "username": username,
-                "error": str(e),
+                "error": "LAM login form interaction failed.",
             }
 
-        finally:
-            # Closing the persistent context also closes the underlying browser.
-            # See: https://github.com/microsoft/playwright/issues/35466
-            if context:
-                await context.close()
+        # Step 4: Navigate to user list and click "New user"
+        list_url = _build_lam_url(lam_url, "lists/list.php?type=user")
+        logger.debug(f"Navigating to user list: {list_url}")
+        await page.goto(list_url, wait_until="networkidle")
+
+        try:
+            await page.click('button[name="new"]')
+            await page.wait_for_load_state("networkidle")
+            logger.debug(f"New user form URL: {page.url}")
+        except PlaywrightTimeout:
+            return {
+                "success": False,
+                "username": username,
+                "error": "Could not find 'New user' button on the list page.",
+            }
+
+        # Step 5: Fill personal fields and save (duplicate check)
+        # LAM flow: fill personal fields → save → if not duplicate → fill uid → save again
+        logger.debug(f"Form page URL: {page.url}")
+        try:
+            await page.fill("input[name='givenName']", first_name)
+            await page.fill("input[name='sn']", last_name)
+            await page.fill("input[name='mail_0']", email)
+        except PlaywrightTimeout as e:
+            logger.error(f"Form field timeout on page: {page.url}")
+            return {
+                "success": False,
+                "username": username,
+                "error": f"Form field not found on {page.url}: {str(e)}. Check LAM form selectors.",
+            }
+
+        # Step 6: First save - checks for duplicate users
+        try:
+            await page.click("button[name='accountContainerSaveAccount']")
+            await page.wait_for_load_state("networkidle")
+
+            page_content = await page.content()
+            page_lower = page_content.lower()
+
+            if "already exists" in page_lower or "already in use" in page_lower:
+                logger.info(
+                    f"User with email {email} already exists in LAM (detected 'already in use' message)"
+                )
+                return {
+                    "success": True,
+                    "already_exists": True,
+                    "username": username,
+                    "email": email,
+                    "message": "User already exists in LDAP - no action needed",
+                }
+
+            # Step 7: User doesn't exist - fill uid and save again
+            logger.info("User not found, filling uid and saving again")
+            try:
+                await page.click('button[name="form_main_posixAccount"]')
+                await page.wait_for_load_state("networkidle")
+                await page.fill("input[name='uid']", username)
+            except PlaywrightTimeout as e:
+                logger.error(f"Unix tab/uid field timeout on page: {page.url}")
+                return {
+                    "success": False,
+                    "username": username,
+                    "error": f"Could not fill uid on {page.url}: {str(e)}. Check LAM form selectors.",
+                }
+
+            await page.click("button[name='accountContainerSaveAccount']")
+            await page.wait_for_load_state("networkidle")
+
+            page_content = await page.content()
+            page_lower = page_content.lower()
+
+            if "required" in page_lower and "missing" in page_lower:
+                error_elem = await page.query_selector(
+                    ".error, .alert-danger, .msg-error, .statusMessage"
+                )
+                error_msg = (
+                    await error_elem.text_content()
+                    if error_elem
+                    else "Required fields still missing"
+                )
+                return {
+                    "success": False,
+                    "username": username,
+                    "error": f"LAM requires additional attributes: {error_msg}. Manual intervention may be needed.",
+                }
+
+            if "error" in page_content.lower():
+                error_elem = await page.query_selector(
+                    ".error, .alert-danger, .msg-error"
+                )
+                error_msg = (
+                    await error_elem.text_content()
+                    if error_elem
+                    else "Unknown error"
+                )
+                return {
+                    "success": False,
+                    "username": username,
+                    "error": f"LAM error: {error_msg}",
+                }
+
+            if "saved" in page_content.lower() or "created" in page_content.lower():
+                logger.info(f"Successfully created LAM account: {username}")
+                return {
+                    "success": True,
+                    "username": username,
+                    "email": email,
+                    "message": "Account was created successfully",
+                }
+
+            if "list.php" in page.url and "type=user" in page.url:
+                logger.info(
+                    f"Redirected to user list - assuming success for {username}"
+                )
+                return {
+                    "success": True,
+                    "username": username,
+                    "email": email,
+                    "message": "Account creation completed (redirected to user list)",
+                }
+
+            logger.warning(f"Could not confirm account creation for {username}")
+            logger.debug(f"Page URL: {page.url}")
+            logger.debug(f"Page content sample: {page_content[:1000]}")
+            return {
+                "success": False,
+                "username": username,
+                "error": "Could not determine if account was created. Check LAM manually.",
+                "page_url": page.url,
+            }
+
+        except PlaywrightTimeout:
+            return {
+                "success": False,
+                "username": username,
+                "error": "Form submission timed out",
+            }
+
+    except Exception as e:
+        logger.error(f"LAM automation error: {e}")
+        return {
+            "success": False,
+            "username": username,
+            "error": str(e),
+        }
+
+    finally:
+        # Close the PAGE, not the context. The context stays alive for
+        # the next invocation, preserving cert selection and SSO cookies.
+        if page:
+            try:
+                await page.close()
+            except Exception:
+                pass
 
 
 async def check_lam_connection(
