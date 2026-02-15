@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { AlertTriangle, Loader2, StopCircle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ChatHistoryItem, type ChatHistoryItemData } from "./ChatHistoryItem";
-import { PendingDecisionItem, type PendingDecision } from "./PendingDecisionItem";
+import { AlertTriangle, Loader2, StopCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ChatHistoryItem, type ChatHistoryItemData } from './ChatHistoryItem';
+import { PendingDecisionItem, type PendingDecision } from './PendingDecisionItem';
 
 interface ChatSidebarProps {
   isConnected: boolean;
@@ -14,6 +14,7 @@ interface ChatSidebarProps {
   hasMoreChats: boolean;
   loadingMoreChats: boolean;
   deletingChatId: string | null;
+  loadingChatId: string | null;
   pendingDecisions: PendingDecision[];
   chatHistory: ChatHistoryItemData[];
   onNewChat: () => void;
@@ -32,6 +33,7 @@ export function ChatSidebar({
   hasMoreChats,
   loadingMoreChats,
   deletingChatId,
+  loadingChatId,
   pendingDecisions,
   chatHistory,
   onNewChat,
@@ -42,7 +44,7 @@ export function ChatSidebar({
   onRenameChat,
 }: ChatSidebarProps) {
   // Filter out chats that need decisions (they show in pending section)
-  const regularChats = chatHistory.filter(chat => !chat.needs_decision);
+  const regularChats = chatHistory.filter((chat) => !chat.needs_decision);
 
   return (
     <div className="chat-sidebar w-80 border-r border-border bg-card flex flex-col">
@@ -74,12 +76,7 @@ export function ChatSidebar({
           </Button>
 
           {isLoading && isStreaming && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onStopStreaming}
-              className="w-full"
-            >
+            <Button variant="outline" size="sm" onClick={onStopStreaming} className="w-full">
               <StopCircle className="h-4 w-4 mr-2" />
               Stop
             </Button>
@@ -133,6 +130,7 @@ export function ChatSidebar({
                       key={chatItem.id}
                       item={chatItem}
                       isDeleting={deletingChatId === chatItem.id}
+                      isLoading={loadingChatId === chatItem.id}
                       onSelect={onChatSelect}
                       onDelete={onDeleteChat}
                       onRename={onRenameChat}

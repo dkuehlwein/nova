@@ -5,6 +5,7 @@ FastAPI endpoints for LangGraph agent compatible with agent-chat-ui patterns.
 Thin HTTP handlers that delegate to services for business logic.
 """
 
+import asyncio
 import json
 from datetime import datetime
 from typing import List
@@ -121,16 +122,21 @@ async def list_chats(limit: int = 5, offset: int = 0):
     try:
         checkpointer = await get_checkpointer_from_service_manager()
         thread_ids = await conversation_service.list_threads(checkpointer)
-        chat_summaries = []
 
-        for thread_id in thread_ids:
+        # Fetch summaries concurrently
+        async def safe_get_summary(thread_id: str):
             try:
-                summary = await conversation_service.get_summary(thread_id, checkpointer)
-                if summary:
-                    chat_summaries.append(summary)
+                return await conversation_service.get_summary(
+                    thread_id, checkpointer
+                )
             except Exception as msg_error:
                 logger.warning(f"Error processing chat {thread_id}: {msg_error}")
-                continue
+                return None
+
+        results = await asyncio.gather(
+            *[safe_get_summary(tid) for tid in thread_ids]
+        )
+        chat_summaries = [s for s in results if s is not None]
 
         # Sort by last activity (most recent first)
         chat_summaries.sort(key=lambda x: x.updated_at, reverse=True)
