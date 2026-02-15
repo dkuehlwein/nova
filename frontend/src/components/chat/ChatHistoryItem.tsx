@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { useState, useRef, useEffect } from "react";
-import { MessageSquare, Link, Trash2, Loader2, Pencil } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { MarkdownMessage } from "./MarkdownMessage";
-import { formatDate } from "@/lib/format-utils";
+import { useState, useRef, useEffect } from 'react';
+import { MessageSquare, Link, Trash2, Loader2, Pencil } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { MarkdownMessage } from './MarkdownMessage';
+import { formatDate } from '@/lib/format-utils';
 
 export interface ChatHistoryItemData {
   id: string;
@@ -21,6 +21,7 @@ export interface ChatHistoryItemData {
 interface ChatHistoryItemProps {
   item: ChatHistoryItemData;
   isDeleting: boolean;
+  isLoading?: boolean;
   onSelect: (item: ChatHistoryItemData) => void;
   onDelete: (item: ChatHistoryItemData, e: React.MouseEvent) => void;
   onRename?: (id: string, newTitle: string) => Promise<void>;
@@ -29,6 +30,7 @@ interface ChatHistoryItemProps {
 export function ChatHistoryItem({
   item,
   isDeleting,
+  isLoading,
   onSelect,
   onDelete,
   onRename,
@@ -73,11 +75,17 @@ export function ChatHistoryItem({
 
   return (
     <div
-      onClick={() => !isEditing && onSelect(item)}
-      className="p-3 rounded-lg border hover:bg-muted cursor-pointer transition-colors group/chat relative"
+      onClick={() => !isEditing && !isLoading && onSelect(item)}
+      className={`p-3 rounded-lg border cursor-pointer transition-colors group/chat relative ${
+        isLoading ? 'bg-muted border-primary/50' : 'hover:bg-muted'
+      }`}
     >
       <div className="flex items-start space-x-2">
-        <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0 animate-spin" />
+        ) : (
+          <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1">
             {isEditing ? (
@@ -127,7 +135,7 @@ export function ChatHistoryItem({
             className="h-6 w-6 p-0 opacity-0 group-hover/chat:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
             onClick={(e) => onDelete(item, e)}
             disabled={isDeleting}
-            title={item.task_id ? "Delete chat and task" : "Delete chat"}
+            title={item.task_id ? 'Delete chat and task' : 'Delete chat'}
           >
             {isDeleting ? (
               <Loader2 className="h-3 w-3 animate-spin" />

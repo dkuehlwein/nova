@@ -86,7 +86,9 @@ class ConversationService:
             return []
 
     async def get_history(
-        self, thread_id: str, checkpointer: CheckpointerProtocol
+        self,
+        thread_id: str,
+        checkpointer: CheckpointerProtocol,
     ) -> List[ChatMessageDetail]:
         """Get chat history from a checkpointer, reconstructing message display.
 
@@ -126,16 +128,6 @@ class ConversationService:
 
             if not messages:
                 return []
-
-            # Build message ID to timestamp mapping from checkpoint history
-            message_to_timestamp = await self._build_timestamp_mapping(
-                config, checkpointer, checkpoint_timestamp
-            )
-
-            def get_message_timestamp(msg, fallback: str) -> str:
-                if hasattr(msg, "id") and msg.id and msg.id in message_to_timestamp:
-                    return message_to_timestamp[msg.id]
-                return fallback
 
             # First pass: collect all tool results by tool_call_id
             tool_results = {}
@@ -179,7 +171,6 @@ class ConversationService:
                 first_msg = turn[0]
 
                 if isinstance(first_msg, HumanMessage):
-                    message_timestamp = get_message_timestamp(first_msg, checkpoint_timestamp)
                     metadata = None
                     if hasattr(first_msg, "additional_kwargs") and first_msg.additional_kwargs.get(
                         "metadata"
@@ -191,7 +182,7 @@ class ConversationService:
                             id=f"{thread_id}-msg-{msg_index}",
                             sender="user",
                             content=str(first_msg.content),
-                            created_at=message_timestamp,
+                            created_at=checkpoint_timestamp,
                             needs_decision=False,
                             metadata=metadata,
                         )
@@ -206,9 +197,8 @@ class ConversationService:
 
                     for msg in turn:
                         if isinstance(msg, AIMessage):
-                            message_timestamp = get_message_timestamp(msg, checkpoint_timestamp)
                             if first_timestamp is None:
-                                first_timestamp = message_timestamp
+                                first_timestamp = checkpoint_timestamp
 
                             ai_content = str(msg.content).strip()
 
@@ -248,7 +238,7 @@ class ConversationService:
                                     tool_call_obj = {
                                         "tool": tool_name,
                                         "args": tool_args,
-                                        "timestamp": message_timestamp,
+                                        "timestamp": checkpoint_timestamp,
                                         "tool_call_id": tool_call_id,
                                     }
 
@@ -289,41 +279,6 @@ class ConversationService:
         except Exception as e:
             logger.error(f"Error getting chat history for {thread_id}: {e}")
             return []
-
-    async def _build_timestamp_mapping(
-        self, config: Dict[str, Any], checkpointer: CheckpointerProtocol, fallback_timestamp: str
-    ) -> Dict[str, str]:
-        """Build a mapping of message ID to creation timestamp from checkpoint history."""
-        message_to_timestamp = {}
-
-        try:
-            history = []
-            async for checkpoint_tuple in checkpointer.alist(config):
-                history.append(checkpoint_tuple)
-
-            history.sort(key=lambda x: x.checkpoint.get("ts", ""))
-
-            for checkpoint_tuple in history:
-                checkpoint = checkpoint_tuple.checkpoint
-                metadata = checkpoint_tuple.metadata
-                checkpoint_ts = checkpoint.get("ts")
-
-                writes = metadata.get("writes", {})
-                if writes:
-                    for key, value in writes.items():
-                        if isinstance(value, dict) and "messages" in value:
-                            for msg in value["messages"]:
-                                if hasattr(msg, "id") and msg.id:
-                                    if msg.id not in message_to_timestamp:
-                                        message_to_timestamp[msg.id] = checkpoint_ts
-                                        logger.debug(f"Mapped message {msg.id} -> {checkpoint_ts}")
-
-            logger.debug(f"Successfully mapped {len(message_to_timestamp)} messages to timestamps")
-
-        except Exception as e:
-            logger.warning(f"Error building message timestamp mapping: {e}")
-
-        return message_to_timestamp
 
     async def get_title(
         self, thread_id: str, messages: List[ChatMessageDetail]
