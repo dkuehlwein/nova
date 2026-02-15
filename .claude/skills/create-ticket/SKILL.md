@@ -93,7 +93,7 @@ As a [role], I want [goal], so that [benefit].
 
 **Writing guidelines:**
 - Acceptance criteria must be specific and testable - no vague "works correctly"
-- Test cases should map to acceptance criteria
+- Test cases should map to acceptance criteria, automated tests should be preferred
 - Include edge cases in the test plan
 - Keep it concise - no fluff
 - Describe the **observable problem and expected behavior** - never propose root causes, code changes, or implementation approaches

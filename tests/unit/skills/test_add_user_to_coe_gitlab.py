@@ -370,7 +370,7 @@ class TestGetTools:
 
 
 class TestPersistentBrowserProfile:
-    """Tests for SSO session persistence via Chromium persistent context."""
+    """Tests for SSO session persistence via cached browser context."""
 
     def test_get_profile_dir_returns_default(self, lam_automation_module):
         """Default profile dir should be ~/.cache/nova/lam-chromium-profile/."""
@@ -393,87 +393,10 @@ class TestPersistentBrowserProfile:
             assert result == Path.home() / "my-profile"
 
     @pytest.mark.asyncio
-    async def test_launches_persistent_context_with_profile_dir(
+    async def test_create_lam_account_uses_cached_context(
         self, lam_automation_module, tmp_path
     ):
-        """create_lam_account should use launch_persistent_context with the profile dir."""
-        profile_dir = tmp_path / "test-profile"
-
-        # Mock Playwright's async_playwright context manager
-        mock_page = AsyncMock()
-        mock_page.url = "https://server.com/lam/templates/login.php"
-        mock_page.query_selector = AsyncMock(
-            return_value=None
-        )  # No passwd field = already authed
-        mock_page.content = AsyncMock(return_value="<html>Account was saved</html>")
-        mock_page.goto = AsyncMock()
-        mock_page.click = AsyncMock()
-        mock_page.fill = AsyncMock()
-        mock_page.wait_for_load_state = AsyncMock()
-        mock_page.set_default_timeout = MagicMock()
-
-        mock_context = AsyncMock()
-        mock_context.new_page = AsyncMock(return_value=mock_page)
-        mock_context.close = AsyncMock()
-
-        mock_chromium = AsyncMock()
-        mock_chromium.launch_persistent_context = AsyncMock(return_value=mock_context)
-
-        mock_playwright = AsyncMock()
-        mock_playwright.chromium = mock_chromium
-
-        mock_async_pw = AsyncMock()
-        mock_async_pw.__aenter__ = AsyncMock(return_value=mock_playwright)
-        mock_async_pw.__aexit__ = AsyncMock(return_value=None)
-
-        with (
-            patch.object(
-                lam_automation_module, "_get_profile_dir", return_value=profile_dir
-            ),
-            patch.object(
-                lam_automation_module,
-                "_restore_sso_cookies",
-                new_callable=AsyncMock,
-                return_value=False,
-            ),
-            patch.object(
-                lam_automation_module, "_build_chrome_args_from_config", return_value=[]
-            ),
-            patch("playwright.async_api.async_playwright", return_value=mock_async_pw),
-        ):
-            result = await lam_automation_module.create_lam_account(
-                lam_url="https://server.com/lam/templates/account/edit.php",
-                admin_username="admin",
-                admin_password="secret",
-                user_data={
-                    "first_name": "Test",
-                    "last_name": "User",
-                    "email": "t@example.com",
-                    "username": "tuser",
-                },
-            )
-
-        # Verify launch_persistent_context was called with the profile dir
-        mock_chromium.launch_persistent_context.assert_called_once()
-        call_kwargs = mock_chromium.launch_persistent_context.call_args
-        assert call_kwargs.kwargs["user_data_dir"] == str(profile_dir)
-        assert call_kwargs.kwargs["ignore_https_errors"] is True
-
-        # Verify context was closed
-        mock_context.close.assert_called_once()
-
-        assert result["success"] is True
-
-    @pytest.mark.asyncio
-    async def test_corrupt_profile_triggers_retry(
-        self, lam_automation_module, tmp_path
-    ):
-        """If persistent context launch fails, the profile should be wiped and retried."""
-        profile_dir = tmp_path / "corrupt-profile"
-        profile_dir.mkdir()
-        # Place a sentinel file so we can verify the directory was wiped
-        (profile_dir / "sentinel.txt").write_text("corrupt")
-
+        """create_lam_account should get context from _get_or_create_browser_context."""
         mock_page = AsyncMock()
         mock_page.url = "https://server.com/lam/templates/login.php"
         mock_page.query_selector = AsyncMock(return_value=None)
@@ -483,38 +406,24 @@ class TestPersistentBrowserProfile:
         mock_page.fill = AsyncMock()
         mock_page.wait_for_load_state = AsyncMock()
         mock_page.set_default_timeout = MagicMock()
+        mock_page.close = AsyncMock()
 
         mock_context = AsyncMock()
         mock_context.new_page = AsyncMock(return_value=mock_page)
-        mock_context.close = AsyncMock()
-
-        mock_chromium = AsyncMock()
-        # First call fails (corrupt profile), second call succeeds
-        mock_chromium.launch_persistent_context = AsyncMock(
-            side_effect=[Exception("Failed to open profile"), mock_context]
-        )
-
-        mock_playwright = AsyncMock()
-        mock_playwright.chromium = mock_chromium
-
-        mock_async_pw = AsyncMock()
-        mock_async_pw.__aenter__ = AsyncMock(return_value=mock_playwright)
-        mock_async_pw.__aexit__ = AsyncMock(return_value=None)
 
         with (
             patch.object(
-                lam_automation_module, "_get_profile_dir", return_value=profile_dir
-            ),
+                lam_automation_module,
+                "_get_or_create_browser_context",
+                new_callable=AsyncMock,
+                return_value=mock_context,
+            ) as mock_get_ctx,
             patch.object(
                 lam_automation_module,
                 "_restore_sso_cookies",
                 new_callable=AsyncMock,
                 return_value=False,
             ),
-            patch.object(
-                lam_automation_module, "_build_chrome_args_from_config", return_value=[]
-            ),
-            patch("playwright.async_api.async_playwright", return_value=mock_async_pw),
         ):
             result = await lam_automation_module.create_lam_account(
                 lam_url="https://server.com/lam/templates/account/edit.php",
@@ -528,35 +437,31 @@ class TestPersistentBrowserProfile:
                 },
             )
 
-        # launch_persistent_context should have been called twice (first fails, second succeeds)
-        assert mock_chromium.launch_persistent_context.call_count == 2
-        # The sentinel file should have been removed by the profile wipe
-        assert not (profile_dir / "sentinel.txt").exists()
-        # The function should still succeed
+        # Verify _get_or_create_browser_context was called
+        mock_get_ctx.assert_called_once()
+
+        # Verify page was closed (not context)
+        mock_page.close.assert_called_once()
+
         assert result["success"] is True
 
     @pytest.mark.asyncio
-    async def test_context_closed_on_error(self, lam_automation_module, tmp_path):
-        """Context should be closed even when an error occurs during automation."""
-        profile_dir = tmp_path / "test-profile"
+    async def test_page_closed_on_error(self, lam_automation_module):
+        """Page should be closed even when an error occurs during automation."""
+        mock_page = AsyncMock()
+        mock_page.set_default_timeout = MagicMock()
+        mock_page.goto = AsyncMock(side_effect=Exception("Navigation failed"))
+        mock_page.close = AsyncMock()
 
         mock_context = AsyncMock()
-        mock_context.new_page = AsyncMock(side_effect=Exception("Page creation failed"))
-        mock_context.close = AsyncMock()
-
-        mock_chromium = AsyncMock()
-        mock_chromium.launch_persistent_context = AsyncMock(return_value=mock_context)
-
-        mock_playwright = AsyncMock()
-        mock_playwright.chromium = mock_chromium
-
-        mock_async_pw = AsyncMock()
-        mock_async_pw.__aenter__ = AsyncMock(return_value=mock_playwright)
-        mock_async_pw.__aexit__ = AsyncMock(return_value=None)
+        mock_context.new_page = AsyncMock(return_value=mock_page)
 
         with (
             patch.object(
-                lam_automation_module, "_get_profile_dir", return_value=profile_dir
+                lam_automation_module,
+                "_get_or_create_browser_context",
+                new_callable=AsyncMock,
+                return_value=mock_context,
             ),
             patch.object(
                 lam_automation_module,
@@ -564,10 +469,6 @@ class TestPersistentBrowserProfile:
                 new_callable=AsyncMock,
                 return_value=False,
             ),
-            patch.object(
-                lam_automation_module, "_build_chrome_args_from_config", return_value=[]
-            ),
-            patch("playwright.async_api.async_playwright", return_value=mock_async_pw),
         ):
             result = await lam_automation_module.create_lam_account(
                 lam_url="https://server.com/lam/templates/account/edit.php",
@@ -581,10 +482,316 @@ class TestPersistentBrowserProfile:
                 },
             )
 
-        # Context should still be closed despite the error
-        mock_context.close.assert_called_once()
+        # Page should still be closed despite the error
+        mock_page.close.assert_called_once()
         assert result["success"] is False
-        assert "Page creation failed" in result["error"]
+        assert "Navigation failed" in result["error"]
+
+
+class TestBrowserCache:
+    """Tests for the process-level browser cache via sys.modules."""
+
+    def test_get_browser_cache_creates_namespace(self, lam_automation_module):
+        """First call should create a SimpleNamespace in sys.modules."""
+        import sys
+        import types
+
+        # Clean up any existing cache
+        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
+
+        cache = lam_automation_module._get_browser_cache()
+        assert isinstance(cache, types.SimpleNamespace)
+        assert cache.playwright_obj is None
+        assert cache.context is None
+        assert cache.profile_dir is None
+
+        # Clean up
+        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
+
+    def test_get_browser_cache_returns_same_instance(self, lam_automation_module):
+        """Subsequent calls should return the same cache object."""
+        import sys
+
+        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
+
+        cache1 = lam_automation_module._get_browser_cache()
+        cache2 = lam_automation_module._get_browser_cache()
+        assert cache1 is cache2
+
+        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
+
+    @pytest.mark.asyncio
+    async def test_browser_reuse_across_calls(self, lam_automation_module):
+        """Two consecutive calls to _get_or_create_browser_context should return the same context."""
+        import sys
+
+        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
+
+        mock_browser = MagicMock()
+        mock_browser.is_connected.return_value = True
+
+        mock_context = AsyncMock()
+        mock_context.browser = mock_browser
+
+        mock_pw = AsyncMock()
+        mock_pw.chromium.launch_persistent_context = AsyncMock(
+            return_value=mock_context
+        )
+
+        mock_async_pw_instance = AsyncMock()
+        mock_async_pw_instance.start = AsyncMock(return_value=mock_pw)
+
+        with (
+            patch.object(
+                lam_automation_module, "_get_profile_dir",
+                return_value=Path("/tmp/test-profile"),
+            ),
+            patch(
+                "playwright.async_api.async_playwright",
+                return_value=mock_async_pw_instance,
+            ),
+        ):
+            ctx1 = await lam_automation_module._get_or_create_browser_context()
+            ctx2 = await lam_automation_module._get_or_create_browser_context()
+
+        assert ctx1 is ctx2
+        # launch_persistent_context should only be called once
+        mock_pw.chromium.launch_persistent_context.assert_called_once()
+
+        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
+
+    @pytest.mark.asyncio
+    async def test_dead_browser_recovery(self, lam_automation_module):
+        """If cached browser is disconnected, a new context should be created."""
+        import sys
+
+        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
+
+        # Set up a "dead" cached context
+        dead_browser = MagicMock()
+        dead_browser.is_connected.return_value = False
+        dead_context = AsyncMock()
+        dead_context.browser = dead_browser
+
+        cache = lam_automation_module._get_browser_cache()
+        cache.context = dead_context
+        cache.playwright_obj = AsyncMock()
+
+        # Set up the new context that will replace the dead one
+        new_browser = MagicMock()
+        new_browser.is_connected.return_value = True
+        new_context = AsyncMock()
+        new_context.browser = new_browser
+
+        mock_pw = AsyncMock()
+        mock_pw.chromium.launch_persistent_context = AsyncMock(
+            return_value=new_context
+        )
+
+        mock_async_pw_instance = AsyncMock()
+        mock_async_pw_instance.start = AsyncMock(return_value=mock_pw)
+
+        with (
+            patch.object(
+                lam_automation_module, "_get_profile_dir",
+                return_value=Path("/tmp/test-profile"),
+            ),
+            patch(
+                "playwright.async_api.async_playwright",
+                return_value=mock_async_pw_instance,
+            ),
+        ):
+            ctx = await lam_automation_module._get_or_create_browser_context()
+
+        assert ctx is new_context
+        # Old playwright should have been stopped
+        cache_after = lam_automation_module._get_browser_cache()
+        assert cache_after.context is new_context
+
+        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
+
+    @pytest.mark.asyncio
+    async def test_close_lam_browser(self, lam_automation_module):
+        """close_lam_browser should close context and stop playwright."""
+        import sys
+
+        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
+
+        mock_context = AsyncMock()
+        mock_pw = AsyncMock()
+
+        cache = lam_automation_module._get_browser_cache()
+        cache.context = mock_context
+        cache.playwright_obj = mock_pw
+
+        await lam_automation_module.close_lam_browser()
+
+        mock_context.close.assert_called_once()
+        mock_pw.stop.assert_called_once()
+        assert cache.context is None
+        assert cache.playwright_obj is None
+
+        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
+
+
+class TestTabbedFormFill:
+    """Tests for LAM's two-step form: save personal fields first (duplicate check), then uid."""
+
+    @pytest.mark.asyncio
+    async def test_saves_personal_fields_first_then_fills_uid(
+        self, lam_automation_module, tmp_path
+    ):
+        """Flow: fill personal fields → save (duplicate check) → fill uid → save again."""
+        call_log = []
+
+        mock_page = AsyncMock()
+        mock_page.url = "https://server.com/lam/templates/login.php"
+        mock_page.query_selector = AsyncMock(return_value=None)
+        # First save returns no "already in use", second save returns success
+        mock_page.content = AsyncMock(return_value="<html>Account was saved</html>")
+        mock_page.set_default_timeout = MagicMock()
+        mock_page.close = AsyncMock()
+
+        async def track_fill(selector, value):
+            call_log.append(("fill", selector, value))
+
+        async def track_click(selector):
+            call_log.append(("click", selector))
+
+        mock_page.fill = AsyncMock(side_effect=track_fill)
+        mock_page.click = AsyncMock(side_effect=track_click)
+        mock_page.goto = AsyncMock()
+        mock_page.wait_for_load_state = AsyncMock()
+        mock_page.wait_for_url = AsyncMock()
+
+        mock_context = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+
+        with (
+            patch.object(
+                lam_automation_module,
+                "_get_or_create_browser_context",
+                new_callable=AsyncMock,
+                return_value=mock_context,
+            ),
+            patch.object(
+                lam_automation_module,
+                "_restore_sso_cookies",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            result = await lam_automation_module.create_lam_account(
+                lam_url="https://server.com/lam/templates/account/edit.php",
+                admin_username="admin",
+                admin_password="secret",
+                user_data={
+                    "first_name": "Jane",
+                    "last_name": "Doe",
+                    "email": "jane@example.com",
+                    "username": "jdoe",
+                },
+            )
+
+        assert result["success"] is True
+
+        form_fills = [(op, sel) for op, sel, *_ in call_log if op == "fill"]
+        form_clicks = [(op, sel) for op, sel, *_ in call_log if op == "click"]
+
+        # Personal tab fields should be filled
+        assert ("fill", "input[name='givenName']") in form_fills
+        assert ("fill", "input[name='sn']") in form_fills
+        assert ("fill", "input[name='mail_0']") in form_fills
+
+        # First save should happen BEFORE unix tab
+        first_save_idx = call_log.index(
+            ("click", "button[name='accountContainerSaveAccount']")
+        )
+        givenname_idx = call_log.index(("fill", "input[name='givenName']", "Jane"))
+        assert givenname_idx < first_save_idx
+
+        # Unix tab and uid fill should happen AFTER first save
+        unix_tab_idx = call_log.index(
+            ("click", 'button[name="form_main_posixAccount"]')
+        )
+        uid_idx = call_log.index(("fill", "input[name='uid']", "jdoe"))
+        assert first_save_idx < unix_tab_idx < uid_idx
+
+        # Second save should happen after uid fill
+        save_clicks = [
+            i for i, entry in enumerate(call_log)
+            if entry == ("click", "button[name='accountContainerSaveAccount']")
+        ]
+        assert len(save_clicks) == 2
+        assert save_clicks[1] > uid_idx
+
+    @pytest.mark.asyncio
+    async def test_skips_uid_when_user_already_exists(
+        self, lam_automation_module, tmp_path
+    ):
+        """If first save detects duplicate, should return immediately without filling uid."""
+        call_log = []
+
+        mock_page = AsyncMock()
+        mock_page.url = "https://server.com/lam/templates/login.php"
+        mock_page.query_selector = AsyncMock(return_value=None)
+        # First save returns "already in use"
+        mock_page.content = AsyncMock(
+            return_value="<html>This attribute is already in use.</html>"
+        )
+        mock_page.set_default_timeout = MagicMock()
+        mock_page.close = AsyncMock()
+
+        async def track_fill(selector, value):
+            call_log.append(("fill", selector, value))
+
+        async def track_click(selector):
+            call_log.append(("click", selector))
+
+        mock_page.fill = AsyncMock(side_effect=track_fill)
+        mock_page.click = AsyncMock(side_effect=track_click)
+        mock_page.goto = AsyncMock()
+        mock_page.wait_for_load_state = AsyncMock()
+
+        mock_context = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+
+        with (
+            patch.object(
+                lam_automation_module,
+                "_get_or_create_browser_context",
+                new_callable=AsyncMock,
+                return_value=mock_context,
+            ),
+            patch.object(
+                lam_automation_module,
+                "_restore_sso_cookies",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            result = await lam_automation_module.create_lam_account(
+                lam_url="https://server.com/lam/templates/account/edit.php",
+                admin_username="admin",
+                admin_password="secret",
+                user_data={
+                    "first_name": "Jane",
+                    "last_name": "Doe",
+                    "email": "jane@example.com",
+                    "username": "jdoe",
+                },
+            )
+
+        assert result["success"] is True
+        assert result["already_exists"] is True
+
+        # uid should NOT have been filled (duplicate detected on first save)
+        form_fills = [sel for op, sel, *_ in call_log if op == "fill"]
+        assert "input[name='uid']" not in form_fills
+
+        # Unix tab should NOT have been clicked
+        form_clicks = [sel for op, sel, *_ in call_log if op == "click"]
+        assert 'button[name="form_main_posixAccount"]' not in form_clicks
 
 
 class TestSSOCookiePersistence:

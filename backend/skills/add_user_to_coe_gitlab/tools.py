@@ -85,7 +85,9 @@ def _get_credentials() -> dict:
     return {
         "lam_username": get_cred("lam_username", "lam_username_env", "LAM_USERNAME"),
         "lam_password": get_cred("lam_password", "lam_password_env", "LAM_PASSWORD"),
-        "gitlab_token": get_cred("gitlab_token", "gitlab_token_env", "GITLAB_PERSONAL_TOKEN"),
+        "gitlab_token": get_cred(
+            "gitlab_token", "gitlab_token_env", "GITLAB_PERSONAL_TOKEN"
+        ),
     }
 
 
@@ -123,6 +125,7 @@ def _validate_email(email: str) -> bool:
     """Validate email address format."""
     try:
         from email_validator import validate_email
+
         validate_email(email, check_deliverability=False)
         return True
     except Exception:
@@ -224,52 +227,65 @@ async def resolve_participant_email(name: str) -> str:
                     first_name = name_parts[0] if len(name_parts) > 0 else ""
                     last_name = name_parts[1] if len(name_parts) > 1 else ""
 
-                return json.dumps({
-                    "found": True,
-                    "email": user.get("email", ""),
-                    "display_name": display_name,
-                    "mail_nickname": user.get("mail_nickname", ""),
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "job_title": user.get("job_title", ""),
-                    "name_searched": name,
-                })
+                return json.dumps(
+                    {
+                        "found": True,
+                        "email": user.get("email", ""),
+                        "display_name": display_name,
+                        "mail_nickname": user.get("mail_nickname", "").lower(),
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "job_title": user.get("job_title", ""),
+                        "name_searched": name,
+                    }
+                )
             else:
-                return json.dumps({
-                    "found": False,
-                    "error": f"No user found for '{name}' in directory",
-                    "name_searched": name,
-                    "next_action": f"Ask the user to provide the email address for {name}",
-                })
+                return json.dumps(
+                    {
+                        "found": False,
+                        "error": f"No user found for '{name}' in directory",
+                        "name_searched": name,
+                        "next_action": f"Ask the user to provide the email address for {name}",
+                    }
+                )
 
         # Handle dict response (error or single result)
         if isinstance(result, dict):
             if "error" in result:
-                return json.dumps({
-                    "found": False,
-                    "error": result["error"],
-                    "name_searched": name,
-                    "next_action": f"Ask the user to provide the email address for {name}",
-                })
+                return json.dumps(
+                    {
+                        "found": False,
+                        "error": result["error"],
+                        "name_searched": name,
+                        "next_action": f"Ask the user to provide the email address for {name}",
+                    }
+                )
             # Single user result
             if result.get("found") or result.get("email"):
                 return json.dumps(result)
 
-        return json.dumps({
-            "found": False,
-            "error": "Unexpected response format from MS Graph lookup",
-            "name_searched": name,
-            "next_action": f"Ask the user to provide the email address for {name}",
-        })
+        return json.dumps(
+            {
+                "found": False,
+                "error": "Unexpected response format from MS Graph lookup",
+                "name_searched": name,
+                "next_action": f"Ask the user to provide the email address for {name}",
+            }
+        )
 
     except Exception as e:
-        logger.error(f"Error calling ms_graph-search_people: {e}", extra={"name": name, "error": str(e)})
-        return json.dumps({
-            "found": False,
-            "error": str(e),
-            "name_searched": name,
-            "next_action": f"The ms_graph MCP server may not be available. Ask the user to provide the email address for {name}.",
-        })
+        logger.error(
+            f"Error calling ms_graph-search_people: {e}",
+            extra={"name": name, "error": str(e)},
+        )
+        return json.dumps(
+            {
+                "found": False,
+                "error": str(e),
+                "name_searched": name,
+                "next_action": f"The ms_graph MCP server may not be available. Ask the user to provide the email address for {name}.",
+            }
+        )
 
 
 @tool
@@ -323,19 +339,23 @@ async def create_iam_account(
 
     # Validate inputs
     if not email or not _validate_email(email):
-        return json.dumps({
-            "success": False,
-            "error": f"Invalid email address format: '{email}'",
-            "email_provided": email,
-            "next_action": "Ask the user to provide a valid email address for this participant.",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"Invalid email address format: '{email}'",
+                "email_provided": email,
+                "next_action": "Ask the user to provide a valid email address for this participant.",
+            }
+        )
 
     if not creds.get("lam_username") or not creds.get("lam_password"):
-        return json.dumps({
-            "success": False,
-            "error": "LAM credentials not configured",
-            "next_action": "This is a configuration issue. Tell the user: 'LAM credentials are not configured. Please set LAM_USERNAME and LAM_PASSWORD environment variables or add them to the skill config.yaml.'",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": "LAM credentials not configured",
+                "next_action": "This is a configuration issue. Tell the user: 'LAM credentials are not configured. Please set LAM_USERNAME and LAM_PASSWORD environment variables or add them to the skill config.yaml.'",
+            }
+        )
 
     # Determine username with priority: explicit > mail_nickname
     if not username:
@@ -343,20 +363,26 @@ async def create_iam_account(
             # Use mail_nickname from MS Graph (sanitized for Unix compatibility)
             username = _sanitize_username(mail_nickname)
             if not username:
-                return json.dumps({
-                    "success": False,
-                    "error": f"Invalid mail_nickname '{mail_nickname}' - contains no valid username characters",
-                    "mail_nickname_provided": mail_nickname,
-                    "next_action": "The mail_nickname from MS Graph is invalid. Ask the user to provide a username manually.",
-                })
-            logger.info(f"Using mail_nickname as username: {username} (sanitized from: {mail_nickname})")
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Invalid mail_nickname '{mail_nickname}' - contains no valid username characters",
+                        "mail_nickname_provided": mail_nickname,
+                        "next_action": "The mail_nickname from MS Graph is invalid. Ask the user to provide a username manually.",
+                    }
+                )
+            logger.info(
+                f"Using mail_nickname as username: {username} (sanitized from: {mail_nickname})"
+            )
         else:
             # No username and no mail_nickname - ask the user
-            return json.dumps({
-                "success": False,
-                "error": "Username required: no mail_nickname provided",
-                "next_action": "Use resolve_participant_email first to get the mail_nickname from MS Graph, or ask the user to provide the username directly.",
-            })
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "Username required: no mail_nickname provided",
+                    "next_action": "Use resolve_participant_email first to get the mail_nickname from MS Graph, or ask the user to provide the username directly.",
+                }
+            )
 
     # Prepare user data
     user_data = {
@@ -380,34 +406,44 @@ async def create_iam_account(
         if result.get("success"):
             created_username = result.get("username", username)
             already_exists = result.get("already_exists", False)
-            summary = f"IAM account for {created_username} already exists (this is fine)." if already_exists else f"IAM account created successfully for {first_name} {last_name}."
-            return json.dumps({
-                "success": True,
-                "already_exists": already_exists,
-                "username": created_username,
-                "email": email,
-                "summary": summary,
-                "next_action": f"IAM account ready. Now call create_gitlab_user_account with email='{email}', username='{created_username}', display_name='{first_name} {last_name}'.",
-            })
+            summary = (
+                f"IAM account for {created_username} already exists (this is fine)."
+                if already_exists
+                else f"IAM account created successfully for {first_name} {last_name}."
+            )
+            return json.dumps(
+                {
+                    "success": True,
+                    "already_exists": already_exists,
+                    "username": created_username,
+                    "email": email,
+                    "summary": summary,
+                    "next_action": f"IAM account ready. Now call create_gitlab_user_account with email='{email}', username='{created_username}', display_name='{first_name} {last_name}'.",
+                }
+            )
         else:
             error = result.get("error", "Unknown error")
-            return json.dumps({
-                "success": False,
-                "username": username,
-                "email": email,
-                "error": error,
-                "next_action": f"IAM account creation failed. Error: {error}. Ask the user if they want to retry or skip to GitLab user creation.",
-            })
+            return json.dumps(
+                {
+                    "success": False,
+                    "username": username,
+                    "email": email,
+                    "error": error,
+                    "next_action": f"IAM account creation failed. Error: {error}. Ask the user if they want to retry or skip to GitLab user creation.",
+                }
+            )
 
     except Exception as e:
         logger.error(f"IAM account creation failed: {e}")
-        return json.dumps({
-            "success": False,
-            "username": username,
-            "email": email,
-            "error": str(e),
-            "next_action": f"IAM account creation failed with exception. Ask the user if they want to retry.",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "username": username,
+                "email": email,
+                "error": str(e),
+                "next_action": "IAM account creation failed with exception. Ask the user if they want to retry.",
+            }
+        )
 
 
 @tool
@@ -458,61 +494,74 @@ async def create_gitlab_user_account(
 
     # Validate inputs
     if not email or not _validate_email(email):
-        return json.dumps({
-            "success": False,
-            "error": f"Invalid email address format: '{email}'",
-            "email_provided": email,
-            "next_action": "Ask the user to provide a valid email address.",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"Invalid email address format: '{email}'",
+                "email_provided": email,
+                "next_action": "Ask the user to provide a valid email address.",
+            }
+        )
 
     if not username:
-        return json.dumps({
-            "success": False,
-            "error": "Username is required but was not provided",
-            "next_action": "The username should come from the create_iam_account result. If IAM was skipped, ask the user for the username.",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": "Username is required but was not provided",
+                "next_action": "The username should come from the create_iam_account result. If IAM was skipped, ask the user for the username.",
+            }
+        )
 
     if not creds.get("gitlab_token"):
-        return json.dumps({
-            "success": False,
-            "error": "GitLab token not configured",
-            "next_action": "This is a configuration issue. Tell the user: 'GitLab API token is not configured. Please set GITLAB_PERSONAL_TOKEN environment variable or add gitlab_token to the skill config.yaml.'",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": "GitLab token not configured",
+                "next_action": "This is a configuration issue. Tell the user: 'GitLab API token is not configured. Please set GITLAB_PERSONAL_TOKEN environment variable or add gitlab_token to the skill config.yaml.'",
+            }
+        )
 
     # Check GitLab connection first
     connection_check = await check_gitlab_connection(
-        gitlab_url, creds["gitlab_token"],
+        gitlab_url,
+        creds["gitlab_token"],
         verify_ssl=ssl_config["verify_ssl"],
         ca_bundle=ssl_config["ca_bundle"],
-        basic_auth=basic_auth
+        basic_auth=basic_auth,
     )
     if not connection_check.get("connected"):
-        return json.dumps({
-            "success": False,
-            "error": f"Cannot connect to GitLab: {connection_check.get('error', 'Unknown error')}",
-            "gitlab_url": gitlab_url,
-            "next_action": "GitLab connection failed. This could be a network issue or invalid token. Tell the user about the connection error and suggest checking the GitLab URL and token configuration.",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"Cannot connect to GitLab: {connection_check.get('error', 'Unknown error')}",
+                "gitlab_url": gitlab_url,
+                "next_action": "GitLab connection failed. This could be a network issue or invalid token. Tell the user about the connection error and suggest checking the GitLab URL and token configuration.",
+            }
+        )
 
     # Check if user already exists
     existing_user = await search_user_by_email(
-        gitlab_url, creds["gitlab_token"], email,
+        gitlab_url,
+        creds["gitlab_token"],
+        email,
         verify_ssl=ssl_config["verify_ssl"],
         ca_bundle=ssl_config["ca_bundle"],
-        basic_auth=basic_auth
+        basic_auth=basic_auth,
     )
 
     if existing_user:
         # User exists - this is actually success, proceed to next step
-        return json.dumps({
-            "success": True,
-            "already_exists": True,
-            "user_id": existing_user["id"],
-            "username": existing_user["username"],
-            "email": email,
-            "note": "User already exists in GitLab",
-            "next_action": f"GitLab user already exists. Proceed to add_user_to_gitlab_project with user_identifier='{email}'.",
-        })
+        return json.dumps(
+            {
+                "success": True,
+                "already_exists": True,
+                "user_id": existing_user["id"],
+                "username": existing_user["username"],
+                "email": email,
+                "note": "User already exists in GitLab",
+                "next_action": f"GitLab user already exists. Proceed to add_user_to_gitlab_project with user_identifier='{email}'.",
+            }
+        )
 
     # LDAP linking disabled - let user's first SSO login establish the connection
     # This avoids issues where GitLab LDAP sync blocks users that were created
@@ -544,46 +593,55 @@ async def create_gitlab_user_account(
 
             if result.get("success"):
                 created_username = result.get("username", username)
-                return json.dumps({
-                    "success": True,
-                    "user_id": result.get("id"),
-                    "username": created_username,
-                    "email": email,
-                    "note": result.get("note"),
-                    "retries_used": retries_used,
-                    "summary": f"GitLab user account created successfully for {display_name} ({created_username}).",
-                    "next_action": f"GitLab user created. Now call add_user_to_gitlab_project with user_identifier='{email}'.",
-                })
+                return json.dumps(
+                    {
+                        "success": True,
+                        "user_id": result.get("id"),
+                        "username": created_username,
+                        "email": email,
+                        "note": result.get("note"),
+                        "retries_used": retries_used,
+                        "summary": f"GitLab user account created successfully for {display_name} ({created_username}).",
+                        "next_action": f"GitLab user created. Now call add_user_to_gitlab_project with user_identifier='{email}'.",
+                    }
+                )
             else:
                 last_error = result.get("error", "Unknown error")
                 # Check for blocked user indication
                 if "blocked" in last_error.lower():
-                    return json.dumps({
-                        "success": False,
-                        "username": username,
-                        "email": email,
-                        "error": last_error,
-                        "blocked": True,
-                        "retries_used": retries_used,
-                        "next_action": f"STOP: User '{username}' is BLOCKED in GitLab. Tell the user: 'The user {display_name} ({username}) is blocked in GitLab. An admin must unblock them at: GitLab Admin > Users > search for '{username}' > Edit > Unblock.' Do NOT retry - this requires manual admin intervention.",
-                    })
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "username": username,
+                            "email": email,
+                            "error": last_error,
+                            "blocked": True,
+                            "retries_used": retries_used,
+                            "next_action": f"STOP: User '{username}' is BLOCKED in GitLab. Tell the user: 'The user {display_name} ({username}) is blocked in GitLab. An admin must unblock them at: GitLab Admin > Users > search for '{username}' > Edit > Unblock.' Do NOT retry - this requires manual admin intervention.",
+                        }
+                    )
 
         except Exception as e:
             last_error = str(e)
-            logger.error(f"GitLab user creation attempt {attempt + 1} failed: {e}", extra={"username": username, "email": email, "attempt": attempt + 1})
+            logger.error(
+                f"GitLab user creation attempt {attempt + 1} failed: {e}",
+                extra={"username": username, "email": email, "attempt": attempt + 1},
+            )
 
         retries_used = attempt + 1
         if attempt < max_retries:
-            await asyncio.sleep(min(2 ** attempt, 30))  # Cap at 30 seconds
+            await asyncio.sleep(min(2**attempt, 30))  # Cap at 30 seconds
 
-    return json.dumps({
-        "success": False,
-        "username": username,
-        "email": email,
-        "error": last_error,
-        "retries_used": retries_used,
-        "next_action": f"GitLab user creation failed after {retries_used} attempts. Report the error to the user: '{last_error}'. Ask if they want to retry or if an admin should check the GitLab system.",
-    })
+    return json.dumps(
+        {
+            "success": False,
+            "username": username,
+            "email": email,
+            "error": last_error,
+            "retries_used": retries_used,
+            "next_action": f"GitLab user creation failed after {retries_used} attempts. Report the error to the user: '{last_error}'. Ask if they want to retry or if an admin should check the GitLab system.",
+        }
+    )
 
 
 @tool
@@ -624,11 +682,13 @@ async def search_gitlab_project(
     ssl_config, basic_auth = _get_gitlab_auth()
 
     if not creds.get("gitlab_token"):
-        return json.dumps({
-            "success": False,
-            "error": "GitLab token not configured",
-            "next_action": "This is a configuration issue. Tell the user: 'GitLab API token is not configured.'",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": "GitLab token not configured",
+                "next_action": "This is a configuration issue. Tell the user: 'GitLab API token is not configured.'",
+            }
+        )
 
     try:
         result = await search_gitlab_projects(
@@ -643,39 +703,47 @@ async def search_gitlab_project(
         )
 
         if not result.get("success"):
-            return json.dumps({
-                "success": False,
-                "error": result.get("error", "Unknown error"),
-                "search_query": search_query,
-                "next_action": "GitLab project search failed. Ask the user for the exact project path.",
-            })
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": result.get("error", "Unknown error"),
+                    "search_query": search_query,
+                    "next_action": "GitLab project search failed. Ask the user for the exact project path.",
+                }
+            )
 
         projects = result.get("projects", [])
         if projects:
-            return json.dumps({
-                "success": True,
-                "count": len(projects),
-                "projects": projects,
-                "search_query": search_query,
-                "next_action": f"Found {len(projects)} project(s). Use the 'path_with_namespace' value when calling add_user_to_gitlab_project.",
-            })
+            return json.dumps(
+                {
+                    "success": True,
+                    "count": len(projects),
+                    "projects": projects,
+                    "search_query": search_query,
+                    "next_action": f"Found {len(projects)} project(s). Use the 'path_with_namespace' value when calling add_user_to_gitlab_project.",
+                }
+            )
         else:
-            return json.dumps({
-                "success": True,
-                "count": 0,
-                "projects": [],
-                "search_query": search_query,
-                "next_action": f"No projects found matching '{search_query}'. Ask the user for the correct project name or path.",
-            })
+            return json.dumps(
+                {
+                    "success": True,
+                    "count": 0,
+                    "projects": [],
+                    "search_query": search_query,
+                    "next_action": f"No projects found matching '{search_query}'. Ask the user for the correct project name or path.",
+                }
+            )
 
     except Exception as e:
         logger.error(f"GitLab project search failed: {e}")
-        return json.dumps({
-            "success": False,
-            "error": str(e),
-            "search_query": search_query,
-            "next_action": "GitLab project search failed. Ask the user for the exact project path.",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": str(e),
+                "search_query": search_query,
+                "next_action": "GitLab project search failed. Ask the user for the exact project path.",
+            }
+        )
 
 
 @tool
@@ -729,25 +797,31 @@ async def add_user_to_gitlab_project(
 
     # Validate inputs
     if not user_identifier:
-        return json.dumps({
-            "success": False,
-            "error": "user_identifier is required (email or username)",
-            "next_action": "Provide either the user's email address or GitLab username from the previous create_gitlab_user_account result.",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": "user_identifier is required (email or username)",
+                "next_action": "Provide either the user's email address or GitLab username from the previous create_gitlab_user_account result.",
+            }
+        )
 
     if not gitlab_project:
-        return json.dumps({
-            "success": False,
-            "error": "gitlab_project is required but not configured",
-            "next_action": "This is a configuration issue. Tell the user: 'The GitLab project path is not configured. Please add gitlab_project to the skill config.yaml (e.g., \"group/project-name\").'",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": "gitlab_project is required but not configured",
+                "next_action": "This is a configuration issue. Tell the user: 'The GitLab project path is not configured. Please add gitlab_project to the skill config.yaml (e.g., \"group/project-name\").'",
+            }
+        )
 
     if not creds.get("gitlab_token"):
-        return json.dumps({
-            "success": False,
-            "error": "GitLab token not configured",
-            "next_action": "This is a configuration issue. Tell the user: 'GitLab API token is not configured. Please set GITLAB_PERSONAL_TOKEN environment variable or add gitlab_token to the skill config.yaml.'",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": "GitLab token not configured",
+                "next_action": "This is a configuration issue. Tell the user: 'GitLab API token is not configured. Please set GITLAB_PERSONAL_TOKEN environment variable or add gitlab_token to the skill config.yaml.'",
+            }
+        )
 
     # If gitlab_project doesn't contain "/", treat it as a search query
     if "/" not in gitlab_project:
@@ -764,45 +838,56 @@ async def add_user_to_gitlab_project(
                 basic_auth=basic_auth,
             )
             if not result.get("success"):
-                return json.dumps({
-                    "success": False,
-                    "error": f"Failed to search for project '{gitlab_project}': {result.get('error', 'Unknown error')}",
-                    "next_action": "Project search failed. Provide the exact project path instead (e.g., 'group/project-name').",
-                })
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Failed to search for project '{gitlab_project}': {result.get('error', 'Unknown error')}",
+                        "next_action": "Project search failed. Provide the exact project path instead (e.g., 'group/project-name').",
+                    }
+                )
             projects = result.get("projects", [])
             if projects:
                 # Use the first matching project
                 resolved_project = projects[0]["path_with_namespace"]
-                logger.info(f"Resolved project '{gitlab_project}' to '{resolved_project}'")
+                logger.info(
+                    f"Resolved project '{gitlab_project}' to '{resolved_project}'"
+                )
                 gitlab_project = resolved_project
             else:
-                return json.dumps({
-                    "success": False,
-                    "error": f"No project found matching '{gitlab_project}'",
-                    "search_query": gitlab_project,
-                    "next_action": f"No projects found matching '{gitlab_project}'. Use search_gitlab_project to find available projects, or provide the exact project path (e.g., 'group/project-name').",
-                })
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"No project found matching '{gitlab_project}'",
+                        "search_query": gitlab_project,
+                        "next_action": f"No projects found matching '{gitlab_project}'. Use search_gitlab_project to find available projects, or provide the exact project path (e.g., 'group/project-name').",
+                    }
+                )
         except Exception as e:
-            return json.dumps({
-                "success": False,
-                "error": f"Failed to search for project '{gitlab_project}': {str(e)}",
-                "next_action": "Project search failed. Provide the exact project path instead (e.g., 'group/project-name').",
-            })
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": f"Failed to search for project '{gitlab_project}': {str(e)}",
+                    "next_action": "Project search failed. Provide the exact project path instead (e.g., 'group/project-name').",
+                }
+            )
 
     # Check GitLab connection first
     connection_check = await check_gitlab_connection(
-        gitlab_url, creds["gitlab_token"],
+        gitlab_url,
+        creds["gitlab_token"],
         verify_ssl=ssl_config["verify_ssl"],
         ca_bundle=ssl_config["ca_bundle"],
-        basic_auth=basic_auth
+        basic_auth=basic_auth,
     )
     if not connection_check.get("connected"):
-        return json.dumps({
-            "success": False,
-            "error": f"Cannot connect to GitLab: {connection_check.get('error', 'Unknown error')}",
-            "gitlab_url": gitlab_url,
-            "next_action": "GitLab connection failed. Tell the user about the connection error and suggest checking network connectivity and GitLab token validity.",
-        })
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"Cannot connect to GitLab: {connection_check.get('error', 'Unknown error')}",
+                "gitlab_url": gitlab_url,
+                "next_action": "GitLab connection failed. Tell the user about the connection error and suggest checking network connectivity and GitLab token validity.",
+            }
+        )
 
     # Retry logic
     max_retries = min(max_retries, batch_config.get("max_retries", 2))
@@ -834,49 +919,64 @@ async def add_user_to_gitlab_project(
                 if result.get("note"):
                     response["already_member"] = True
                     response["note"] = result["note"]
-                    response["summary"] = f"User '{user_identifier}' was already a member of project '{gitlab_project}'."
+                    response["summary"] = (
+                        f"User '{user_identifier}' was already a member of project '{gitlab_project}'."
+                    )
                 return json.dumps(response)
             else:
                 last_error = result.get("error", "Unknown error")
                 # Check for user not found (might need GitLab user creation first)
                 if "not found" in last_error.lower():
-                    return json.dumps({
-                        "success": False,
-                        "user": user_identifier,
-                        "project": gitlab_project,
-                        "error": last_error,
-                        "user_not_found": True,
-                        "retries_used": retries_used,
-                        "next_action": f"User '{user_identifier}' was not found in GitLab. You must call create_gitlab_user_account first before adding them to a project. Go back and create the GitLab user account.",
-                    })
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "user": user_identifier,
+                            "project": gitlab_project,
+                            "error": last_error,
+                            "user_not_found": True,
+                            "retries_used": retries_used,
+                            "next_action": f"User '{user_identifier}' was not found in GitLab. You must call create_gitlab_user_account first before adding them to a project. Go back and create the GitLab user account.",
+                        }
+                    )
                 # Check for blocked user
                 if "blocked" in last_error.lower():
-                    return json.dumps({
-                        "success": False,
-                        "user": user_identifier,
-                        "project": gitlab_project,
-                        "error": last_error,
-                        "blocked": True,
-                        "retries_used": retries_used,
-                        "next_action": f"STOP: User '{user_identifier}' is BLOCKED in GitLab. Tell the user: 'This user is blocked and cannot be added to the project. An admin must unblock them at: GitLab Admin > Users > search for the user > Edit > Unblock.' Do NOT retry.",
-                    })
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "user": user_identifier,
+                            "project": gitlab_project,
+                            "error": last_error,
+                            "blocked": True,
+                            "retries_used": retries_used,
+                            "next_action": f"STOP: User '{user_identifier}' is BLOCKED in GitLab. Tell the user: 'This user is blocked and cannot be added to the project. An admin must unblock them at: GitLab Admin > Users > search for the user > Edit > Unblock.' Do NOT retry.",
+                        }
+                    )
 
         except Exception as e:
             last_error = str(e)
-            logger.error(f"Add to project attempt {attempt + 1} failed: {e}", extra={"user": user_identifier, "project": gitlab_project, "attempt": attempt + 1})
+            logger.error(
+                f"Add to project attempt {attempt + 1} failed: {e}",
+                extra={
+                    "user": user_identifier,
+                    "project": gitlab_project,
+                    "attempt": attempt + 1,
+                },
+            )
 
         retries_used = attempt + 1
         if attempt < max_retries:
-            await asyncio.sleep(min(2 ** attempt, 30))  # Cap at 30 seconds
+            await asyncio.sleep(min(2**attempt, 30))  # Cap at 30 seconds
 
-    return json.dumps({
-        "success": False,
-        "user": user_identifier,
-        "project": gitlab_project,
-        "error": last_error,
-        "retries_used": retries_used,
-        "next_action": f"Failed to add user to project after {retries_used} attempts. Report the error to the user: '{last_error}'.",
-    })
+    return json.dumps(
+        {
+            "success": False,
+            "user": user_identifier,
+            "project": gitlab_project,
+            "error": last_error,
+            "retries_used": retries_used,
+            "next_action": f"Failed to add user to project after {retries_used} attempts. Report the error to the user: '{last_error}'.",
+        }
+    )
 
 
 def get_tools():
