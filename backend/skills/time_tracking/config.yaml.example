@@ -1,0 +1,30 @@
+# Time Tracking Skill Configuration
+# Copy this to config.yaml and fill in your values
+# config.yaml is gitignored - DO NOT commit credentials
+
+# File paths - where timesheets are stored
+# If running in Docker, these should be inside the mounted volume
+timesheet_dir: "~/timesheets"
+templates_dir: "~/timesheets/templates"
+output_dir: "~/timesheets/output"
+
+# Projects - map internal IDs to external systems
+projects:
+  - id: "PRJA-001"
+    name: "ClientA - Development"
+    replicon_project: "Project A"
+    client_adapter: "client_a"
+  - id: "INT-001"
+    name: "Internal - Meetings"
+    replicon_project: "Internal"
+    client_adapter: null
+
+# Replicon configuration
+replicon:
+  url: "https://na2.replicon.com/yourcompany"
+  sso_domains:
+    - "your-sso-provider.com"
+
+# Browser automation (shared with other skills)
+browser:
+  profile_dir: "~/.cache/nova/browser-profile"
