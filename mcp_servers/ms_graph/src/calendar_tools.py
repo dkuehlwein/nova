@@ -99,8 +99,7 @@ class CalendarTools:
             return results
 
         except Exception as e:
-            logger.error(f"Error listing calendar events: {e}")
-            return {"error": f"Failed to list calendar events: {str(e)}"}
+            return self.service.handle_tool_error(e, "listing calendar events")
 
     async def create_event(
         self,
@@ -188,8 +187,7 @@ class CalendarTools:
             }
 
         except Exception as e:
-            logger.error(f"Error creating event: {e}")
-            return {"error": f"Failed to create event: {str(e)}"}
+            return self.service.handle_tool_error(e, "creating event")
 
     async def update_event(
         self,
@@ -264,8 +262,7 @@ class CalendarTools:
             }
 
         except Exception as e:
-            logger.error(f"Error updating event: {e}")
-            return {"error": f"Failed to update event: {str(e)}"}
+            return self.service.handle_tool_error(e, "updating event")
 
     async def delete_event(self, event_id: str) -> Dict[str, str]:
         """
@@ -290,5 +287,4 @@ class CalendarTools:
             }
 
         except Exception as e:
-            logger.error(f"Error deleting event: {e}")
-            return {"error": f"Failed to delete event: {str(e)}"}
+            return self.service.handle_tool_error(e, "deleting event")

@@ -6,6 +6,7 @@ Provides authenticated httpx client and initializes tool classes.
 
 import logging
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
@@ -124,3 +125,38 @@ class MSGraphService:
     def is_ready(self) -> bool:
         """Check if service is ready to handle requests."""
         return self._client is not None and self.mail_tools is not None
+
+    def get_auth_start_url(self) -> str:
+        """Derive the auth start URL from the redirect URI."""
+        parsed = urlparse(self.auth.redirect_uri)
+        return urlunparse(parsed._replace(path="/auth/start"))
+
+    def is_auth_error(self, exc: Exception) -> bool:
+        """Check if an exception is an HTTP 401/403 auth error."""
+        return (
+            isinstance(exc, httpx.HTTPStatusError)
+            and exc.response.status_code in (401, 403)
+        )
+
+    def auth_error_response(self) -> Dict[str, Any]:
+        """Build a standard auth error response with the auth URL."""
+        auth_url = self.get_auth_start_url()
+        return {
+            "error": (
+                "MS Graph authentication required. Your token may have expired "
+                "or been revoked. Please re-authenticate."
+            ),
+            "auth_required": True,
+            "auth_url": auth_url,
+        }
+
+    def handle_tool_error(self, exc: Exception, operation: str, extra: Optional[dict] = None) -> dict:
+        """Handle an exception from a tool method, checking for auth errors first."""
+        if self.is_auth_error(exc):
+            result = self.auth_error_response()
+        else:
+            logger.error(f"Error {operation}: {exc}")
+            result = {"error": f"Failed to {operation}: {exc}"}
+        if extra:
+            result.update(extra)
+        return result
