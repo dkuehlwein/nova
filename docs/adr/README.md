@@ -22,6 +22,7 @@ This directory contains Architecture Decision Records documenting significant te
 | [016](016-memory-management-ui.md) | Memory Management UI | Implemented | Settings tab for viewing, adding, and deleting memories |
 | [017](017-phoenix-observability-migration.md) | Phoenix Observability Migration | Implemented | Self-hosted LLM tracing with Arize Phoenix |
 | [018](018-service-layer-architecture.md) | Service Layer Architecture | Implemented | Separation of HTTP endpoints from business logic |
+| [019](019-browser-automation-caching.md) | Browser Automation Caching | Implemented | Persistent Playwright browser contexts with namespace isolation |
 
 ### Draft ADRs
 
@@ -106,7 +107,7 @@ Reference file paths, don't include full code.
 
 ## Creating New ADRs
 
-1. Use the next available number (currently 019)
+1. Use the next available number (currently 020)
 2. Naming: `NNN-short-descriptive-name.md`
 3. For drafts: `DRAFT-descriptive-name.md`
 4. Follow the format above
@@ -118,4 +119,4 @@ Reference file paths, don't include full code.
 - [Frontend Code](../../frontend/) - UI
 
 ---
-*Last updated: 2026-01-09*
+*Last updated: 2026-02-16*

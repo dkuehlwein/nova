@@ -75,27 +75,31 @@ class BrowserManager:
 
         # Create new Playwright instance and persistent context
         pw = await async_playwright().start()
-        profile_dir = self.profile_dir
-        profile_dir.mkdir(parents=True, exist_ok=True)
-
         try:
-            context = await pw.chromium.launch_persistent_context(
-                user_data_dir=str(profile_dir),
-                headless=headless,
-                ignore_https_errors=True,
-            )
-        except Exception as launch_err:
-            # Corrupt profile - wipe and retry once
-            logger.warning(
-                f"[{self.namespace}] Persistent context launch failed, resetting profile: {launch_err}"
-            )
-            shutil.rmtree(profile_dir, ignore_errors=True)
+            profile_dir = self.profile_dir
             profile_dir.mkdir(parents=True, exist_ok=True)
-            context = await pw.chromium.launch_persistent_context(
-                user_data_dir=str(profile_dir),
-                headless=headless,
-                ignore_https_errors=True,
-            )
+
+            try:
+                context = await pw.chromium.launch_persistent_context(
+                    user_data_dir=str(profile_dir),
+                    headless=headless,
+                    ignore_https_errors=True,
+                )
+            except Exception as launch_err:
+                # Corrupt profile - wipe and retry once
+                logger.warning(
+                    f"[{self.namespace}] Persistent context launch failed, resetting profile: {launch_err}"
+                )
+                shutil.rmtree(profile_dir, ignore_errors=True)
+                profile_dir.mkdir(parents=True, exist_ok=True)
+                context = await pw.chromium.launch_persistent_context(
+                    user_data_dir=str(profile_dir),
+                    headless=headless,
+                    ignore_https_errors=True,
+                )
+        except Exception:
+            await pw.stop()
+            raise
 
         cache.playwright_obj = pw
         cache.context = context
