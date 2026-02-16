@@ -5,9 +5,10 @@ Per ADR-015, LiteLLM is the single source of truth for MCP servers and tools.
 Nova queries LiteLLM's /mcp-rest/tools/list endpoint for tool discovery.
 """
 
-import asyncio
-import httpx
+import json
 import time
+
+import httpx
 from typing import List, Dict, Any, Optional
 from langchain_core.tools import StructuredTool
 from pydantic import create_model
@@ -21,19 +22,7 @@ _TOOLS_CACHE_TTL_SECONDS = 60  # Cache tools for 60 seconds to reduce MCP server
 
 
 def get_prefixed_tool_name(server_name: str, tool_name: str) -> str:
-    """
-    Generate prefixed tool name: server_name-tool_name
-
-    This ensures unique tool names across all MCP servers.
-    See ADR-015 MCP Tool Namespacing Convention.
-
-    Args:
-        server_name: MCP server name (e.g., "google_workspace", "outlook_mac")
-        tool_name: Base tool name from MCP server (e.g., "send_email", "list_events")
-
-    Returns:
-        Prefixed tool name (e.g., "google_workspace-send_email")
-    """
+    """Return 'server_name-tool_name' for unique tool names across MCP servers (ADR-015)."""
     return f"{server_name}-{tool_name}"
 
 
@@ -253,6 +242,53 @@ class MCPClientManager:
             logger.warning(f"Failed to look up server_id for {server_name}: {e}")
             return None
 
+    def _parse_auth_error(self, tool_result: Any) -> Optional[str]:
+        """Return the auth_url if tool_result indicates MS Graph auth is required, else None."""
+        if isinstance(tool_result, str):
+            try:
+                tool_result = json.loads(tool_result)
+            except (json.JSONDecodeError, ValueError):
+                return None
+
+        if isinstance(tool_result, dict) and tool_result.get("auth_required"):
+            return tool_result.get("auth_url")
+        return None
+
+    async def _execute_mcp_call(
+        self,
+        url: str,
+        prefixed_tool_name: str,
+        arguments: Dict[str, Any],
+        server_id: str,
+    ) -> Any:
+        """Execute a single MCP tool call and return the parsed result."""
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {self._litellm_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "name": prefixed_tool_name,
+                    "arguments": arguments,
+                    "server_id": server_id
+                },
+                timeout=60.0  # Tool calls may take longer
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            # Extract text from the first content block of the MCP response
+            content = result.get("content")
+            if content and isinstance(content, list):
+                first = content[0]
+                if isinstance(first, dict) and "text" in first:
+                    return first["text"]
+                return first
+
+            return result
+
     async def call_mcp_tool(
         self,
         server_name: str,
@@ -261,6 +297,9 @@ class MCPClientManager:
     ) -> Any:
         """
         Execute an MCP tool via LiteLLM's MCP Gateway.
+
+        If the tool returns an auth_required error (NOV-122), automatically
+        launches a browser to complete the OAuth flow and retries the call.
 
         Args:
             server_name: Name of the MCP server
@@ -285,33 +324,25 @@ class MCPClientManager:
         prefixed_tool_name = get_prefixed_tool_name(server_name, tool_name)
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    url,
-                    headers={
-                        "Authorization": f"Bearer {self._litellm_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "name": prefixed_tool_name,
-                        "arguments": arguments,
-                        "server_id": server_id
-                    },
-                    timeout=60.0  # Tool calls may take longer
-                )
-                response.raise_for_status()
-                result = response.json()
+            result = await self._execute_mcp_call(
+                url, prefixed_tool_name, arguments, server_id
+            )
 
-                # Extract content from MCP response
-                content = result.get("content", [])
-                if content and isinstance(content, list) and len(content) > 0:
-                    # Return the text content from the first content block
-                    first_content = content[0]
-                    if isinstance(first_content, dict) and "text" in first_content:
-                        return first_content["text"]
-                    return first_content
+            # Auto-authenticate on MS Graph auth errors (NOV-123)
+            auth_url = self._parse_auth_error(result)
+            if auth_url:
+                logger.info(f"MS Graph auth required for {tool_name}, launching browser auth")
+                from utils.ms_graph_auth_browser import authenticate_ms_graph
 
-                return result
+                auth_result = await authenticate_ms_graph(auth_url)
+                if auth_result.get("success"):
+                    logger.info(f"MS Graph auth succeeded, retrying {tool_name}")
+                    return await self._execute_mcp_call(
+                        url, prefixed_tool_name, arguments, server_id
+                    )
+                logger.warning(f"MS Graph auto-auth failed: {auth_result.get('error')}")
+
+            return result
 
         except httpx.TimeoutException:
             logger.error(f"Timeout calling MCP tool {tool_name} on {server_name}")
