@@ -19,6 +19,7 @@ if backend_path not in sys.path:
 os.environ.setdefault("NOVA_SKIP_DB", "1")
 
 import json
+import types
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -491,42 +492,30 @@ class TestPersistentBrowserProfile:
 class TestBrowserCache:
     """Tests for the process-level browser cache via sys.modules."""
 
-    def test_get_browser_cache_creates_namespace(self, lam_automation_module):
-        """First call should create a SimpleNamespace in sys.modules."""
-        import sys
-        import types
-
-        # Clean up any existing cache
+    @pytest.fixture(autouse=True)
+    def clean_lam_cache(self, lam_automation_module):
+        """Remove the LAM browser cache from sys.modules before and after each test."""
+        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
+        yield
         sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
 
+    def test_get_browser_cache_creates_namespace(self, lam_automation_module):
+        """First call should create a SimpleNamespace in sys.modules."""
         cache = lam_automation_module._get_browser_cache()
         assert isinstance(cache, types.SimpleNamespace)
         assert cache.playwright_obj is None
         assert cache.context is None
         assert cache.profile_dir is None
 
-        # Clean up
-        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
-
     def test_get_browser_cache_returns_same_instance(self, lam_automation_module):
         """Subsequent calls should return the same cache object."""
-        import sys
-
-        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
-
         cache1 = lam_automation_module._get_browser_cache()
         cache2 = lam_automation_module._get_browser_cache()
         assert cache1 is cache2
 
-        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
-
     @pytest.mark.asyncio
     async def test_browser_reuse_across_calls(self, lam_automation_module):
         """Two consecutive calls to _get_or_create_browser_context should return the same context."""
-        import sys
-
-        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
-
         mock_browser = MagicMock()
         mock_browser.is_connected.return_value = True
 
@@ -547,7 +536,7 @@ class TestBrowserCache:
                 return_value=Path("/tmp/test-profile"),
             ),
             patch(
-                "playwright.async_api.async_playwright",
+                "utils.browser_automation.async_playwright",
                 return_value=mock_async_pw_instance,
             ),
         ):
@@ -555,18 +544,11 @@ class TestBrowserCache:
             ctx2 = await lam_automation_module._get_or_create_browser_context()
 
         assert ctx1 is ctx2
-        # launch_persistent_context should only be called once
         mock_pw.chromium.launch_persistent_context.assert_called_once()
-
-        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
 
     @pytest.mark.asyncio
     async def test_dead_browser_recovery(self, lam_automation_module):
         """If cached browser is disconnected, a new context should be created."""
-        import sys
-
-        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
-
         # Set up a "dead" cached context
         dead_browser = MagicMock()
         dead_browser.is_connected.return_value = False
@@ -597,26 +579,19 @@ class TestBrowserCache:
                 return_value=Path("/tmp/test-profile"),
             ),
             patch(
-                "playwright.async_api.async_playwright",
+                "utils.browser_automation.async_playwright",
                 return_value=mock_async_pw_instance,
             ),
         ):
             ctx = await lam_automation_module._get_or_create_browser_context()
 
         assert ctx is new_context
-        # Old playwright should have been stopped
         cache_after = lam_automation_module._get_browser_cache()
         assert cache_after.context is new_context
-
-        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
 
     @pytest.mark.asyncio
     async def test_close_lam_browser(self, lam_automation_module):
         """close_lam_browser should close context and stop playwright."""
-        import sys
-
-        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
-
         mock_context = AsyncMock()
         mock_pw = AsyncMock()
 
@@ -630,8 +605,6 @@ class TestBrowserCache:
         mock_pw.stop.assert_called_once()
         assert cache.context is None
         assert cache.playwright_obj is None
-
-        sys.modules.pop(lam_automation_module._BROWSER_CACHE_KEY, None)
 
 
 class TestTabbedFormFill:
