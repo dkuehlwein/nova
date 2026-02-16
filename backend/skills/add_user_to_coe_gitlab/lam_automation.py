@@ -4,43 +4,24 @@ LAM (LDAP Account Manager) automation using Playwright.
 This module provides browser automation to create user accounts in LAM 8.7.
 The selectors may need adjustment based on your specific LAM configuration.
 
-Uses a persistent Chromium profile to retain PingOne SSO session cookies
-across invocations, so users only need to complete MFA once per session.
+Uses a persistent Chromium profile (via shared BrowserManager) to retain
+PingOne SSO session cookies across invocations, so users only need to
+complete MFA once per session.
 
 Reference: https://www.ldap-account-manager.org/
 """
 
 import asyncio
-import json
 import secrets
-import shutil
 import string
-import sys
-import types
-from pathlib import Path
+from urllib.parse import urlparse
+
+from utils.browser_automation import BrowserManager
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Default location for the persistent Chromium profile
-_DEFAULT_PROFILE_DIR = Path.home() / ".cache" / "nova" / "lam-chromium-profile"
-
-# Key used in sys.modules to store the browser cache across module re-imports.
-# sys.modules is process-global and survives re-imports via _import_skill_module().
-_BROWSER_CACHE_KEY = "_nova_lam_browser"
-
-
-def _get_browser_cache():
-    """Get the process-level browser cache (survives module re-imports)."""
-    cache = sys.modules.get(_BROWSER_CACHE_KEY)
-    if cache is None:
-        cache = types.SimpleNamespace(
-            playwright_obj=None,  # Playwright instance (from async_playwright().__aenter__())
-            context=None,  # BrowserContext (persistent)
-            profile_dir=None,  # Path used for this context
-        )
-        sys.modules[_BROWSER_CACHE_KEY] = cache
-    return cache
+_browser_manager = BrowserManager("lam")
 
 
 def generate_password(length: int = 16) -> str:
@@ -50,17 +31,7 @@ def generate_password(length: int = 16) -> str:
 
 
 def _build_lam_url(lam_url: str, template: str) -> str:
-    """
-    Build a LAM URL for a specific template.
-
-    Args:
-        lam_url: Base LAM URL (typically ending in /templates/account/edit.php)
-        template: Target template (e.g., "login.php", "lists/list.php?type=user")
-
-    Returns:
-        Full URL for the target template
-    """
-    # Standard case: URL contains the expected path
+    """Build a LAM URL for a specific template (e.g., "login.php")."""
     if "/templates/account/edit.php" in lam_url:
         return lam_url.replace("/templates/account/edit.php", f"/templates/{template}")
 
@@ -74,170 +45,9 @@ def _build_lam_url(lam_url: str, template: str) -> str:
     return f"{base_url}/templates/{template}"
 
 
-def _load_config() -> dict:
-    """Load skill configuration from config.yaml."""
-    import yaml
-
-    config_path = Path(__file__).parent / "config.yaml"
-    if config_path.exists():
-        with open(config_path) as f:
-            return yaml.safe_load(f) or {}
-    return {}
-
-
-def _get_profile_dir() -> Path:
-    """
-    Get the persistent browser profile directory from config or default.
-
-    Reads browser.profile_dir from config.yaml. Falls back to
-    ~/.cache/nova/lam-chromium-profile/.
-    """
-    config = _load_config()
-    browser_config = config.get("browser", {})
-    custom_dir = browser_config.get("profile_dir")
-    if custom_dir:
-        return Path(custom_dir).expanduser()
-    return _DEFAULT_PROFILE_DIR
-
-
-def _get_storage_state_path() -> Path:
-    """Get the path for the SSO cookie storage state file."""
-    return _get_profile_dir().parent / "lam-sso-state.json"
-
-
-async def _restore_sso_cookies(context, lam_url: str = "") -> bool:
-    """
-    Restore saved SSO session cookies into the browser context.
-
-    PingOne uses session cookies (expires=-1) which Chromium does not persist
-    to disk, even with a user_data_dir. We explicitly save and restore them.
-
-    Filters out LAM cookies (e.g. PHPSESSID) to avoid stale LAM sessions
-    that bypass login but are expired server-side.
-
-    Returns True if cookies were restored.
-    """
-    state_path = _get_storage_state_path()
-    if not state_path.exists():
-        return False
-
-    # Extract LAM hostname to filter out its cookies
-    lam_host = ""
-    if lam_url:
-        from urllib.parse import urlparse
-
-        lam_host = urlparse(lam_url).hostname or ""
-
-    try:
-        state = json.loads(state_path.read_text())
-        cookies = state.get("cookies", [])
-        if lam_host:
-            cookies = [c for c in cookies if lam_host not in c.get("domain", "")]
-        if cookies:
-            await context.add_cookies(cookies)
-            logger.info(f"Restored {len(cookies)} SSO cookies from {state_path}")
-            return True
-    except Exception as e:
-        logger.warning(f"Failed to restore SSO cookies: {e}")
-        state_path.unlink(missing_ok=True)
-    return False
-
-
-async def _save_sso_cookies(context, state_path: Path | None = None) -> None:
-    """Save current cookies to disk so session cookies survive browser restarts."""
-    state_path = state_path or _get_storage_state_path()
-    try:
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        await context.storage_state(path=str(state_path))
-        logger.info(f"Saved SSO cookies to {state_path}")
-    except Exception as e:
-        logger.warning(f"Failed to save SSO cookies: {e}")
-
-
-
-async def _get_or_create_browser_context(headless: bool = False, timeout_ms: int = 30000):
-    """
-    Return a cached Playwright BrowserContext, creating one if needed.
-
-    The context is stored in sys.modules so it survives module re-imports
-    (Nova's skill loader re-imports tools on every invocation). This keeps
-    the browser alive across tool calls, preserving cert selection and SSO
-    cookies in-memory.
-
-    Args:
-        headless: Run browser in headless mode
-        timeout_ms: Default timeout for page operations
-
-    Returns:
-        A Playwright BrowserContext (persistent)
-    """
-    from playwright.async_api import async_playwright
-
-    cache = _get_browser_cache()
-
-    # Check if cached context is still alive
-    if cache.context is not None:
-        try:
-            # is_connected() checks if the browser process is still running
-            if cache.context.browser and cache.context.browser.is_connected():
-                logger.debug("Reusing cached browser context")
-                return cache.context
-        except Exception:
-            pass
-        # Dead context - clean up
-        logger.info("Cached browser context is dead, recreating")
-        cache.context = None
-        if cache.playwright_obj:
-            try:
-                await cache.playwright_obj.stop()
-            except Exception:
-                pass
-            cache.playwright_obj = None
-
-    # Create new Playwright instance and persistent context
-    pw = await async_playwright().start()
-    profile_dir = _get_profile_dir()
-    profile_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        context = await pw.chromium.launch_persistent_context(
-            user_data_dir=str(profile_dir),
-            headless=headless,
-            ignore_https_errors=True,
-        )
-    except Exception as launch_err:
-        # Corrupt profile - wipe and retry once
-        logger.warning(f"Persistent context launch failed, resetting profile: {launch_err}")
-        shutil.rmtree(profile_dir, ignore_errors=True)
-        profile_dir.mkdir(parents=True, exist_ok=True)
-        context = await pw.chromium.launch_persistent_context(
-            user_data_dir=str(profile_dir),
-            headless=headless,
-            ignore_https_errors=True,
-        )
-
-    cache.playwright_obj = pw
-    cache.context = context
-    cache.profile_dir = profile_dir
-    logger.info("Created new persistent browser context")
-    return context
-
-
 async def close_lam_browser():
     """Close the cached browser (called on process shutdown or explicitly)."""
-    cache = _get_browser_cache()
-    if cache.context:
-        try:
-            await cache.context.close()
-        except Exception:
-            pass
-        cache.context = None
-    if cache.playwright_obj:
-        try:
-            await cache.playwright_obj.stop()
-        except Exception:
-            pass
-        cache.playwright_obj = None
+    await _browser_manager.close()
 
 
 async def create_lam_account(
@@ -286,13 +96,11 @@ async def create_lam_account(
             "error": "Playwright not installed. Run: playwright install chromium (browser binaries must be installed separately after pip install)",
         }
 
-    # Extract user data
     first_name = user_data.get("first_name", "")
     last_name = user_data.get("last_name", "")
     email = user_data.get("email", "")
     username = user_data.get("username")
 
-    # Auto-generate username if not provided
     if not username:
         username = f"{first_name[0].lower()}{last_name.lower()}".replace(" ", "")
 
@@ -300,11 +108,14 @@ async def create_lam_account(
 
     page = None
     try:
-        context = await _get_or_create_browser_context(headless, timeout_ms)
+        context = await _browser_manager.get_or_create_context(headless=headless)
 
         # Restore saved SSO session cookies on first use (fallback for
-        # when the process restarted and the browser cache was lost)
-        await _restore_sso_cookies(context, lam_url=lam_url)
+        # when the process restarted and the browser cache was lost).
+        # Filter out LAM cookies to avoid stale sessions.
+        lam_host = urlparse(lam_url).hostname or ""
+        exclude = [lam_host] if lam_host else None
+        await _browser_manager.restore_cookies(exclude_domains=exclude)
 
         page = await context.new_page()
         page.set_default_timeout(timeout_ms)
@@ -330,7 +141,7 @@ async def create_lam_account(
                 logger.info("SSO completed, now on LAM page")
 
                 # Save SSO cookies so they survive process restarts
-                await _save_sso_cookies(context)
+                await _browser_manager.save_cookies()
             except PlaywrightTimeout:
                 return {
                     "success": False,
@@ -372,7 +183,7 @@ async def create_lam_account(
             }
 
         # Step 5: Fill personal fields and save (duplicate check)
-        # LAM flow: fill personal fields → save → if not duplicate → fill uid → save again
+        # LAM flow: fill personal fields -> save -> if not duplicate -> fill uid -> save again
         logger.debug(f"Form page URL: {page.url}")
         try:
             await page.fill("input[name='givenName']", first_name)
