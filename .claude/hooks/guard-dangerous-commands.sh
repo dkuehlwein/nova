@@ -22,7 +22,8 @@ if echo "$STRIPPED" | grep -qE 'rm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+(/\s|/\*|~
 fi
 
 # Force push to main/master
-if echo "$STRIPPED" | grep -qE 'git\s+push\s+.*(-f|--force)' && echo "$STRIPPED" | grep -qE '(main|master)'; then
+# Use word-boundary matching: -f must appear as a standalone flag, not inside a path like "fix/..."
+if echo "$STRIPPED" | grep -qwE '\-f|--force' && echo "$STRIPPED" | grep -qE 'git\s+push' && echo "$STRIPPED" | grep -qE '(main|master)'; then
   echo "BLOCKED: Force push to main/master is not allowed" >&2
   exit 2
 fi
@@ -46,13 +47,21 @@ if echo "$STRIPPED" | grep -qE 'git\s+(checkout|restore)\s+\.'; then
 fi
 
 # git branch -D (force-delete branch without merge check)
+# Allow -D for specific named branches (needed after squash merges where -d fails)
+# Block only bulk/wildcard force-deletes
 if echo "$STRIPPED" | grep -qE 'git\s+branch\s+-[a-zA-Z]*D'; then
-  echo "BLOCKED: git branch -D force-deletes without checking merge status. Use -d for safe delete." >&2
-  exit 2
+  # Allow: git branch -D <specific-branch-name>
+  # Block: git branch -D with no args, or patterns that look like bulk operations
+  BRANCH_ARG=$(echo "$COMMAND" | grep -oE 'git\s+branch\s+-[a-zA-Z]*D\s+(.+)' | sed -E 's/git\s+branch\s+-[a-zA-Z]*D\s+//' || true)
+  if [[ -z "$BRANCH_ARG" ]] || echo "$BRANCH_ARG" | grep -qE '(\*|\$\(|`|;|\|)'; then
+    echo "BLOCKED: git branch -D force-deletes without checking merge status. Use -d for safe delete." >&2
+    exit 2
+  fi
+  # Specific branch name provided — let Claude's own permission system handle confirmation
 fi
 
 # git push --force on any branch (non-main already blocked above)
-if echo "$STRIPPED" | grep -qE 'git\s+push\s+.*(-f|--force)'; then
+if echo "$STRIPPED" | grep -qwE '\-f|--force' && echo "$STRIPPED" | grep -qE 'git\s+push'; then
   echo "BLOCKED: git push --force can overwrite remote history. Use --force-with-lease instead." >&2
   exit 2
 fi
