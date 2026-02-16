@@ -91,8 +91,7 @@ class MailTools:
             return results
 
         except Exception as e:
-            logger.error(f"Error listing emails: {e}")
-            return {"error": f"Failed to list emails: {str(e)}"}
+            return self.service.handle_tool_error(e, "listing emails")
 
     async def read_email(self, email_id: str) -> Dict[str, Any]:
         """
@@ -152,8 +151,7 @@ class MailTools:
             }
 
         except Exception as e:
-            logger.error(f"Error reading email: {e}")
-            return {"error": f"Failed to read email: {str(e)}"}
+            return self.service.handle_tool_error(e, "reading email")
 
     async def create_draft(
         self,
@@ -214,8 +212,7 @@ class MailTools:
             }
 
         except Exception as e:
-            logger.error(f"Error creating draft: {e}")
-            return {"error": f"Failed to create draft: {str(e)}"}
+            return self.service.handle_tool_error(e, "creating draft")
 
     async def send_email(
         self,
@@ -280,8 +277,7 @@ class MailTools:
             }
 
         except Exception as e:
-            logger.error(f"Error sending email: {e}")
-            return {"error": f"Failed to send email: {str(e)}"}
+            return self.service.handle_tool_error(e, "sending email")
 
     async def _mark_as_read(self, email_id: str) -> bool:
         """Mark an email as read."""

@@ -77,8 +77,7 @@ class PeopleTools:
             }
 
         except Exception as e:
-            logger.error(f"Error looking up contact: {e}")
-            return {"found": False, "error": f"Failed to look up contact: {str(e)}"}
+            return self.service.handle_tool_error(e, "looking up contact", {"found": False})
 
     async def search_people(self, query: str, limit: int = 10) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """
@@ -126,8 +125,7 @@ class PeopleTools:
             return results
 
         except Exception as e:
-            logger.error(f"Error searching people: {e}")
-            return {"error": f"Failed to search people: {str(e)}"}
+            return self.service.handle_tool_error(e, "searching people")
 
     async def get_user_profile(self, user_id: str = "me") -> Dict[str, Any]:
         """
@@ -171,6 +169,5 @@ class PeopleTools:
             }
 
         except Exception as e:
-            logger.error(f"Error getting user profile: {e}")
-            return {"error": f"Failed to get user profile: {str(e)}"}
+            return self.service.handle_tool_error(e, "getting user profile")
 
