@@ -1,0 +1,5 @@
+name: time_tracking
+version: "1.0.0"
+description: "Track work hours and sync to Replicon and client Excel timesheets. Suggests hours from calendar, maintains a master Excel ledger, and pushes to external systems."
+author: nova-team
+tags: [time, tracking, timesheet, replicon, excel]
