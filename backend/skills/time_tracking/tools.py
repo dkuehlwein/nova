@@ -219,10 +219,10 @@ async def _get_calendar_events(target_date: str) -> list[dict]:
 
     Returns an empty list on any failure.
     """
-    from mcp_client import mcp_manager as _mcp
+    from mcp_client import mcp_manager
 
     try:
-        result = await _mcp.call_mcp_tool(
+        result = await mcp_manager.call_mcp_tool(
             server_name="ms_graph",
             tool_name="list_calendar_events",
             arguments={
@@ -234,7 +234,7 @@ async def _get_calendar_events(target_date: str) -> list[dict]:
             result = json.loads(result)
         return _normalize_calendar_response(result)
     except Exception as e:
-        logger.warning(f"Calendar fetch failed: {e}")
+        logger.warning(f"Calendar fetch failed: {e}", extra={"data": {"error": str(e)}})
         return []
 
 
@@ -259,6 +259,8 @@ def _match_project(subject: str, projects: list[dict]) -> dict | None:
     subject_lower = subject.lower()
     for project in projects:
         name = project.get("name", "")
+        if not name:
+            continue
         if name.lower() in subject_lower:
             return project
     return None
@@ -276,6 +278,9 @@ def _parse_event_times(event: dict) -> tuple[str, str, float]:
     try:
         start_dt = datetime.fromisoformat(start_str)
         end_dt = datetime.fromisoformat(end_str)
+        # Strip timezone info to avoid TypeError when one has tz and the other doesn't
+        start_dt = start_dt.replace(tzinfo=None)
+        end_dt = end_dt.replace(tzinfo=None)
         hours = max(0.0, round((end_dt - start_dt).total_seconds() / 3600, 2))
         return start_dt.strftime("%H:%M"), end_dt.strftime("%H:%M"), hours
     except (ValueError, TypeError):
@@ -303,8 +308,8 @@ async def suggest_hours_from_calendar(target_date: str = "") -> str:
     """
     Suggest time allocation based on calendar events for a given date.
 
-    Uses the configured MCP server (MS Graph or Google Calendar) to read
-    calendar events and propose a time breakdown.
+    Uses the MS Graph MCP server to read calendar events and propose
+    a time breakdown.
 
     Args:
         target_date: Date to suggest hours for ("YYYY-MM-DD"). Defaults to today.
@@ -320,8 +325,15 @@ async def suggest_hours_from_calendar(target_date: str = "") -> str:
     config = _load_skill_config()
     projects = config.get("projects", [])
 
-    suggestions = [_event_to_suggestion(event, projects) for event in events]
+    all_suggestions = [_event_to_suggestion(event, projects) for event in events]
+    # Filter out events with no valid time data (unparseable times)
+    suggestions = [s for s in all_suggestions if s["hours"] > 0.0 or s["start"]]
     total_hours = sum(s["hours"] for s in suggestions)
+
+    if suggestions:
+        next_action = "Present the calendar-based suggestions to the user for review. Ask them to confirm, adjust hours, or assign projects to unmatched events before logging with log_hours."
+    else:
+        next_action = "No calendar events found for this date. Ask the user to provide their hours manually using log_hours."
 
     return json.dumps({
         "success": True,
@@ -329,7 +341,7 @@ async def suggest_hours_from_calendar(target_date: str = "") -> str:
         "suggestions": suggestions,
         "total_hours": total_hours,
         "count": len(suggestions),
-        "next_action": "Present the calendar-based suggestions to the user for review. Ask them to confirm, adjust hours, or assign projects to unmatched events before logging with log_hours.",
+        "next_action": next_action,
     })
 
 

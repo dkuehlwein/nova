@@ -140,6 +140,90 @@ class TestSuggestHoursFromCalendar:
             assert len(called_date) == 10  # YYYY-MM-DD format
             assert result["date"] == called_date
 
+    @pytest.mark.asyncio
+    async def test_filters_out_unparseable_events(self, mock_config):
+        """Events with no valid time data are excluded from suggestions."""
+        from skills.time_tracking.tools import suggest_hours_from_calendar
+
+        mock_events = [
+            {
+                "subject": "Valid meeting",
+                "start": {"dateTime": "2026-02-03T09:00:00"},
+                "end": {"dateTime": "2026-02-03T10:00:00"},
+            },
+            {
+                "subject": "All-day event with no times",
+                # Missing start/end dateTime fields
+            },
+            {
+                "subject": "Broken event",
+                "start": {"dateTime": "not-a-date"},
+                "end": {"dateTime": "also-not-a-date"},
+            },
+        ]
+
+        with patch(
+            "skills.time_tracking.tools._get_calendar_events",
+            new_callable=AsyncMock,
+        ) as mock_cal:
+            mock_cal.return_value = mock_events
+
+            result_str = await suggest_hours_from_calendar.ainvoke(
+                {"target_date": "2026-02-03"}
+            )
+            result = json.loads(result_str)
+
+            assert result["success"] is True
+            assert result["count"] == 1
+            assert len(result["suggestions"]) == 1
+            assert result["suggestions"][0]["subject"] == "Valid meeting"
+
+    @pytest.mark.asyncio
+    async def test_next_action_differs_for_empty_suggestions(self, mock_config):
+        """next_action tells the user to provide hours manually when no events found."""
+        from skills.time_tracking.tools import suggest_hours_from_calendar
+
+        with patch(
+            "skills.time_tracking.tools._get_calendar_events",
+            new_callable=AsyncMock,
+        ) as mock_cal:
+            mock_cal.return_value = []
+
+            result_str = await suggest_hours_from_calendar.ainvoke(
+                {"target_date": "2026-02-03"}
+            )
+            result = json.loads(result_str)
+
+            assert "manually" in result["next_action"].lower()
+            assert "log_hours" in result["next_action"]
+
+    @pytest.mark.asyncio
+    async def test_next_action_for_non_empty_suggestions(self, mock_config):
+        """next_action asks user to review suggestions when events are found."""
+        from skills.time_tracking.tools import suggest_hours_from_calendar
+
+        mock_events = [
+            {
+                "subject": "Meeting",
+                "start": {"dateTime": "2026-02-03T09:00:00"},
+                "end": {"dateTime": "2026-02-03T10:00:00"},
+            },
+        ]
+
+        with patch(
+            "skills.time_tracking.tools._get_calendar_events",
+            new_callable=AsyncMock,
+        ) as mock_cal:
+            mock_cal.return_value = mock_events
+
+            result_str = await suggest_hours_from_calendar.ainvoke(
+                {"target_date": "2026-02-03"}
+            )
+            result = json.loads(result_str)
+
+            assert "review" in result["next_action"].lower()
+            assert "log_hours" in result["next_action"]
+
 
 class TestNormalizeCalendarResponse:
     def test_extracts_value_key_from_dict(self):
@@ -192,6 +276,32 @@ class TestParseEventTimes:
         assert _parse_event_times({}) == ("", "", 0.0)
         assert _parse_event_times({"start": {}}) == ("", "", 0.0)
 
+    def test_handles_mixed_timezone_datetimes(self):
+        """Handles events where one datetime has timezone info and the other does not."""
+        from skills.time_tracking.tools import _parse_event_times
+
+        event = {
+            "start": {"dateTime": "2026-02-03T09:00:00+01:00"},
+            "end": {"dateTime": "2026-02-03T11:00:00"},
+        }
+        start, end, hours = _parse_event_times(event)
+        assert start == "09:00"
+        assert end == "11:00"
+        assert hours == 2.0
+
+    def test_handles_both_timezone_aware_datetimes(self):
+        """Handles events where both datetimes have timezone info."""
+        from skills.time_tracking.tools import _parse_event_times
+
+        event = {
+            "start": {"dateTime": "2026-02-03T09:00:00+01:00"},
+            "end": {"dateTime": "2026-02-03T11:00:00+01:00"},
+        }
+        start, end, hours = _parse_event_times(event)
+        assert start == "09:00"
+        assert end == "11:00"
+        assert hours == 2.0
+
 
 class TestMatchProject:
     def test_matches_by_case_insensitive_substring(self):
@@ -208,6 +318,25 @@ class TestMatchProject:
 
         projects = [{"name": "Alpha", "id": "A-1"}]
         assert _match_project("Unrelated meeting", projects) is None
+
+    def test_empty_project_name_does_not_match(self):
+        """Projects with empty or missing names do not match any subject."""
+        from skills.time_tracking.tools import _match_project
+
+        projects = [
+            {"name": "", "id": "EMPTY-1"},
+            {"name": "Alpha", "id": "A-1"},
+        ]
+        # Empty name should be skipped; should match Alpha
+        result = _match_project("Alpha standup", projects)
+        assert result["id"] == "A-1"
+
+    def test_missing_name_key_does_not_match(self):
+        """Projects missing the 'name' key entirely do not match."""
+        from skills.time_tracking.tools import _match_project
+
+        projects = [{"id": "NO-NAME"}]
+        assert _match_project("Anything at all", projects) is None
 
 
 class TestGetCalendarEvents:

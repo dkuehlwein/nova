@@ -1,14 +1,18 @@
 """Shared fixtures for time tracking skill tests."""
 
-from pathlib import Path
+from unittest.mock import patch
 
 import pytest
-import yaml
 
 
 @pytest.fixture
 def mock_config(tmp_path):
-    """Create a mock config.yaml for the skill."""
+    """Provide a mock config without touching real files on disk.
+
+    Patches _load_skill_config and _save_skill_config in the tools module
+    so that no real config.yaml is read or written.  Uses tmp_path for
+    directory paths to ensure test isolation.
+    """
     config = {
         "timesheet_dir": str(tmp_path / "timesheets"),
         "templates_dir": str(tmp_path / "templates"),
@@ -29,7 +33,20 @@ def mock_config(tmp_path):
         ],
     }
 
-    config_path = Path(__file__).parents[3] / "backend" / "skills" / "time_tracking" / "config.yaml"
-    config_path.write_text(yaml.dump(config))
-    yield config
-    config_path.unlink(missing_ok=True)
+    # Use a mutable container so save updates are visible to subsequent loads
+    state = {"config": config}
+
+    def fake_load():
+        # Return a copy so callers mutating the dict don't break future loads
+        import copy
+        return copy.deepcopy(state["config"])
+
+    def fake_save(new_config):
+        import copy
+        state["config"] = copy.deepcopy(new_config)
+
+    with (
+        patch("skills.time_tracking.tools._load_skill_config", side_effect=fake_load),
+        patch("skills.time_tracking.tools._save_skill_config", side_effect=fake_save),
+    ):
+        yield config
