@@ -226,8 +226,8 @@ class TestPlaceholderStubs:
         assert "not yet" in result["error"].lower()
 
     @pytest.mark.asyncio
-    async def test_fill_client_timesheet_returns_not_implemented(self, mock_config):
-        """fill_client_timesheet returns not-implemented message."""
+    async def test_fill_client_timesheet_missing_adapter(self, mock_config):
+        """fill_client_timesheet returns error when adapter module doesn't exist."""
         from skills.time_tracking.tools import fill_client_timesheet
 
         result_str = await fill_client_timesheet.ainvoke({
@@ -237,7 +237,35 @@ class TestPlaceholderStubs:
         })
         result = json.loads(result_str)
         assert result["success"] is False
-        assert "not yet" in result["error"].lower()
+        assert "failed to load adapter" in result["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_fill_client_timesheet_no_adapter_configured(self, mock_config):
+        """fill_client_timesheet returns error when project has no client_adapter."""
+        from skills.time_tracking.tools import fill_client_timesheet
+
+        result_str = await fill_client_timesheet.ainvoke({
+            "project_id": "INT-001",
+            "start_date": "2026-02-03",
+            "end_date": "2026-02-07",
+        })
+        result = json.loads(result_str)
+        assert result["success"] is False
+        assert "no client adapter" in result["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_fill_client_timesheet_unknown_project(self, mock_config):
+        """fill_client_timesheet returns error when project not found."""
+        from skills.time_tracking.tools import fill_client_timesheet
+
+        result_str = await fill_client_timesheet.ainvoke({
+            "project_id": "NONEXISTENT-999",
+            "start_date": "2026-02-03",
+            "end_date": "2026-02-07",
+        })
+        result = json.loads(result_str)
+        assert result["success"] is False
+        assert "not found" in result["error"].lower()
 
 
 class TestGetTools:
