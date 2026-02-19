@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+from datetime import datetime
 from pathlib import Path
 from types import ModuleType
 
@@ -213,6 +214,90 @@ async def configure_project(
     })
 
 
+async def _get_calendar_events(target_date: str) -> list[dict]:
+    """Fetch calendar events for a date via the MS Graph MCP server.
+
+    Returns an empty list on any failure.
+    """
+    from mcp_client import mcp_manager as _mcp
+
+    try:
+        result = await _mcp.call_mcp_tool(
+            server_name="ms_graph",
+            tool_name="list_calendar_events",
+            arguments={
+                "start_date": f"{target_date}T00:00:00",
+                "end_date": f"{target_date}T23:59:59",
+            },
+        )
+        if isinstance(result, str):
+            result = json.loads(result)
+        return _normalize_calendar_response(result)
+    except Exception as e:
+        logger.warning(f"Calendar fetch failed: {e}")
+        return []
+
+
+def _normalize_calendar_response(result: object) -> list[dict]:
+    """Normalize an MCP calendar response into a flat list of event dicts."""
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        if "value" in result:
+            return result["value"]
+        if "subject" in result:
+            return [result]
+    return []
+
+
+def _match_project(subject: str, projects: list[dict]) -> dict | None:
+    """Find the best matching project for a calendar event subject.
+
+    Uses case-insensitive substring matching of the project name against
+    the event subject. Returns the first match or None.
+    """
+    subject_lower = subject.lower()
+    for project in projects:
+        name = project.get("name", "")
+        if name.lower() in subject_lower:
+            return project
+    return None
+
+
+def _parse_event_times(event: dict) -> tuple[str, str, float]:
+    """Extract start time, end time, and duration in hours from a calendar event.
+
+    Returns ("HH:MM", "HH:MM", hours) or ("", "", 0.0) if times are missing/invalid.
+    """
+    start_str = event.get("start", {}).get("dateTime", "")
+    end_str = event.get("end", {}).get("dateTime", "")
+    if not start_str or not end_str:
+        return "", "", 0.0
+    try:
+        start_dt = datetime.fromisoformat(start_str)
+        end_dt = datetime.fromisoformat(end_str)
+        hours = max(0.0, round((end_dt - start_dt).total_seconds() / 3600, 2))
+        return start_dt.strftime("%H:%M"), end_dt.strftime("%H:%M"), hours
+    except (ValueError, TypeError):
+        return "", "", 0.0
+
+
+def _event_to_suggestion(event: dict, projects: list[dict]) -> dict:
+    """Convert a single calendar event into a time entry suggestion."""
+    subject = event.get("subject", "Untitled")
+    start_time, end_time, hours = _parse_event_times(event)
+    matched = _match_project(subject, projects)
+
+    return {
+        "subject": subject,
+        "start": start_time,
+        "end": end_time,
+        "hours": hours,
+        "project": matched["name"] if matched else None,
+        "project_id": matched["id"] if matched else None,
+    }
+
+
 @tool
 async def suggest_hours_from_calendar(target_date: str = "") -> str:
     """
@@ -227,11 +312,24 @@ async def suggest_hours_from_calendar(target_date: str = "") -> str:
     Returns:
         JSON with suggested entries based on calendar events.
     """
-    # TODO: Implement calendar integration via MCP server
+    if not target_date:
+        target_date = datetime.now().strftime("%Y-%m-%d")
+
+    events = await _get_calendar_events(target_date)
+
+    config = _load_skill_config()
+    projects = config.get("projects", [])
+
+    suggestions = [_event_to_suggestion(event, projects) for event in events]
+    total_hours = sum(s["hours"] for s in suggestions)
+
     return json.dumps({
-        "success": False,
-        "error": "Calendar integration not yet configured. Please log hours manually using log_hours.",
-        "next_action": "Ask the user to provide their hours manually for today. Use log_hours to record them.",
+        "success": True,
+        "date": target_date,
+        "suggestions": suggestions,
+        "total_hours": total_hours,
+        "count": len(suggestions),
+        "next_action": "Present the calendar-based suggestions to the user for review. Ask them to confirm, adjust hours, or assign projects to unmatched events before logging with log_hours.",
     })
 
 
