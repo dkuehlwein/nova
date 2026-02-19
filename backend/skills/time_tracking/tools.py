@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from types import ModuleType
 
 import yaml
 from langchain_core.tools import tool
@@ -34,20 +35,24 @@ def _save_skill_config(config: dict) -> None:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
 
-def _import_skill_module(module_name: str):
-    """Import a sibling module from the skill directory."""
-    module_path = _SKILL_DIR / f"{module_name}.py"
+def _import_skill_module(module_name: str) -> ModuleType:
+    """Import a module from the skill directory. Supports dot-separated paths (e.g. 'adapters.client_a')."""
+    parts = module_name.split(".")
+    module_path = _SKILL_DIR / Path(*parts).with_suffix(".py")
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
+def _resolve_config_dir(config: dict, key: str, default: str) -> str:
+    """Resolve a directory path from config, expanding ~ to home."""
+    return str(Path(config.get(key, default)).expanduser())
+
+
 def _get_timesheet_dir() -> str:
     """Resolve the timesheet directory from config, expanding ~ to home."""
-    config = _load_skill_config()
-    raw = config.get("timesheet_dir", "~/timesheets")
-    return str(Path(raw).expanduser())
+    return _resolve_config_dir(_load_skill_config(), "timesheet_dir", "~/timesheets")
 
 
 @tool
@@ -269,11 +274,78 @@ async def fill_client_timesheet(project_id: str, start_date: str, end_date: str)
     Returns:
         JSON with fill status and output file path.
     """
-    # TODO: Implement client adapter loading and template filling
+    config = _load_skill_config()
+    timesheet_dir = _resolve_config_dir(config, "timesheet_dir", "~/timesheets")
+    templates_dir = _resolve_config_dir(config, "templates_dir", "~/timesheets/templates")
+    output_dir = _resolve_config_dir(config, "output_dir", "~/timesheets/output")
+
+    # Find the project config
+    projects = config.get("projects", [])
+    project_config = next((p for p in projects if p.get("id") == project_id), None)
+    if not project_config:
+        return json.dumps({
+            "success": False,
+            "error": f"Project '{project_id}' not found in config.",
+            "next_action": "Use list_projects to show available projects.",
+        })
+
+    adapter_name = project_config.get("client_adapter")
+    if not adapter_name:
+        return json.dumps({
+            "success": False,
+            "error": f"No client adapter configured for project '{project_id}'.",
+            "next_action": "This project doesn't have a client template. No action needed.",
+        })
+
+    # Read entries from master Excel
+    try:
+        excel_manager = _import_skill_module("excel_manager")
+        entries = excel_manager.read_entries(start_date, end_date, timesheet_dir=timesheet_dir)
+    except Exception as e:
+        logger.error(f"Failed to read entries: {e}", extra={"data": {"error": str(e)}})
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to read entries: {e}",
+            "next_action": "Report the error to the user.",
+        })
+
+    # Load and run adapter
+    try:
+        adapter_module = _import_skill_module(f"adapters.{adapter_name}")
+        adapter = adapter_module.get_adapter(project_id)
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to load adapter '{adapter_name}': {e}",
+            "next_action": "The client adapter module may not exist yet. It needs to be created.",
+        })
+
+    filtered = adapter.filter_entries(entries, start_date, end_date)
+    if not filtered:
+        return json.dumps({
+            "success": False,
+            "error": f"No entries for project '{project_id}' in date range.",
+            "next_action": "No hours logged for this project in the given period.",
+        })
+
+    template_path = Path(templates_dir) / f"{adapter_name}_template.xlsx"
+    month_str = filtered[0]["date"][:7]
+    output_path = Path(output_dir) / f"{adapter_name}_{month_str}.xlsx"
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    try:
+        result = adapter.fill_template(filtered, template_path, output_path)
+    except Exception as e:
+        logger.error(f"Failed to fill template: {e}", extra={"data": {"error": str(e)}})
+        return json.dumps({
+            "success": False,
+            "error": f"Failed to fill template: {e}",
+            "next_action": "Report the error to the user.",
+        })
+
     return json.dumps({
-        "success": False,
-        "error": "Client timesheet filling not yet implemented.",
-        "next_action": "Inform the user that client template filling is not yet available.",
+        **result,
+        "next_action": "Inform the user that the client timesheet was filled.",
     })
 
 
