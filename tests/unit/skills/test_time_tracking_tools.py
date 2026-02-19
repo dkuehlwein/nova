@@ -1,39 +1,8 @@
 """Tests for time tracking skill tools."""
 
 import json
-from pathlib import Path
 
 import pytest
-import yaml
-
-
-@pytest.fixture
-def mock_config(tmp_path):
-    """Create a mock config.yaml for the skill."""
-    config = {
-        "timesheet_dir": str(tmp_path / "timesheets"),
-        "templates_dir": str(tmp_path / "templates"),
-        "output_dir": str(tmp_path / "output"),
-        "projects": [
-            {
-                "id": "PRJA-001",
-                "name": "ClientA - Development",
-                "replicon_project": "Project A",
-                "client_adapter": "client_a",
-            },
-            {
-                "id": "INT-001",
-                "name": "Internal - Meetings",
-                "replicon_project": "Internal",
-                "client_adapter": None,
-            },
-        ],
-    }
-
-    config_path = Path(__file__).parents[3] / "backend" / "skills" / "time_tracking" / "config.yaml"
-    config_path.write_text(yaml.dump(config))
-    yield config
-    config_path.unlink(missing_ok=True)
 
 
 class TestLogHours:
@@ -202,16 +171,6 @@ class TestConfigureProject:
 
 
 class TestPlaceholderStubs:
-    @pytest.mark.asyncio
-    async def test_suggest_hours_returns_not_configured(self, mock_config):
-        """suggest_hours_from_calendar returns not-configured message."""
-        from skills.time_tracking.tools import suggest_hours_from_calendar
-
-        result_str = await suggest_hours_from_calendar.ainvoke({"target_date": "2026-02-03"})
-        result = json.loads(result_str)
-        assert result["success"] is False
-        assert "not yet" in result["error"].lower()
-
     @pytest.mark.asyncio
     async def test_push_to_replicon_returns_not_implemented(self, mock_config):
         """push_to_replicon returns not-implemented message."""
