@@ -71,7 +71,7 @@ If no relevant context is found in memory, focus on the meeting title and descri
         """
         try:
             logger.info(
-                f"Generating memo for meeting: {meeting.title}",
+                "Generating memo for meeting",
                 extra={"data": {
                     "meeting_id": meeting.meeting_id,
                     "title": meeting.title,
@@ -107,7 +107,7 @@ If no relevant context is found in memory, focus on the meeting title and descri
             memo_text, thread_id = await self._generate_memo_with_chat_agent(memo_prompt, meeting.meeting_id, pg_pool)
             
             logger.info(
-                f"Successfully generated memo for meeting {meeting.meeting_id}",
+                "Successfully generated memo for meeting",
                 extra={"data": {
                     "meeting_id": meeting.meeting_id,
                     "thread_id": thread_id,
@@ -119,7 +119,7 @@ If no relevant context is found in memory, focus on the meeting title and descri
             
         except Exception as e:
             logger.error(
-                f"Failed to generate memo for meeting {meeting.meeting_id}: {str(e)}",
+                "Failed to generate memo for meeting",
                 exc_info=True,
                 extra={"data": {
                     "meeting_id": meeting.meeting_id,
@@ -163,7 +163,7 @@ If no relevant context is found in memory, focus on the meeting title and descri
             return context_text
             
         except Exception as e:
-            logger.error(f"Error gathering attendee context: {e}")
+            logger.error("Error gathering attendee context", extra={"data": {"error": str(e)}})
             return "**Attendee Context:** Error retrieving attendee information from memory."
     
     async def _gather_project_context(self, meeting_title: str, meeting_description: str) -> str:
@@ -210,7 +210,7 @@ If no relevant context is found in memory, focus on the meeting title and descri
             return context_text
             
         except Exception as e:
-            logger.error(f"Error gathering project context: {e}")
+            logger.error("Error gathering project context", extra={"data": {"error": str(e)}})
             return "**Project Context:** Error retrieving project information from memory."
     
     async def _generate_memo_with_chat_agent(self, prompt: str, meeting_id: str, pg_pool=None) -> Tuple[str, str]:
@@ -259,6 +259,6 @@ If no relevant context is found in memory, focus on the meeting title and descri
                             if hasattr(message, 'type') and message.type == 'ai':
                                 memo_text += message.content
         
-        logger.info(f"Generated memo with length: {len(memo_text)}, thread_id: {thread_id}")
+        logger.info("Generated memo", extra={"data": {"memo_length": len(memo_text), "thread_id": thread_id}})
         
         return memo_text, thread_id

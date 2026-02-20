@@ -49,7 +49,7 @@ class CalendarFetcher:
             time_max = end_of_period.isoformat().replace('+00:00', 'Z')
             
             logger.info(
-                f"Fetching calendar events from {calendar_id}",
+                "Fetching calendar events",
                 extra={"data": {
                     "calendar_id": calendar_id,
                     "time_min": time_min,
@@ -99,14 +99,14 @@ class CalendarFetcher:
                     elif isinstance(parsed, dict) and "events" in parsed:
                         events = parsed["events"]
                 except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse tool result as JSON: {tool_result}")
+                    logger.warning("Failed to parse tool result as JSON", extra={"data": {"tool_result": tool_result}})
                     return []
             else:
-                logger.warning(f"Unexpected calendar result format: {type(tool_result)}")
+                logger.warning("Unexpected calendar result format", extra={"data": {"type": type(tool_result).__name__}})
                 return []
             
             logger.info(
-                f"Successfully fetched {len(events)} calendar events",
+                "Successfully fetched calendar events",
                 extra={"data": {
                     "calendar_id": calendar_id,
                     "event_count": len(events)
@@ -117,7 +117,7 @@ class CalendarFetcher:
             
         except Exception as e:
             logger.error(
-                f"Failed to fetch calendar events: {str(e)}",
+                "Failed to fetch calendar events",
                 exc_info=True,
                 extra={"data": {
                     "calendar_id": calendar_id,
@@ -139,7 +139,7 @@ class CalendarFetcher:
         """
         try:
             logger.info(
-                f"Fetching specific calendar event",
+                "Fetching specific calendar event",
                 extra={"data": {
                     "calendar_id": calendar_id,
                     "event_id": event_id
@@ -170,7 +170,7 @@ class CalendarFetcher:
             })
             
             logger.debug(
-                f"Successfully fetched calendar event {event_id}",
+                "Successfully fetched calendar event",
                 extra={"data": {"event_id": event_id}}
             )
             
@@ -178,7 +178,7 @@ class CalendarFetcher:
             
         except Exception as e:
             logger.error(
-                f"Failed to fetch calendar event {event_id}: {str(e)}",
+                "Failed to fetch calendar event",
                 exc_info=True,
                 extra={"data": {
                     "calendar_id": calendar_id,

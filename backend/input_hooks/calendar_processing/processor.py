@@ -105,10 +105,9 @@ class CalendarProcessor:
                         result["errors"].append(prep_result["error"])
                         
                 except Exception as e:
-                    error_msg = f"Failed to process meeting {meeting.meeting_id}: {str(e)}"
-                    result["errors"].append(error_msg)
+                    result["errors"].append(f"Failed to process meeting {meeting.meeting_id}: {str(e)}")
                     logger.error(
-                        f"Error processing meeting {meeting.meeting_id}",
+                        "Error processing meeting",
                         exc_info=True,
                         extra={"data": {
                             "meeting_id": meeting.meeting_id,
@@ -121,7 +120,7 @@ class CalendarProcessor:
             result["processing_time_seconds"] = time.time() - start_time
             
             logger.info(
-                f"Completed daily calendar processing",
+                "Completed daily calendar processing",
                 extra={"data": {
                     "events_fetched": result["events_fetched"],
                     "meetings_analyzed": result["meetings_analyzed"],
@@ -137,8 +136,7 @@ class CalendarProcessor:
         except Exception as e:
             result["success"] = False
             result["processing_time_seconds"] = time.time() - start_time
-            error_msg = f"Calendar processing failed: {str(e)}"
-            result["errors"].append(error_msg)
+            result["errors"].append(f"Calendar processing failed: {str(e)}")
             
             logger.error(
                 "Daily calendar processing failed",
@@ -180,7 +178,7 @@ class CalendarProcessor:
                     all_events.extend(events)
                     
                     logger.debug(
-                        f"Fetched {len(events)} events from calendar {calendar_id}",
+                        "Fetched events from calendar",
                         extra={"data": {
                             "calendar_id": calendar_id,
                             "event_count": len(events)
@@ -188,9 +186,11 @@ class CalendarProcessor:
                     )
                     
                 except Exception as e:
-                    error_msg = f"Failed to fetch from calendar {calendar_id}: {e}"
-                    logger.error(error_msg)
-                    fetch_errors.append(error_msg)
+                    logger.error(
+                        "Failed to fetch from calendar",
+                        extra={"data": {"calendar_id": calendar_id, "error": str(e)}}
+                    )
+                    fetch_errors.append(f"Failed to fetch from calendar {calendar_id}: {e}")
                     continue
             
             # If all calendars failed to fetch, raise an exception
@@ -198,7 +198,7 @@ class CalendarProcessor:
                 raise Exception(f"Failed to fetch from all calendars: {'; '.join(fetch_errors)}")
             
             logger.info(
-                f"Fetched {len(all_events)} total events from {len(calendar_ids)} calendars",
+                "Fetched total events from calendars",
                 extra={"data": {
                     "total_events": len(all_events),
                     "calendar_count": len(calendar_ids)
@@ -208,7 +208,7 @@ class CalendarProcessor:
             return all_events
             
         except Exception as e:
-            logger.error(f"Error fetching today's events: {e}")
+            logger.error("Error fetching today's events", extra={"data": {"error": str(e)}})
             # Re-raise the exception so the main method can handle it
             raise
     
@@ -238,7 +238,7 @@ class CalendarProcessor:
             )
             
             logger.info(
-                f"Identified {len(meetings)} meetings needing preparation",
+                "Identified meetings needing preparation",
                 extra={"data": {
                     "total_events": len(raw_events),
                     "meetings_needing_prep": len(meetings)
@@ -248,7 +248,7 @@ class CalendarProcessor:
             return meetings
             
         except Exception as e:
-            logger.error(f"Error analyzing meetings: {e}")
+            logger.error("Error analyzing meetings", extra={"data": {"error": str(e)}})
             return []
     
     async def _process_single_meeting(self, meeting: CalendarMeetingInfo, 
@@ -271,7 +271,7 @@ class CalendarProcessor:
         
         try:
             logger.info(
-                f"Processing meeting: {meeting.title}",
+                "Processing meeting",
                 extra={"data": {
                     "meeting_id": meeting.meeting_id,
                     "title": meeting.title,
@@ -295,7 +295,7 @@ class CalendarProcessor:
             if prep_exists and config.update_existing_tasks:
                 # Update existing prep meeting
                 # We'd need to get the existing prep meeting ID for this
-                logger.info(f"Prep meeting exists for {meeting.meeting_id}, would update if we had event ID")
+                logger.info("Prep meeting exists, would update if we had event ID", extra={"data": {"meeting_id": str(meeting.meeting_id)}})
                 process_result["updated"] = True
                 
             elif not prep_exists and config.create_tasks:
@@ -309,10 +309,11 @@ class CalendarProcessor:
                 if prep_event_id:
                     process_result["created"] = True
                     logger.info(
-                        f"Created prep meeting for {meeting.title}",
+                        "Created prep meeting",
                         extra={"data": {
                             "original_meeting_id": meeting.meeting_id,
-                            "prep_event_id": prep_event_id
+                            "prep_event_id": prep_event_id,
+                            "title": meeting.title
                         }}
                     )
                 else:
@@ -323,7 +324,7 @@ class CalendarProcessor:
         except Exception as e:
             process_result["error"] = f"Error processing meeting {meeting.meeting_id}: {str(e)}"
             logger.error(
-                f"Error processing meeting {meeting.meeting_id}",
+                "Error processing meeting",
                 exc_info=True,
                 extra={"data": {
                     "meeting_id": meeting.meeting_id,

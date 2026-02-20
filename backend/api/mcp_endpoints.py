@@ -75,7 +75,7 @@ async def get_mcp_servers():
                 tool_names=server.get("tool_names", [])
             ))
 
-        logger.info(f"MCP status: {len(servers)} servers, {total_tools} tools via LiteLLM")
+        logger.info("MCP status retrieved", extra={"data": {"servers_count": len(servers), "total_tools": total_tools}})
 
         return MCPServersResponse(
             servers=response_servers,
@@ -85,7 +85,7 @@ async def get_mcp_servers():
         )
 
     except Exception as e:
-        logger.error(f"Failed to get MCP servers status: {e}", exc_info=True)
+        logger.error("Failed to get MCP servers status", exc_info=True, extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to retrieve MCP servers: {str(e)}")
 
 
@@ -108,5 +108,5 @@ async def get_mcp_tools():
         }
 
     except Exception as e:
-        logger.error(f"Failed to get MCP tools: {e}", exc_info=True)
+        logger.error("Failed to get MCP tools", exc_info=True, extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to retrieve MCP tools: {str(e)}")

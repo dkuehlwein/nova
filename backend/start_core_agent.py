@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
         service_manager.logger.info("Nova Core Agent Service started successfully")
         
     except Exception as e:
-        service_manager.logger.error(f"Failed to start core agent: {e}")
+        service_manager.logger.error("Failed to start core agent", extra={"data": {"error": str(e)}})
         raise
     
     yield
@@ -182,7 +182,7 @@ async def health_check():
             "error": status.last_error
         }
     except Exception as e:
-        service_manager.logger.error(f"Health check failed: {e}")
+        service_manager.logger.error("Health check failed", extra={"data": {"error": str(e)}})
         # Return unhealthy status instead of raising exception for health checks
         # This ensures the health check endpoint always returns a valid response
         return {
@@ -222,7 +222,7 @@ async def get_agent_status():
             ]
         }
     except Exception as e:
-        service_manager.logger.error(f"Status check failed: {e}")
+        service_manager.logger.error("Status check failed", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 
@@ -236,7 +236,7 @@ async def pause_agent():
         await core_agent.pause()
         return {"message": "Agent paused successfully"}
     except Exception as e:
-        service_manager.logger.error(f"Failed to pause agent: {e}")
+        service_manager.logger.error("Failed to pause agent", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to pause agent: {str(e)}")
 
 
@@ -250,7 +250,7 @@ async def resume_agent():
         await core_agent.resume()
         return {"message": "Agent resumed successfully"}
     except Exception as e:
-        service_manager.logger.error(f"Failed to resume agent: {e}")
+        service_manager.logger.error("Failed to resume agent", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to resume agent: {str(e)}")
 
 
@@ -264,7 +264,7 @@ async def force_process_task(task_id: str):
         result = await core_agent.force_process_task(task_id)
         return {"message": result}
     except Exception as e:
-        service_manager.logger.error(f"Failed to process task {task_id}: {e}")
+        service_manager.logger.error("Failed to process task", extra={"data": {"task_id": task_id, "error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to process task: {str(e)}")
 
 

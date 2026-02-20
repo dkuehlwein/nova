@@ -85,7 +85,7 @@ class OutlookProcessor:
                 return result
 
             logger.info(
-                f"Processing {len(emails)} Outlook emails",
+                "Processing Outlook emails",
                 extra={"data": {"count": len(emails)}}
             )
 
@@ -111,7 +111,7 @@ class OutlookProcessor:
                             )
 
                         logger.info(
-                            f"Created task from Outlook email",
+                            "Created task from Outlook email",
                             extra={"data": {
                                 "email_id": email_id,
                                 "task_id": task_id,

@@ -39,7 +39,7 @@ async def _handle_chat_model_change(model_name: str) -> None:
     Args:
         model_name: The new model name selected by the user
     """
-    logger.info(f"Model change detected: {model_name}")
+    logger.info("Model change detected", extra={"data": {"model_name": model_name}})
 
 
 @router.get("/status", response_model=OnboardingStatusModel)
@@ -162,7 +162,7 @@ async def update_user_settings(
                     await _handle_chat_model_change(settings.chat_llm_model)
 
             except Exception as e:
-                logger.warning(f"Failed to publish LLM settings event: {e}")
+                logger.warning("Failed to publish LLM settings event", extra={"data": {"error": str(e)}})
 
         logger.info(
             "User settings updated",
@@ -221,7 +221,7 @@ async def complete_onboarding(
 
         await session.commit()
 
-        logger.info(f"Onboarding completed with models: chat={request.chat_llm_model}, memory={request.memory_llm_model}, memory_small={settings.memory_small_llm_model}, embedding={request.embedding_model}, litellm_url={request.litellm_base_url}")
+        logger.info("Onboarding completed", extra={"data": {"chat_llm_model": request.chat_llm_model, "memory_llm_model": request.memory_llm_model, "memory_small_llm_model": settings.memory_small_llm_model, "embedding_model": request.embedding_model, "litellm_base_url": request.litellm_base_url}})
 
         return {
             "status": "success",

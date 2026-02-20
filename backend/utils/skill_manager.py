@@ -81,8 +81,8 @@ class SkillManager:
                 manifest_path = skill_dir / "manifest.yaml"
                 if not manifest_path.exists():
                     logger.debug(
-                        f"Skipping directory without manifest: {skill_dir.name}",
-                        extra={"data": {"path": str(skill_dir)}},
+                        "Skipping directory without manifest",
+                        extra={"data": {"directory": skill_dir.name, "path": str(skill_dir)}},
                     )
                     continue
 
@@ -90,9 +90,10 @@ class SkillManager:
                     manifest = self._load_manifest(manifest_path)
                     self._registry[skill_dir.name] = manifest
                     logger.info(
-                        f"Discovered skill: {skill_dir.name}",
+                        "Discovered skill",
                         extra={
                             "data": {
+                                "skill": skill_dir.name,
                                 "name": manifest.name,
                                 "version": manifest.version,
                                 "description": manifest.description,
@@ -101,14 +102,14 @@ class SkillManager:
                     )
                 except Exception as e:
                     logger.error(
-                        f"Failed to load skill manifest: {skill_dir.name}",
+                        "Failed to load skill manifest",
                         exc_info=True,
-                        extra={"data": {"path": str(manifest_path), "error": str(e)}},
+                        extra={"data": {"skill": skill_dir.name, "path": str(manifest_path), "error": str(e)}},
                     )
 
             logger.info(
-                f"Skill scan complete: {len(self._registry)} skills found",
-                extra={"data": {"skills": list(self._registry.keys())}},
+                "Skill scan complete",
+                extra={"data": {"count": len(self._registry), "skills": list(self._registry.keys())}},
             )
 
     def _load_manifest(self, manifest_path: Path) -> SkillManifest:
@@ -213,8 +214,8 @@ class SkillManager:
             )
 
         logger.info(
-            f"Loaded {len(tools)} tools from skill: {skill_name}",
-            extra={"data": {"skill": skill_name, "tools": [t.name for t in tools]}},
+            "Loaded tools from skill",
+            extra={"data": {"skill": skill_name, "count": len(tools), "tools": [t.name for t in tools]}},
         )
 
         return tools
@@ -291,7 +292,7 @@ class SkillManager:
                     self._scan_skills()
                     logger.info("Skill registry reloaded via file watcher")
                 except Exception as e:
-                    logger.error(f"Failed to reload skill registry: {e}")
+                    logger.error("Failed to reload skill registry", extra={"data": {"error": str(e)}})
 
             self._pending_reload = threading.Timer(self.debounce_seconds, do_reload)
             self._pending_reload.start()
@@ -314,8 +315,8 @@ class SkillManager:
                     "moved",
                 ):
                     logger.debug(
-                        f"Skills directory change detected: {event.event_type}",
-                        extra={"data": {"path": event.src_path}},
+                        "Skills directory change detected",
+                        extra={"data": {"event_type": event.event_type, "path": event.src_path}},
                     )
                     self.manager._debounced_reload()
 

@@ -6,7 +6,6 @@ and autonomously processes tasks using AI. Integrated with the backend.
 """
 
 import asyncio
-import logging
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from uuid import UUID
@@ -19,9 +18,10 @@ from agent.chat_agent import create_chat_agent
 from database.database import db_manager
 from models.models import Task, TaskStatus, TaskComment, AgentStatus, AgentStatusEnum
 from tools.task_tools import update_task_tool
+from utils.logging import get_logger
 from utils.phoenix_integration import is_phoenix_enabled
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CoreAgent:
@@ -68,7 +68,7 @@ class CoreAgent:
             logger.info("Core Agent reloaded successfully")
             
         except Exception as e:
-            logger.error(f"Failed to reload Core Agent: {e}")
+            logger.error("Failed to reload Core Agent", extra={"data": {"error": str(e)}})
             # Keep the old agent if reload fails
             raise
     
@@ -88,7 +88,7 @@ class CoreAgent:
             await session.refresh(status)
             
             self.status_id = status.id
-            logger.info(f"Agent status initialized with ID: {self.status_id}")
+            logger.info("Agent status initialized", extra={"data": {"status_id": str(self.status_id)}})
     
     async def run_loop(self):
         """Main agent processing loop."""
@@ -118,13 +118,13 @@ class CoreAgent:
                 try:
                     await self._process_task(task)
                 except Exception as e:
-                    logger.error(f"Error processing task {task.id} ({task.title}): {e}")
+                    logger.error("Error processing task", extra={"data": {"task_id": str(task.id), "title": task.title, "error": str(e)}})
                     await self._handle_task_error(task, str(e))
                 finally:
                     await self._set_idle()
                     
             except Exception as e:
-                logger.error(f"Error in agent loop: {e}")
+                logger.error("Error in agent loop", extra={"data": {"error": str(e)}})
                 await self._set_error(str(e))
                 await self._interruptible_sleep(self.check_interval)
         
@@ -153,7 +153,7 @@ class CoreAgent:
                 status.last_activity and 
                 datetime.utcnow() - status.last_activity > timedelta(minutes=self.timeout_minutes)):
                 
-                logger.warning(f"Agent stuck for {self.timeout_minutes} minutes, resetting to idle")
+                logger.warning("Agent stuck, resetting to idle", extra={"data": {"timeout_minutes": self.timeout_minutes}})
                 await self._set_idle()
                 return False
             
@@ -196,7 +196,7 @@ class CoreAgent:
             task = result.scalar_one_or_none()
 
             if task:
-                logger.info(f"Selected USER_INPUT_RECEIVED task: {task.id} - {task.title}")
+                logger.info("Selected USER_INPUT_RECEIVED task", extra={"data": {"task_id": str(task.id), "title": task.title}})
                 return task
 
             # Then, try NEW tasks (oldest first)
@@ -211,7 +211,7 @@ class CoreAgent:
             task = result.scalar_one_or_none()
 
             if task:
-                logger.info(f"Selected NEW task: {task.id} - {task.title}")
+                logger.info("Selected NEW task", extra={"data": {"task_id": str(task.id), "title": task.title}})
                 return task
 
             logger.info("No tasks available for processing")
@@ -231,7 +231,7 @@ class CoreAgent:
             
             await session.commit()
             
-        logger.info(f"Agent set to PROCESSING task {task_id}")
+        logger.info("Agent set to PROCESSING", extra={"data": {"task_id": str(task_id)}})
     
     async def _set_idle(self):
         """Set agent status to idle."""
@@ -265,16 +265,15 @@ class CoreAgent:
             
             await session.commit()
             
-        logger.error(f"Agent set to ERROR: {error_message}")
+        logger.error("Agent set to ERROR", extra={"data": {"error": error_message}})
     
     async def _process_task(self, task: Task):
         """Process a task with AI."""
-        logger.info(f"Processing task {task.id}: {task.title} (current status: {task.status.value})")
+        logger.info("Processing task", extra={"data": {"task_id": str(task.id), "title": task.title, "status": task.status.value}})
 
         # If task is already completed, don't process it again
         if task.status in [TaskStatus.DONE, TaskStatus.FAILED]:
-            logger.warning(f"UNEXPECTED: Attempting to process already completed task {task.id} ({task.title}) "
-                          f"with status {task.status.value}.")
+            logger.warning("UNEXPECTED: Attempting to process already completed task", extra={"data": {"task_id": str(task.id), "title": task.title, "status": task.status.value}})
             return
 
         # Move task to IN_PROGRESS
@@ -302,17 +301,17 @@ class CoreAgent:
             messages = []
             
             if has_existing_messages:
-                logger.info(f"Resuming conversation for task {task.id} with {existing_message_count} messages")
+                logger.info("Resuming conversation for task", extra={"data": {"task_id": str(task.id), "message_count": existing_message_count}})
                 # Get the current messages to extract the AI response
                 messages = state.values.get("messages", [])
                 
                 # Check for pending interrupts in resumed conversations
                 if state.interrupts:
-                    logger.info(f"Found {len(state.interrupts)} pending interrupts in resumed conversation")
+                    logger.info("Found pending interrupts in resumed conversation", extra={"data": {"interrupt_count": len(state.interrupts)}})
                     interrupt_detected = True
                     interrupt_data = state.interrupts
             else:
-                logger.info(f"Starting new conversation for task {task.id}")
+                logger.info("Starting new conversation for task", extra={"data": {"task_id": str(task.id)}})
                 
                 # Create separate messages for proper conversation structure
                 task_messages = await self._create_task_messages(task, context)
@@ -337,7 +336,7 @@ class CoreAgent:
                                     metadata = getattr(msg, 'additional_kwargs', {}).get('metadata', {})
                                     if metadata.get('phoenix_url'):
                                         phoenix_url = metadata['phoenix_url']
-                                        logger.debug(f"Extracted Phoenix URL from message: {phoenix_url}")
+                                        logger.debug("Extracted Phoenix URL from message", extra={"data": {"phoenix_url": phoenix_url}})
                         # Handle interrupt nodes (interrupt data is stored directly in chunk)
                         if node_name == "__interrupt__":
                             interrupt_detected = True
@@ -352,12 +351,12 @@ class CoreAgent:
             # Extract and save AI response if we have messages
             if messages:
                 ai_response = messages[-1].content if hasattr(messages[-1], 'content') else str(messages[-1])
-                logger.info(f"AI response for task {task.id} ({task.title}): {ai_response[:200]}...")
+                logger.info("AI response received", extra={"data": {"task_id": str(task.id), "title": task.title, "response_preview": ai_response[:200]}})
             else:
                 raise Exception("No response from AI agent")
 
         except Exception as e:
-            logger.error(f"AI processing failed for task {task.id} ({task.title}): {e}")
+            logger.error("AI processing failed", extra={"data": {"task_id": str(task.id), "title": task.title, "error": str(e)}})
             raise
     
     async def _move_task_to_in_progress(self, task: Task):
@@ -366,7 +365,7 @@ class CoreAgent:
             task_id=str(task.id),
             status="in_progress"
         )
-        logger.debug(f"Moved task {task.id} ({task.title}) to IN_PROGRESS")
+        logger.debug("Moved task to IN_PROGRESS", extra={"data": {"task_id": str(task.id), "title": task.title}})
     
     async def _get_context(self, task: Task) -> Dict[str, Any]:
         """Get context for the task using memory search."""
@@ -390,13 +389,13 @@ class CoreAgent:
             memory_result = await search_memory(search_query)
             if memory_result["success"] and memory_result["results"]:
                 memory_context = [result["fact"] for result in memory_result["results"]]
-                logger.debug(f"Found {len(memory_context)} memory facts for task {task.id}")
+                logger.debug("Found memory facts for task", extra={"data": {"task_id": str(task.id), "fact_count": len(memory_context)}})
             else:
-                logger.debug(f"No memory context found for task {task.id}")
+                logger.debug("No memory context found for task", extra={"data": {"task_id": str(task.id)}})
         except MemorySearchError as e:
-            logger.warning(f"Memory search failed for task {task.id}: {e}")
+            logger.warning("Memory search failed for task", extra={"data": {"task_id": str(task.id), "error": str(e)}})
         except Exception as e:
-            logger.warning(f"Unexpected error during memory search for task {task.id}: {e}")
+            logger.warning("Unexpected error during memory search for task", extra={"data": {"task_id": str(task.id), "error": str(e)}})
         
         context = {
             "task": {
@@ -514,10 +513,10 @@ class CoreAgent:
                 comment=comment
             )
 
-            logger.info(f"Moved task {task.id} ({task.title}) to NEEDS_REVIEW due to {log_message}")
+            logger.info("Moved task to NEEDS_REVIEW", extra={"data": {"task_id": str(task.id), "title": task.title, "reason": log_message}})
             
         except Exception as e:
-            logger.error(f"Failed to handle interrupt for task {task.id} ({task.title}): {e}")
+            logger.error("Failed to handle interrupt for task", extra={"data": {"task_id": str(task.id), "title": task.title, "error": str(e)}})
 
     def _parse_interrupt_data(self, interrupts) -> dict:
         """Extract and consolidate data from interrupt objects."""
@@ -578,10 +577,10 @@ class CoreAgent:
                 comment=f"Core Agent encountered an error while processing this task:\n\n{error_message}"
             )
             
-            logger.error(f"Moved task {task.id} ({task.title}) to FAILED due to error: {error_message}")
+            logger.error("Moved task to FAILED", extra={"data": {"task_id": str(task.id), "title": task.title, "error": error_message}})
             
         except Exception as e:
-            logger.error(f"Failed to handle task error for {task.id} ({task.title}): {e}")
+            logger.error("Failed to handle task error", extra={"data": {"task_id": str(task.id), "title": task.title, "error": str(e)}})
     
     async def get_status(self) -> AgentStatus:
         """Get current agent status."""

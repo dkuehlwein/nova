@@ -36,10 +36,11 @@ class YamlConfigManager(BaseConfigManager[YamlConfigType]):
                 return data or {}
         except Exception as e:
             logger.error(
-                f"Failed to load YAML data: {self.config_name}",
+                "Failed to load YAML data",
                 exc_info=True,
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "path": str(self.config_path),
                         "error": str(e)
                     }
@@ -58,10 +59,11 @@ class YamlConfigManager(BaseConfigManager[YamlConfigType]):
                 
         except Exception as e:
             logger.error(
-                f"Failed to save YAML data: {self.config_name}",
+                "Failed to save YAML data",
                 exc_info=True,
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "path": str(self.config_path),
                         "error": str(e)
                     }
@@ -81,10 +83,11 @@ class YamlConfigManager(BaseConfigManager[YamlConfigType]):
                 
         except ValidationError as e:
             logger.error(
-                f"Config validation failed: {self.config_name}",
+                "Config validation failed",
                 exc_info=True,
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "path": str(self.config_path),
                         "validation_errors": e.errors()
                     }
@@ -93,10 +96,11 @@ class YamlConfigManager(BaseConfigManager[YamlConfigType]):
             raise
         except Exception as e:
             logger.error(
-                f"Failed to create config instance: {self.config_name}",
+                "Failed to create config instance",
                 exc_info=True,
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "path": str(self.config_path),
                         "error": str(e)
                     }
@@ -122,10 +126,11 @@ class YamlConfigManager(BaseConfigManager[YamlConfigType]):
                 
         except Exception as e:
             logger.error(
-                f"Failed to serialize config: {self.config_name}",
+                "Failed to serialize config",
                 exc_info=True,
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "config_type": type(config).__name__,
                         "error": str(e)
                     }
@@ -195,8 +200,8 @@ class YamlConfigManager(BaseConfigManager[YamlConfigType]):
         """Create default configuration file."""
         if self.default_config is not None:
             logger.info(
-                f"Creating default YAML config: {self.config_name}",
-                extra={"data": {"path": str(self.config_path)}}
+                "Creating default YAML config",
+                extra={"data": {"config_name": self.config_name, "path": str(self.config_path)}}
             )
             
             # Save default config
@@ -205,8 +210,8 @@ class YamlConfigManager(BaseConfigManager[YamlConfigType]):
         else:
             # Create empty YAML file
             logger.info(
-                f"Creating empty YAML config: {self.config_name}",
-                extra={"data": {"path": str(self.config_path)}}
+                "Creating empty YAML config",
+                extra={"data": {"config_name": self.config_name, "path": str(self.config_path)}}
             )
             
             self._save_config_data({})

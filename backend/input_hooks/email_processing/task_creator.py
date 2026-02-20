@@ -122,7 +122,7 @@ class EmailTaskCreator:
                     return "UTC"
                     
         except Exception as e:
-            logger.error(f"Failed to get user timezone: {e}")
+            logger.error("Failed to get user timezone", extra={"data": {"error": str(e)}})
             return "UTC"  # Safe fallback
     
     def _format_task_description(

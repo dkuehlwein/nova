@@ -99,7 +99,7 @@ class OutlookFetcher:
             emails = self._parse_email_list(result)
 
             logger.info(
-                f"Found {len(emails)} unprocessed Outlook emails",
+                "Found unprocessed Outlook emails",
                 extra={"data": {"count": len(emails)}}
             )
 
@@ -126,13 +126,13 @@ class OutlookFetcher:
 
                 except Exception as e:
                     logger.warning(
-                        f"Failed to fetch full email content, using summary",
+                        "Failed to fetch full email content, using summary",
                         extra={"data": {"email_id": email_summary.get("id"), "error": str(e)}}
                     )
                     full_emails.append(email_summary)
 
             logger.info(
-                f"Fetched {len(full_emails)} Outlook emails with content",
+                "Fetched Outlook emails with content",
                 extra={"data": {"count": len(full_emails)}}
             )
 
@@ -264,8 +264,8 @@ class OutlookFetcher:
                     self._tools_cache[tool_name] = tool
 
             logger.info(
-                f"Found {len(self._tools_cache)} Outlook MCP tools",
-                extra={"data": {"tools": list(self._tools_cache.keys())}}
+                "Found Outlook MCP tools",
+                extra={"data": {"count": len(self._tools_cache), "tools": list(self._tools_cache.keys())}}
             )
 
         return self._tools_cache
@@ -282,7 +282,7 @@ class OutlookFetcher:
         if tool_name not in tools:
             available = list(tools.keys())
             logger.warning(
-                f"Outlook tool '{tool_name}' not available",
+                "Outlook tool not available",
                 extra={"data": {"tool_name": tool_name, "available_tools": available}}
             )
             return None
@@ -306,7 +306,7 @@ class OutlookFetcher:
 
         except Exception as e:
             logger.error(
-                f"Failed to call Outlook tool {tool_name}",
+                "Failed to call Outlook tool",
                 extra={"data": {"tool": tool_name, "kwargs": kwargs, "error": str(e)}}
             )
             raise

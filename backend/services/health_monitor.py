@@ -123,7 +123,7 @@ class HealthMonitorService:
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    logger.error(f"Error in monitoring loop: {e}", exc_info=True)
+                    logger.error("Error in monitoring loop", exc_info=True, extra={"data": {"error": str(e)}})
                     await asyncio.sleep(30)  # Short delay before retry
         except asyncio.CancelledError:
             logger.info("Health monitoring loop cancelled")
@@ -156,7 +156,7 @@ class HealthMonitorService:
         
         # Log results
         success_count = sum(1 for r in results if not isinstance(r, Exception))
-        logger.info(f"Health checks completed: {success_count}/{len(tasks)} successful")
+        logger.info("Health checks completed", extra={"data": {"success_count": success_count, "tasks_count": len(tasks)}})
     
     async def _check_http_service(self, service_name: str, config: Dict) -> bool:
         """Check HTTP-based service health."""
@@ -390,7 +390,7 @@ class HealthMonitorService:
                 await session.commit()
                 
         except Exception as e:
-            logger.error(f"Failed to cache health status for {service_name}: {e}")
+            logger.error("Failed to cache health status", extra={"data": {"service_name": service_name, "error": str(e)}})
     
     async def get_cached_status(self, service_name: str, max_age_seconds: int = 300) -> Optional[Dict[str, Any]]:
         """Get cached status or trigger fresh check if stale."""
@@ -424,7 +424,7 @@ class HealthMonitorService:
                 }
                 
         except Exception as e:
-            logger.error(f"Failed to get cached status for {service_name}: {e}")
+            logger.error("Failed to get cached status", extra={"data": {"service_name": service_name, "error": str(e)}})
             return None
     
     async def calculate_overall_status(self) -> Dict[str, Any]:
@@ -486,7 +486,7 @@ class HealthMonitorService:
             async def handle_mcp_event(event):
                 """Handle MCP server toggle events by refreshing MCP server status."""
                 if event.get("type") == "mcp_toggled":
-                    logger.info(f"MCP server toggled: {event.get('data', {}).get('server_name')} -> {event.get('data', {}).get('enabled')}")
+                    logger.info("MCP server toggled", extra={"data": {"server_name": event.get('data', {}).get('server_name'), "enabled": event.get('data', {}).get('enabled')}})
                     # Trigger immediate refresh of MCP servers status
                     await self._check_mcp_servers()
                     logger.info("MCP servers status refreshed after toggle")
@@ -502,7 +502,7 @@ class HealthMonitorService:
                 logger.info("Redis not available, MCP events will not be subscribed to")
             
         except Exception as e:
-            logger.warning(f"Failed to subscribe to MCP events: {e}")
+            logger.warning("Failed to subscribe to MCP events", extra={"data": {"error": str(e)}})
 
 
 # Global health monitor instance

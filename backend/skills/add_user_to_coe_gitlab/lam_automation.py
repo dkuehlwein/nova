@@ -104,7 +104,7 @@ async def create_lam_account(
     if not username:
         username = f"{first_name[0].lower()}{last_name.lower()}".replace(" ", "")
 
-    logger.info(f"Starting LAM account creation for: {username}")
+    logger.info("Starting LAM account creation", extra={"data": {"username": username}})
 
     page = None
     try:
@@ -122,14 +122,14 @@ async def create_lam_account(
 
         # Step 1: Navigate to LAM login page
         login_url = _build_lam_url(lam_url, "login.php")
-        logger.debug(f"Navigating to LAM login: {login_url}")
+        logger.debug("Navigating to LAM login", extra={"data": {"login_url": login_url}})
 
         await page.goto(login_url, wait_until="networkidle")
 
         # Step 2: Handle SSO/MFA if redirected
         current_url = page.url
         if "lam" not in current_url.lower():
-            logger.info(f"SSO detected at: {current_url}")
+            logger.info("SSO detected", extra={"data": {"current_url": current_url}})
             logger.info("Waiting for user to complete SSO/MFA login...")
 
             try:
@@ -168,13 +168,13 @@ async def create_lam_account(
 
         # Step 4: Navigate to user list and click "New user"
         list_url = _build_lam_url(lam_url, "lists/list.php?type=user")
-        logger.debug(f"Navigating to user list: {list_url}")
+        logger.debug("Navigating to user list", extra={"data": {"list_url": list_url}})
         await page.goto(list_url, wait_until="networkidle")
 
         try:
             await page.click('button[name="new"]')
             await page.wait_for_load_state("networkidle")
-            logger.debug(f"New user form URL: {page.url}")
+            logger.debug("New user form URL", extra={"data": {"url": page.url}})
         except PlaywrightTimeout:
             return {
                 "success": False,
@@ -184,13 +184,13 @@ async def create_lam_account(
 
         # Step 5: Fill personal fields and save (duplicate check)
         # LAM flow: fill personal fields -> save -> if not duplicate -> fill uid -> save again
-        logger.debug(f"Form page URL: {page.url}")
+        logger.debug("Form page URL", extra={"data": {"url": page.url}})
         try:
             await page.fill("input[name='givenName']", first_name)
             await page.fill("input[name='sn']", last_name)
             await page.fill("input[name='mail_0']", email)
         except PlaywrightTimeout as e:
-            logger.error(f"Form field timeout on page: {page.url}")
+            logger.error("Form field timeout on page", extra={"data": {"url": page.url}})
             return {
                 "success": False,
                 "username": username,
@@ -206,9 +206,7 @@ async def create_lam_account(
             page_lower = page_content.lower()
 
             if "already exists" in page_lower or "already in use" in page_lower:
-                logger.info(
-                    f"User with email {email} already exists in LAM (detected 'already in use' message)"
-                )
+                logger.info("User already exists in LAM", extra={"data": {"email": email, "username": username}})
                 return {
                     "success": True,
                     "already_exists": True,
@@ -224,7 +222,7 @@ async def create_lam_account(
                 await page.wait_for_load_state("networkidle")
                 await page.fill("input[name='uid']", username)
             except PlaywrightTimeout as e:
-                logger.error(f"Unix tab/uid field timeout on page: {page.url}")
+                logger.error("Unix tab/uid field timeout on page", extra={"data": {"url": page.url}})
                 return {
                     "success": False,
                     "username": username,
@@ -268,7 +266,7 @@ async def create_lam_account(
                 }
 
             if "saved" in page_content.lower() or "created" in page_content.lower():
-                logger.info(f"Successfully created LAM account: {username}")
+                logger.info("Successfully created LAM account", extra={"data": {"username": username}})
                 return {
                     "success": True,
                     "username": username,
@@ -277,9 +275,7 @@ async def create_lam_account(
                 }
 
             if "list.php" in page.url and "type=user" in page.url:
-                logger.info(
-                    f"Redirected to user list - assuming success for {username}"
-                )
+                logger.info("Redirected to user list - assuming success", extra={"data": {"username": username}})
                 return {
                     "success": True,
                     "username": username,
@@ -287,9 +283,9 @@ async def create_lam_account(
                     "message": "Account creation completed (redirected to user list)",
                 }
 
-            logger.warning(f"Could not confirm account creation for {username}")
-            logger.debug(f"Page URL: {page.url}")
-            logger.debug(f"Page content sample: {page_content[:1000]}")
+            logger.warning("Could not confirm account creation", extra={"data": {"username": username}})
+            logger.debug("Page URL", extra={"data": {"url": page.url}})
+            logger.debug("Page content sample", extra={"data": {"page_content_preview": page_content[:1000]}})
             return {
                 "success": False,
                 "username": username,
@@ -305,7 +301,7 @@ async def create_lam_account(
             }
 
     except Exception as e:
-        logger.error(f"LAM automation error: {e}")
+        logger.error("LAM automation error", extra={"data": {"error": str(e)}})
         return {
             "success": False,
             "username": username,

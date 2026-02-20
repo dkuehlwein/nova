@@ -53,7 +53,7 @@ class ConversationService:
             List of unique thread IDs from all conversations
         """
         try:
-            logger.debug(f"Checkpointer type: {type(checkpointer)}")
+            logger.debug("Checkpointer type", extra={"data": {"type": type(checkpointer).__name__}})
 
             if hasattr(checkpointer, "alist"):
                 thread_ids = []
@@ -67,22 +67,19 @@ class ConversationService:
                             thread_id = checkpoint_tuple.config["configurable"]["thread_id"]
                             if thread_id and thread_id not in thread_ids:
                                 thread_ids.append(thread_id)
-                                logger.debug(f"Added thread_id: {thread_id}")
+                                logger.debug("Added thread_id", extra={"data": {"thread_id": thread_id}})
 
-                    logger.debug(
-                        f"Total checkpoints found: {checkpoint_count}, "
-                        f"unique threads: {len(thread_ids)}"
-                    )
+                    logger.debug("Checkpoint scan complete", extra={"data": {"checkpoint_count": checkpoint_count, "unique_threads": len(thread_ids)}})
 
                 except Exception as e:
-                    logger.error(f"Error listing threads from checkpointer: {e}")
+                    logger.error("Error listing threads from checkpointer", extra={"data": {"error": str(e)}})
                 return thread_ids
             else:
-                logger.error(f"Unsupported checkpointer type: {type(checkpointer)}")
+                logger.error("Unsupported checkpointer type", extra={"data": {"type": type(checkpointer).__name__}})
                 return []
 
         except Exception as e:
-            logger.error(f"Error listing chat threads: {e}")
+            logger.error("Error listing chat threads", extra={"data": {"error": str(e)}})
             return []
 
     async def get_history(
@@ -103,28 +100,22 @@ class ConversationService:
             config = create_langgraph_config(thread_id)
             state = await checkpointer.aget(config)
 
-            logger.debug(f"Getting chat history for {thread_id}, state type: {type(state)}")
+            logger.debug("Getting chat history", extra={"data": {"thread_id": thread_id, "state_type": type(state).__name__}})
 
             if not state:
-                logger.debug(f"No state found for thread {thread_id}")
+                logger.debug("No state found for thread", extra={"data": {"thread_id": thread_id}})
                 return []
 
             channel_values = state.get("channel_values", {})
             if "messages" not in channel_values:
-                logger.debug(
-                    f"No messages in state for thread {thread_id}, "
-                    f"available keys: {list(channel_values.keys())}"
-                )
+                logger.debug("No messages in state for thread", extra={"data": {"thread_id": thread_id, "available_keys": list(channel_values.keys())}})
                 return []
 
             messages = channel_values["messages"]
             chat_messages = []
 
             checkpoint_timestamp = state.get("ts", datetime.now().isoformat())
-            logger.debug(
-                f"Found {len(messages)} raw messages in state, "
-                f"checkpoint timestamp: {checkpoint_timestamp}"
-            )
+            logger.debug("Found raw messages in state", extra={"data": {"message_count": len(messages), "checkpoint_timestamp": checkpoint_timestamp}})
 
             if not messages:
                 return []
@@ -140,7 +131,7 @@ class ConversationService:
                             "tool_call_id": msg.tool_call_id,
                         }
 
-            logger.debug(f"Collected {len(tool_results)} tool results")
+            logger.debug("Collected tool results", extra={"data": {"tool_results_count": len(tool_results)}})
 
             # Fetch approved tool call IDs from metadata
             from services.chat_metadata_service import chat_metadata_service
@@ -271,13 +262,11 @@ class ConversationService:
                         )
                         msg_index += 1
 
-            logger.debug(
-                f"Returning {len(chat_messages)} chat messages (from {len(messages)} total)"
-            )
+            logger.debug("Returning chat messages", extra={"data": {"chat_message_count": len(chat_messages), "raw_message_count": len(messages)}})
             return chat_messages
 
         except Exception as e:
-            logger.error(f"Error getting chat history for {thread_id}: {e}")
+            logger.error("Error getting chat history", extra={"data": {"thread_id": thread_id, "error": str(e)}})
             return []
 
     async def get_title(
@@ -306,7 +295,7 @@ class ConversationService:
                         return f"Task Chat (ID: {task_id[:8]}...)"
 
             except Exception as e:
-                logger.warning(f"Error fetching task title for {thread_id}: {e}")
+                logger.warning("Error fetching task title", extra={"data": {"thread_id": thread_id, "error": str(e)}})
                 task_id = thread_id.replace(TASK_THREAD_PREFIX, "")
                 return f"Task Chat (ID: {task_id[:8]}...)"
 
@@ -317,7 +306,7 @@ class ConversationService:
             if custom_title:
                 return custom_title
         except Exception as e:
-            logger.warning(f"Error fetching custom title for {thread_id}: {e}")
+            logger.warning("Error fetching custom title", extra={"data": {"thread_id": thread_id, "error": str(e)}})
 
         # For regular chats, use first user message
         first_user_msg = next((msg for msg in messages if msg.sender == "user"), None)
@@ -391,7 +380,7 @@ class ConversationService:
                         return None  # Skip - belongs in "Needs decision" only
 
             except Exception as task_error:
-                logger.warning(f"Error checking task status for {task_id}: {task_error}")
+                logger.warning("Error checking task status", extra={"data": {"task_id": task_id, "error": str(task_error)}})
 
         title = await self.get_title(thread_id, messages)
         last_message = messages[-1] if messages else None
@@ -462,11 +451,9 @@ class ConversationService:
                 try:
                     await cleanup_task_chat_data(task_id)
                 except Exception as cleanup_error:
-                    logger.warning(
-                        f"Failed to cleanup chat data for task {task_id}: {cleanup_error}"
-                    )
+                    logger.warning("Failed to cleanup chat data for task", extra={"data": {"task_id": task_id, "error": str(cleanup_error)}})
 
-                logger.info(f"Deleted task chat {thread_id} and associated task {task_id}")
+                logger.info("Deleted task chat and associated task", extra={"data": {"thread_id": thread_id, "task_id": task_id}})
                 return {
                     "success": True,
                     "deleted_chat": thread_id,
@@ -474,7 +461,7 @@ class ConversationService:
                     "message": "Deleted chat and associated task",
                 }
             else:
-                logger.info(f"Task {task_id} not found, attempting to delete thread only")
+                logger.info("Task not found, attempting to delete thread only", extra={"data": {"task_id": task_id}})
 
         # Regular chat or task not found - delete just the checkpointer thread
         # Use the ServiceManager's pool for consistency (avoid creating new pools)
@@ -483,7 +470,7 @@ class ConversationService:
         try:
             checkpointer = await get_checkpointer_from_service_manager()
             await checkpointer.adelete_thread(thread_id)
-            logger.info(f"Deleted chat thread: {thread_id}")
+            logger.info("Deleted chat thread", extra={"data": {"thread_id": thread_id}})
 
             return {
                 "success": True,
@@ -493,7 +480,7 @@ class ConversationService:
             }
 
         except Exception as e:
-            logger.error(f"Failed to delete chat thread {thread_id}: {e}")
+            logger.error("Failed to delete chat thread", extra={"data": {"thread_id": thread_id, "error": str(e)}})
             raise
 
 
@@ -515,10 +502,10 @@ async def cleanup_task_chat_data(task_id: str) -> None:
         thread_id = create_task_thread_id(task_id)
         checkpointer = await get_checkpointer_from_service_manager()
         await checkpointer.adelete_thread(thread_id)
-        logger.info(f"Deleted LangGraph thread: {thread_id}")
+        logger.info("Deleted LangGraph thread", extra={"data": {"thread_id": thread_id}})
 
     except Exception as e:
-        logger.warning(f"Failed to delete LangGraph thread for task {task_id}: {e}")
+        logger.warning("Failed to delete LangGraph thread for task", extra={"data": {"task_id": task_id, "error": str(e)}})
 
 
 # Global service instance

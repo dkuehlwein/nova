@@ -74,13 +74,13 @@ def _parse_datetime_impl(
                 date_obj = dateutil_parse(datetime_input['date']).date()
                 return datetime.combine(date_obj, datetime.min.time())
             else:
-                logger.warning(f"Unknown datetime dict format for {source_type}: {datetime_input}")
+                logger.warning("Unknown datetime dict format", extra={"data": {"source_type": source_type, "datetime_input": datetime_input}})
                 return None if not fallback_to_now else datetime.now(timezone.utc)
                 
         else:
-            logger.warning(f"Unknown datetime input type for {source_type}: {type(datetime_input)} - {datetime_input}")
+            logger.warning("Unknown datetime input type", extra={"data": {"source_type": source_type, "type": type(datetime_input).__name__}})
             return None if not fallback_to_now else datetime.now(timezone.utc)
             
     except Exception as e:
-        logger.error(f"Failed to parse {source_type} datetime '{datetime_input}': {e}")
+        logger.error("Failed to parse datetime", extra={"data": {"source_type": source_type, "datetime_input": datetime_input, "error": str(e)}})
         return None if not fallback_to_now else datetime.now(timezone.utc)

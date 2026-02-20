@@ -92,10 +92,10 @@ async def get_user_id_by_username(
             return None
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"GitLab API error looking up user: {e.response.status_code}")
+            logger.error("GitLab API error looking up user", extra={"data": {"status_code": e.response.status_code}})
             return None
         except Exception as e:
-            logger.error(f"Error looking up GitLab user: {e}")
+            logger.error("Error looking up GitLab user", extra={"data": {"error": str(e)}})
             return None
 
 
@@ -156,10 +156,10 @@ async def search_user_by_email(
             return None
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"GitLab API error searching user: {e.response.status_code}")
+            logger.error("GitLab API error searching user", extra={"data": {"status_code": e.response.status_code}})
             return None
         except Exception as e:
-            logger.error(f"Error searching GitLab user: {e}")
+            logger.error("Error searching GitLab user", extra={"data": {"error": str(e)}})
             return None
 
 
@@ -218,9 +218,7 @@ async def add_gitlab_member(
         )
         if user_info:
             user_id = user_info["id"]
-            logger.info(
-                f"Found GitLab user by email: {user_identifier} -> {user_info['username']} (ID: {user_id})"
-            )
+            logger.info("Found GitLab user by email", extra={"data": {"user_identifier": user_identifier, "username": user_info["username"], "user_id": user_id}})
     else:
         # Try as username
         user_id = await get_user_id_by_username(
@@ -229,7 +227,7 @@ async def add_gitlab_member(
             basic_auth=basic_auth
         )
         if user_id:
-            logger.info(f"Found GitLab user by username: {user_identifier} (ID: {user_id})")
+            logger.info("Found GitLab user by username", extra={"data": {"user_identifier": user_identifier, "user_id": str(user_id)}})
 
     if not user_id:
         return {
@@ -253,29 +251,25 @@ async def add_gitlab_member(
             )
 
             if response.status_code == 201:
-                logger.info(
-                    f"Successfully added {user_identifier} to {project_path} as {access_level}"
-                )
+                logger.info("Successfully added user to project", extra={"data": {"user_identifier": user_identifier, "project_path": project_path, "access_level": access_level}})
                 return {"success": True}
 
             elif response.status_code == 409:
                 # Member already exists
-                logger.info(f"User {user_identifier} is already a member of {project_path}")
+                logger.info("User is already a member", extra={"data": {"user_identifier": user_identifier, "project_path": project_path}})
                 return {"success": True, "note": "User was already a member"}
 
             else:
                 error_msg = response.json().get("message", response.text)
-                logger.error(
-                    f"Failed to add {user_identifier} to {project_path}: {response.status_code} - {error_msg}"
-                )
+                logger.error("Failed to add user to project", extra={"data": {"user_identifier": user_identifier, "project_path": project_path, "status_code": response.status_code, "error_msg": error_msg}})
                 return {"success": False, "error": f"API error {response.status_code}: {error_msg}"}
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"GitLab API HTTP error: {e}")
+            logger.error("GitLab API HTTP error", extra={"data": {"error": str(e)}})
             return {"success": False, "error": f"HTTP error: {e.response.status_code}"}
 
         except Exception as e:
-            logger.error(f"Error adding GitLab member: {e}")
+            logger.error("Error adding GitLab member", extra={"data": {"error": str(e)}})
             return {"success": False, "error": str(e)}
 
 
@@ -353,24 +347,21 @@ async def create_gitlab_user(
                 user = response.json()
                 user_id = user["id"]
                 user_state = user.get("state", "unknown")
-                logger.info(f"Created GitLab user: {username} (ID: {user_id}, state: {user_state})")
+                logger.info("Created GitLab user", extra={"data": {"username": username, "user_id": str(user_id), "user_state": user_state}})
 
                 # If user was created in blocked state, unblock them
                 # This can happen if GitLab has "User approval required" enabled
                 if user_state in ("blocked", "blocked_pending_approval"):
-                    logger.info(f"User {username} created as {user_state}, attempting to unblock...")
+                    logger.info("User created in blocked state, attempting to unblock", extra={"data": {"username": username, "user_state": user_state}})
                     unblock_response = await client.post(
                         f"{gitlab_url}/api/v4/users/{user_id}/unblock",
                         headers={"PRIVATE-TOKEN": token},
                         timeout=timeout,
                     )
                     if unblock_response.status_code == 201:
-                        logger.info(f"Successfully unblocked user: {username}")
+                        logger.info("Successfully unblocked user", extra={"data": {"username": username}})
                     else:
-                        logger.warning(
-                            f"Failed to unblock user {username}: {unblock_response.status_code} - "
-                            f"User may need manual activation by an admin"
-                        )
+                        logger.warning("Failed to unblock user, may need manual admin activation", extra={"data": {"username": username, "status_code": unblock_response.status_code}})
 
                 return {
                     "success": True,
@@ -381,20 +372,20 @@ async def create_gitlab_user(
 
             elif response.status_code == 409:
                 # User already exists
-                logger.info(f"GitLab user already exists: {username}")
+                logger.info("GitLab user already exists", extra={"data": {"username": username}})
                 return {"success": True, "note": "User already exists"}
 
             else:
                 error_msg = response.json().get("message", response.text)
-                logger.error(f"Failed to create GitLab user: {response.status_code} - {error_msg}")
+                logger.error("Failed to create GitLab user", extra={"data": {"status_code": response.status_code, "error_msg": error_msg}})
                 return {"success": False, "error": f"API error {response.status_code}: {error_msg}"}
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"GitLab API HTTP error: {e}")
+            logger.error("GitLab API HTTP error", extra={"data": {"error": str(e)}})
             return {"success": False, "error": f"HTTP error: {e.response.status_code}"}
 
         except Exception as e:
-            logger.error(f"Error creating GitLab user: {e}")
+            logger.error("Error creating GitLab user", extra={"data": {"error": str(e)}})
             return {"success": False, "error": str(e)}
 
 
@@ -464,14 +455,14 @@ async def search_gitlab_projects(
                     "web_url": project.get("web_url", ""),
                 })
 
-            logger.info(f"Found {len(results)} projects matching '{search_query}'")
+            logger.info("Found matching projects", extra={"data": {"results_count": len(results), "search_query": search_query}})
             return {"success": True, "projects": results}
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"GitLab API error searching projects: {e.response.status_code}")
+            logger.error("GitLab API error searching projects", extra={"data": {"status_code": e.response.status_code}})
             return {"success": False, "projects": [], "error": f"GitLab API error: {e.response.status_code}"}
         except Exception as e:
-            logger.error(f"Error searching GitLab projects: {e}")
+            logger.error("Error searching GitLab projects", extra={"data": {"error": str(e)}})
             return {"success": False, "projects": [], "error": str(e)}
 
 

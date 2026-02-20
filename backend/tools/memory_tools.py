@@ -5,13 +5,13 @@ LangChain tools for agent memory operations. These tools wrap the memory busines
 functions and provide structured interfaces for the agent.
 """
 
-import logging
 from typing import List
 from langchain_core.tools import StructuredTool
 
 from memory.memory_functions import search_memory, add_memory, MemorySearchError, MemoryAddError
+from utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def search_memory_tool(query: str) -> str:
@@ -32,7 +32,7 @@ async def search_memory_tool(query: str) -> str:
             return "No relevant memories found for your query."
             
     except MemorySearchError as e:
-        logger.warning(f"Memory search failed: {e}")
+        logger.warning("Memory search failed", extra={"data": {"error": str(e)}})
         return "Memory search is currently unavailable. Proceeding without historical context."
 
 
@@ -57,10 +57,10 @@ async def add_memory_tool(content: str, source_description: str = "Agent Memory"
             return "Failed to store memory."
             
     except MemoryAddError as e:
-        logger.error(f"Memory add failed with MemoryAddError: {e}")
+        logger.error("Memory add failed with MemoryAddError", extra={"data": {"error": str(e)}})
         return "Memory storage is currently unavailable. Information not persisted."
     except Exception as e:
-        logger.error(f"Memory add failed with unexpected error: {type(e).__name__}: {e}")
+        logger.error("Memory add failed with unexpected error", extra={"data": {"error_type": type(e).__name__, "error": str(e)}})
         return "Memory storage is currently unavailable. Information not persisted."
 
 

@@ -274,10 +274,7 @@ async def resolve_participant_email(name: str) -> str:
         )
 
     except Exception as e:
-        logger.error(
-            f"Error calling ms_graph-search_people: {e}",
-            extra={"name": name, "error": str(e)},
-        )
+        logger.error("Error calling ms_graph search_people", extra={"data": {"name": name, "error": str(e)}})
         return json.dumps(
             {
                 "found": False,
@@ -371,9 +368,7 @@ async def create_iam_account(
                         "next_action": "The mail_nickname from MS Graph is invalid. Ask the user to provide a username manually.",
                     }
                 )
-            logger.info(
-                f"Using mail_nickname as username: {username} (sanitized from: {mail_nickname})"
-            )
+            logger.info("Using mail_nickname as username", extra={"data": {"username": username, "mail_nickname": mail_nickname}})
         else:
             # No username and no mail_nickname - ask the user
             return json.dumps(
@@ -434,7 +429,7 @@ async def create_iam_account(
             )
 
     except Exception as e:
-        logger.error(f"IAM account creation failed: {e}")
+        logger.error("IAM account creation failed", extra={"data": {"error": str(e)}})
         return json.dumps(
             {
                 "success": False,
@@ -623,10 +618,7 @@ async def create_gitlab_user_account(
 
         except Exception as e:
             last_error = str(e)
-            logger.error(
-                f"GitLab user creation attempt {attempt + 1} failed: {e}",
-                extra={"username": username, "email": email, "attempt": attempt + 1},
-            )
+            logger.error("GitLab user creation attempt failed", extra={"data": {"username": username, "email": email, "attempt": attempt + 1, "error": str(e)}})
 
         retries_used = attempt + 1
         if attempt < max_retries:
@@ -735,7 +727,7 @@ async def search_gitlab_project(
             )
 
     except Exception as e:
-        logger.error(f"GitLab project search failed: {e}")
+        logger.error("GitLab project search failed", extra={"data": {"error": str(e)}})
         return json.dumps(
             {
                 "success": False,
@@ -825,7 +817,7 @@ async def add_user_to_gitlab_project(
 
     # If gitlab_project doesn't contain "/", treat it as a search query
     if "/" not in gitlab_project:
-        logger.info(f"Searching for GitLab project matching: {gitlab_project}")
+        logger.info("Searching for GitLab project matching", extra={"data": {"gitlab_project": gitlab_project}})
         try:
             result = await search_gitlab_projects(
                 gitlab_url=gitlab_url,
@@ -849,9 +841,7 @@ async def add_user_to_gitlab_project(
             if projects:
                 # Use the first matching project
                 resolved_project = projects[0]["path_with_namespace"]
-                logger.info(
-                    f"Resolved project '{gitlab_project}' to '{resolved_project}'"
-                )
+                logger.info("Resolved project name to path", extra={"data": {"search_query": gitlab_project, "resolved_project": resolved_project}})
                 gitlab_project = resolved_project
             else:
                 return json.dumps(
@@ -954,14 +944,7 @@ async def add_user_to_gitlab_project(
 
         except Exception as e:
             last_error = str(e)
-            logger.error(
-                f"Add to project attempt {attempt + 1} failed: {e}",
-                extra={
-                    "user": user_identifier,
-                    "project": gitlab_project,
-                    "attempt": attempt + 1,
-                },
-            )
+            logger.error("Add to project attempt failed", extra={"data": {"user": user_identifier, "project": gitlab_project, "attempt": attempt + 1, "error": str(e)}})
 
         retries_used = attempt + 1
         if attempt < max_retries:

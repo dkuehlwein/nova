@@ -64,7 +64,7 @@ async def get_all_tools(use_cache=True, include_escalation=False) -> List[Any]:
         mcp_tools = await mcp_manager.get_tools()
         log_timing("get_mcp_tools", t1, {"count": len(mcp_tools)})
     except Exception as e:
-        logger.warning(f"Could not fetch MCP tools: {e}")
+        logger.warning("Could not fetch MCP tools", extra={"data": {"error": str(e)}})
         mcp_tools = []
 
     # Combine all tools and wrap for approval
@@ -73,7 +73,7 @@ async def get_all_tools(use_cache=True, include_escalation=False) -> List[Any]:
     _cached_tools = wrap_tools_for_approval(all_tools)
     log_timing("wrap_tools_for_approval", t1, {"count": len(_cached_tools)})
 
-    logger.info(f"Tools: {len(local_tools)} local + {len(mcp_tools)} MCP = {len(_cached_tools)} total")
+    logger.info("Tools loaded", extra={"data": {"local_tools": len(local_tools), "mcp_tools": len(mcp_tools), "total": len(_cached_tools)}})
     return _cached_tools
 
 
@@ -182,7 +182,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
                         skill_name
                     )
                     logger.info(
-                        f"Loaded tools for skill: {skill_name}",
+                        "Loaded tools for skill",
                         extra={
                             "data": {
                                 "skill": skill_name,
@@ -192,7 +192,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
                     )
                 except Exception as e:
                     logger.error(
-                        f"Failed to load tools for skill {skill_name}: {e}",
+                        "Failed to load tools for skill",
                         extra={"data": {"skill": skill_name, "error": str(e)}},
                     )
                     continue
@@ -221,7 +221,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
 
         # Calculate approximate prompt size for logging
         prompt_chars = sum(len(str(m.content)) for m in messages)
-        logger.info(f"Invoking LLM with {len(messages)} messages (~{prompt_chars} chars)")
+        logger.info("Invoking LLM", extra={"data": {"messages_count": len(messages), "prompt_chars": prompt_chars}})
 
         # Invoke LLM
         t0 = time.time()
@@ -241,7 +241,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
                 "trace_id": trace_id,
                 "phoenix_url": phoenix_url,
             }
-            logger.debug(f"Attached Phoenix trace to response: {trace_id}")
+            logger.debug("Attached Phoenix trace to response", extra={"data": {"trace_id": str(trace_id)}})
 
         log_timing("agent_node.total", node_start)
         return {"messages": [response]}
@@ -307,7 +307,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
                     }
                     skills_changed = True
                     logger.info(
-                        f"Skill activated in state: {skill_name}",
+                        "Skill activated in state",
                         extra={"data": {"skill": skill_name, "turn": turn_number}},
                     )
 
@@ -320,7 +320,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
                         del skill_tools_cache[skill_name]
                     skills_changed = True
                     logger.info(
-                        f"Skill deactivated in state: {skill_name}",
+                        "Skill deactivated in state",
                         extra={"data": {"skill": skill_name}},
                     )
 
@@ -349,7 +349,8 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
 
     log_timing("create_chat_agent_total", agent_start, {"tools": len(base_tools)})
     logger.info(
-        f"Created skill-aware chat agent with {len(base_tools)} base tools and {type(checkpointer).__name__} checkpointer"
+        "Created skill-aware chat agent",
+        extra={"data": {"base_tools_count": len(base_tools), "checkpointer_type": type(checkpointer).__name__}},
     )
     return agent
 

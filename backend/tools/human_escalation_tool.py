@@ -5,11 +5,12 @@ Allows the agent to escalate questions to humans using LangGraph's interrupt mec
 The task status will be updated to NEEDS_REVIEW by the core agent when it resumes.
 """
 
-import logging
 from langchain_core.tools import tool
 from langgraph.types import interrupt
 
-logger = logging.getLogger(__name__)
+from utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @tool
@@ -39,7 +40,7 @@ def ask_user(question: str) -> str:
     Returns:
         The user's response from the chat interface
     """
-    logger.info(f"Asking user question: {question}")
+    logger.info("Asking user question", extra={"data": {"question": question}})
     
     # Use LangGraph interrupt to pause execution and wait for user input
     # The interrupt data will be handled by the core agent to update task status
@@ -58,6 +59,6 @@ def ask_user(question: str) -> str:
     else:
         response = str(user_response)
     
-    logger.info(f"Received user response: {response}")
+    logger.info("Received user response", extra={"data": {"response": response}})
     
     return response 

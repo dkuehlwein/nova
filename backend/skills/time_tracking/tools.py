@@ -88,7 +88,7 @@ async def log_hours(entries_json: str) -> str:
         excel_manager = _import_skill_module("excel_manager")
         result = excel_manager.log_entries(entries, timesheet_dir=_get_timesheet_dir())
     except Exception as e:
-        logger.error(f"Failed to log hours: {e}", extra={"data": {"error": str(e)}})
+        logger.error("Failed to log hours", extra={"data": {"error": str(e)}})
         return json.dumps({
             "success": False,
             "error": str(e),
@@ -127,7 +127,7 @@ async def get_logged_hours(
             project_id=project_id or None,
         )
     except Exception as e:
-        logger.error(f"Failed to read hours: {e}", extra={"data": {"error": str(e)}})
+        logger.error("Failed to read hours", extra={"data": {"error": str(e)}})
         return json.dumps({
             "success": False,
             "error": str(e),
@@ -234,7 +234,7 @@ async def _get_calendar_events(target_date: str) -> list[dict]:
             result = json.loads(result)
         return _normalize_calendar_response(result)
     except Exception as e:
-        logger.warning(f"Calendar fetch failed: {e}", extra={"data": {"error": str(e)}})
+        logger.warning("Calendar fetch failed", extra={"data": {"error": str(e)}})
         return []
 
 
@@ -412,7 +412,7 @@ async def fill_client_timesheet(project_id: str, start_date: str, end_date: str)
         excel_manager = _import_skill_module("excel_manager")
         entries = excel_manager.read_entries(start_date, end_date, timesheet_dir=timesheet_dir)
     except Exception as e:
-        logger.error(f"Failed to read entries: {e}", extra={"data": {"error": str(e)}})
+        logger.error("Failed to read entries", extra={"data": {"error": str(e)}})
         return json.dumps({
             "success": False,
             "error": f"Failed to read entries: {e}",
@@ -446,7 +446,7 @@ async def fill_client_timesheet(project_id: str, start_date: str, end_date: str)
     try:
         result = adapter.fill_template(filtered, template_path, output_path)
     except Exception as e:
-        logger.error(f"Failed to fill template: {e}", extra={"data": {"error": str(e)}})
+        logger.error("Failed to fill template", extra={"data": {"error": str(e)}})
         return json.dumps({
             "success": False,
             "error": f"Failed to fill template: {e}",

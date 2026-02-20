@@ -63,13 +63,13 @@ class MCPClientManager:
                 return response.json()
 
         except httpx.TimeoutException:
-            logger.warning(f"Timeout fetching tools from LiteLLM MCP Gateway")
+            logger.warning("Timeout fetching tools from LiteLLM MCP Gateway")
             return {"tools": []}
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error from LiteLLM MCP Gateway: {e.response.status_code}")
+            logger.error("HTTP error from LiteLLM MCP Gateway", extra={"data": {"status_code": e.response.status_code}})
             return {"tools": []}
         except Exception as e:
-            logger.error(f"Error fetching tools from LiteLLM: {e}")
+            logger.error("Error fetching tools from LiteLLM", extra={"data": {"error": str(e)}})
             return {"tools": []}
 
     async def get_mcp_servers_status(self, timeout: float = 10.0) -> List[Dict[str, Any]]:
@@ -126,7 +126,7 @@ class MCPClientManager:
                 return True, server["tools_count"]
 
         # Server not found in LiteLLM - either unhealthy or not configured
-        logger.debug(f"Server {server_name} not found in LiteLLM MCP Gateway")
+        logger.debug("Server not found in LiteLLM MCP Gateway", extra={"data": {"server_name": server_name}})
         return False, None
 
     async def discover_working_servers(self) -> List[Dict[str, Any]]:
@@ -137,7 +137,7 @@ class MCPClientManager:
             logger.warning("No MCP servers available from LiteLLM")
             return []
 
-        logger.info(f"Found {len(servers)} MCP servers via LiteLLM")
+        logger.info("Found MCP servers via LiteLLM", extra={"data": {"servers_count": len(servers)}})
         return servers
 
     def _resolve_json_schema_type(self, prop_schema: Dict[str, Any]) -> tuple:
@@ -239,7 +239,7 @@ class MCPClientManager:
                     return self._server_id_cache.get(server_name)
                 return None
         except Exception as e:
-            logger.warning(f"Failed to look up server_id for {server_name}: {e}")
+            logger.warning("Failed to look up server_id", extra={"data": {"server_name": server_name, "error": str(e)}})
             return None
 
     def _parse_auth_error(self, tool_result: Any) -> Optional[str]:
@@ -315,7 +315,7 @@ class MCPClientManager:
         # Try to look up the UUID, fall back to using name directly
         server_id = await self.get_server_id_by_name(server_name)
         if not server_id:
-            logger.warning(f"Could not find server_id for {server_name}, using name directly")
+            logger.warning("Could not find server_id, using name directly", extra={"data": {"server_name": server_name}})
             server_id = server_name
 
         # LiteLLM routes tool calls by tool name (not server_id).
@@ -331,27 +331,27 @@ class MCPClientManager:
             # Auto-authenticate on MS Graph auth errors (NOV-123)
             auth_url = self._parse_auth_error(result)
             if auth_url:
-                logger.info(f"MS Graph auth required for {tool_name}, launching browser auth")
+                logger.info("MS Graph auth required, launching browser auth", extra={"data": {"tool_name": tool_name}})
                 from utils.ms_graph_auth_browser import authenticate_ms_graph
 
                 auth_result = await authenticate_ms_graph(auth_url)
                 if auth_result.get("success"):
-                    logger.info(f"MS Graph auth succeeded, retrying {tool_name}")
+                    logger.info("MS Graph auth succeeded, retrying", extra={"data": {"tool_name": tool_name}})
                     return await self._execute_mcp_call(
                         url, prefixed_tool_name, arguments, server_id
                     )
-                logger.warning(f"MS Graph auto-auth failed: {auth_result.get('error')}")
+                logger.warning("MS Graph auto-auth failed", extra={"data": {"auth_result": auth_result.get('error')}})
 
             return result
 
         except httpx.TimeoutException:
-            logger.error(f"Timeout calling MCP tool {tool_name} on {server_name}")
+            logger.error("Timeout calling MCP tool", extra={"data": {"tool_name": tool_name, "server_name": server_name}})
             return {"error": f"Timeout calling tool {tool_name}"}
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error calling MCP tool: {e.response.status_code} - {e.response.text}")
+            logger.error("HTTP error calling MCP tool", extra={"data": {"status_code": e.response.status_code, "text": e.response.text}})
             return {"error": f"HTTP error: {e.response.status_code}"}
         except Exception as e:
-            logger.error(f"Error calling MCP tool {tool_name}: {e}")
+            logger.error("Error calling MCP tool", extra={"data": {"tool_name": tool_name, "error": str(e)}})
             return {"error": str(e)}
 
     async def get_tools(self, force_refresh: bool = False) -> List[Any]:
@@ -372,9 +372,7 @@ class MCPClientManager:
         cache_age = current_time - self._tools_cache_timestamp
 
         if not force_refresh and self._tools_cache is not None and cache_age < _TOOLS_CACHE_TTL_SECONDS:
-            logger.debug(
-                f"Using cached MCP tools (age: {cache_age:.1f}s, TTL: {_TOOLS_CACHE_TTL_SECONDS}s)"
-            )
+            logger.debug("Using cached MCP tools", extra={"data": {"cache_age_seconds": round(cache_age, 1), "ttl_seconds": _TOOLS_CACHE_TTL_SECONDS}})
             return self._tools_cache
 
         logger.info("Fetching MCP tools from LiteLLM")
@@ -429,14 +427,14 @@ class MCPClientManager:
                 langchain_tools.append(tool)
 
             except Exception as e:
-                logger.warning(f"Failed to convert MCP tool {tool_data.get('name', 'unknown')}: {e}")
+                logger.warning("Failed to convert MCP tool", extra={"data": {"tool_data": tool_data.get('name', 'unknown'), "error": str(e)}})
                 continue
 
         # Update cache
         self._tools_cache = langchain_tools
         self._tools_cache_timestamp = current_time
 
-        logger.info(f"Successfully loaded {len(langchain_tools)} MCP tools from LiteLLM (cached for {_TOOLS_CACHE_TTL_SECONDS}s)")
+        logger.info("Successfully loaded MCP tools from LiteLLM", extra={"data": {"langchain_tools_count": len(langchain_tools), "cache_ttl_seconds": _TOOLS_CACHE_TTL_SECONDS}})
         return langchain_tools
 
     def clear_tools_cache(self):

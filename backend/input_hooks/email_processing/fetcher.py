@@ -101,13 +101,13 @@ class EmailFetcher:
             max_emails = hook_config.hook_settings.max_per_fetch
             if len(emails) > max_emails:
                 logger.info(
-                    f"Limiting emails to {max_emails} (found {len(emails)})",
-                    extra={"data": {"hook_name": hook_config.name, "limit": max_emails}}
+                    "Limiting emails to configured max",
+                    extra={"data": {"hook_name": hook_config.name, "limit": max_emails, "found": len(emails)}}
                 )
                 emails = emails[:max_emails]
             
             logger.info(
-                f"Successfully fetched {len(emails)} emails via hook system",
+                "Successfully fetched emails via hook system",
                 extra={"data": {"hook_name": hook_config.name, "email_count": len(emails)}}
             )
             
@@ -197,8 +197,8 @@ class EmailFetcher:
                         break  # Use the first matching tool (highest priority)
 
             logger.info(
-                f"Found {len(self.mcp_tools)} email tools: {tool_mapping}",
-                extra={"data": {"interface_mapping": tool_mapping}}
+                "Found email tools",
+                extra={"data": {"count": len(self.mcp_tools), "interface_mapping": tool_mapping}}
             )
 
         return self.mcp_tools
@@ -214,7 +214,7 @@ class EmailFetcher:
 
         if tool_name not in tools:
             logger.warning(
-                f"Email tool '{tool_name}' not available",
+                "Email tool not available",
                 extra={"data": {"tool_name": tool_name, "available_tools": list(tools.keys())}}
             )
             return None
@@ -250,7 +250,7 @@ class EmailFetcher:
             
         except Exception as e:
             logger.error(
-                f"Failed to call email tool {tool_name} (concrete: {concrete_tool_name})",
+                "Failed to call email tool",
                 extra={"data": {"interface_tool": tool_name, "concrete_tool": concrete_tool_name, "error": str(e), "kwargs": mapped_kwargs}}
             )
             raise
@@ -264,5 +264,5 @@ class EmailFetcher:
         elif isinstance(result, dict) and "data" in result:
             return result["data"] if isinstance(result["data"], list) else []
         else:
-            logger.warning(f"Unexpected email API response format: {type(result)}")
+            logger.warning("Unexpected email API response format", extra={"data": {"type": type(result).__name__}})
             return []

@@ -57,7 +57,7 @@ async def publish_config_event(
         await publish(event)
         
         logger.info(
-            f"Configuration event published: {config_type}/{operation}",
+            "Configuration event published",
             extra={
                 "data": {
                     "event_id": event.id,
@@ -70,7 +70,7 @@ async def publish_config_event(
         
     except Exception as e:
         logger.error(
-            f"Failed to publish config event: {config_type}/{operation}",
+            "Failed to publish config event",
             exc_info=True,
             extra={
                 "data": {

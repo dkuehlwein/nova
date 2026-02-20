@@ -42,7 +42,7 @@ def log_timing(operation: str, start_time: float, extra_data: dict = None, logge
             _timing_logger = get_logger("timing")
         logger = _timing_logger
 
-    logger.info(f"⏱️ TIMING: {operation} took {elapsed_ms:.2f}ms", extra={"data": data})
+    logger.info("TIMING: %s completed", operation, extra={"data": data})
 
 
 def configure_logging(
@@ -261,7 +261,8 @@ def log_config_change(
         logger = get_logger("config")
     
     logger.info(
-        f"Configuration {operation}",
+        "Configuration changed: %s",
+        operation,
         extra={
             "data": {
                 "config_type": config_type,
@@ -285,7 +286,8 @@ def log_external_api_call(
         logger = get_logger("external_api")
     
     logger.debug(
-        f"External API call to {service}",
+        "External API call: %s",
+        service,
         extra={
             "data": {
                 "service": service,
@@ -309,7 +311,8 @@ def log_system_state_change(
         logger = get_logger("system")
     
     logger.info(
-        f"System state change: {component}",
+        "System state changed: %s",
+        component,
         extra={
             "data": {
                 "component": component,

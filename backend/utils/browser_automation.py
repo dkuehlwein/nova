@@ -65,12 +65,12 @@ class BrowserManager:
         if cache.context is not None:
             try:
                 if cache.context.browser and cache.context.browser.is_connected():
-                    logger.debug(f"[{self.namespace}] Reusing cached browser context")
+                    logger.debug("Reusing cached browser context", extra={"data": {"namespace": self.namespace}})
                     return cache.context
             except Exception:
                 pass
             # Dead context - clean up
-            logger.info(f"[{self.namespace}] Cached browser context is dead, recreating")
+            logger.info("Cached browser context is dead, recreating", extra={"data": {"namespace": self.namespace}})
             await self._cleanup_cache(cache)
 
         # Create new Playwright instance and persistent context
@@ -88,7 +88,8 @@ class BrowserManager:
             except Exception as launch_err:
                 # Corrupt profile - wipe and retry once
                 logger.warning(
-                    f"[{self.namespace}] Persistent context launch failed, resetting profile: {launch_err}"
+                    "Persistent context launch failed, resetting profile",
+                    extra={"data": {"namespace": self.namespace, "error": str(launch_err)}}
                 )
                 shutil.rmtree(profile_dir, ignore_errors=True)
                 profile_dir.mkdir(parents=True, exist_ok=True)
@@ -103,7 +104,7 @@ class BrowserManager:
 
         cache.playwright_obj = pw
         cache.context = context
-        logger.info(f"[{self.namespace}] Created new persistent browser context")
+        logger.info("Created new persistent browser context", extra={"data": {"namespace": self.namespace}})
         return context
 
     async def _cleanup_cache(self, cache) -> None:
@@ -130,9 +131,9 @@ class BrowserManager:
         try:
             state_path.parent.mkdir(parents=True, exist_ok=True)
             await cache.context.storage_state(path=str(state_path))
-            logger.info(f"[{self.namespace}] Saved cookies to {state_path}")
+            logger.info("Saved cookies", extra={"data": {"namespace": self.namespace, "state_path": state_path}})
         except Exception as e:
-            logger.warning(f"[{self.namespace}] Failed to save cookies: {e}")
+            logger.warning("Failed to save cookies", extra={"data": {"namespace": self.namespace, "error": str(e)}})
 
     async def restore_cookies(
         self,
@@ -168,11 +169,12 @@ class BrowserManager:
             if cookies:
                 await cache.context.add_cookies(cookies)
                 logger.info(
-                    f"[{self.namespace}] Restored {len(cookies)} cookies from {state_path}"
+                    "Restored cookies",
+                    extra={"data": {"namespace": self.namespace, "count": len(cookies), "state_path": str(state_path)}}
                 )
                 return True
         except Exception as e:
-            logger.warning(f"[{self.namespace}] Failed to restore cookies: {e}")
+            logger.warning("Failed to restore cookies", extra={"data": {"namespace": self.namespace, "error": str(e)}})
             state_path.unlink(missing_ok=True)
         return False
 

@@ -52,13 +52,13 @@ async def restart_service(service_name: str):
     
     # Sanitize service name against allowed services
     if service_name not in ALLOWED_SERVICES:
-        logger.warning(f"Attempted to restart unauthorized service: {service_name}")
+        logger.warning("Attempted to restart unauthorized service", extra={"data": {"service_name": service_name}})
         raise HTTPException(
             status_code=400,
             detail=f"Service '{service_name}' is not allowed for restart. Allowed services: {', '.join(sorted(ALLOWED_SERVICES))}"
         )
     
-    logger.info(f"Attempting to restart service: {service_name}")
+    logger.info("Attempting to restart service", extra={"data": {"service_name": service_name}})
     
     try:
         # Execute docker-compose restart command
@@ -76,10 +76,10 @@ async def restart_service(service_name: str):
         
         if status == "success":
             message = f"Service '{service_name}' restarted successfully"
-            logger.info(f"Service {service_name} restarted successfully")
+            logger.info("Service restarted successfully", extra={"data": {"service_name": service_name}})
         else:
             message = f"Service '{service_name}' restart failed with exit code {result.returncode}"
-            logger.error(f"Service {service_name} restart failed: {result.stderr}")
+            logger.error("Service restart failed", extra={"data": {"service_name": service_name, "stderr": result.stderr}})
         
         return ServiceRestartResponse(
             service_name=service_name,
@@ -198,13 +198,12 @@ async def get_unified_system_status(
         if include_history:
             response["history"] = await _get_health_history()
         
-        logger.debug(f"Unified system status: {overall_status['overall_status']} "
-                    f"({overall_status['summary']['healthy_services']}/{overall_status['summary']['total_services']} healthy)")
+        logger.debug("Unified system status", extra={"data": {"overall_status": overall_status['overall_status'], "healthy_services": overall_status['summary']['healthy_services'], "total_services": overall_status['summary']['total_services']}})
         
         return response
         
     except Exception as e:
-        logger.error(f"Failed to get unified system status: {e}", exc_info=True)
+        logger.error("Failed to get unified system status", exc_info=True, extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to retrieve system status: {str(e)}")
 
 
@@ -271,7 +270,7 @@ async def get_service_status(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get status for service {service_name}: {e}", exc_info=True)
+        logger.error("Failed to get status for service", exc_info=True, extra={"data": {"service_name": service_name, "error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to get service status: {str(e)}")
 
 
@@ -302,7 +301,7 @@ async def refresh_all_services():
         }
         
     except Exception as e:
-        logger.error(f"Failed to refresh all services: {e}", exc_info=True)
+        logger.error("Failed to refresh all services", exc_info=True, extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to refresh services: {str(e)}")
 
 

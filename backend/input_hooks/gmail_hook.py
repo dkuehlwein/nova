@@ -60,15 +60,16 @@ class GmailInputHook(BaseInputHook):
                 self._email_task_creator = EmailTaskCreator()
 
                 logger.debug(
-                    f"Initialized email components for hook {self.hook_name}",
+                    "Initialized email components for hook",
                     extra={"data": {
+                        "hook_name": self.hook_name,
                         "thread_consolidation_enabled": thread_enabled,
                         "stabilization_minutes": stabilization_mins
                     }}
                 )
 
             except ImportError as e:
-                logger.error(f"Failed to import email processing components: {e}")
+                logger.error("Failed to import email processing components", extra={"data": {"error": str(e)}})
                 raise
     
     async def fetch_items(self) -> List[Dict[str, Any]]:
@@ -82,7 +83,7 @@ class GmailInputHook(BaseInputHook):
             self._ensure_email_components()
             
             logger.info(
-                f"Fetching emails via hook {self.hook_name}",
+                "Fetching emails via hook",
                 extra={"data": {"hook_name": self.hook_name}}
             )
             
@@ -94,7 +95,7 @@ class GmailInputHook(BaseInputHook):
             normalized_emails = await self._email_processor.fetch_new_emails(self.config)
             
             logger.info(
-                f"Fetched {len(normalized_emails)} new emails via hook",
+                "Fetched new emails via hook",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "email_count": len(normalized_emails)
@@ -105,7 +106,7 @@ class GmailInputHook(BaseInputHook):
             
         except Exception as e:
             logger.error(
-                f"Failed to fetch emails in hook {self.hook_name}",
+                "Failed to fetch emails in hook",
                 exc_info=True,
                 extra={"data": {"hook_name": self.hook_name, "error": str(e)}}
             )
@@ -138,7 +139,7 @@ class GmailInputHook(BaseInputHook):
             
         except Exception as e:
             logger.error(
-                f"Failed to normalize email item in hook {self.hook_name}",
+                "Failed to normalize email item in hook",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "email_id": raw_item.get("id", "unknown"),
@@ -159,7 +160,7 @@ class GmailInputHook(BaseInputHook):
             )
             
             logger.debug(
-                f"Email task creation check via hook system: {should_create}",
+                "Email task creation check via hook system",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "hook_enabled": self.config.enabled,
@@ -172,7 +173,7 @@ class GmailInputHook(BaseInputHook):
             
         except Exception as e:
             logger.error(
-                f"Error checking should_create_task for email hook",
+                "Error checking should_create_task for email hook",
                 extra={"data": {"hook_name": self.hook_name, "error": str(e)}}
             )
             # Default to base class behavior
@@ -227,7 +228,7 @@ class GmailInputHook(BaseInputHook):
 
                 if task_id:
                     logger.info(
-                        f"Created/updated email task via hook {self.hook_name}",
+                        "Created/updated email task via hook",
                         extra={"data": {
                             "hook_name": self.hook_name,
                             "email_id": item.source_id,
@@ -243,7 +244,7 @@ class GmailInputHook(BaseInputHook):
 
         except Exception as e:
             logger.error(
-                f"Failed to create task from email in hook {self.hook_name}",
+                "Failed to create task from email in hook",
                 exc_info=True,
                 extra={"data": {
                     "hook_name": self.hook_name,
@@ -265,7 +266,7 @@ class GmailInputHook(BaseInputHook):
         # EmailProcessor.process_email() already marks the email as processed
         # via _mark_email_processed() internally. We just log for visibility.
         logger.debug(
-            f"Email already marked as processed by EmailProcessor",
+            "Email already marked as processed by EmailProcessor",
             extra={"data": {
                 "hook_name": self.hook_name,
                 "email_id": item.source_id,

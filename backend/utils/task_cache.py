@@ -49,7 +49,7 @@ async def get_cached_task_counts() -> Optional[Dict[str, int]]:
         return None
         
     except Exception as e:
-        logger.error(f"Error getting cached task counts: {e}")
+        logger.error("Error getting cached task counts", extra={"data": {"error": str(e)}})
         return None
 
 
@@ -69,11 +69,11 @@ async def set_cached_task_counts(counts: Dict[str, int]) -> bool:
             json.dumps(counts)
         )
         
-        logger.debug(f"Cached task counts for {ttl} seconds")
+        logger.debug("Cached task counts", extra={"data": {"ttl": ttl}})
         return True
         
     except Exception as e:
-        logger.error(f"Error setting cached task counts: {e}")
+        logger.error("Error setting cached task counts", extra={"data": {"error": str(e)}})
         return False
 
 
@@ -101,7 +101,7 @@ async def get_task_counts_with_cache() -> Dict[str, int]:
         # Cache the results
         await set_cached_task_counts(task_counts)
         
-        logger.info(f"Retrieved task counts from database: {task_counts}")
+        logger.info("Retrieved task counts from database", extra={"data": {"task_counts": task_counts}})
         return task_counts
 
 
@@ -123,7 +123,7 @@ async def get_cached_dashboard_data() -> Optional[Dict[str, Any]]:
         return None
         
     except Exception as e:
-        logger.error(f"Error getting cached dashboard data: {e}")
+        logger.error("Error getting cached dashboard data", extra={"data": {"error": str(e)}})
         return None
 
 
@@ -158,11 +158,11 @@ async def set_cached_dashboard_data(data: Dict[str, Any]) -> bool:
             json.dumps(cache_data, default=json_serializer)
         )
         
-        logger.debug(f"Cached dashboard data for {ttl} seconds")
+        logger.debug("Cached dashboard data", extra={"data": {"ttl": ttl}})
         return True
         
     except Exception as e:
-        logger.error(f"Error setting cached dashboard data: {e}")
+        logger.error("Error setting cached dashboard data", extra={"data": {"error": str(e)}})
         return False
 
 
@@ -180,7 +180,7 @@ async def invalidate_task_cache():
         logger.info("Task cache invalidated")
         
     except Exception as e:
-        logger.error(f"Error invalidating task cache: {e}")
+        logger.error("Error invalidating task cache", extra={"data": {"error": str(e)}})
 
 
 async def get_tasks_by_status_with_cache(use_cache: bool = True) -> Dict[str, list]:
@@ -245,4 +245,4 @@ async def warm_task_cache():
         logger.info("Task cache warmed successfully")
         
     except Exception as e:
-        logger.error(f"Error warming task cache: {e}")
+        logger.error("Error warming task cache", extra={"data": {"error": str(e)}})

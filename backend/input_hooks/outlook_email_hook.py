@@ -38,7 +38,7 @@ class OutlookEmailHook(BaseInputHook):
         """Lazy initialization of Outlook processor."""
         if self._processor is None:
             self._processor = OutlookProcessor()
-            logger.debug(f"Initialized Outlook processor for hook {self.hook_name}")
+            logger.debug("Initialized Outlook processor for hook", extra={"data": {"hook_name": self.hook_name}})
         return self._processor
 
     async def fetch_items(self) -> List[Dict[str, Any]]:
@@ -58,7 +58,7 @@ class OutlookEmailHook(BaseInputHook):
             folder = self.config.hook_settings.folder
 
             logger.info(
-                f"Fetching Outlook emails via hook {self.hook_name}",
+                "Fetching Outlook emails via hook",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "max_emails": max_emails,
@@ -75,7 +75,7 @@ class OutlookEmailHook(BaseInputHook):
             )
 
             logger.info(
-                f"Fetched {len(emails)} unprocessed Outlook emails",
+                "Fetched unprocessed Outlook emails",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "count": len(emails)
@@ -86,7 +86,7 @@ class OutlookEmailHook(BaseInputHook):
 
         except Exception as e:
             logger.error(
-                f"Failed to fetch Outlook emails in hook {self.hook_name}",
+                "Failed to fetch Outlook emails in hook",
                 exc_info=True,
                 extra={"data": {"hook_name": self.hook_name, "error": str(e)}}
             )
@@ -114,7 +114,7 @@ class OutlookEmailHook(BaseInputHook):
 
         except Exception as e:
             logger.error(
-                f"Failed to normalize Outlook email in hook {self.hook_name}",
+                "Failed to normalize Outlook email in hook",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "email_id": raw_item.get("id", "unknown"),
@@ -147,13 +147,13 @@ class OutlookEmailHook(BaseInputHook):
 
         try:
             logger.info(
-                f"Starting Outlook email hook processing: {self.hook_name}",
+                "Starting Outlook email hook processing",
                 extra={"data": {"hook_name": self.hook_name}}
             )
 
             # Check if hook is enabled
             if not self.config.enabled:
-                logger.info(f"Outlook email hook {self.hook_name} is disabled, skipping")
+                logger.info("Outlook email hook is disabled, skipping", extra={"data": {"hook_name": self.hook_name}})
                 return result
 
             # Use OutlookProcessor for the full pipeline
@@ -180,7 +180,7 @@ class OutlookEmailHook(BaseInputHook):
                 self._stats["errors"] += 1
 
             logger.info(
-                f"Outlook email hook processing completed: {self.hook_name}",
+                "Outlook email hook processing completed",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "emails_processed": result.items_processed,
@@ -200,7 +200,7 @@ class OutlookEmailHook(BaseInputHook):
             self._stats["errors"] += 1
 
             logger.error(
-                f"Outlook email hook processing failed: {self.hook_name}",
+                "Outlook email hook processing failed",
                 exc_info=True,
                 extra={"data": {
                     "hook_name": self.hook_name,

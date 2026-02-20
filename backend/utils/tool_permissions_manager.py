@@ -5,13 +5,13 @@ Handles loading, caching, and managing tool permissions configuration
 using Nova's ConfigRegistry system for proper path resolution and hot-reload.
 """
 
-import logging
 from typing import Dict, List, Any
 
 from utils.config_registry import get_config, save_config
 from models.tool_permissions_config import ToolPermissionsConfig
+from utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ToolPermissionConfig:
@@ -38,7 +38,7 @@ class ToolPermissionConfig:
                 }
             }
         except Exception as e:
-            logger.error(f"Error loading tool permissions config: {e}, using defaults")
+            logger.error("Error loading tool permissions config, using defaults", extra={"data": {"error": str(e)}})
             # Return default config if ConfigRegistry fails
             default_config = ToolPermissionsConfig.get_default_config()
             return {
@@ -145,9 +145,9 @@ class ToolPermissionConfig:
             if pattern not in config.permissions.allow:
                 config.permissions.allow.append(pattern)
                 save_config("tool_permissions", config)
-                logger.info(f"Added tool permission: {pattern}")
+                logger.info("Added tool permission", extra={"data": {"pattern": pattern}})
         except Exception as e:
-            logger.error(f"Failed to add tool permission {pattern}: {e}")
+            logger.error("Failed to add tool permission", extra={"data": {"pattern": pattern, "error": str(e)}})
             raise
     
     async def remove_permission(self, pattern: str):
@@ -158,13 +158,13 @@ class ToolPermissionConfig:
             if pattern in config.permissions.allow:
                 config.permissions.allow.remove(pattern)
                 save_config("tool_permissions", config)
-                logger.info(f"Removed allowed tool permission: {pattern}")
+                logger.info("Removed allowed tool permission", extra={"data": {"pattern": pattern}})
             elif pattern in config.permissions.deny:
                 config.permissions.deny.remove(pattern)
                 save_config("tool_permissions", config)
-                logger.info(f"Removed denied tool permission: {pattern}")
+                logger.info("Removed denied tool permission", extra={"data": {"pattern": pattern}})
         except Exception as e:
-            logger.error(f"Failed to remove tool permission {pattern}: {e}")
+            logger.error("Failed to remove tool permission", extra={"data": {"pattern": pattern, "error": str(e)}})
             raise
     
     def _format_permission_pattern(self, tool_name: str, tool_args: Dict[str, Any] | None = None) -> str:
@@ -193,7 +193,7 @@ class ToolPermissionConfig:
                 }
             }
         except Exception as e:
-            logger.error(f"Error loading tool permissions config: {e}, using defaults")
+            logger.error("Error loading tool permissions config, using defaults", extra={"data": {"error": str(e)}})
             default_config = ToolPermissionsConfig.get_default_config()
             return {
                 "permissions": {
@@ -219,12 +219,12 @@ class ToolPermissionConfig:
 
             for pattern in deny_patterns:
                 if self._matches_tool_pattern(tool_name, pattern):
-                    logger.debug(f"Tool {tool_name} is in deny list")
+                    logger.debug("Tool is in deny list", extra={"data": {"tool_name": tool_name}})
                     return True
 
             return False
         except Exception as e:
-            logger.error(f"Error checking deny list for {tool_name}: {e}")
+            logger.error("Error checking deny list", extra={"data": {"tool_name": tool_name, "error": str(e)}})
             return False
 
     def is_tool_allowed(self, tool_name: str) -> bool:
@@ -245,19 +245,19 @@ class ToolPermissionConfig:
             # Check allow list
             for pattern in allow_patterns:
                 if self._matches_tool_pattern(tool_name, pattern):
-                    logger.debug(f"Tool {tool_name} is explicitly allowed")
+                    logger.debug("Tool is explicitly allowed", extra={"data": {"tool_name": tool_name}})
                     return True
 
             # If default_secure is True, tools not in allow list require approval
             if default_secure:
-                logger.debug(f"Tool {tool_name} not in allow list, default_secure=True, requires approval")
+                logger.debug("Tool not in allow list, default_secure=True, requires approval", extra={"data": {"tool_name": tool_name}})
                 return False
 
             # default_secure is False - allow by default
             return True
 
         except Exception as e:
-            logger.error(f"Error checking tool permission for {tool_name}: {e}")
+            logger.error("Error checking tool permission", extra={"data": {"tool_name": tool_name, "error": str(e)}})
             # Fail secure - require approval on error
             return False
 
@@ -294,7 +294,7 @@ class ToolPermissionConfig:
             reload_config("tool_permissions")
             logger.info("Tool permissions reloaded via ConfigRegistry")
         except Exception as e:
-            logger.warning(f"Failed to reload tool permissions: {e}")
+            logger.warning("Failed to reload tool permissions", extra={"data": {"error": str(e)}})
 
 
 class ToolApprovalInterceptor:
@@ -311,7 +311,7 @@ class ToolApprovalInterceptor:
         # Check deny rules first (they override allow rules)
         deny_patterns = permissions["permissions"].get("deny", [])
         if self._matches_any_pattern(tool_name, tool_args, deny_patterns):
-            logger.debug(f"Tool call denied by deny rule: {permission_string}")
+            logger.debug("Tool call denied by deny rule", extra={"data": {"permission_string": permission_string}})
             return False
             
         # Check allow rules
@@ -319,9 +319,9 @@ class ToolApprovalInterceptor:
         allowed = self._matches_any_pattern(tool_name, tool_args, allow_patterns)
         
         if allowed:
-            logger.debug(f"Tool call pre-approved: {permission_string}")
+            logger.debug("Tool call pre-approved", extra={"data": {"permission_string": permission_string}})
         else:
-            logger.debug(f"Tool call requires approval: {permission_string}")
+            logger.debug("Tool call requires approval", extra={"data": {"permission_string": permission_string}})
             
         return allowed
     

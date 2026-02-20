@@ -35,7 +35,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 async def stream_chat(chat_request: ChatRequest):
     """Stream chat messages with the assistant."""
     try:
-        logger.info(f"Starting stream_chat for thread_id: {chat_request.thread_id}")
+        logger.info("Starting stream_chat for thread_id", extra={"data": {"thread_id": str(chat_request.thread_id)}})
 
         checkpointer = await get_checkpointer_from_service_manager()
 
@@ -47,9 +47,9 @@ async def stream_chat(chat_request: ChatRequest):
             chat_agent = await create_chat_agent(
                 checkpointer=checkpointer, include_escalation=True
             )
-            logger.info(f"Chat agent ready. Using checkpointer: {type(checkpointer)}")
+            logger.info("Chat agent ready", extra={"data": {"checkpointer_type": type(checkpointer).__name__}})
         except Exception as agent_error:
-            logger.error(f"Failed to create chat agent: {agent_error}")
+            logger.error("Failed to create chat agent", extra={"data": {"error": str(agent_error)}})
             raise HTTPException(
                 status_code=500, detail=f"Failed to create chat agent: {str(agent_error)}"
             )
@@ -130,7 +130,7 @@ async def list_chats(limit: int = 5, offset: int = 0):
                     thread_id, checkpointer
                 )
             except Exception as msg_error:
-                logger.warning(f"Error processing chat {thread_id}: {msg_error}")
+                logger.warning("Error processing chat", extra={"data": {"thread_id": thread_id, "error": str(msg_error)}})
                 return None
 
         results = await asyncio.gather(
@@ -196,7 +196,7 @@ async def get_task_chat_data(chat_id: str):
             agent = await create_chat_agent(checkpointer=checkpointer, include_escalation=True)
             pending_escalation = await chat_service.check_interrupts(chat_id, agent)
         except Exception as e:
-            logger.warning(f"Could not get escalation info for {chat_id}: {e}")
+            logger.warning("Could not get escalation info", extra={"data": {"chat_id": chat_id, "error": str(e)}})
 
         return TaskChatResponse(messages=messages, pending_escalation=pending_escalation)
 
@@ -218,7 +218,7 @@ async def delete_chat(chat_id: str):
         return result
 
     except Exception as e:
-        logger.error(f"Error deleting chat {chat_id}: {e}")
+        logger.error("Error deleting chat", extra={"data": {"chat_id": chat_id, "error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Error deleting chat: {str(e)}")
 
 
@@ -241,7 +241,7 @@ async def respond_to_escalation(chat_id: str, response: dict):
         return result
 
     except Exception as e:
-        logger.error(f"Error responding to escalation for {chat_id}: {e}")
+        logger.error("Error responding to escalation", extra={"data": {"chat_id": chat_id, "error": str(e)}})
         raise HTTPException(
             status_code=500, detail=f"Error responding to escalation: {str(e)}"
         )
@@ -273,7 +273,7 @@ async def generate_chat_title(chat_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error generating title for {chat_id}: {e}")
+        logger.error("Error generating title", extra={"data": {"chat_id": chat_id, "error": str(e)}})
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -290,5 +290,5 @@ async def update_chat_title(chat_id: str, body: ChatTitleUpdateRequest):
         return {"title": title}
 
     except Exception as e:
-        logger.error(f"Error updating title for {chat_id}: {e}")
+        logger.error("Error updating title", extra={"data": {"chat_id": chat_id, "error": str(e)}})
         raise HTTPException(status_code=500, detail=str(e))

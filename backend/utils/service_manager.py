@@ -98,30 +98,27 @@ class ServiceManager:
                 return self.pg_pool
                 
             except ImportError as e:
-                error_msg = f"PostgreSQL checkpointer packages not available: {e}"
-                self.logger.error(error_msg)
-                raise RuntimeError(error_msg)
+                self.logger.error("PostgreSQL checkpointer packages not available", extra={"data": {"error": str(e)}})
+                raise RuntimeError(f"PostgreSQL checkpointer packages not available: {e}")
             except Exception as e:
-                error_msg = f"Failed to create PostgreSQL connection pool: {e}"
-                self.logger.error(error_msg, extra={
+                self.logger.error("Failed to create PostgreSQL connection pool", extra={
                     "data": {
                         "service": self.service_name,
                         "error": str(e)
                     }
                 })
-                raise RuntimeError(error_msg)
+                raise RuntimeError(f"Failed to create PostgreSQL connection pool: {e}")
                 
         except Exception as e:
             if isinstance(e, (ValueError, RuntimeError)):
                 raise  # Re-raise ValueError and RuntimeError as-is
-            error_msg = f"Error during PostgreSQL pool initialization: {e}"
-            self.logger.error(error_msg, extra={
+            self.logger.error("Error during PostgreSQL pool initialization", extra={
                 "data": {
                     "service": self.service_name,
                     "error": str(e)
                 }
             })
-            raise RuntimeError(error_msg)
+            raise RuntimeError(f"Error during PostgreSQL pool initialization: {e}")
     
     async def close_pg_pool(self):
         """Close PostgreSQL connection pool."""
@@ -137,7 +134,7 @@ class ServiceManager:
                 self.pg_pool = None
                 self.logger.info("PostgreSQL connection pool closed successfully")
             except Exception as e:
-                self.logger.error(f"Error closing PostgreSQL pool: {e}", extra={
+                self.logger.error("Error closing PostgreSQL pool", extra={
                     "data": {
                         "service": self.service_name,
                         "error": str(e)
@@ -164,7 +161,7 @@ class ServiceManager:
                     async for event in subscribe():
                         await event_handler(event)
                 except Exception as e:
-                    self.logger.error(f"Redis bridge error: {e}")
+                    self.logger.error("Redis bridge error", extra={"data": {"error": str(e)}})
             
             # Start the background task
             bridge_task = asyncio.create_task(redis_bridge())
@@ -172,7 +169,7 @@ class ServiceManager:
             self.logger.info("Started Redis event bridge")
             
         except Exception as e:
-            self.logger.error(f"Failed to start Redis event bridge: {e}")
+            self.logger.error("Failed to start Redis event bridge", extra={"data": {"error": str(e)}})
             app.state.redis_bridge_task = None
     
     async def stop_redis_bridge(self, app):
@@ -187,7 +184,7 @@ class ServiceManager:
             except asyncio.TimeoutError:
                 self.logger.warning("Redis bridge task shutdown timed out")
             except Exception as e:
-                self.logger.error(f"Error stopping Redis bridge task: {e}")
+                self.logger.error("Error stopping Redis bridge task", extra={"data": {"error": str(e)}})
     
     async def cleanup_mcp(self):
         """Clean up MCP connections."""
@@ -197,7 +194,7 @@ class ServiceManager:
         except asyncio.TimeoutError:
             self.logger.warning("MCP client cleanup timed out")
         except Exception as e:
-            self.logger.debug(f"MCP cleanup error: {e}")
+            self.logger.debug("MCP cleanup error", extra={"data": {"error": str(e)}})
     
     async def cleanup_database(self):
         """Clean up database connections."""
@@ -214,7 +211,7 @@ class ServiceManager:
             await close_redis()
             self.logger.info("Closed Redis connection")
         except Exception as e:
-            self.logger.error(f"Error closing Redis connection: {e}")
+            self.logger.error("Error closing Redis connection", extra={"data": {"error": str(e)}})
     
     async def cleanup_memory(self):
         """Clean up memory/Graphiti connections."""
@@ -225,7 +222,7 @@ class ServiceManager:
         except asyncio.TimeoutError:
             self.logger.warning("Memory cleanup timed out")
         except Exception as e:
-            self.logger.debug(f"Memory cleanup error (may not be initialized): {e}")
+            self.logger.debug("Memory cleanup error", extra={"data": {"error": str(e)}})
     
     async def ensure_database_initialized(self):
         """Ensure database is initialized by checking if core tables exist.
@@ -252,12 +249,11 @@ class ServiceManager:
                 self.logger.info("Database needs initialization, running init_db...")
                 from init_db import init_database
                 await init_database()
-                self.logger.info("✅ Database initialization completed")
+                self.logger.info("Database initialization completed")
                 
         except Exception as e:
-            error_msg = f"Database initialization failed: {e}"
-            self.logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            self.logger.error("Database initialization failed", extra={"data": {"error": str(e)}})
+            raise RuntimeError(f"Database initialization failed: {e}")
 
 
 async def create_prompt_updated_handler(reload_callback: Callable[[], Any]):
@@ -276,7 +272,7 @@ async def create_prompt_updated_handler(reload_callback: Callable[[], Any]):
         if event.type == "prompt_updated":
             try:
                 logger.info(
-                    f"Prompt updated, reloading agent: {event.data.get('prompt_file')}",
+                    "Prompt updated, reloading agent",
                     extra={
                         "data": {
                             "event_id": event.id,
@@ -288,7 +284,7 @@ async def create_prompt_updated_handler(reload_callback: Callable[[], Any]):
                 await reload_callback()
                 logger.info("Agent reloaded with updated prompt")
             except Exception as e:
-                logger.error(f"Failed to reload agent: {e}")
+                logger.error("Failed to reload agent", extra={"data": {"error": str(e)}})
     
     return handle_event
 

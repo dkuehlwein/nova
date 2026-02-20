@@ -37,7 +37,7 @@ async def enable_skill(skill_name: str) -> str:
     except SkillNotFoundError:
         available = skill_manager.list_skills()
         logger.warning(
-            f"Attempted to enable unknown skill: {skill_name}",
+            "Attempted to enable unknown skill",
             extra={"data": {"skill_name": skill_name, "available": available}},
         )
         if available:
@@ -46,7 +46,7 @@ async def enable_skill(skill_name: str) -> str:
             return f"Unknown skill '{skill_name}'. No skills are currently available."
     except Exception as e:
         logger.error(
-            f"Failed to load skill: {skill_name}",
+            "Failed to load skill",
             exc_info=True,
             extra={"data": {"skill_name": skill_name, "error": str(e)}},
         )
@@ -56,7 +56,7 @@ async def enable_skill(skill_name: str) -> str:
     tool_names = [f"{skill_name}__{t.name}" for t in skill.tools]
 
     logger.info(
-        f"Skill activated: {skill_name}",
+        "Skill activated",
         extra={
             "data": {
                 "skill_name": skill_name,
@@ -98,7 +98,7 @@ async def disable_skill(skill_name: str) -> str:
     if skill_name not in skill_manager.list_skills():
         available = skill_manager.list_skills()
         logger.warning(
-            f"Attempted to disable unknown skill: {skill_name}",
+            "Attempted to disable unknown skill",
             extra={"data": {"skill_name": skill_name, "available": available}},
         )
         if available:
@@ -107,7 +107,7 @@ async def disable_skill(skill_name: str) -> str:
             return f"Unknown skill '{skill_name}'. No skills are currently available."
 
     logger.info(
-        f"Skill deactivated: {skill_name}",
+        "Skill deactivated",
         extra={"data": {"skill_name": skill_name}},
     )
 
