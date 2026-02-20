@@ -208,7 +208,7 @@ class CalendarProcessor:
             return all_events
             
         except Exception as e:
-            logger.error(f"Error fetching today's events: {e}")
+            logger.error("Error fetching today's events", extra={"data": {"error": str(e)}})
             # Re-raise the exception so the main method can handle it
             raise
     
@@ -248,7 +248,7 @@ class CalendarProcessor:
             return meetings
             
         except Exception as e:
-            logger.error(f"Error analyzing meetings: {e}")
+            logger.error("Error analyzing meetings", extra={"data": {"error": str(e)}})
             return []
     
     async def _process_single_meeting(self, meeting: CalendarMeetingInfo, 
@@ -295,7 +295,7 @@ class CalendarProcessor:
             if prep_exists and config.update_existing_tasks:
                 # Update existing prep meeting
                 # We'd need to get the existing prep meeting ID for this
-                logger.info(f"Prep meeting exists for {meeting.meeting_id}, would update if we had event ID")
+                logger.info("Prep meeting exists for , would update if we had event ID", extra={"data": {"meeting_id": str(meeting.meeting_id)}})
                 process_result["updated"] = True
                 
             elif not prep_exists and config.create_tasks:

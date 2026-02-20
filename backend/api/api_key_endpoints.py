@@ -54,7 +54,7 @@ async def validate_api_key(
         if not settings:
             settings = await UserSettingsService.create_user_settings(db_session)
 
-        logger.info(f"Performing fresh validation for {key_type} (validation endpoint always validates)")
+        logger.info("Performing fresh validation for (validation endpoint always validates", extra={"data": {"key_type": key_type}})
 
         if key_type not in VALIDATION_METHODS:
             raise HTTPException(status_code=400, detail=f"Unknown key_type: {key_type}")
@@ -62,9 +62,9 @@ async def validate_api_key(
         result = await VALIDATION_METHODS[key_type](db_session, api_key, settings)
 
         if result["valid"]:
-            logger.info(f"{result['service'].title()} API key validation successful", extra={"data": result})
+            logger.info("API key validation successful", extra={"data": result})
         else:
-            logger.warning(f"{result['service'].title()} API key validation failed", extra={"data": result})
+            logger.warning("API key validation failed", extra={"data": result})
 
         return result
 
@@ -188,9 +188,9 @@ async def save_api_keys(
                         await llm_service.refresh_models_after_api_key_update(refresh_session)
 
                     updated_providers = [key for key in updated_keys if key in provider_keys]
-                    logger.info(f"Triggered model refresh after API key update for: {updated_providers}")
+                    logger.info("Triggered model refresh after API key update", extra={"data": {"updated_providers": updated_providers}})
                 except Exception as e:
-                    logger.warning(f"Failed to refresh models after API key update: {e}")
+                    logger.warning("Failed to refresh models after API key update", extra={"data": {"error": str(e)}})
 
         return {
             "status": "success",

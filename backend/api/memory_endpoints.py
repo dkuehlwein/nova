@@ -5,9 +5,10 @@ FastAPI endpoints for memory/knowledge graph operations.
 Provides REST API access to Nova's memory functionality.
 """
 
-import logging
 from fastapi import APIRouter, HTTPException
 from typing import Optional
+
+from utils.logging import get_logger
 
 from memory.memory_functions import (
     search_memory, add_memory, get_recent_episodes, get_recent_facts,
@@ -20,7 +21,7 @@ from models.memory import (
     MemoryEpisodesResponse, MemoryDeleteResponse
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 router = APIRouter()
 
 
@@ -42,10 +43,10 @@ async def search_memory_api(request: MemorySearchRequest):
         )
         
     except MemorySearchError as e:
-        logger.warning(f"API memory search failed: {e}")
+        logger.warning("API memory search failed", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error in memory search: {e}")
+        logger.error("Unexpected error in memory search", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -68,10 +69,10 @@ async def add_memory_api(request: MemoryAddRequest):
         )
         
     except MemoryAddError as e:
-        logger.warning(f"API memory add failed: {e}")
+        logger.warning("API memory add failed", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error in memory add: {e}")
+        logger.error("Unexpected error in memory add", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -88,10 +89,10 @@ async def get_episodes_api(limit: int = 10, group_id: Optional[str] = None):
         )
         
     except MemorySearchError as e:
-        logger.warning(f"API episodes retrieval failed: {e}")
+        logger.warning("API episodes retrieval failed", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error in episodes retrieval: {e}")
+        logger.error("Unexpected error in episodes retrieval", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -109,10 +110,10 @@ async def get_recent_facts_api(limit: int = 5, group_id: Optional[str] = None):
         )
 
     except MemorySearchError as e:
-        logger.warning(f"API recent facts retrieval failed: {e}")
+        logger.warning("API recent facts retrieval failed", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error in recent facts retrieval: {e}")
+        logger.error("Unexpected error in recent facts retrieval", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -123,10 +124,10 @@ async def delete_episode_api(episode_uuid: str):
         result = await delete_episode(episode_uuid)
         return MemoryDeleteResponse(**result)
     except MemoryDeleteError as e:
-        logger.warning(f"API memory episode delete failed: {e}")
+        logger.warning("API memory episode delete failed", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error in memory episode delete: {e}")
+        logger.error("Unexpected error in memory episode delete", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -137,8 +138,8 @@ async def delete_fact_api(fact_uuid: str):
         result = await delete_fact(fact_uuid)
         return MemoryDeleteResponse(**result)
     except MemoryDeleteError as e:
-        logger.warning(f"API memory fact delete failed: {e}")
+        logger.warning("API memory fact delete failed", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error in memory fact delete: {e}")
+        logger.error("Unexpected error in memory fact delete", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail="Internal server error") 

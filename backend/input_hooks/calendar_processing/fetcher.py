@@ -99,10 +99,10 @@ class CalendarFetcher:
                     elif isinstance(parsed, dict) and "events" in parsed:
                         events = parsed["events"]
                 except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse tool result as JSON: {tool_result}")
+                    logger.warning("Failed to parse tool result as JSON", extra={"data": {"tool_result": tool_result}})
                     return []
             else:
-                logger.warning(f"Unexpected calendar result format: {type(tool_result)}")
+                logger.warning("Unexpected calendar result format", extra={"data": {"type": type(tool_result)}})
                 return []
             
             logger.info(

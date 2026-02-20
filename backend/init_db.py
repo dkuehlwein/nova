@@ -7,7 +7,6 @@ Updated to work with the current system architecture including graphiti memory.
 """
 
 import asyncio
-import logging
 
 from database.database import db_manager, UserSettingsService
 from models.models import AgentStatus, AgentStatusEnum
@@ -17,9 +16,10 @@ from sqlalchemy import select
 # Import all model modules to ensure tables are registered with Base.metadata
 from models import system_health  # noqa: F401 - Required for table creation
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from utils.logging import configure_logging, get_logger
+
+configure_logging(service_name="nova-init-db")
+logger = get_logger(__name__)
 
 
 async def init_database():
@@ -36,7 +36,7 @@ async def init_database():
         logger.info("✅ Database initialization completed successfully")
         
     except Exception as e:
-        logger.error(f"❌ Database initialization failed: {e}")
+        logger.error("Database initialization failed", extra={"data": {"error": str(e)}})
         logger.exception("Database initialization failed with full traceback")
         raise
     finally:

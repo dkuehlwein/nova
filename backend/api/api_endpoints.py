@@ -8,7 +8,6 @@ Provides REST API endpoints that match the UI requirements:
 - Entity management (persons, projects, artifacts)
 """
 
-import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import UUID
@@ -31,7 +30,9 @@ from utils.task_cache import (
     invalidate_task_cache
 )
 from models.events import create_task_updated_event
+from utils.logging import get_logger
 
+logger = get_logger(__name__)
 
 # === Import Domain-Specific Pydantic Models ===
 from models.tasks import TaskCreate, TaskUpdate, TaskCommentCreate, TaskResponse
@@ -177,7 +178,7 @@ async def get_task_dashboard(
         return TaskDashboard(**dashboard_data)
         
     except Exception as e:
-        logging.error(f"Error getting task dashboard: {e}")
+        logger.error("Error getting task dashboard", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail="Failed to get task dashboard")
 
 
@@ -333,7 +334,7 @@ async def create_task(task_data: TaskCreate):
                 source="api-endpoint"
             ))
         except Exception as e:
-            logging.warning(f"Failed to publish task creation event: {e}")
+            logger.warning("Failed to publish task creation event", extra={"data": {"error": str(e)}})
 
         return task_to_response(task)
 
@@ -418,7 +419,7 @@ async def update_task(task_id: UUID, task_data: TaskUpdate):
                 source="api-endpoint"
             ))
         except Exception as e:
-            logging.warning(f"Failed to publish task update event: {e}")
+            logger.warning("Failed to publish task update event", extra={"data": {"error": str(e)}})
 
         return task_to_response(task)
 
@@ -457,12 +458,12 @@ async def add_task_completion_to_memory(session, task_id: UUID):
         
         memory_result = await add_memory(memory_text, f"Completed task: {full_task.title}")
         if memory_result["success"]:
-            logging.info(f"Added comprehensive memory for completed task {task_id}: {full_task.title}")
+            logger.info("Added comprehensive memory for completed task", extra={"data": {"task_id": str(task_id), "title": full_task.title}})
         else:
-            logging.warning(f"Failed to add memory for completed task {task_id}: {memory_result.get('message', 'Unknown error')}")
+            logger.warning("Failed to add memory for completed task", extra={"data": {"task_id": str(task_id), "error": memory_result.get('message', 'Unknown error')}})
             
     except Exception as memory_error:
-        logging.warning(f"Failed to update memory for completed task {task_id}: {memory_error}")
+        logger.warning("Failed to update memory for completed task", extra={"data": {"task_id": str(task_id), "error": str(memory_error)}})
 
 
 # Import cleanup function from conversation service to avoid circular dependency
@@ -507,8 +508,7 @@ async def delete_task(task_id: UUID):
             await cleanup_task_chat_data(str(task_id))
         except Exception as e:
             # Log but don't fail the deletion if chat cleanup fails
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to cleanup chat data for task {task_id}: {e}")
+            logger.warning("Failed to cleanup chat data for task", extra={"data": {"task_id": str(task_id), "error": str(e)}})
         
         # Invalidate cache and publish WebSocket event for real-time updates
         try:
@@ -520,7 +520,7 @@ async def delete_task(task_id: UUID):
                 source="api-endpoint"
             ))
         except Exception as e:
-            logging.warning(f"Failed to publish task deletion event: {e}")
+            logger.warning("Failed to publish task deletion event", extra={"data": {"error": str(e)}})
         
         return {"message": "Task and associated chat data deleted successfully"}
 
@@ -594,8 +594,6 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
     from langgraph.types import Command
     from tools.task_tools import update_task_tool
     
-    logger = logging.getLogger(__name__)
-    
     async with db_manager.get_session() as session:
         # Verify task exists
         task_result = await session.execute(select(Task).where(Task.id == task_id))
@@ -617,7 +615,7 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
         
         # Determine if this is an escalation response or regular message
         if state.interrupts:
-            logger.info(f"Handling escalation response for task {task_id}")
+            logger.info("Handling escalation response for task", extra={"data": {"task_id": str(task_id)}})
             
             # Resume the graph with the human's response using Command(resume=...)
             async for chunk in agent.astream(
@@ -625,9 +623,9 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
                 config=config,
                 stream_mode="updates"
             ):
-                logger.debug(f"Resume chunk: {chunk}")
+                logger.debug("Resume chunk", extra={"data": {"chunk": str(chunk)}})
         else:
-            logger.info(f"Adding regular message to task {task_id} chat")
+            logger.info("Adding regular message to task chat", extra={"data": {"task_id": str(task_id)}})
             
             # IMPORTANT: This endpoint should NOT be used for regular task conversations!
             # Regular conversations should use /chat/stream with the thread_id: core_agent_task_{task_id}
@@ -674,7 +672,7 @@ async def post_task_chat_message(task_id: UUID, message_data: TaskChatMessageCre
         }
         
     except Exception as e:
-        logger.error(f"Failed to post message to task {task_id} chat: {e}")
+        logger.error("Failed to post message to task chat", extra={"data": {"task_id": str(task_id), "error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to post message: {str(e)}")
 
 

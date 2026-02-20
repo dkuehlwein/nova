@@ -119,13 +119,13 @@ async def lifespan(app: FastAPI):
                 else:
                     service_manager.logger.warning("Model initialization completed with issues")
         except Exception as e:
-            service_manager.logger.error(f"Failed to initialize LLM models: {e}")
+            service_manager.logger.error("Failed to initialize LLM models", extra={"data": {"error": str(e)}})
             # Don't fail startup if model initialization fails
         
         service_manager.logger.info("Nova Backend Server started successfully")
         
     except Exception as e:
-        service_manager.logger.error(f"Failed to start server: {e}")
+        service_manager.logger.error("Failed to start server", extra={"data": {"error": str(e)}})
         raise
     
     yield
@@ -224,7 +224,7 @@ async def health_check():
             "chat_checkpointer": "postgresql" if service_manager.pg_pool else "memory"
         }
     except Exception as e:
-        service_manager.logger.error(f"Health check failed: {e}")
+        service_manager.logger.error("Health check failed", extra={"data": {"error": str(e)}})
         return {
             "status": "degraded",
             "service": "nova-backend", 

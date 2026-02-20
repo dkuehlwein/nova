@@ -52,7 +52,7 @@ async def authenticate_ms_graph(
         page = await context.new_page()
         page.set_default_timeout(30000)
 
-        logger.info(f"Navigating to MS Graph auth: {auth_url}")
+        logger.info("Navigating to MS Graph auth", extra={"data": {"auth_url": auth_url}})
         await page.goto(auth_url, wait_until="networkidle")
 
         page_content = await page.content()
@@ -92,7 +92,7 @@ async def authenticate_ms_graph(
         return {"success": True}
 
     except Exception as e:
-        logger.error(f"MS Graph browser auth error: {e}")
+        logger.error("MS Graph browser auth error", extra={"data": {"error": str(e)}})
         return {"success": False, "error": str(e)}
 
     finally:

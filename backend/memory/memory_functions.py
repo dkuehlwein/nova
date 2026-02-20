@@ -5,7 +5,6 @@ Core functions for memory operations - search, add, and retrieval.
 These functions provide the business logic for Nova's knowledge graph operations.
 """
 
-import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 
@@ -17,8 +16,9 @@ from memory.entity_types import (
     NOVA_EXTRACTION_INSTRUCTIONS,
 )
 from config import settings
+from utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def search_memory(query: str, limit: int = None, group_id: str = None) -> Dict[str, Any]:
@@ -71,7 +71,7 @@ async def search_memory(query: str, limit: int = None, group_id: str = None) -> 
             for edge in results
         ]
         
-        logger.debug(f"Memory search for '{query}' returned {len(formatted_results)} results")
+        logger.debug("Memory search returned results", extra={"data": {"query": query, "result_count": len(formatted_results)}})
         
         return {
             "success": True,
@@ -82,7 +82,7 @@ async def search_memory(query: str, limit: int = None, group_id: str = None) -> 
         }
         
     except Exception as e:
-        logger.warning(f"Memory search failed for query '{query}': {str(e)}")
+        logger.warning("Memory search failed", extra={"data": {"query": query, "error": str(e)}})
         raise MemorySearchError(f"Failed to search memory: {str(e)}")
 
 
@@ -139,8 +139,7 @@ async def add_memory(
             for node in result.nodes
         ]
         
-        logger.info(f"Added memory episode: {result.episode.uuid}, "
-                   f"created {len(result.nodes)} entities, {len(result.edges)} relationships")
+        logger.info("Added memory episode", extra={"data": {"episode_uuid": str(result.episode.uuid), "nodes_created": len(result.nodes), "edges_created": len(result.edges)}})
         
         return {
             "success": True,
@@ -155,8 +154,7 @@ async def add_memory(
         
         # Handle specific Gemini API errors more gracefully
         if "Failed to parse structured response" in error_msg:
-            logger.warning(f"Gemini API structured response failed for content: '{content[:100]}...'. "
-                          f"This might be due to content filtering or API limits. Error: {error_msg}")
+            logger.warning("Gemini API structured response failed", extra={"data": {"content_preview": content[:100], "error": error_msg}})
             
             # Return a partial success response rather than failing completely
             return {
@@ -169,7 +167,7 @@ async def add_memory(
                 "entities": []
             }
         
-        logger.error(f"Failed to add memory content '{content[:100]}...': {error_msg}")
+        logger.error("Failed to add memory content", extra={"data": {"content_preview": content[:100], "error": error_msg}})
         raise MemoryAddError(f"Failed to add memory: {error_msg}")
 
 
@@ -203,7 +201,7 @@ async def get_recent_episodes(limit: int = 10, group_id: str = None) -> Dict[str
         }
 
     except Exception as e:
-        logger.warning(f"Failed to retrieve recent episodes: {str(e)}")
+        logger.warning("Failed to retrieve recent episodes", extra={"data": {"error": str(e)}})
         raise MemorySearchError(f"Failed to retrieve episodes: {str(e)}")
 
 
@@ -259,7 +257,7 @@ async def get_recent_facts(limit: int = 5, group_id: Optional[str] = None) -> Di
             for record in records
         ]
 
-        logger.debug(f"Retrieved {len(formatted_results)} recent facts")
+        logger.debug("Retrieved recent facts", extra={"data": {"formatted_results_count": len(formatted_results)}})
 
         return {
             "success": True,
@@ -269,7 +267,7 @@ async def get_recent_facts(limit: int = 5, group_id: Optional[str] = None) -> Di
         }
 
     except Exception as e:
-        logger.warning(f"Failed to retrieve recent facts: {str(e)}")
+        logger.warning("Failed to retrieve recent facts", extra={"data": {"error": str(e)}})
         raise MemorySearchError(f"Failed to retrieve recent facts: {str(e)}")
 
 
@@ -296,7 +294,7 @@ async def delete_episode(episode_uuid: str) -> Dict[str, Any]:
 
         await client.remove_episode(episode_uuid)
 
-        logger.info(f"Deleted memory episode: {episode_uuid}")
+        logger.info("Deleted memory episode", extra={"data": {"episode_uuid": episode_uuid}})
 
         return {
             "success": True,
@@ -304,7 +302,7 @@ async def delete_episode(episode_uuid: str) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"Failed to delete episode {episode_uuid}: {str(e)}")
+        logger.error("Failed to delete episode", extra={"data": {"episode_uuid": episode_uuid, "error": str(e)}})
         raise MemoryDeleteError(f"Failed to delete episode: {str(e)}")
 
 
@@ -343,14 +341,14 @@ async def delete_fact(fact_uuid: str) -> Dict[str, Any]:
             deleted_count = record["deleted"] if record else 0
 
         if deleted_count > 0:
-            logger.info(f"Deleted fact/edge: {fact_uuid}")
+            logger.info("Deleted fact/edge", extra={"data": {"fact_uuid": fact_uuid}})
             return {
                 "success": True,
                 "deleted_uuid": fact_uuid,
                 "deleted_count": deleted_count
             }
         else:
-            logger.warning(f"No fact found with UUID: {fact_uuid}")
+            logger.warning("No fact found with UUID", extra={"data": {"fact_uuid": fact_uuid}})
             return {
                 "success": False,
                 "error": "not_found",
@@ -358,5 +356,5 @@ async def delete_fact(fact_uuid: str) -> Dict[str, Any]:
             }
 
     except Exception as e:
-        logger.error(f"Failed to delete fact {fact_uuid}: {str(e)}")
+        logger.error("Failed to delete fact", extra={"data": {"fact_uuid": fact_uuid, "error": str(e)}})
         raise MemoryDeleteError(f"Failed to delete fact: {str(e)}") 

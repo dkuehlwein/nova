@@ -264,5 +264,5 @@ class EmailFetcher:
         elif isinstance(result, dict) and "data" in result:
             return result["data"] if isinstance(result["data"], list) else []
         else:
-            logger.warning(f"Unexpected email API response format: {type(result)}")
+            logger.warning("Unexpected email API response format", extra={"data": {"type": type(result)}})
             return []

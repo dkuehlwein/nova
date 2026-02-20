@@ -38,7 +38,7 @@ class OutlookEmailHook(BaseInputHook):
         """Lazy initialization of Outlook processor."""
         if self._processor is None:
             self._processor = OutlookProcessor()
-            logger.debug(f"Initialized Outlook processor for hook {self.hook_name}")
+            logger.debug("Initialized Outlook processor for hook", extra={"data": {"hook_name": self.hook_name}})
         return self._processor
 
     async def fetch_items(self) -> List[Dict[str, Any]]:
@@ -153,7 +153,7 @@ class OutlookEmailHook(BaseInputHook):
 
             # Check if hook is enabled
             if not self.config.enabled:
-                logger.info(f"Outlook email hook {self.hook_name} is disabled, skipping")
+                logger.info("Outlook email hook is disabled, skipping", extra={"data": {"hook_name": self.hook_name}})
                 return result
 
             # Use OutlookProcessor for the full pipeline

@@ -53,16 +53,16 @@ def add_human_in_the_loop(
     )
     async def call_tool_with_interrupt(config: RunnableConfig = None, **tool_input):
         """Wrapped tool function that requests human approval via interrupt."""
-        logger.info(f"Tool approval requested for {tool.name}", extra={
+        logger.info("Tool approval requested", extra={"data": {
             "tool_name": tool.name,
             "tool_args": tool_input
-        })
+        }})
         
         # Create approval question similar to ask_user pattern
         approval_question = f"Nova wants to use the tool: {tool.name}\n\nParameters: {tool_input}\n\nDo you approve this action?"
         
         # Call interrupt to pause execution and request human input - using same pattern as ask_user
-        logger.info(f"Calling interrupt() for tool {tool.name}")
+        logger.info("Calling interrupt for tool", extra={"data": {"name": tool.name}})
         user_response = interrupt({
             "type": "tool_approval_request",
             "tool_name": tool.name,
@@ -71,7 +71,7 @@ def add_human_in_the_loop(
             "instructions": "Please approve or deny this tool action to continue."
         })
             
-        logger.info(f"Received interrupt response for {tool.name}: {user_response}")
+        logger.info("Received interrupt response", extra={"data": {"name": tool.name, "user_response": user_response}})
         
         # Handle LangGraph interrupt response format (could be direct value or list)
         response_data = user_response
@@ -85,38 +85,38 @@ def add_human_in_the_loop(
             response_value = str(response_data).lower().strip()
         
         if response_value == "approve":
-            logger.info(f"Tool {tool.name} approved - executing with original args")
+            logger.info("Tool approved - executing with original args", extra={"data": {"name": tool.name}})
             tool_response = await tool.ainvoke(tool_input, config)
         elif response_value == "always_allow":
-            logger.info(f"Tool {tool.name} approved with always allow - adding to config")
+            logger.info("Tool approved with always allow - adding to config", extra={"data": {"name": tool.name}})
             # Add permission to config for future auto-approval
             from utils.tool_permissions_manager import permission_config
             try:
                 await permission_config.add_permission(tool.name, tool_input)
-                logger.info(f"Added always allow permission for {tool.name}")
+                logger.info("Added always allow permission", extra={"data": {"name": tool.name}})
                 # Clear the chat agent cache so the permission takes effect immediately
                 # Without this, the current chat would still use the old cached wrapped tools
                 from agent.chat_agent import clear_chat_agent_cache
                 clear_chat_agent_cache()
                 logger.info("Cleared chat agent cache for immediate permission effect")
             except Exception as e:
-                logger.error(f"Failed to add permission for {tool.name}: {e}")
+                logger.error("Failed to add permission", extra={"data": {"name": tool.name, "error": str(e)}})
             # Still execute the tool this time
             tool_response = await tool.ainvoke(tool_input, config)
         else:
             # Default to deny for any other response (including explicit "deny")
-            logger.info(f"Tool {tool.name} denied - response: {response_value}")
+            logger.info("Tool denied - response", extra={"data": {"name": tool.name, "response_value": response_value}})
             tool_response = f"Tool {tool.name} was denied by user. Response: {response_data}"
 
-        logger.info(f"Tool {tool.name} execution completed", extra={"response_preview": str(tool_response)[:100]})
+        logger.info("Tool execution completed", extra={"data": {"tool_name": tool.name, "response_preview": str(tool_response)[:100]}})
         return tool_response
 
     return call_tool_with_interrupt
 
 
 def request_tool_approval(tool_name: str, tool_args: Dict[str, Any]) -> str:
-    logger.info(f"Requesting tool approval for: {tool_name}")
-    logger.info(f"About to call interrupt() for tool approval")
+    logger.info("Requesting tool approval", extra={"data": {"tool_name": tool_name}})
+    logger.info("About to call interrupt() for tool approval")
 
     # Use LangGraph interrupt with tool approval type
     user_response = interrupt({
@@ -125,7 +125,7 @@ def request_tool_approval(tool_name: str, tool_args: Dict[str, Any]) -> str:
         "tool_args": tool_args
     })
 
-    logger.info(f"interrupt() returned: {user_response} (type: {type(user_response)})")
+    logger.info("interrupt returned: (type", extra={"data": {"user_response": user_response, "type": type(user_response)}})
 
     # Process the user response
     if isinstance(user_response, str):
@@ -154,14 +154,14 @@ def wrap_tools_for_approval(tools: list[BaseTool]) -> list[BaseTool]:
 
     for tool in tools:
         if permission_config.is_tool_denied(tool.name):
-            logger.info(f"Excluding denied tool '{tool.name}'")
+            logger.info("Excluding denied tool ''", extra={"data": {"name": tool.name}})
             denied_count += 1
         elif not permission_config.is_tool_allowed(tool.name):
-            logger.info(f"Wrapping tool '{tool.name}' for approval")
+            logger.info("Wrapping tool '' for approval", extra={"data": {"name": tool.name}})
             wrapped_tools.append(add_human_in_the_loop(tool))
             wrapped_count += 1
         else:
             wrapped_tools.append(tool)
 
-    logger.info(f"Tools: {len(wrapped_tools)} available ({wrapped_count} wrapped for approval, {denied_count} denied/excluded)")
+    logger.info("Tools: available ( wrapped for approval, denied/excluded", extra={"data": {"wrapped_tools_count": len(wrapped_tools), "wrapped_count": wrapped_count, "denied_count": denied_count}})
     return wrapped_tools

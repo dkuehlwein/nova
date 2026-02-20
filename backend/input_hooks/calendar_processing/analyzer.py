@@ -108,13 +108,13 @@ class MeetingAnalyzer:
             end_time = parse_datetime(event.get('end', {}), source_type="calendar", fallback_to_now=False)
             
             if not start_time or not end_time:
-                logger.debug(f"Skipping event {event_id} - invalid date/time")
+                logger.debug("Skipping event - invalid date/time", extra={"data": {"event_id": event_id}})
                 return None
             
             # Filter by target date - only process events that occur on the target date
             event_date = start_time.date()
             if event_date != target_date:
-                logger.debug(f"Skipping event {event_id} - not on target date {target_date} (event on {event_date})")
+                logger.debug("Skipping event - not on target date (event", extra={"data": {"event_id": event_id, "target_date": target_date, "event_date": event_date}})
                 return None
             
             # Check if it's an all-day event
@@ -124,7 +124,7 @@ class MeetingAnalyzer:
                         (isinstance(start_field, dict) and 'date' in start_field)
             
             if is_all_day and not include_all_day:
-                logger.debug(f"Skipping all-day event {event_id}")
+                logger.debug("Skipping all-day event", extra={"data": {"event_id": event_id}})
                 return None
             
             # Calculate duration
@@ -242,7 +242,7 @@ class MeetingAnalyzer:
             return True
             
         except Exception as e:
-            logger.error(f"Error determining prep need for meeting {meeting.meeting_id}: {e}")
+            logger.error("Error determining prep need for meeting", extra={"data": {"meeting_id": str(meeting.meeting_id), "error": str(e)}})
             # Default to including the meeting if there's an error
             return True
     

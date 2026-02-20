@@ -151,7 +151,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
             
             # Check if hook is enabled
             if not self.config.enabled:
-                logger.info(f"Hook {self.hook_name} is disabled, skipping")
+                logger.info("Hook is disabled, skipping", extra={"data": {"hook_name": self.hook_name}})
                 return result
             
             # Fetch raw items from source
@@ -503,7 +503,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
                 return task_data.get("id")
             return None
         except Exception as e:
-            logger.error(f"Failed to extract task ID from result: {e}")
+            logger.error("Failed to extract task ID from result", extra={"data": {"error": str(e)}})
             return None
     
     def get_stats(self) -> Dict[str, Any]:

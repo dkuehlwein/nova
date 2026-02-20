@@ -116,11 +116,11 @@ class LLMModelService:
                         return True, result
                     else:
                         error_text = await response.text()
-                        logger.error(f"LiteLLM API error [{method} {endpoint}]: {response.status} - {error_text}")
+                        logger.error("LiteLLM API error", extra={"data": {"method": method, "endpoint": endpoint, "status": response.status, "error_text": error_text}})
                         return False, None
                         
         except Exception as e:
-            logger.error(f"Error making LiteLLM request [{method} {endpoint}]: {e}")
+            logger.error("Error making LiteLLM request", extra={"data": {"method": method, "endpoint": endpoint, "error": str(e)}})
             return False, None
     
     
@@ -153,14 +153,14 @@ class LLMModelService:
         model_exists = await self._model_exists_in_litellm(model_name)
         
         if model_exists:
-            logger.info(f"Model {model_name} already exists in LiteLLM - skipping")
+            logger.info("Model already exists in LiteLLM - skipping", extra={"data": {"model_name": model_name}})
             return True, False  # Available but not added
         
         success, _ = await self._make_litellm_request("POST", "/model/new", model_config)
         if success:
-            logger.info(f"Successfully added model {model_name} to LiteLLM")
+            logger.info("Successfully added model to LiteLLM", extra={"data": {"model_name": model_name}})
         else:
-            logger.error(f"Failed to add model {model_name} to LiteLLM")
+            logger.error("Failed to add model to LiteLLM", extra={"data": {"model_name": model_name}})
         return success, success  # If successful, it was added
     
     async def _model_exists_in_litellm(self, model_name: str) -> bool:
@@ -174,12 +174,12 @@ class LLMModelService:
             if success and result:
                 existing_models = [model.get("model_name", "") for model in result.get("data", [])]
                 exists = model_name in existing_models
-                logger.debug(f"Model existence check for '{model_name}': {exists} (found {len(existing_models)} total models)")
+                logger.debug("Model existence check for '': (found total models", extra={"data": {"model_name": model_name, "exists": exists, "existing_models_count": len(existing_models)}})
                 return exists
-            logger.warning(f"Failed to get model list for existence check of {model_name}")
+            logger.warning("Failed to get model list for existence check", extra={"data": {"model_name": model_name}})
             return False
         except Exception as e:
-            logger.warning(f"Failed to check if model {model_name} exists: {e}")
+            logger.warning("Failed to check if model exists", extra={"data": {"model_name": model_name, "error": str(e)}})
             return False  # Assume it doesn't exist if we can't check
     
     async def update_fallback_config(self) -> bool:
@@ -203,7 +203,7 @@ class LLMModelService:
                 logger.info("Google API key not valid - skipping Gemini model initialization")
                 return 0
         except Exception as e:
-            logger.info(f"Google API key validation failed: {e} - skipping Gemini model initialization")
+            logger.info("Google API key validation failed: - skipping Gemini model initialization", extra={"data": {"error": str(e)}})
             return 0
         
         google_api_key = settings.GOOGLE_API_KEY.get_secret_value() if settings.GOOGLE_API_KEY else None
@@ -218,7 +218,7 @@ class LLMModelService:
             if success:
                 if was_added:
                     success_count += 1
-                    logger.info(f"Added new model: {model_name}")
+                    logger.info("Added new model", extra={"data": {"model_name": model_name}})
                 # If not added, it already existed (logged by add_model_to_litellm)
         
         return success_count
@@ -235,7 +235,7 @@ class LLMModelService:
                 logger.info("OpenRouter API key not valid - skipping OpenRouter model initialization")
                 return 0
         except Exception as e:
-            logger.info(f"OpenRouter API key validation failed: {e} - skipping OpenRouter model initialization")
+            logger.info("OpenRouter API key validation failed: - skipping OpenRouter model initialization", extra={"data": {"error": str(e)}})
             return 0
         
         openrouter_api_key = settings.OPENROUTER_API_KEY.get_secret_value() if settings.OPENROUTER_API_KEY else None
@@ -250,7 +250,7 @@ class LLMModelService:
             if success:
                 if was_added:
                     success_count += 1
-                    logger.info(f"Added new model: {model_name}")
+                    logger.info("Added new model", extra={"data": {"model_name": model_name}})
                 # If not added, it already existed (logged by add_model_to_litellm)
         
         return success_count
@@ -272,7 +272,7 @@ class LLMModelService:
                 url = f"{settings.LLM_API_BASE_URL}/v1/models"
                 async with http_session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
                     if response.status != 200:
-                        logger.info(f"Local LLM API not available at {settings.LLM_API_BASE_URL} - skipping")
+                        logger.info("Local LLM API not available at - skipping", extra={"data": {"LLM_API_BASE_URL": settings.LLM_API_BASE_URL}})
                         return 0
 
                     result = await response.json()
@@ -310,12 +310,12 @@ class LLMModelService:
                         success, was_added = await self.add_model_to_litellm(model_config)
                         if success and was_added:
                             success_count += 1
-                            logger.info(f"Added local model: {model_id}")
+                            logger.info("Added local model", extra={"data": {"model_id": str(model_id)}})
 
                     return success_count
 
         except Exception as e:
-            logger.info(f"Could not connect to local LLM API: {e} - skipping local model initialization")
+            logger.info("Could not connect to local LLM API: - skipping local model initialization", extra={"data": {"error": str(e)}})
             return 0
 
     async def initialize_default_models_in_litellm(self, db: AsyncSession) -> bool:
@@ -342,14 +342,14 @@ class LLMModelService:
             # Update fallback configuration if we have any models
             if total_models > 0:
                 await self.update_fallback_config()
-                logger.info(f"Successfully initialized {total_models} models: {local_count} local, {gemini_count} Gemini, {openrouter_count} OpenRouter")
+                logger.info("Successfully initialized models: local, Gemini, OpenRouter", extra={"data": {"total_models": total_models, "local_count": local_count, "gemini_count": gemini_count, "openrouter_count": openrouter_count}})
                 return True
             else:
                 logger.info("No working models available - check API keys")
                 return True
 
         except Exception as e:
-            logger.error(f"Error initializing models: {e}")
+            logger.error("Error initializing models", extra={"data": {"error": str(e)}})
             return False
     
     async def get_available_models(self) -> Dict[str, List[Dict[str, str]]]:
@@ -400,7 +400,7 @@ class LLMModelService:
                 else:
                     chat_models.append(model_dict)
                     
-            logger.info(f"Retrieved {len(all_models)} configured models from LiteLLM: {len(chat_models)} chat, {len(embedding_models)} embedding")
+            logger.info("Retrieved configured models from LiteLLM: chat, embedding", extra={"data": {"all_models_count": len(all_models), "chat_models_count": len(chat_models), "embedding_models_count": len(embedding_models)}})
             
             return {
                 "chat_models": chat_models,
@@ -409,7 +409,7 @@ class LLMModelService:
             }
         
         except Exception as e:
-            logger.error(f"Error getting models from LiteLLM: {e}")
+            logger.error("Error getting models from LiteLLM", extra={"data": {"error": str(e)}})
             return {"chat_models": [], "embedding_models": [], "all_models": []}
     
     # Health checks now handled by system_endpoints.py - no duplication
@@ -427,7 +427,7 @@ class LLMModelService:
             return success
         
         except Exception as e:
-            logger.error(f"Error refreshing models after API key update: {e}")
+            logger.error("Error refreshing models after API key update", extra={"data": {"error": str(e)}})
             return False
     
     def get_available_models_sync(self) -> Optional[dict]:

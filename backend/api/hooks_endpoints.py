@@ -33,7 +33,7 @@ def _get_hook_stats_from_redis(hook_name: str) -> dict:
             return json.loads(data)
         return {}
     except Exception as e:
-        logger.warning(f"Failed to get hook stats from Redis: {e}")
+        logger.warning("Failed to get hook stats from Redis", extra={"data": {"error": str(e)}})
         return {}
 
 
@@ -227,7 +227,7 @@ async def get_hook(hook_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get hook {hook_name}", exc_info=True)
+        logger.error("Failed to get hook", exc_info=True, extra={"data": {"hook_name": hook_name}})
         raise HTTPException(status_code=500, detail=f"Failed to get hook: {str(e)}")
 
 
@@ -285,7 +285,7 @@ async def update_hook(hook_name: str, update: HookConfigUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update hook {hook_name}", exc_info=True)
+        logger.error("Failed to update hook", exc_info=True, extra={"data": {"hook_name": hook_name}})
         raise HTTPException(status_code=500, detail=f"Failed to update hook: {str(e)}")
 
 
@@ -326,5 +326,5 @@ async def trigger_hook(hook_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to trigger hook {hook_name}", exc_info=True)
+        logger.error("Failed to trigger hook", exc_info=True, extra={"data": {"hook_name": hook_name}})
         raise HTTPException(status_code=500, detail=f"Failed to trigger hook: {str(e)}")

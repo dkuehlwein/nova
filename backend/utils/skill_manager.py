@@ -291,7 +291,7 @@ class SkillManager:
                     self._scan_skills()
                     logger.info("Skill registry reloaded via file watcher")
                 except Exception as e:
-                    logger.error(f"Failed to reload skill registry: {e}")
+                    logger.error("Failed to reload skill registry", extra={"data": {"error": str(e)}})
 
             self._pending_reload = threading.Timer(self.debounce_seconds, do_reload)
             self._pending_reload.start()

@@ -126,7 +126,7 @@ class GoogleAPIStatusChecker(ExternalServiceStatusChecker):
             if response and response.text and len(response.text.strip()) > 0:
                 is_valid = True
         except Exception as e:
-            logger.warning(f"Google API validation failed: {e}")
+            logger.warning("Google API validation failed", extra={"data": {"error": str(e)}})
             is_valid = False
 
         # Get available Gemini models
@@ -217,7 +217,7 @@ class LiteLLMStatusChecker(ExternalServiceStatusChecker):
                         except (ValueError, aiohttp.ContentTypeError):
                             is_valid = False
         except Exception as e:
-            logger.warning(f"LiteLLM API validation failed: {e}")
+            logger.warning("LiteLLM API validation failed", extra={"data": {"error": str(e)}})
 
         return {"valid": is_valid, "base_url": base_url}
 
@@ -303,7 +303,7 @@ class OpenRouterStatusChecker(ExternalServiceStatusChecker):
                         models_count = len(models_data.get("data", []))
                         is_valid = True
         except Exception as e:
-            logger.warning(f"OpenRouter API validation failed: {e}")
+            logger.warning("OpenRouter API validation failed", extra={"data": {"error": str(e)}})
 
         return {"valid": is_valid, "models_count": models_count}
 

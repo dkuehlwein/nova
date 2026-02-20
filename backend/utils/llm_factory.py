@@ -87,7 +87,7 @@ def get_chat_llm_config() -> Dict[str, Any]:
         from database.database import UserSettingsService
         user_settings = UserSettingsService.get_llm_settings_sync()
         elapsed_ms = (time.time() - t0) * 1000
-        logger.info(f"⏱️ TIMING: get_llm_settings_sync took {elapsed_ms:.2f}ms")
+        logger.info("⏱️ TIMING: get_llm_settings_sync took ms", extra={"data": {"elapsed_ms": elapsed_ms}})
     except Exception:
         user_settings = {}
 

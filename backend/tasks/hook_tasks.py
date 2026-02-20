@@ -74,7 +74,7 @@ def _update_hook_stats_in_redis(hook_name: str, result: Dict[str, Any], success:
         redis_client.setex(key, HOOK_STATS_TTL, json.dumps(stats))
 
     except Exception as e:
-        logger.warning(f"Failed to update hook stats in Redis: {e}")
+        logger.warning("Failed to update hook stats in Redis", extra={"data": {"error": str(e)}})
 
 
 @celery_app.task(

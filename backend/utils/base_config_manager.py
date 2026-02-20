@@ -143,7 +143,7 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
                     self._load_config()
                     self._publish_config_event("updated", "file-watcher")
                 except Exception as e:
-                    logger.error(f"Failed to reload config: {e}")
+                    logger.error("Failed to reload config", extra={"data": {"error": str(e)}})
             
             self._pending_reload = threading.Timer(
                 self.debounce_seconds,
@@ -180,7 +180,7 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
                     }
                 )
         except Exception as e:
-            logger.error(f"Failed to publish config event: {e}")
+            logger.error("Failed to publish config event", extra={"data": {"error": str(e)}})
     
     def get_config(self) -> ConfigType:
         """Get the current configuration."""
@@ -334,7 +334,7 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
         global _shared_observers, _observer_handlers
 
         if self._observer:
-            logger.warning(f"File watcher already started for {self.config_name}")
+            logger.warning("File watcher already started", extra={"data": {"config_name": self.config_name}})
             return
 
         watch_dir = str(self.config_path.parent)

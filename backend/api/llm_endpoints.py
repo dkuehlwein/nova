@@ -27,7 +27,7 @@ async def list_models():
         }
     
     except Exception as e:
-        logger.error(f"Error listing LLM models: {str(e)}")
+        logger.error("Error listing LLM models", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail="Failed to list LLM models")
 
 
@@ -45,5 +45,5 @@ async def initialize_default_models(
             raise HTTPException(status_code=500, detail="Failed to initialize models")
     
     except Exception as e:
-        logger.error(f"Error initializing models: {str(e)}")
+        logger.error("Error initializing models", extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail="Failed to initialize models")

@@ -40,10 +40,10 @@ class GoogleCalendarInputHook(BaseInputHook):
         if self._calendar_processor is None:
             try:
                 self._calendar_processor = CalendarProcessor()
-                logger.debug(f"Initialized calendar processor for hook {self.hook_name}")
+                logger.debug("Initialized calendar processor for hook", extra={"data": {"hook_name": self.hook_name}})
                 
             except Exception as e:
-                logger.error(f"Failed to initialize calendar components: {e}")
+                logger.error("Failed to initialize calendar components", extra={"data": {"error": str(e)}})
                 raise
     
     async def fetch_items(self) -> List[Dict[str, Any]]:
@@ -188,7 +188,7 @@ class GoogleCalendarInputHook(BaseInputHook):
             
             # Check if hook is enabled
             if not self.config.enabled:
-                logger.info(f"Calendar hook {self.hook_name} is disabled, skipping")
+                logger.info("Calendar hook is disabled, skipping", extra={"data": {"hook_name": self.hook_name}})
                 return result
             
             # Process calendar meetings directly

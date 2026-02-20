@@ -89,7 +89,7 @@ class ChatService:
             return len(messages) == 0  # Checkpoint exists but no messages yet
 
         except Exception as e:
-            logger.warning(f"Could not inspect checkpoints for {thread_id}: {e}")
+            logger.warning("Could not inspect checkpoints", extra={"data": {"thread_id": thread_id, "error": str(e)}})
             return False  # Be safe - treat as not-first to avoid memory search on errors
 
     async def inject_memory_context(self, user_message: str) -> List:
@@ -114,7 +114,7 @@ class ChatService:
                     f"Found {len(memory_facts)} relevant memories:\n"
                     + "\n".join([f"- {fact}" for fact in memory_facts])
                 )
-                logger.info(f"Found {len(memory_facts)} memory facts for tool injection")
+                logger.info("Found memory facts for tool injection", extra={"data": {"memory_facts_count": len(memory_facts)}})
             else:
                 tool_result = "No relevant memories found for your query."
                 logger.debug("No memory context found for first turn")
@@ -140,7 +140,7 @@ class ChatService:
             return [ai_tool_call, tool_result_message]
 
         except Exception as memory_error:
-            logger.warning(f"Failed to search memory for tool injection: {memory_error}")
+            logger.warning("Failed to search memory for tool injection", extra={"data": {"memory_error": memory_error}})
             return []
 
     async def stream_chat(
@@ -213,7 +213,7 @@ class ChatService:
                                                 break
                             break
         except Exception as state_error:
-            logger.warning(f"Could not check for interrupts: {state_error}")
+            logger.warning("Could not check for interrupts", extra={"data": {"state_error": state_error}})
 
         # Inject memory search tool call on first turn (skip if resuming from interrupt)
         memory_tool_messages = []
@@ -238,9 +238,9 @@ class ChatService:
             # Inject memory tool messages if this is first turn
             if memory_tool_messages:
                 messages.extend(memory_tool_messages)
-                logger.info(f"Injected {len(memory_tool_messages)} memory tool messages")
+                logger.info("Injected memory tool messages", extra={"data": {"memory_tool_messages_count": len(memory_tool_messages)}})
 
-            logger.debug(f"Converted {len(messages)} messages to LangChain format")
+            logger.debug("Converted messages to LangChain format", extra={"data": {"messages_count": len(messages)}})
 
         log_timing("total_pre_stream_setup", request_start)
         logger.debug(
@@ -273,7 +273,7 @@ class ChatService:
                         "node": "agent",
                     },
                 }
-                logger.info(f"Yielded memory AI message content: {ai_msg.content[:50]}...")
+                logger.info("Yielded memory AI message content", extra={"data": {"content_preview": ai_msg.content[:50]}})
 
             # Then yield the tool calls
             if hasattr(ai_msg, "tool_calls") and ai_msg.tool_calls:
@@ -287,7 +287,7 @@ class ChatService:
                             "timestamp": timestamp,
                         },
                     }
-                    logger.info(f"Yielded memory tool call: {tool_call['name']}")
+                    logger.info("Yielded memory tool call", extra={"data": {"tool_call_preview": tool_call['name']}})
 
             # Get the tool result message (second message)
             tool_result_msg = memory_tool_messages[1]
@@ -315,10 +315,10 @@ class ChatService:
                 from langgraph.types import Command
 
                 stream_input = Command(resume=user_response)
-                logger.info(f"Resuming from interrupt with user response: {user_response}")
+                logger.info("Resuming from interrupt with user response", extra={"data": {"user_response": user_response}})
             else:
                 stream_input = {"messages": messages}
-                logger.info(f"Starting new conversation with {len(messages)} messages")
+                logger.info("Starting new conversation with messages", extra={"data": {"messages_count": len(messages)}})
 
             async for chunk in chat_agent.astream(
                 stream_input, config=config, stream_mode="updates"
@@ -331,14 +331,14 @@ class ChatService:
                         f"⏱️ TIMING: first_chunk took {first_token_ms:.2f}ms "
                         "(time to first LLM response)"
                     )
-                logger.debug(f"Stream chunk {stream_count}: {chunk}")
+                logger.debug("Stream chunk", extra={"data": {"stream_count": stream_count, "chunk": chunk}})
 
                 # Process chunk data
                 for node_name, node_output in chunk.items():
                     if "messages" in node_output:
                         for message in node_output["messages"]:
                             if isinstance(message, AIMessage):
-                                logger.debug(f"Streaming AI message: {message.content[:50]}...")
+                                logger.debug("Streaming AI message", extra={"data": {"content_preview": message.content[:50]}})
                                 timestamp = datetime.now().isoformat()
 
                                 # Extract and send trace info from message metadata
@@ -356,7 +356,7 @@ class ChatService:
                                             },
                                         }
                                         trace_info_sent = True
-                                        logger.debug(f"Sent trace_info event: {phoenix_url}")
+                                        logger.debug("Sent trace_info event", extra={"data": {"phoenix_url": phoenix_url}})
 
                                 # Send message content as it streams
                                 content = message.content
@@ -408,7 +408,7 @@ class ChatService:
 
                             # Handle tool results
                             elif isinstance(message, ToolMessage):
-                                logger.debug(f"Streaming tool result: {message.name}")
+                                logger.debug("Streaming tool result", extra={"data": {"name": message.name}})
                                 timestamp = datetime.now().isoformat()
                                 yield {
                                     "type": "tool_result",
@@ -451,7 +451,7 @@ class ChatService:
                     )
 
             except Exception as checkpoint_error:
-                logger.error(f"Error verifying checkpoints: {checkpoint_error}")
+                logger.error("Error verifying checkpoints", extra={"data": {"checkpoint_error": checkpoint_error}})
 
             # Record tool approval if we resumed from a tool approval interrupt
             if resume_from_interrupt and pending_approval_tool_call_id and user_response in ("approve", "always_allow"):
@@ -465,13 +465,13 @@ class ChatService:
                         f"tool_call_id={pending_approval_tool_call_id}"
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to record approval metadata in stream_chat: {e}")
+                    logger.warning("Failed to record approval metadata in stream_chat", extra={"data": {"error": str(e)}})
 
             # Send completion signal
             yield {"type": "complete", "data": {"timestamp": datetime.now().isoformat()}}
 
         except Exception as e:
-            logger.error(f"Error during streaming: {e}")
+            logger.error("Error during streaming", extra={"data": {"error": str(e)}})
             yield {
                 "type": "error",
                 "data": {"error": str(e), "timestamp": datetime.now().isoformat()},
@@ -590,7 +590,7 @@ class ChatService:
             return None
 
         except Exception as e:
-            logger.warning(f"Could not get escalation info for {thread_id}: {e}")
+            logger.warning("Could not get escalation info", extra={"data": {"thread_id": thread_id, "error": str(e)}})
             return None
 
     async def resume_interrupt(
@@ -648,18 +648,18 @@ class ChatService:
                             f"in {thread_id}"
                         )
                 except Exception as e:
-                    logger.warning(f"Failed to record approval metadata: {e}")
+                    logger.warning("Failed to record approval metadata", extra={"data": {"error": str(e)}})
         else:
             # User question response (plain text)
             response_data = response.get("response", "")
 
-        logger.info(f"Resuming escalation for {thread_id} with response: {response_data}")
+        logger.info("Resuming escalation with response", extra={"data": {"thread_id": thread_id, "response_data": response_data}})
 
         # Resume with the response
         await chat_agent.aupdate_state(config, {"messages": []}, as_node=None)
         await chat_agent.ainvoke(Command(resume=response_data), config)
 
-        logger.info(f"Escalation response processed for {thread_id}")
+        logger.info("Escalation response processed", extra={"data": {"thread_id": thread_id}})
 
         return {"success": True, "message": "Escalation response processed"}
 

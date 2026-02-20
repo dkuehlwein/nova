@@ -75,10 +75,10 @@ async def get_skills():
                     has_config=config_exists,
                 ))
             except Exception as e:
-                logger.warning(f"Failed to get manifest for skill {name}: {e}")
+                logger.warning("Failed to get manifest for skill", extra={"data": {"name": name, "error": str(e)}})
                 continue
 
-        logger.info(f"Skills list retrieved: {len(skills)} skills available")
+        logger.info("Skills list retrieved: skills available", extra={"data": {"skills_count": len(skills)}})
 
         return SkillsListResponse(
             skills=skills,
@@ -87,7 +87,7 @@ async def get_skills():
         )
 
     except Exception as e:
-        logger.error(f"Failed to get skills list: {e}", exc_info=True)
+        logger.error("Failed to get skills list", exc_info=True, extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to retrieve skills: {str(e)}")
 
 
@@ -167,7 +167,7 @@ async def get_skill_config(skill_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get skill config: {e}", exc_info=True)
+        logger.error("Failed to get skill config", exc_info=True, extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to retrieve skill config: {str(e)}")
 
 
@@ -248,5 +248,5 @@ async def update_skill_config(skill_name: str, request: SkillConfigUpdateRequest
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update skill config: {e}", exc_info=True)
+        logger.error("Failed to update skill config", exc_info=True, extra={"data": {"error": str(e)}})
         raise HTTPException(status_code=500, detail=f"Failed to update skill config: {str(e)}")

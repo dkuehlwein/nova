@@ -75,7 +75,7 @@ def test_log_config_change(capturing_handler):
     # Check captured output
     assert len(capturing_handler.records) > 0
     output = capturing_handler.records[-1]
-    assert "Configuration update" in output
+    assert "Configuration changed" in output
     assert "gmail" in output
     
     # Clean up

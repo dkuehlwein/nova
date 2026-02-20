@@ -370,7 +370,7 @@ class InputHookRegistry(ConfigRegistry):
                 # Stop file watchers if any
                 hook.stop_watching()
             except Exception as e:
-                logger.warning(f"Error stopping hook {hook_name}: {e}")
+                logger.warning("Error stopping hook", extra={"data": {"hook_name": hook_name, "error": str(e)}})
         
         # Clear registries
         self._hook_instances.clear()

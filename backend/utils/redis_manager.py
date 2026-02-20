@@ -341,7 +341,7 @@ async def subscribe(channel: str = "nova_events") -> AsyncIterator[NovaEvent]:
                 extra={"data": {"channel": channel}}
             )
         except Exception as e:
-            logger.debug(f"Error during Redis cleanup: {e}")
+            logger.debug("Error during Redis cleanup", extra={"data": {"error": str(e)}})
 
 
 async def test_redis_connection() -> bool:
@@ -377,7 +377,7 @@ async def close_redis():
             await _redis_client.close()
             logger.info("Redis connection closed")
         except Exception as e:
-            logger.error(f"Error closing Redis connection: {e}")
+            logger.error("Error closing Redis connection", extra={"data": {"error": str(e)}})
         finally:
             _redis_client = None
 

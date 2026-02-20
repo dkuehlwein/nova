@@ -68,7 +68,7 @@ class GmailInputHook(BaseInputHook):
                 )
 
             except ImportError as e:
-                logger.error(f"Failed to import email processing components: {e}")
+                logger.error("Failed to import email processing components", extra={"data": {"error": str(e)}})
                 raise
     
     async def fetch_items(self) -> List[Dict[str, Any]]:

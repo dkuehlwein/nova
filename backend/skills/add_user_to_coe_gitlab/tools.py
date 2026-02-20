@@ -434,7 +434,7 @@ async def create_iam_account(
             )
 
     except Exception as e:
-        logger.error(f"IAM account creation failed: {e}")
+        logger.error("IAM account creation failed", extra={"data": {"error": str(e)}})
         return json.dumps(
             {
                 "success": False,
@@ -735,7 +735,7 @@ async def search_gitlab_project(
             )
 
     except Exception as e:
-        logger.error(f"GitLab project search failed: {e}")
+        logger.error("GitLab project search failed", extra={"data": {"error": str(e)}})
         return json.dumps(
             {
                 "success": False,
@@ -825,7 +825,7 @@ async def add_user_to_gitlab_project(
 
     # If gitlab_project doesn't contain "/", treat it as a search query
     if "/" not in gitlab_project:
-        logger.info(f"Searching for GitLab project matching: {gitlab_project}")
+        logger.info("Searching for GitLab project matching", extra={"data": {"gitlab_project": gitlab_project}})
         try:
             result = await search_gitlab_projects(
                 gitlab_url=gitlab_url,

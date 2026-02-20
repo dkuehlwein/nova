@@ -50,11 +50,11 @@ def create_unified_event_handler(
                 # Clear cache if provided (for chat agent)
                 if clear_cache_func:
                     clear_cache_func()
-                    logger.info(f"{service_name} cache cleared - will use updated prompt")
+                    logger.info("cache cleared - will use updated prompt", extra={"data": {"service_name": service_name}})
                 elif reload_agent_func:
                     # For core agent, reload directly
                     await reload_agent_func()
-                    logger.info(f"{service_name} reloaded with updated prompt")
+                    logger.info("reloaded with updated prompt", extra={"data": {"service_name": service_name}})
                 
             elif event.type == "llm_settings_updated":
                 logger.info(
@@ -74,11 +74,11 @@ def create_unified_event_handler(
                 # Clear cache if provided (for chat agent)
                 if clear_cache_func:
                     clear_cache_func()
-                    logger.info(f"{service_name} cache cleared - will use updated LLM settings")
+                    logger.info("cache cleared - will use updated LLM settings", extra={"data": {"service_name": service_name}})
                 elif reload_agent_func:
                     # For core agent, reload directly
                     await reload_agent_func()
-                    logger.info(f"{service_name} reloaded with updated LLM settings")
+                    logger.info("reloaded with updated LLM settings", extra={"data": {"service_name": service_name}})
                     
             elif event.type == "mcp_toggled":
                 if service_name == "chat-agent":  # Only chat agent handles MCP toggles
@@ -95,12 +95,12 @@ def create_unified_event_handler(
                     )
                     if clear_cache_func:
                         clear_cache_func()
-                        logger.info(f"{service_name} cache cleared - will use updated MCP tools")
+                        logger.info("cache cleared - will use updated MCP tools", extra={"data": {"service_name": service_name}})
                         
             # Ignore other event types
             
         except Exception as e:
-            logger.error(f"Failed to handle {event.type} event in {service_name}: {e}")
+            logger.error("Failed to handle event", extra={"data": {"type": event.type, "service_name": service_name, "error": str(e)}})
     
     return unified_event_handler
 

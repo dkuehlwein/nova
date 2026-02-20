@@ -278,11 +278,11 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str = Non
                 # Handle different message types
                 if message.get("type") == "pong":
                     # Client responded to ping
-                    logger.debug(f"Received pong from client {actual_client_id}")
+                    logger.debug("Received pong from client", extra={"data": {"actual_client_id": str(actual_client_id)}})
                 elif message.get("type") == "subscribe":
                     # Client wants to subscribe to specific events
                     # This could be extended to support selective event filtering
-                    logger.info(f"Client {actual_client_id} subscribed to events")
+                    logger.info("Client subscribed to events", extra={"data": {"actual_client_id": str(actual_client_id)}})
                 
             except json.JSONDecodeError:
                 logger.warning(
@@ -296,7 +296,7 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str = Non
                 )
                 
     except WebSocketDisconnect:
-        logger.info(f"Client {actual_client_id} disconnected normally")
+        logger.info("Client disconnected normally", extra={"data": {"actual_client_id": str(actual_client_id)}})
     except Exception as e:
         logger.error(
             f"Error in WebSocket connection for client {actual_client_id}",

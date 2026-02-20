@@ -93,14 +93,14 @@ def init_phoenix_tracing(service_name: str = "nova") -> bool:
         LangChainInstrumentor().instrument()
 
         _phoenix_initialized = True
-        logger.info(f"Phoenix tracing initialized: {endpoint}")
+        logger.info("Phoenix tracing initialized", extra={"data": {"endpoint": endpoint}})
         return True
 
     except ImportError as e:
-        logger.warning(f"Phoenix dependencies not installed: {e}")
+        logger.warning("Phoenix dependencies not installed", extra={"data": {"error": str(e)}})
         return False
     except Exception as e:
-        logger.warning(f"Failed to initialize Phoenix tracing: {e}")
+        logger.warning("Failed to initialize Phoenix tracing", extra={"data": {"error": str(e)}})
         return False
 
 
@@ -121,7 +121,7 @@ def shutdown_phoenix_tracing():
         _phoenix_initialized = False
         logger.info("Phoenix tracing shut down")
     except Exception as e:
-        logger.warning(f"Error shutting down Phoenix tracing: {e}")
+        logger.warning("Error shutting down Phoenix tracing", extra={"data": {"error": str(e)}})
 
 
 @contextmanager
@@ -229,7 +229,7 @@ def get_langchain_trace_id() -> Optional[str]:
         logger.debug("openinference.instrumentation.langchain not available")
         return None
     except Exception as e:
-        logger.debug(f"Could not get LangChain trace ID: {e}")
+        logger.debug("Could not get LangChain trace ID", extra={"data": {"error": str(e)}})
         return None
 
 

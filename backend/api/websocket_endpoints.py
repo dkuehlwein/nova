@@ -66,7 +66,7 @@ async def broadcast_test_message(message: dict):
             "recipients": websocket_manager.get_connection_count()
         }
     except Exception as e:
-        logger.error(f"Failed to broadcast test message: {e}")
+        logger.error("Failed to broadcast test message", extra={"data": {"error": str(e)}})
         return JSONResponse(
             status_code=500,
             content={
@@ -87,7 +87,7 @@ async def ping_all_clients():
             "recipients": websocket_manager.get_connection_count()
         }
     except Exception as e:
-        logger.error(f"Failed to ping clients: {e}")
+        logger.error("Failed to ping clients", extra={"data": {"error": str(e)}})
         return JSONResponse(
             status_code=500,
             content={

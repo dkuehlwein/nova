@@ -40,5 +40,5 @@ async def get_checkpointer_from_service_manager():
             raise RuntimeError("PostgreSQL connection pool is required but not available")
 
     except Exception as e:
-        logger.error(f"Error creating PostgreSQL checkpointer: {e}")
+        logger.error("Error creating PostgreSQL checkpointer", extra={"data": {"error": str(e)}})
         raise RuntimeError(f"Failed to create PostgreSQL checkpointer: {str(e)}")
