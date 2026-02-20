@@ -61,7 +61,7 @@ class GoogleCalendarInputHook(BaseInputHook):
             self._ensure_calendar_components()
             
             logger.info(
-                f"Processing daily meetings via calendar hook {self.hook_name}",
+                "Processing daily meetings via calendar hook",
                 extra={"data": {"hook_name": self.hook_name}}
             )
             
@@ -69,7 +69,7 @@ class GoogleCalendarInputHook(BaseInputHook):
             processing_result = await self._calendar_processor.process_daily_meetings(self.config)
             
             logger.info(
-                f"Calendar hook processing completed",
+                "Calendar hook processing completed",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "events_fetched": processing_result["events_fetched"],
@@ -84,7 +84,7 @@ class GoogleCalendarInputHook(BaseInputHook):
             
         except Exception as e:
             logger.error(
-                f"Failed to process calendar meetings in hook {self.hook_name}",
+                "Failed to process calendar meetings in hook",
                 exc_info=True,
                 extra={"data": {"hook_name": self.hook_name, "error": str(e)}}
             )
@@ -129,7 +129,7 @@ class GoogleCalendarInputHook(BaseInputHook):
             
         except Exception as e:
             logger.error(
-                f"Failed to normalize calendar processing summary",
+                "Failed to normalize calendar processing summary",
                 extra={"data": {"hook_name": self.hook_name, "error": str(e)}}
             )
             raise
@@ -182,7 +182,7 @@ class GoogleCalendarInputHook(BaseInputHook):
         
         try:
             logger.info(
-                f"Starting calendar hook processing: {self.hook_name}",
+                "Starting calendar hook processing",
                 extra={"data": {"hook_name": self.hook_name}}
             )
             
@@ -221,7 +221,7 @@ class GoogleCalendarInputHook(BaseInputHook):
                 self._stats["errors"] += 1
             
             logger.info(
-                f"Calendar hook processing completed: {self.hook_name}",
+                "Calendar hook processing completed",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "events_processed": result.items_processed,
@@ -242,7 +242,7 @@ class GoogleCalendarInputHook(BaseInputHook):
             self._stats["errors"] += 1
             
             logger.error(
-                f"Calendar hook processing failed: {self.hook_name}",
+                "Calendar hook processing failed",
                 exc_info=True,
                 extra={"data": {
                     "hook_name": self.hook_name,

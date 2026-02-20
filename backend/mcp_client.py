@@ -372,9 +372,7 @@ class MCPClientManager:
         cache_age = current_time - self._tools_cache_timestamp
 
         if not force_refresh and self._tools_cache is not None and cache_age < _TOOLS_CACHE_TTL_SECONDS:
-            logger.debug(
-                f"Using cached MCP tools (age: {cache_age:.1f}s, TTL: {_TOOLS_CACHE_TTL_SECONDS}s)"
-            )
+            logger.debug("Using cached MCP tools", extra={"data": {"cache_age_seconds": round(cache_age, 1), "ttl_seconds": _TOOLS_CACHE_TTL_SECONDS}})
             return self._tools_cache
 
         logger.info("Fetching MCP tools from LiteLLM")

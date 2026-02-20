@@ -271,7 +271,7 @@ async def update_hook(hook_name: str, update: HookConfigUpdate):
         input_hook_registry.update_hook_config(hook_name, current_config)
 
         logger.info(
-            f"Updated hook configuration: {hook_name}",
+            "Hook configuration updated",
             extra={"data": {
                 "hook_name": hook_name,
                 "enabled": current_config.enabled,
@@ -309,7 +309,7 @@ async def trigger_hook(hook_name: str):
         result = process_hook_items.delay(hook_name)
 
         logger.info(
-            f"Manually triggered hook: {hook_name}",
+            "Hook manually triggered",
             extra={"data": {
                 "hook_name": hook_name,
                 "task_id": result.id,

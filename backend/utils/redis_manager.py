@@ -139,7 +139,7 @@ async def publish(event: NovaEvent, channel: str = "nova_events") -> bool:
         subscribers = await redis_client.publish(channel, event_json)
         
         logger.info(
-            f"Published event to Redis channel",
+            "Published event to Redis channel",
             extra={
                 "data": {
                     "event_id": event.id,
@@ -150,9 +150,9 @@ async def publish(event: NovaEvent, channel: str = "nova_events") -> bool:
                 }
             }
         )
-        
+
         return True
-        
+
     except redis.ConnectionError:
         logger.warning(
             "Redis connection lost, failed to publish event",
@@ -184,11 +184,11 @@ async def publish(event: NovaEvent, channel: str = "nova_events") -> bool:
 def publish_sync(event: NovaEvent, channel: str = "nova_events") -> bool:
     """
     Synchronously publish an event to Redis channel (for use in Celery workers).
-    
+
     Args:
         event: The NovaEvent to publish
         channel: Redis channel name (default: "nova_events")
-    
+
     Returns:
         bool: True if published successfully, False otherwise
     """
@@ -206,15 +206,15 @@ def publish_sync(event: NovaEvent, channel: str = "nova_events") -> bool:
                 }
             )
             return False
-        
+
         # Serialize the event to JSON
         event_json = event.model_dump_json()
-        
+
         # Publish to Redis channel
         subscribers = redis_client.publish(channel, event_json)
-        
+
         logger.info(
-            f"Published event to Redis channel",
+            "Published event to Redis channel",
             extra={
                 "data": {
                     "event_id": event.id,
@@ -257,7 +257,7 @@ async def subscribe(channel: str = "nova_events") -> AsyncIterator[NovaEvent]:
     redis_client = await get_redis()
     if redis_client is None:
         logger.warning(
-            f"Redis not available, cannot subscribe to channel: {channel}",
+            "Redis not available, cannot subscribe to channel",
             extra={"data": {"channel": channel}}
         )
         return
@@ -268,7 +268,7 @@ async def subscribe(channel: str = "nova_events") -> AsyncIterator[NovaEvent]:
         await pubsub.subscribe(channel)
         
         logger.info(
-            f"Subscribed to Redis channel: {channel}",
+            "Subscribed to Redis channel",
             extra={"data": {"channel": channel}}
         )
         
@@ -280,7 +280,7 @@ async def subscribe(channel: str = "nova_events") -> AsyncIterator[NovaEvent]:
                     event = NovaEvent(**event_data)
                     
                     logger.debug(
-                        f"Received event from Redis channel",
+                        "Received event from Redis channel",
                         extra={
                             "data": {
                                 "event_id": event.id,
@@ -295,7 +295,7 @@ async def subscribe(channel: str = "nova_events") -> AsyncIterator[NovaEvent]:
                     
                 except json.JSONDecodeError as e:
                     logger.error(
-                        f"Failed to parse event JSON from Redis",
+                        "Failed to parse event JSON from Redis",
                         extra={
                             "data": {
                                 "channel": channel,
@@ -306,7 +306,7 @@ async def subscribe(channel: str = "nova_events") -> AsyncIterator[NovaEvent]:
                     )
                 except Exception as e:
                     logger.error(
-                        f"Error processing Redis message",
+                        "Error processing Redis message",
                         exc_info=True,
                         extra={
                             "data": {
@@ -318,12 +318,12 @@ async def subscribe(channel: str = "nova_events") -> AsyncIterator[NovaEvent]:
     
     except redis.ConnectionError:
         logger.warning(
-            f"Redis connection lost during subscription to {channel}",
+            "Redis connection lost during subscription",
             extra={"data": {"channel": channel}}
         )
     except Exception as e:
         logger.error(
-            f"Error in Redis subscription",
+            "Error in Redis subscription",
             exc_info=True,
             extra={
                 "data": {
@@ -337,7 +337,7 @@ async def subscribe(channel: str = "nova_events") -> AsyncIterator[NovaEvent]:
             await pubsub.unsubscribe(channel)
             await pubsub.close()
             logger.info(
-                f"Unsubscribed from Redis channel: {channel}",
+                "Unsubscribed from Redis channel",
                 extra={"data": {"channel": channel}}
             )
         except Exception as e:

@@ -140,7 +140,7 @@ class ChatService:
             return [ai_tool_call, tool_result_message]
 
         except Exception as memory_error:
-            logger.warning("Failed to search memory for tool injection", extra={"data": {"memory_error": memory_error}})
+            logger.warning("Failed to search memory for tool injection", extra={"data": {"memory_error": str(memory_error)}})
             return []
 
     async def stream_chat(
@@ -171,13 +171,13 @@ class ChatService:
             state = await chat_agent.aget_state(config)
             log_timing("check_interrupts", t0)
             logger.info(
-                f"Checking for interrupts in thread {chat_request.thread_id}: "
-                f"state={state}, interrupts={state.interrupts if state else None}"
+                "Checking for interrupts in thread",
+                extra={"data": {"thread_id": chat_request.thread_id, "has_state": state is not None, "interrupts": state.interrupts if state else None}},
             )
             if state and state.interrupts:
                 logger.info(
-                    f"Found active interrupt for thread {chat_request.thread_id}, "
-                    "resuming with user response"
+                    "Found active interrupt, resuming with user response",
+                    extra={"data": {"thread_id": chat_request.thread_id}},
                 )
                 resume_from_interrupt = True
                 user_response = chat_request.messages[-1].content
@@ -213,7 +213,7 @@ class ChatService:
                                                 break
                             break
         except Exception as state_error:
-            logger.warning("Could not check for interrupts", extra={"data": {"state_error": state_error}})
+            logger.warning("Could not check for interrupts", extra={"data": {"state_error": str(state_error)}})
 
         # Inject memory search tool call on first turn (skip if resuming from interrupt)
         memory_tool_messages = []
@@ -244,8 +244,8 @@ class ChatService:
 
         log_timing("total_pre_stream_setup", request_start)
         logger.debug(
-            f"Starting stream for thread_id: {chat_request.thread_id}, "
-            f"resume_from_interrupt: {resume_from_interrupt}"
+            "Starting stream",
+            extra={"data": {"thread_id": chat_request.thread_id, "resume_from_interrupt": resume_from_interrupt}},
         )
 
         # Yield start event
@@ -328,8 +328,8 @@ class ChatService:
                     first_token_time = time.time()
                     first_token_ms = (first_token_time - stream_start) * 1000
                     logger.info(
-                        f"⏱️ TIMING: first_chunk took {first_token_ms:.2f}ms "
-                        "(time to first LLM response)"
+                        "First chunk received (time to first LLM response)",
+                        extra={"data": {"first_token_ms": round(first_token_ms, 2)}},
                     )
                 logger.debug("Stream chunk", extra={"data": {"stream_count": stream_count, "chunk": chunk}})
 
@@ -362,7 +362,8 @@ class ChatService:
                                 content = message.content
                                 if not isinstance(content, str):
                                     logger.warning(
-                                        f"Non-string content from LLM: {type(content)} - {content}"
+                                        "Non-string content from LLM",
+                                        extra={"data": {"content_type": type(content).__name__, "content": str(content)}},
                                     )
                                     if isinstance(content, list):
                                         content = "\n\n".join(str(item) for item in content)
@@ -422,11 +423,8 @@ class ChatService:
 
             total_stream_ms = (time.time() - stream_start) * 1000
             logger.info(
-                f"⏱️ TIMING: total_streaming took {total_stream_ms:.2f}ms ({stream_count} chunks)"
-            )
-            logger.info(
-                f"Finished streaming for thread_id: {chat_request.thread_id} "
-                f"after {stream_count} chunks"
+                "Streaming completed",
+                extra={"data": {"total_stream_ms": round(total_stream_ms, 2), "stream_count": stream_count, "thread_id": chat_request.thread_id}},
             )
 
             # Verify checkpoints were saved and check for pending interrupts
@@ -435,23 +433,25 @@ class ChatService:
                 if checkpoint_state and "messages" in checkpoint_state.get("channel_values", {}):
                     messages_count = len(checkpoint_state["channel_values"]["messages"])
                     logger.debug(
-                        f"Conversation saved: {messages_count} messages in thread "
-                        f"{chat_request.thread_id}"
+                        "Conversation saved",
+                        extra={"data": {"messages_count": messages_count, "thread_id": chat_request.thread_id}},
                     )
                 else:
                     logger.warning(
-                        f"No state found for thread {chat_request.thread_id} after streaming"
+                        "No state found after streaming",
+                        extra={"data": {"thread_id": chat_request.thread_id}},
                     )
 
                 # Check for pending interrupts using agent state
                 agent_state = await chat_agent.aget_state(config)
                 if agent_state and agent_state.interrupts:
                     logger.info(
-                        f"Found {len(agent_state.interrupts)} pending interrupts after streaming"
+                        "Found pending interrupts after streaming",
+                        extra={"data": {"interrupt_count": len(agent_state.interrupts)}},
                     )
 
             except Exception as checkpoint_error:
-                logger.error("Error verifying checkpoints", extra={"data": {"checkpoint_error": checkpoint_error}})
+                logger.error("Error verifying checkpoints", extra={"data": {"checkpoint_error": str(checkpoint_error)}})
 
             # Record tool approval if we resumed from a tool approval interrupt
             if resume_from_interrupt and pending_approval_tool_call_id and user_response in ("approve", "always_allow"):
@@ -461,8 +461,8 @@ class ChatService:
                         chat_request.thread_id, pending_approval_tool_call_id
                     )
                     logger.info(
-                        f"Recorded tool approval for {chat_request.thread_id}, "
-                        f"tool_call_id={pending_approval_tool_call_id}"
+                        "Recorded tool approval",
+                        extra={"data": {"thread_id": chat_request.thread_id, "tool_call_id": pending_approval_tool_call_id}},
                     )
                 except Exception as e:
                     logger.warning("Failed to record approval metadata in stream_chat", extra={"data": {"error": str(e)}})
@@ -639,13 +639,13 @@ class ChatService:
                             thread_id, tool_call_id
                         )
                         logger.info(
-                            f"Recorded tool approval for {thread_id}, "
-                            f"tool_call_id={tool_call_id}"
+                            "Recorded tool approval",
+                            extra={"data": {"thread_id": thread_id, "tool_call_id": tool_call_id}},
                         )
                     else:
                         logger.warning(
-                            f"Could not determine tool_call_id for approval recording "
-                            f"in {thread_id}"
+                            "Could not determine tool_call_id for approval recording",
+                            extra={"data": {"thread_id": thread_id}},
                         )
                 except Exception as e:
                     logger.warning("Failed to record approval metadata", extra={"data": {"error": str(e)}})

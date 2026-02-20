@@ -125,7 +125,7 @@ def request_tool_approval(tool_name: str, tool_args: Dict[str, Any]) -> str:
         "tool_args": tool_args
     })
 
-    logger.info("interrupt returned: (type", extra={"data": {"user_response": user_response, "type": type(user_response)}})
+    logger.info("Interrupt returned", extra={"data": {"user_response": user_response, "type": type(user_response).__name__}})
 
     # Process the user response
     if isinstance(user_response, str):

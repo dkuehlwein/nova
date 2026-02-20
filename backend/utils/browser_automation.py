@@ -88,7 +88,8 @@ class BrowserManager:
             except Exception as launch_err:
                 # Corrupt profile - wipe and retry once
                 logger.warning(
-                    f"[{self.namespace}] Persistent context launch failed, resetting profile: {launch_err}"
+                    "Persistent context launch failed, resetting profile",
+                    extra={"data": {"namespace": self.namespace, "error": str(launch_err)}}
                 )
                 shutil.rmtree(profile_dir, ignore_errors=True)
                 profile_dir.mkdir(parents=True, exist_ok=True)
@@ -168,7 +169,8 @@ class BrowserManager:
             if cookies:
                 await cache.context.add_cookies(cookies)
                 logger.info(
-                    f"[{self.namespace}] Restored {len(cookies)} cookies from {state_path}"
+                    "Restored cookies",
+                    extra={"data": {"namespace": self.namespace, "count": len(cookies), "state_path": str(state_path)}}
                 )
                 return True
         except Exception as e:

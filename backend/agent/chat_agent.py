@@ -182,7 +182,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
                         skill_name
                     )
                     logger.info(
-                        f"Loaded tools for skill: {skill_name}",
+                        "Loaded tools for skill",
                         extra={
                             "data": {
                                 "skill": skill_name,
@@ -192,7 +192,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
                     )
                 except Exception as e:
                     logger.error(
-                        f"Failed to load tools for skill {skill_name}: {e}",
+                        "Failed to load tools for skill",
                         extra={"data": {"skill": skill_name, "error": str(e)}},
                     )
                     continue
@@ -307,7 +307,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
                     }
                     skills_changed = True
                     logger.info(
-                        f"Skill activated in state: {skill_name}",
+                        "Skill activated in state",
                         extra={"data": {"skill": skill_name, "turn": turn_number}},
                     )
 
@@ -320,7 +320,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
                         del skill_tools_cache[skill_name]
                     skills_changed = True
                     logger.info(
-                        f"Skill deactivated in state: {skill_name}",
+                        "Skill deactivated in state",
                         extra={"data": {"skill": skill_name}},
                     )
 
@@ -349,7 +349,8 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
 
     log_timing("create_chat_agent_total", agent_start, {"tools": len(base_tools)})
     logger.info(
-        f"Created skill-aware chat agent with {len(base_tools)} base tools and {type(checkpointer).__name__} checkpointer"
+        "Created skill-aware chat agent",
+        extra={"data": {"base_tools_count": len(base_tools), "checkpointer_type": type(checkpointer).__name__}},
     )
     return agent
 

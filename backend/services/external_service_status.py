@@ -52,8 +52,8 @@ class ExternalServiceStatusChecker(ABC):
         # Perform real-time validation
         if has_api_key:
             logger.info(
-                f"Performing real-time {self.service_name} API validation",
-                extra={"data": {"force_refresh": force_refresh}}
+                "Performing real-time API validation",
+                extra={"data": {"service": self.service_name, "force_refresh": force_refresh}}
             )
             result = await self._perform_check()
 

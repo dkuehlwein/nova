@@ -94,7 +94,7 @@ class InputHookRegistry(ConfigRegistry):
                 self._register_hook_class(hook_type, class_path)
             except Exception as e:
                 logger.warning(
-                    f"Failed to register hook type {hook_type}: {e}",
+                    "Failed to register hook type",
                     extra={"data": {"hook_type": hook_type, "error": str(e)}}
                 )
     
@@ -122,13 +122,13 @@ class InputHookRegistry(ConfigRegistry):
             
             self._hook_classes[hook_type] = hook_class
             logger.info(
-                f"Registered hook type: {hook_type}",
+                "Registered hook type",
                 extra={"data": {"hook_type": hook_type, "class_path": class_path}}
             )
             
         except Exception as e:
             logger.error(
-                f"Failed to register hook class: {class_path}",
+                "Failed to register hook class",
                 exc_info=True,
                 extra={"data": {"hook_type": hook_type, "class_path": class_path, "error": str(e)}}
             )
@@ -148,13 +148,13 @@ class InputHookRegistry(ConfigRegistry):
             
             hooks_config = config_manager.get_config()
             logger.info(
-                f"Loaded hook configurations for {len(hooks_config.hooks)} hooks",
+                "Loaded hook configurations",
                 extra={"data": {"hook_count": len(hooks_config.hooks)}}
             )
             
         except Exception as e:
             logger.warning(
-                f"Failed to load hook configurations: {e}",
+                "Failed to load hook configurations",
                 extra={"data": {"error": str(e)}}
             )
     
@@ -176,17 +176,18 @@ class InputHookRegistry(ConfigRegistry):
                     self._create_hook_instance(hook_name, hook_config)
                 except Exception as e:
                     logger.error(
-                        f"Failed to create hook instance: {hook_name}",
+                        "Failed to create hook instance",
                         exc_info=True,
                         extra={"data": {"hook_name": hook_name, "error": str(e)}}
                     )
                     continue
             
             logger.info(
-                f"Initialized {len(self._hook_instances)} hook instances",
+                "Initialized hook instances",
                 extra={"data": {
                     "initialized_hooks": list(self._hook_instances.keys()),
-                    "total_configured": len(hooks_config.hooks)
+                    "total_configured": len(hooks_config.hooks),
+                    "initialized_count": len(self._hook_instances)
                 }}
             )
             
@@ -213,7 +214,7 @@ class InputHookRegistry(ConfigRegistry):
         self._hook_instances[hook_name] = hook_instance
         
         logger.info(
-            f"Created hook instance: {hook_name}",
+            "Created hook instance",
             extra={"data": {
                 "hook_name": hook_name,
                 "hook_type": hook_type,
@@ -271,7 +272,7 @@ class InputHookRegistry(ConfigRegistry):
             self._create_hook_instance(hook_name, new_config)
             
             logger.info(
-                f"Updated hook configuration: {hook_name}",
+                "Updated hook configuration",
                 extra={"data": {"hook_name": hook_name}}
             )
             
@@ -279,7 +280,7 @@ class InputHookRegistry(ConfigRegistry):
             
         except Exception as e:
             logger.error(
-                f"Failed to update hook configuration: {hook_name}",
+                "Failed to update hook configuration",
                 exc_info=True,
                 extra={"data": {"hook_name": hook_name, "error": str(e)}}
             )

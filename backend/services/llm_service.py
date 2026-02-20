@@ -203,7 +203,7 @@ class LLMModelService:
                 logger.info("Google API key not valid - skipping Gemini model initialization")
                 return 0
         except Exception as e:
-            logger.info("Google API key validation failed: - skipping Gemini model initialization", extra={"data": {"error": str(e)}})
+            logger.info("Google API key validation failed", extra={"data": {"error": str(e)}})
             return 0
         
         google_api_key = settings.GOOGLE_API_KEY.get_secret_value() if settings.GOOGLE_API_KEY else None
@@ -235,7 +235,7 @@ class LLMModelService:
                 logger.info("OpenRouter API key not valid - skipping OpenRouter model initialization")
                 return 0
         except Exception as e:
-            logger.info("OpenRouter API key validation failed: - skipping OpenRouter model initialization", extra={"data": {"error": str(e)}})
+            logger.info("OpenRouter API key validation failed", extra={"data": {"error": str(e)}})
             return 0
         
         openrouter_api_key = settings.OPENROUTER_API_KEY.get_secret_value() if settings.OPENROUTER_API_KEY else None
@@ -272,7 +272,7 @@ class LLMModelService:
                 url = f"{settings.LLM_API_BASE_URL}/v1/models"
                 async with http_session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
                     if response.status != 200:
-                        logger.info("Local LLM API not available at - skipping", extra={"data": {"LLM_API_BASE_URL": settings.LLM_API_BASE_URL}})
+                        logger.info("Local LLM API not available", extra={"data": {"api_base_url": settings.LLM_API_BASE_URL}})
                         return 0
 
                     result = await response.json()
@@ -315,7 +315,7 @@ class LLMModelService:
                     return success_count
 
         except Exception as e:
-            logger.info("Could not connect to local LLM API: - skipping local model initialization", extra={"data": {"error": str(e)}})
+            logger.info("Could not connect to local LLM API", extra={"data": {"error": str(e)}})
             return 0
 
     async def initialize_default_models_in_litellm(self, db: AsyncSession) -> bool:
@@ -342,7 +342,7 @@ class LLMModelService:
             # Update fallback configuration if we have any models
             if total_models > 0:
                 await self.update_fallback_config()
-                logger.info("Successfully initialized models: local, Gemini, OpenRouter", extra={"data": {"total_models": total_models, "local_count": local_count, "gemini_count": gemini_count, "openrouter_count": openrouter_count}})
+                logger.info("Model initialization complete", extra={"data": {"total_models": total_models, "local_count": local_count, "gemini_count": gemini_count, "openrouter_count": openrouter_count}})
                 return True
             else:
                 logger.info("No working models available - check API keys")
@@ -400,7 +400,7 @@ class LLMModelService:
                 else:
                     chat_models.append(model_dict)
                     
-            logger.info("Retrieved configured models from LiteLLM: chat, embedding", extra={"data": {"all_models_count": len(all_models), "chat_models_count": len(chat_models), "embedding_models_count": len(embedding_models)}})
+            logger.info("Retrieved configured models from LiteLLM", extra={"data": {"all_models_count": len(all_models), "chat_models_count": len(chat_models), "embedding_models_count": len(embedding_models)}})
             
             return {
                 "chat_models": chat_models,

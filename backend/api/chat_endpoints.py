@@ -47,9 +47,9 @@ async def stream_chat(chat_request: ChatRequest):
             chat_agent = await create_chat_agent(
                 checkpointer=checkpointer, include_escalation=True
             )
-            logger.info("Chat agent ready. Using checkpointer", extra={"data": {"type": type(checkpointer)}})
+            logger.info("Chat agent ready", extra={"data": {"checkpointer_type": type(checkpointer).__name__}})
         except Exception as agent_error:
-            logger.error("Failed to create chat agent", extra={"data": {"agent_error": agent_error}})
+            logger.error("Failed to create chat agent", extra={"data": {"error": str(agent_error)}})
             raise HTTPException(
                 status_code=500, detail=f"Failed to create chat agent: {str(agent_error)}"
             )
@@ -130,7 +130,7 @@ async def list_chats(limit: int = 5, offset: int = 0):
                     thread_id, checkpointer
                 )
             except Exception as msg_error:
-                logger.warning("Error processing chat", extra={"data": {"thread_id": thread_id, "msg_error": msg_error}})
+                logger.warning("Error processing chat", extra={"data": {"thread_id": thread_id, "error": str(msg_error)}})
                 return None
 
         results = await asyncio.gather(

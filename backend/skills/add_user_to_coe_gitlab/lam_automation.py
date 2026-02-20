@@ -206,9 +206,7 @@ async def create_lam_account(
             page_lower = page_content.lower()
 
             if "already exists" in page_lower or "already in use" in page_lower:
-                logger.info(
-                    f"User with email {email} already exists in LAM (detected 'already in use' message)"
-                )
+                logger.info("User already exists in LAM", extra={"data": {"email": email, "username": username}})
                 return {
                     "success": True,
                     "already_exists": True,
@@ -277,9 +275,7 @@ async def create_lam_account(
                 }
 
             if "list.php" in page.url and "type=user" in page.url:
-                logger.info(
-                    f"Redirected to user list - assuming success for {username}"
-                )
+                logger.info("Redirected to user list - assuming success", extra={"data": {"username": username}})
                 return {
                     "success": True,
                     "username": username,

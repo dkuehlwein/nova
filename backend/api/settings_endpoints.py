@@ -221,7 +221,7 @@ async def complete_onboarding(
 
         await session.commit()
 
-        logger.info("Onboarding completed with models: chat=, memory=, memory_small=, embedding=, litellm_url=", extra={"data": {"chat_llm_model": request.chat_llm_model, "memory_llm_model": request.memory_llm_model, "memory_small_llm_model": settings.memory_small_llm_model, "embedding_model": request.embedding_model, "litellm_base_url": request.litellm_base_url}})
+        logger.info("Onboarding completed", extra={"data": {"chat_llm_model": request.chat_llm_model, "memory_llm_model": request.memory_llm_model, "memory_small_llm_model": settings.memory_small_llm_model, "embedding_model": request.embedding_model, "litellm_base_url": request.litellm_base_url}})
 
         return {
             "status": "success",

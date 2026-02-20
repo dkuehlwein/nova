@@ -55,7 +55,7 @@ class MeetingCreator:
             prep_end_iso = prep_end_time.isoformat()
             
             logger.info(
-                f"Creating prep meeting for: {original_meeting.title}",
+                "Creating prep meeting",
                 extra={"data": {
                     "original_meeting_id": original_meeting.meeting_id,
                     "prep_start": prep_start_iso,
@@ -97,7 +97,7 @@ class MeetingCreator:
             
             if event_id:
                 logger.info(
-                    f"Successfully created prep meeting: {event_id}",
+                    "Successfully created prep meeting",
                     extra={"data": {
                         "prep_event_id": event_id,
                         "original_meeting_id": original_meeting.meeting_id,
@@ -111,7 +111,7 @@ class MeetingCreator:
                 
         except Exception as e:
             logger.error(
-                f"Error creating prep meeting for {original_meeting.meeting_id}: {str(e)}",
+                "Error creating prep meeting",
                 exc_info=True,
                 extra={"data": {
                     "original_meeting_id": original_meeting.meeting_id,
@@ -191,8 +191,9 @@ class MeetingCreator:
                 # Check for exact match first
                 if event_title == f"{self.prep_title_prefix} {original_meeting.title}":
                     logger.debug(
-                        f"Found existing prep meeting (exact match) for {original_meeting.meeting_id}",
+                        "Found existing prep meeting (exact match)",
                         extra={"data": {
+                            "meeting_id": original_meeting.meeting_id,
                             "existing_event_id": event.get('id'),
                             "prep_title": event_title
                         }}
@@ -201,8 +202,9 @@ class MeetingCreator:
                 # Check for pattern match (base title without test suffixes)
                 elif event_title.startswith(expected_title_pattern):
                     logger.debug(
-                        f"Found existing prep meeting (pattern match) for {original_meeting.meeting_id}",
+                        "Found existing prep meeting (pattern match)",
                         extra={"data": {
+                            "meeting_id": original_meeting.meeting_id,
                             "existing_event_id": event.get('id'),
                             "prep_title": event_title,
                             "pattern_matched": expected_title_pattern
@@ -233,7 +235,7 @@ class MeetingCreator:
         """
         try:
             logger.info(
-                f"Updating prep meeting {prep_event_id} with new memo",
+                "Updating prep meeting with new memo",
                 extra={"data": {"prep_event_id": prep_event_id}}
             )
             
@@ -297,7 +299,7 @@ class MeetingCreator:
                 # Sometimes the result might be just the ID string
                 return api_result
             
-            logger.warning("Couldn't extract event ID from result", extra={"data": {"type": type(api_result)}})
+            logger.warning("Couldn't extract event ID from result", extra={"data": {"type": type(api_result).__name__}})
             return None
             
         except Exception as e:

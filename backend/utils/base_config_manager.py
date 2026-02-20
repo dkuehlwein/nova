@@ -100,9 +100,10 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
                 self._load_timestamp = time.time()
             
             logger.info(
-                f"Configuration loaded: {self.config_name}",
+                "Configuration loaded",
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "path": str(self.config_path),
                         "size": self.config_path.stat().st_size,
                         "timestamp": self._load_timestamp
@@ -112,10 +113,11 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
             
         except Exception as e:
             logger.error(
-                f"Failed to load configuration: {self.config_name}",
+                "Failed to load configuration",
                 exc_info=True,
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "path": str(self.config_path),
                         "error": str(e)
                     }
@@ -126,8 +128,8 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
     def _create_default_config(self) -> None:
         """Create default configuration if it doesn't exist."""
         logger.info(
-            f"Creating default configuration: {self.config_name}",
-            extra={"data": {"path": str(self.config_path)}}
+            "Creating default configuration",
+            extra={"data": {"config_name": self.config_name, "path": str(self.config_path)}}
         )
         # Subclasses should override this if they need custom defaults
         pass
@@ -170,9 +172,10 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
             except RuntimeError:
                 # No running event loop, just log
                 logger.info(
-                    f"Configuration {operation}: {self.config_name}",
+                    "Configuration event published",
                     extra={
                         "data": {
+                            "config_name": self.config_name,
                             "operation": operation,
                             "source": source,
                             "path": str(self.config_path)
@@ -200,9 +203,10 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
                 self._load_timestamp = time.time()
             
             logger.info(
-                f"Configuration saved: {self.config_name}",
+                "Configuration saved",
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "path": str(self.config_path),
                         "timestamp": self._load_timestamp
                     }
@@ -213,10 +217,11 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
             
         except Exception as e:
             logger.error(
-                f"Failed to save configuration: {self.config_name}",
+                "Failed to save configuration",
                 exc_info=True,
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "path": str(self.config_path),
                         "error": str(e)
                     }
@@ -264,7 +269,7 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
         )
         
         logger.info(
-            f"Configuration backup created: {backup_id}",
+            "Configuration backup created",
             extra={
                 "data": {
                     "backup_id": backup_id,
@@ -301,7 +306,7 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
             self.save_config(config)
             
             logger.info(
-                f"Configuration restored from backup: {backup_id}",
+                "Configuration restored from backup",
                 extra={
                     "data": {
                         "backup_id": backup_id,
@@ -314,7 +319,7 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
             
         except Exception as e:
             logger.error(
-                f"Failed to restore backup: {backup_id}",
+                "Failed to restore backup",
                 exc_info=True,
                 extra={
                     "data": {
@@ -346,8 +351,8 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
             def on_modified(self, event):
                 if not event.is_directory and Path(event.src_path) == self.manager.config_path:
                     logger.debug(
-                        f"Configuration file modified: {event.src_path}",
-                        extra={"data": {"path": event.src_path}}
+                        "Configuration file modified",
+                        extra={"data": {"config_name": self.manager.config_name, "path": event.src_path}}
                     )
                     self.manager._debounced_reload()
 
@@ -376,8 +381,8 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
                 self._observer = observer
 
         logger.info(
-            f"Started watching configuration: {self.config_name}",
-            extra={"data": {"path": str(self.config_path)}}
+            "Started watching configuration",
+            extra={"data": {"config_name": self.config_name, "path": str(self.config_path)}}
         )
     
     def stop_watching(self) -> None:
@@ -406,8 +411,8 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
         self._observer = None
 
         logger.info(
-            f"Stopped watching configuration: {self.config_name}",
-            extra={"data": {"path": str(self.config_path)}}
+            "Stopped watching configuration",
+            extra={"data": {"config_name": self.config_name, "path": str(self.config_path)}}
         )
 
         # Cancel any pending reload
@@ -419,8 +424,8 @@ class BaseConfigManager(ABC, Generic[ConfigType]):
     def reload_config(self) -> None:
         """Manually reload configuration."""
         logger.info(
-            f"Manually reloading configuration: {self.config_name}",
-            extra={"data": {"path": str(self.config_path)}}
+            "Manually reloading configuration",
+            extra={"data": {"config_name": self.config_name, "path": str(self.config_path)}}
         )
         self._load_config()
         self._publish_config_event("reloaded", "manual")

@@ -37,10 +37,11 @@ def create_unified_event_handler(
             
             if event.type == "prompt_updated":
                 logger.info(
-                    f"Prompt updated, reloading {service_name}: {event.data.get('prompt_file')}",
+                    "Prompt updated, reloading agent",
                     extra={
                         "data": {
                             "event_id": event.id,
+                            "service": service_name,
                             "prompt_file": event.data.get('prompt_file'),
                             "source": getattr(event, 'source', 'unknown')
                         }
@@ -50,18 +51,19 @@ def create_unified_event_handler(
                 # Clear cache if provided (for chat agent)
                 if clear_cache_func:
                     clear_cache_func()
-                    logger.info("cache cleared - will use updated prompt", extra={"data": {"service_name": service_name}})
+                    logger.info("Cache cleared, using updated prompt", extra={"data": {"service": service_name}})
                 elif reload_agent_func:
                     # For core agent, reload directly
                     await reload_agent_func()
-                    logger.info("reloaded with updated prompt", extra={"data": {"service_name": service_name}})
+                    logger.info("Agent reloaded with updated prompt", extra={"data": {"service": service_name}})
                 
             elif event.type == "llm_settings_updated":
                 logger.info(
-                    f"LLM settings updated, reloading {service_name}: {event.data.get('model')}",
+                    "LLM settings updated, reloading agent",
                     extra={
                         "data": {
                             "event_id": event.id,
+                            "service": service_name,
                             "model": event.data.get('model'),
                             "provider": event.data.get('provider'),
                             "temperature": event.data.get('temperature'),
@@ -74,19 +76,20 @@ def create_unified_event_handler(
                 # Clear cache if provided (for chat agent)
                 if clear_cache_func:
                     clear_cache_func()
-                    logger.info("cache cleared - will use updated LLM settings", extra={"data": {"service_name": service_name}})
+                    logger.info("Cache cleared, using updated LLM settings", extra={"data": {"service": service_name}})
                 elif reload_agent_func:
                     # For core agent, reload directly
                     await reload_agent_func()
-                    logger.info("reloaded with updated LLM settings", extra={"data": {"service_name": service_name}})
+                    logger.info("Agent reloaded with updated LLM settings", extra={"data": {"service": service_name}})
                     
             elif event.type == "mcp_toggled":
                 if service_name == "chat-agent":  # Only chat agent handles MCP toggles
                     logger.info(
-                        f"MCP server toggled, reloading {service_name}: {event.data.get('server_name')} -> {event.data.get('enabled')}",
+                        "MCP server toggled, reloading agent",
                         extra={
                             "data": {
                                 "event_id": event.id,
+                                "service": service_name,
                                 "server_name": event.data.get('server_name'),
                                 "enabled": event.data.get('enabled'),
                                 "source": getattr(event, 'source', 'unknown')
@@ -95,12 +98,12 @@ def create_unified_event_handler(
                     )
                     if clear_cache_func:
                         clear_cache_func()
-                        logger.info("cache cleared - will use updated MCP tools", extra={"data": {"service_name": service_name}})
+                        logger.info("Cache cleared, using updated MCP tools", extra={"data": {"service": service_name}})
                         
             # Ignore other event types
             
         except Exception as e:
-            logger.error("Failed to handle event", extra={"data": {"type": event.type, "service_name": service_name, "error": str(e)}})
+            logger.error("Failed to handle event", extra={"data": {"type": event.type, "service": service_name, "error": str(e)}})
     
     return unified_event_handler
 

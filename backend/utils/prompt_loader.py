@@ -104,7 +104,7 @@ one of these domains, use the `enable_skill` tool to load it.
 """
     except Exception as e:
         logger.warning(
-            f"Failed to build available skills section: {e}",
+            "Failed to build available skills section",
             extra={"data": {"error": str(e)}},
         )
         return "" 

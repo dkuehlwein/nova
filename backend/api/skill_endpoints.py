@@ -78,7 +78,7 @@ async def get_skills():
                 logger.warning("Failed to get manifest for skill", extra={"data": {"name": name, "error": str(e)}})
                 continue
 
-        logger.info("Skills list retrieved: skills available", extra={"data": {"skills_count": len(skills)}})
+        logger.info("Skills list retrieved", extra={"data": {"skills_count": len(skills)}})
 
         return SkillsListResponse(
             skills=skills,
@@ -141,7 +141,7 @@ async def get_skill_config(skill_name: str):
             content = config_path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             logger.error(
-                f"Config file encoding error: {skill_name}",
+                "Config file encoding error",
                 extra={"data": {"skill_name": skill_name, "path": str(config_path)}},
             )
             raise HTTPException(
@@ -152,7 +152,7 @@ async def get_skill_config(skill_name: str):
         stat = config_path.stat()
 
         logger.info(
-            f"Skill config retrieved: {skill_name}",
+            "Skill config retrieved",
             extra={"data": {"skill_name": skill_name, "size": stat.st_size}},
         )
 
@@ -200,7 +200,7 @@ async def update_skill_config(skill_name: str, request: SkillConfigUpdateRequest
             yaml.safe_load(request.content)
         except yaml.YAMLError as e:
             logger.warning(
-                f"Invalid YAML in skill config update: {skill_name}",
+                "Invalid YAML in skill config update",
                 extra={"data": {"skill_name": skill_name, "error": str(e)}},
             )
             raise HTTPException(
@@ -232,7 +232,7 @@ async def update_skill_config(skill_name: str, request: SkillConfigUpdateRequest
         stat = config_path.stat()
 
         logger.info(
-            f"Skill config updated: {skill_name}",
+            "Skill config updated",
             extra={"data": {"skill_name": skill_name, "size": stat.st_size}},
         )
 

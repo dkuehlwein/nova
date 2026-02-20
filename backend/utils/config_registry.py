@@ -27,14 +27,14 @@ class ConfigRegistry:
         """Register a configuration manager."""
         if config_name in self._managers:
             logger.warning(
-                f"Overwriting existing config manager: {config_name}",
+                "Overwriting existing config manager",
                 extra={"data": {"config_name": config_name}}
             )
         
         self._managers[config_name] = manager
         
         logger.info(
-            f"Configuration manager registered: {config_name}",
+            "Configuration manager registered",
             extra={
                 "data": {
                     "config_name": config_name,
@@ -128,12 +128,12 @@ class ConfigRegistry:
             try:
                 manager.start_watching()
                 logger.info(
-                    f"Started watcher for config: {config_name}",
+                    "Started watcher for config",
                     extra={"data": {"config_name": config_name}}
                 )
             except Exception as e:
                 logger.error(
-                    f"Failed to start watcher for config: {config_name}",
+                    "Failed to start watcher for config",
                     exc_info=True,
                     extra={
                         "data": {
@@ -163,12 +163,12 @@ class ConfigRegistry:
             try:
                 manager.stop_watching()
                 logger.info(
-                    f"Stopped watcher for config: {config_name}",
+                    "Stopped watcher for config",
                     extra={"data": {"config_name": config_name}}
                 )
             except Exception as e:
                 logger.error(
-                    f"Failed to stop watcher for config: {config_name}",
+                    "Failed to stop watcher for config",
                     exc_info=True,
                     extra={
                         "data": {
@@ -198,12 +198,12 @@ class ConfigRegistry:
             try:
                 manager.reload_config()
                 logger.info(
-                    f"Reloaded config: {config_name}",
+                    "Reloaded config",
                     extra={"data": {"config_name": config_name}}
                 )
             except Exception as e:
                 logger.error(
-                    f"Failed to reload config: {config_name}",
+                    "Failed to reload config",
                     exc_info=True,
                     extra={
                         "data": {
@@ -225,10 +225,11 @@ class ConfigRegistry:
                 
                 status = "valid" if result.valid else "invalid"
                 logger.info(
-                    f"Validated config: {config_name} - {status}",
+                    "Validated config",
                     extra={
                         "data": {
                             "config_name": config_name,
+                            "status": status,
                             "valid": result.valid,
                             "error_count": len(result.errors),
                             "warning_count": len(result.warnings)
@@ -237,7 +238,7 @@ class ConfigRegistry:
                 )
             except Exception as e:
                 logger.error(
-                    f"Failed to validate config: {config_name}",
+                    "Failed to validate config",
                     exc_info=True,
                     extra={
                         "data": {

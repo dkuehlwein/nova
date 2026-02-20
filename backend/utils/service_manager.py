@@ -98,30 +98,27 @@ class ServiceManager:
                 return self.pg_pool
                 
             except ImportError as e:
-                error_msg = f"PostgreSQL checkpointer packages not available: {e}"
-                self.logger.error(error_msg)
-                raise RuntimeError(error_msg)
+                self.logger.error("PostgreSQL checkpointer packages not available", extra={"data": {"error": str(e)}})
+                raise RuntimeError(f"PostgreSQL checkpointer packages not available: {e}")
             except Exception as e:
-                error_msg = f"Failed to create PostgreSQL connection pool: {e}"
-                self.logger.error(error_msg, extra={
+                self.logger.error("Failed to create PostgreSQL connection pool", extra={
                     "data": {
                         "service": self.service_name,
                         "error": str(e)
                     }
                 })
-                raise RuntimeError(error_msg)
+                raise RuntimeError(f"Failed to create PostgreSQL connection pool: {e}")
                 
         except Exception as e:
             if isinstance(e, (ValueError, RuntimeError)):
                 raise  # Re-raise ValueError and RuntimeError as-is
-            error_msg = f"Error during PostgreSQL pool initialization: {e}"
-            self.logger.error(error_msg, extra={
+            self.logger.error("Error during PostgreSQL pool initialization", extra={
                 "data": {
                     "service": self.service_name,
                     "error": str(e)
                 }
             })
-            raise RuntimeError(error_msg)
+            raise RuntimeError(f"Error during PostgreSQL pool initialization: {e}")
     
     async def close_pg_pool(self):
         """Close PostgreSQL connection pool."""
@@ -225,7 +222,7 @@ class ServiceManager:
         except asyncio.TimeoutError:
             self.logger.warning("Memory cleanup timed out")
         except Exception as e:
-            self.logger.debug("Memory cleanup error (may not be initialized", extra={"data": {"error": str(e)}})
+            self.logger.debug("Memory cleanup error", extra={"data": {"error": str(e)}})
     
     async def ensure_database_initialized(self):
         """Ensure database is initialized by checking if core tables exist.
@@ -252,12 +249,11 @@ class ServiceManager:
                 self.logger.info("Database needs initialization, running init_db...")
                 from init_db import init_database
                 await init_database()
-                self.logger.info("✅ Database initialization completed")
+                self.logger.info("Database initialization completed")
                 
         except Exception as e:
-            error_msg = f"Database initialization failed: {e}"
-            self.logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            self.logger.error("Database initialization failed", extra={"data": {"error": str(e)}})
+            raise RuntimeError(f"Database initialization failed: {e}")
 
 
 async def create_prompt_updated_handler(reload_callback: Callable[[], Any]):
@@ -276,7 +272,7 @@ async def create_prompt_updated_handler(reload_callback: Callable[[], Any]):
         if event.type == "prompt_updated":
             try:
                 logger.info(
-                    f"Prompt updated, reloading agent: {event.data.get('prompt_file')}",
+                    "Prompt updated, reloading agent",
                     extra={
                         "data": {
                             "event_id": event.id,

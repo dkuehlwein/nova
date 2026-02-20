@@ -102,7 +102,7 @@ def process_hook_items(self, hook_name: str) -> Dict[str, Any]:
     task_id = current_task.request.id if current_task else "unknown"
     
     logger.info(
-        f"Starting hook processing task: {hook_name}",
+        "Starting hook processing task",
         extra={"data": {
             "hook_name": hook_name,
             "task_id": task_id,
@@ -131,7 +131,7 @@ def process_hook_items(self, hook_name: str) -> Dict[str, Any]:
             result = asyncio.run(_process_hook_items_async(hook_name, task_id))
         
         logger.info(
-            f"Hook processing task completed: {hook_name}",
+            "Hook processing task completed",
             extra={"data": {
                 "hook_name": hook_name,
                 "task_id": task_id,
@@ -151,7 +151,7 @@ def process_hook_items(self, hook_name: str) -> Dict[str, Any]:
         max_retries = self.max_retries
         
         logger.error(
-            f"Hook processing task failed: {hook_name}",
+            "Hook processing task failed",
             exc_info=True,
             extra={"data": {
                 "hook_name": hook_name,
@@ -176,14 +176,14 @@ def process_hook_items(self, hook_name: str) -> Dict[str, Any]:
             publish_sync(event)
         except Exception as publish_error:
             logger.error(
-                f"Failed to publish hook processing failure event for {hook_name}",
-                extra={"data": {"error": str(publish_error)}}
+                "Failed to publish hook processing failure event",
+                extra={"data": {"hook_name": hook_name, "error": str(publish_error)}}
             )
         
         # Store failure information for dead letter queue handling
         if retry_count >= max_retries:
             logger.critical(
-                f"Hook processing task exhausted all retries: {hook_name}",
+                "Hook processing task exhausted all retries",
                 extra={"data": {
                     "hook_name": hook_name,
                     "task_id": task_id,
@@ -196,8 +196,8 @@ def process_hook_items(self, hook_name: str) -> Dict[str, Any]:
                 asyncio.run(_store_failed_hook_task_info(hook_name, task_id, str(e), retry_count))
             except Exception as store_error:
                 logger.error(
-                    f"Failed to store dead letter queue information for {hook_name}",
-                    extra={"data": {"error": str(store_error)}}
+                    "Failed to store dead letter queue information",
+                    extra={"data": {"hook_name": hook_name, "error": str(store_error)}}
                 )
         
         # Re-raise for Celery retry mechanism
@@ -234,7 +234,7 @@ async def _process_hook_items_async(hook_name: str, task_id: str) -> Dict[str, A
         result = await hook.process_items()
         
         logger.info(
-            f"Hook items processed successfully: {hook_name}",
+            "Hook items processed successfully",
             extra={"data": {
                 "hook_name": hook_name,
                 "task_id": task_id,
@@ -310,7 +310,7 @@ def process_single_item(self, hook_name: str, item_data: Dict[str, Any]) -> Dict
     task_id = current_task.request.id if current_task else "unknown"
     
     logger.info(
-        f"Processing single item from hook: {hook_name}",
+        "Processing single item from hook",
         extra={"data": {
             "hook_name": hook_name,
             "task_id": task_id,
@@ -323,7 +323,7 @@ def process_single_item(self, hook_name: str, item_data: Dict[str, Any]) -> Dict
         result = asyncio.run(_process_single_item_async(hook_name, task_id, item_data))
         
         logger.info(
-            f"Single item processing completed: {hook_name}",
+            "Single item processing completed",
             extra={"data": {
                 "hook_name": hook_name,
                 "task_id": task_id,
@@ -335,7 +335,7 @@ def process_single_item(self, hook_name: str, item_data: Dict[str, Any]) -> Dict
         
     except Exception as e:
         logger.error(
-            f"Single item processing failed: {hook_name}",
+            "Single item processing failed",
             exc_info=True,
             extra={"data": {
                 "hook_name": hook_name,
@@ -409,7 +409,7 @@ def replay_failed_hook_task(hook_name: str, original_task_id: str) -> Dict[str, 
     new_task_id = current_task.request.id if current_task else "unknown"
     
     logger.info(
-        f"Replaying failed hook task: {hook_name}",
+        "Replaying failed hook task",
         extra={"data": {
             "hook_name": hook_name,
             "new_task_id": new_task_id,
@@ -431,7 +431,7 @@ def replay_failed_hook_task(hook_name: str, original_task_id: str) -> Dict[str, 
         
     except Exception as e:
         logger.error(
-            f"Failed to replay hook task: {hook_name}",
+            "Failed to replay hook task",
             exc_info=True,
             extra={"data": {
                 "hook_name": hook_name,
@@ -478,7 +478,7 @@ def health_check_all_hooks() -> Dict[str, Any]:
         }
         
         logger.info(
-            f"Hook health check completed: {healthy_hooks}/{total_hooks} healthy",
+            "Hook health check completed",
             extra={"data": {
                 "task_id": task_id,
                 "total_hooks": total_hooks,
@@ -525,13 +525,13 @@ async def _store_failed_hook_task_info(hook_name: str, task_id: str, error: str,
         publish_sync(event)
         
         logger.info(
-            f"Stored dead letter queue information for hook: {hook_name}",
+            "Stored dead letter queue information",
             extra={"data": failed_task_data}
         )
         
     except Exception as e:
         logger.error(
-            f"Failed to store dead letter queue information for hook: {hook_name}",
+            "Failed to store dead letter queue information",
             extra={"data": {
                 "hook_name": hook_name,
                 "task_id": task_id,

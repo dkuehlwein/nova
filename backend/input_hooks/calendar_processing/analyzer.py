@@ -66,14 +66,14 @@ class MeetingAnalyzer:
                     
             except Exception as e:
                 logger.error(
-                    f"Failed to analyze event {event.get('id', 'unknown')}: {str(e)}",
+                    "Failed to analyze event",
                     exc_info=True,
-                    extra={"data": {"event_id": event.get('id'), "error": str(e)}}
+                    extra={"data": {"event_id": event.get('id', 'unknown'), "error": str(e)}}
                 )
                 continue
         
         logger.info(
-            f"Analyzed {len(raw_events)} events, found {len(meetings_needing_prep)} needing preparation",
+            "Analyzed events for preparation needs",
             extra={"data": {
                 "total_events": len(raw_events),
                 "meetings_needing_prep": len(meetings_needing_prep)
@@ -114,7 +114,7 @@ class MeetingAnalyzer:
             # Filter by target date - only process events that occur on the target date
             event_date = start_time.date()
             if event_date != target_date:
-                logger.debug("Skipping event - not on target date (event", extra={"data": {"event_id": event_id, "target_date": target_date, "event_date": event_date}})
+                logger.debug("Skipping event, not on target date", extra={"data": {"event_id": event_id, "target_date": str(target_date), "event_date": str(event_date)}})
                 return None
             
             # Check if it's an all-day event
@@ -134,7 +134,8 @@ class MeetingAnalyzer:
             # Skip very short events
             if duration_minutes < self.min_duration_minutes:
                 logger.debug(
-                    f"Skipping short event {event_id} ({duration_minutes} minutes)"
+                    "Skipping short event",
+                    extra={"data": {"event_id": event_id, "duration_minutes": duration_minutes}}
                 )
                 return None
             
@@ -159,7 +160,7 @@ class MeetingAnalyzer:
             )
             
             logger.debug(
-                f"Parsed meeting info for {event_id}: {title}",
+                "Parsed meeting info",
                 extra={"data": {
                     "event_id": event_id,
                     "title": title,
@@ -172,8 +173,9 @@ class MeetingAnalyzer:
             
         except Exception as e:
             logger.error(
-                f"Error parsing event {event.get('id', 'unknown')}: {str(e)}",
-                exc_info=True
+                "Error parsing event",
+                exc_info=True,
+                extra={"data": {"event_id": event.get('id', 'unknown'), "error": str(e)}}
             )
             return None
     
@@ -194,7 +196,8 @@ class MeetingAnalyzer:
             # Skip meetings that are already prep meetings (avoid double-prep)
             if title_lower.startswith('prep:'):
                 logger.debug(
-                    f"Skipping meeting {meeting.meeting_id} - already a prep meeting"
+                    "Skipping meeting, already a prep meeting",
+                    extra={"data": {"meeting_id": meeting.meeting_id}}
                 )
                 return False
             
@@ -202,7 +205,8 @@ class MeetingAnalyzer:
             for skip_word in self.skip_keywords:
                 if skip_word in title_lower or skip_word in description_lower:
                     logger.debug(
-                        f"Skipping meeting {meeting.meeting_id} - contains skip keyword '{skip_word}'"
+                        "Skipping meeting, contains skip keyword",
+                        extra={"data": {"meeting_id": meeting.meeting_id, "skip_keyword": skip_word}}
                     )
                     return False
             
@@ -210,34 +214,39 @@ class MeetingAnalyzer:
             for prep_word in self.prep_keywords:
                 if prep_word in title_lower or prep_word in description_lower:
                     logger.debug(
-                        f"Including meeting {meeting.meeting_id} - contains prep keyword '{prep_word}'"
+                        "Including meeting, contains prep keyword",
+                        extra={"data": {"meeting_id": meeting.meeting_id, "prep_keyword": prep_word}}
                     )
                     return True
             
             # Include meetings with multiple attendees (likely collaborative)
             if len(meeting.attendee_emails) >= 2:  # Including you + others
                 logger.debug(
-                    f"Including meeting {meeting.meeting_id} - multiple attendees ({len(meeting.attendee_emails)})"
+                    "Including meeting, multiple attendees",
+                    extra={"data": {"meeting_id": meeting.meeting_id, "attendee_count": len(meeting.attendee_emails)}}
                 )
                 return True
             
             # Include longer meetings (likely important)
             if meeting.duration_minutes >= 60:
                 logger.debug(
-                    f"Including meeting {meeting.meeting_id} - long duration ({meeting.duration_minutes} min)"
+                    "Including meeting, long duration",
+                    extra={"data": {"meeting_id": meeting.meeting_id, "duration_minutes": meeting.duration_minutes}}
                 )
                 return True
             
             # Skip solo/personal meetings
             if len(meeting.attendee_emails) <= 1 and meeting.duration_minutes < 60:
                 logger.debug(
-                    f"Skipping meeting {meeting.meeting_id} - appears to be personal/solo time"
+                    "Skipping meeting, appears to be personal/solo time",
+                    extra={"data": {"meeting_id": meeting.meeting_id}}
                 )
                 return False
             
             # Default: include if uncertain (err on side of preparation)
             logger.debug(
-                f"Including meeting {meeting.meeting_id} - default inclusion"
+                "Including meeting, default inclusion",
+                extra={"data": {"meeting_id": meeting.meeting_id}}
             )
             return True
             

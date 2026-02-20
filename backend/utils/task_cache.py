@@ -69,7 +69,7 @@ async def set_cached_task_counts(counts: Dict[str, int]) -> bool:
             json.dumps(counts)
         )
         
-        logger.debug("Cached task counts for seconds", extra={"data": {"ttl": ttl}})
+        logger.debug("Cached task counts", extra={"data": {"ttl": ttl}})
         return True
         
     except Exception as e:
@@ -158,7 +158,7 @@ async def set_cached_dashboard_data(data: Dict[str, Any]) -> bool:
             json.dumps(cache_data, default=json_serializer)
         )
         
-        logger.debug("Cached dashboard data for seconds", extra={"data": {"ttl": ttl}})
+        logger.debug("Cached dashboard data", extra={"data": {"ttl": ttl}})
         return True
         
     except Exception as e:

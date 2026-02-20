@@ -52,7 +52,7 @@ class WebSocketManager:
             }
         
         logger.info(
-            f"WebSocket client connected: {client_id}",
+            "WebSocket client connected",
             extra={
                 "data": {
                     "client_id": client_id,
@@ -69,7 +69,7 @@ class WebSocketManager:
             self._disconnect_internal(client_id)
         
         logger.info(
-            f"WebSocket client disconnected: {client_id}",
+            "WebSocket client disconnected",
             extra={
                 "data": {
                     "client_id": client_id,
@@ -95,7 +95,7 @@ class WebSocketManager:
                     self.client_metadata[client_id]["messages_sent"] += 1
                     
                     logger.debug(
-                        f"Sent personal message to client: {client_id}",
+                        "Sent personal message to client",
                         extra={
                             "data": {
                                 "client_id": client_id,
@@ -105,7 +105,7 @@ class WebSocketManager:
                     )
                 except Exception as e:
                     logger.error(
-                        f"Failed to send message to client {client_id}",
+                        "Failed to send message to client",
                         exc_info=True,
                         extra={
                             "data": {
@@ -141,7 +141,7 @@ class WebSocketManager:
                 
             except Exception as e:
                 logger.warning(
-                    f"Failed to broadcast to client {client_id}: {e}",
+                    "Failed to broadcast to client",
                     extra={
                         "data": {
                             "client_id": client_id,
@@ -156,7 +156,7 @@ class WebSocketManager:
             await self.disconnect(client_id)
         
         logger.info(
-            f"Broadcast message to {successful_broadcasts} clients",
+            "Broadcast message sent",
             extra={
                 "data": {
                     "message_type": message.get("type", "unknown"),
@@ -175,7 +175,7 @@ class WebSocketManager:
             await self.broadcast(ws_message.model_dump())
             
             logger.debug(
-                f"Broadcast event: {event.type}",
+                "Broadcast event sent",
                 extra={
                     "data": {
                         "event_id": event.id,
@@ -187,7 +187,7 @@ class WebSocketManager:
             
         except ValidationError as e:
             logger.error(
-                f"Failed to convert event to WebSocket message: {event.id}",
+                "Failed to convert event to WebSocket message",
                 exc_info=True,
                 extra={
                     "data": {
@@ -199,7 +199,7 @@ class WebSocketManager:
             )
         except Exception as e:
             logger.error(
-                f"Failed to broadcast event: {event.id}",
+                "Failed to broadcast event",
                 exc_info=True,
                 extra={
                     "data": {
@@ -266,7 +266,7 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str = Non
             try:
                 message = json.loads(data)
                 logger.debug(
-                    f"Received message from client {actual_client_id}",
+                    "Received message from client",
                     extra={
                         "data": {
                             "client_id": actual_client_id,
@@ -286,7 +286,7 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str = Non
                 
             except json.JSONDecodeError:
                 logger.warning(
-                    f"Invalid JSON from client {actual_client_id}: {data}",
+                    "Invalid JSON received from client",
                     extra={
                         "data": {
                             "client_id": actual_client_id,
@@ -299,7 +299,7 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str = Non
         logger.info("Client disconnected normally", extra={"data": {"actual_client_id": str(actual_client_id)}})
     except Exception as e:
         logger.error(
-            f"Error in WebSocket connection for client {actual_client_id}",
+            "Error in WebSocket connection",
             exc_info=True,
             extra={
                 "data": {

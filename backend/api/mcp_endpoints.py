@@ -75,7 +75,7 @@ async def get_mcp_servers():
                 tool_names=server.get("tool_names", [])
             ))
 
-        logger.info("MCP status: servers, tools via LiteLLM", extra={"data": {"servers_count": len(servers), "total_tools": total_tools}})
+        logger.info("MCP status retrieved", extra={"data": {"servers_count": len(servers), "total_tools": total_tools}})
 
         return MCPServersResponse(
             servers=response_servers,

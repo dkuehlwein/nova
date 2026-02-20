@@ -152,7 +152,7 @@ async def list_configuration_backups():
         backups = config_manager.list_backups()
         
         logger.info(
-            f"Listed configuration backups",
+            "Listed configuration backups",
             extra={"data": {"backup_count": len(backups)}}
         )
         

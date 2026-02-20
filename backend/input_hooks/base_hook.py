@@ -145,7 +145,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
         
         try:
             logger.info(
-                f"Starting hook processing: {self.hook_name}",
+                "Starting hook processing",
                 extra={"data": {"hook_name": self.hook_name}}
             )
             
@@ -157,7 +157,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
             # Fetch raw items from source
             raw_items = await self.fetch_items()
             logger.info(
-                f"Fetched {len(raw_items)} raw items from {self.hook_name}",
+                "Fetched raw items from hook",
                 extra={"data": {"hook_name": self.hook_name, "item_count": len(raw_items)}}
             )
             
@@ -169,7 +169,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
                     error_msg = f"Failed to process item: {str(e)}"
                     result.errors.append(error_msg)
                     logger.error(
-                        f"Item processing error in {self.hook_name}",
+                        "Item processing error",
                         extra={"data": {
                             "hook_name": self.hook_name,
                             "error": error_msg,
@@ -186,7 +186,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
             self._stats["successes"] += 1
             
             logger.info(
-                f"Hook processing completed: {self.hook_name}",
+                "Hook processing completed",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "items_processed": result.items_processed,
@@ -207,7 +207,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
             self._stats["errors"] += 1
             
             logger.error(
-                f"Hook processing failed: {self.hook_name}",
+                "Hook processing failed",
                 exc_info=True,
                 extra={"data": {
                     "hook_name": self.hook_name,
@@ -279,7 +279,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
             
             if task_id:
                 logger.info(
-                    f"Created task from {self.hook_name} item",
+                    "Created task from hook item",
                     extra={"data": {
                         "hook_name": self.hook_name,
                         "source_id": item.source_id,
@@ -292,7 +292,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
             
         except Exception as e:
             logger.error(
-                f"Failed to create task from {self.hook_name} item",
+                "Failed to create task from hook item",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "source_id": item.source_id,
@@ -323,7 +323,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
             )
             
             logger.info(
-                f"Updated task from {self.hook_name} item",
+                "Updated task from hook item",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "source_id": item.source_id,
@@ -335,7 +335,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
             
         except Exception as e:
             logger.error(
-                f"Failed to update task from {self.hook_name} item",
+                "Failed to update task from hook item",
                 extra={"data": {
                     "hook_name": self.hook_name,
                     "source_id": item.source_id,
@@ -381,8 +381,8 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
                 
         except Exception as e:
             logger.error(
-                f"Error checking for existing task: {e}",
-                extra={"data": {"source_type": item.source_type, "source_id": item.source_id}}
+                "Error checking for existing task",
+                extra={"data": {"source_type": item.source_type, "source_id": item.source_id, "error": str(e)}}
             )
             return None
     
@@ -424,7 +424,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
                 
         except Exception as e:
             logger.error(
-                f"Failed to mark item as processed",
+                "Failed to mark item as processed",
                 extra={"data": {
                     "source_type": item.source_type,
                     "source_id": item.source_id,
@@ -464,7 +464,7 @@ class BaseInputHook(BaseConfigManager[HookConfig]):
                 
         except Exception as e:
             logger.error(
-                f"Failed to mark item as updated",
+                "Failed to mark item as updated",
                 extra={"data": {
                     "source_type": item.source_type,
                     "source_id": item.source_id,

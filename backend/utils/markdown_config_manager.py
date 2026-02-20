@@ -30,10 +30,11 @@ class MarkdownConfigManager(BaseConfigManager[str]):
                 return file.read()
         except Exception as e:
             logger.error(
-                f"Failed to load markdown data: {self.config_name}",
+                "Failed to load markdown data",
                 exc_info=True,
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "path": str(self.config_path),
                         "error": str(e)
                     }
@@ -52,10 +53,11 @@ class MarkdownConfigManager(BaseConfigManager[str]):
                 
         except Exception as e:
             logger.error(
-                f"Failed to save markdown data: {self.config_name}",
+                "Failed to save markdown data",
                 exc_info=True,
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "path": str(self.config_path),
                         "error": str(e)
                     }
@@ -132,8 +134,8 @@ class MarkdownConfigManager(BaseConfigManager[str]):
         """Create default configuration file."""
         if self.default_config is not None:
             logger.info(
-                f"Creating default markdown config: {self.config_name}",
-                extra={"data": {"path": str(self.config_path)}}
+                "Creating default markdown config",
+                extra={"data": {"config_name": self.config_name, "path": str(self.config_path)}}
             )
             
             # Save default config
@@ -141,8 +143,8 @@ class MarkdownConfigManager(BaseConfigManager[str]):
         else:
             # Create empty markdown file
             logger.info(
-                f"Creating empty markdown config: {self.config_name}",
-                extra={"data": {"path": str(self.config_path)}}
+                "Creating empty markdown config",
+                extra={"data": {"config_name": self.config_name, "path": str(self.config_path)}}
             )
             
             self._save_config_data("")
@@ -162,10 +164,11 @@ class MarkdownConfigManager(BaseConfigManager[str]):
             
         except Exception as e:
             logger.error(
-                f"Failed to process template variables: {self.config_name}",
+                "Failed to process template variables",
                 exc_info=True,
                 extra={
                     "data": {
+                        "config_name": self.config_name,
                         "template_vars": list(template_vars.keys()),
                         "error": str(e)
                     }

@@ -218,9 +218,7 @@ async def add_gitlab_member(
         )
         if user_info:
             user_id = user_info["id"]
-            logger.info(
-                f"Found GitLab user by email: {user_identifier} -> {user_info['username']} (ID: {user_id})"
-            )
+            logger.info("Found GitLab user by email", extra={"data": {"user_identifier": user_identifier, "username": user_info["username"], "user_id": user_id}})
     else:
         # Try as username
         user_id = await get_user_id_by_username(
@@ -253,9 +251,7 @@ async def add_gitlab_member(
             )
 
             if response.status_code == 201:
-                logger.info(
-                    f"Successfully added {user_identifier} to {project_path} as {access_level}"
-                )
+                logger.info("Successfully added user to project", extra={"data": {"user_identifier": user_identifier, "project_path": project_path, "access_level": access_level}})
                 return {"success": True}
 
             elif response.status_code == 409:
@@ -265,9 +261,7 @@ async def add_gitlab_member(
 
             else:
                 error_msg = response.json().get("message", response.text)
-                logger.error(
-                    f"Failed to add {user_identifier} to {project_path}: {response.status_code} - {error_msg}"
-                )
+                logger.error("Failed to add user to project", extra={"data": {"user_identifier": user_identifier, "project_path": project_path, "status_code": response.status_code, "error_msg": error_msg}})
                 return {"success": False, "error": f"API error {response.status_code}: {error_msg}"}
 
         except httpx.HTTPStatusError as e:
@@ -367,10 +361,7 @@ async def create_gitlab_user(
                     if unblock_response.status_code == 201:
                         logger.info("Successfully unblocked user", extra={"data": {"username": username}})
                     else:
-                        logger.warning(
-                            f"Failed to unblock user {username}: {unblock_response.status_code} - "
-                            f"User may need manual activation by an admin"
-                        )
+                        logger.warning("Failed to unblock user, may need manual admin activation", extra={"data": {"username": username, "status_code": unblock_response.status_code}})
 
                 return {
                     "success": True,

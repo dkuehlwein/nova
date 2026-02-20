@@ -53,7 +53,7 @@ class ConversationService:
             List of unique thread IDs from all conversations
         """
         try:
-            logger.debug("Checkpointer type", extra={"data": {"type": type(checkpointer)}})
+            logger.debug("Checkpointer type", extra={"data": {"type": type(checkpointer).__name__}})
 
             if hasattr(checkpointer, "alist"):
                 thread_ids = []
@@ -69,16 +69,13 @@ class ConversationService:
                                 thread_ids.append(thread_id)
                                 logger.debug("Added thread_id", extra={"data": {"thread_id": thread_id}})
 
-                    logger.debug(
-                        f"Total checkpoints found: {checkpoint_count}, "
-                        f"unique threads: {len(thread_ids)}"
-                    )
+                    logger.debug("Checkpoint scan complete", extra={"data": {"checkpoint_count": checkpoint_count, "unique_threads": len(thread_ids)}})
 
                 except Exception as e:
                     logger.error("Error listing threads from checkpointer", extra={"data": {"error": str(e)}})
                 return thread_ids
             else:
-                logger.error("Unsupported checkpointer type", extra={"data": {"type": type(checkpointer)}})
+                logger.error("Unsupported checkpointer type", extra={"data": {"type": type(checkpointer).__name__}})
                 return []
 
         except Exception as e:
@@ -103,7 +100,7 @@ class ConversationService:
             config = create_langgraph_config(thread_id)
             state = await checkpointer.aget(config)
 
-            logger.debug("Getting chat history", extra={"data": {"thread_id": thread_id, "state_type": str(type(state))}})
+            logger.debug("Getting chat history", extra={"data": {"thread_id": thread_id, "state_type": type(state).__name__}})
 
             if not state:
                 logger.debug("No state found for thread", extra={"data": {"thread_id": thread_id}})
@@ -111,20 +108,14 @@ class ConversationService:
 
             channel_values = state.get("channel_values", {})
             if "messages" not in channel_values:
-                logger.debug(
-                    f"No messages in state for thread {thread_id}, "
-                    f"available keys: {list(channel_values.keys())}"
-                )
+                logger.debug("No messages in state for thread", extra={"data": {"thread_id": thread_id, "available_keys": list(channel_values.keys())}})
                 return []
 
             messages = channel_values["messages"]
             chat_messages = []
 
             checkpoint_timestamp = state.get("ts", datetime.now().isoformat())
-            logger.debug(
-                f"Found {len(messages)} raw messages in state, "
-                f"checkpoint timestamp: {checkpoint_timestamp}"
-            )
+            logger.debug("Found raw messages in state", extra={"data": {"message_count": len(messages), "checkpoint_timestamp": checkpoint_timestamp}})
 
             if not messages:
                 return []
@@ -271,9 +262,7 @@ class ConversationService:
                         )
                         msg_index += 1
 
-            logger.debug(
-                f"Returning {len(chat_messages)} chat messages (from {len(messages)} total)"
-            )
+            logger.debug("Returning chat messages", extra={"data": {"chat_message_count": len(chat_messages), "raw_message_count": len(messages)}})
             return chat_messages
 
         except Exception as e:
@@ -391,7 +380,7 @@ class ConversationService:
                         return None  # Skip - belongs in "Needs decision" only
 
             except Exception as task_error:
-                logger.warning("Error checking task status", extra={"data": {"task_id": task_id, "task_error": task_error}})
+                logger.warning("Error checking task status", extra={"data": {"task_id": task_id, "error": str(task_error)}})
 
         title = await self.get_title(thread_id, messages)
         last_message = messages[-1] if messages else None
@@ -462,9 +451,7 @@ class ConversationService:
                 try:
                     await cleanup_task_chat_data(task_id)
                 except Exception as cleanup_error:
-                    logger.warning(
-                        f"Failed to cleanup chat data for task {task_id}: {cleanup_error}"
-                    )
+                    logger.warning("Failed to cleanup chat data for task", extra={"data": {"task_id": task_id, "error": str(cleanup_error)}})
 
                 logger.info("Deleted task chat and associated task", extra={"data": {"thread_id": thread_id, "task_id": task_id}})
                 return {

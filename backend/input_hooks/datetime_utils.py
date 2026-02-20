@@ -78,7 +78,7 @@ def _parse_datetime_impl(
                 return None if not fallback_to_now else datetime.now(timezone.utc)
                 
         else:
-            logger.warning("Unknown datetime input type", extra={"data": {"source_type": source_type, "type": type(datetime_input), "datetime_input": datetime_input}})
+            logger.warning("Unknown datetime input type", extra={"data": {"source_type": source_type, "type": type(datetime_input).__name__}})
             return None if not fallback_to_now else datetime.now(timezone.utc)
             
     except Exception as e:
