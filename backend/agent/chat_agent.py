@@ -73,7 +73,7 @@ async def get_all_tools(use_cache=True, include_escalation=False) -> List[Any]:
     _cached_tools = wrap_tools_for_approval(all_tools)
     log_timing("wrap_tools_for_approval", t1, {"count": len(_cached_tools)})
 
-    logger.info("Tools: local + MCP = total", extra={"data": {"local_tools_count": len(local_tools), "mcp_tools_count": len(mcp_tools), "_cached_tools_count": len(_cached_tools)}})
+    logger.info("Tools loaded", extra={"data": {"local_tools": len(local_tools), "mcp_tools": len(mcp_tools), "total": len(_cached_tools)}})
     return _cached_tools
 
 
