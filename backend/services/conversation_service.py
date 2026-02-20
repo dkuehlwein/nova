@@ -103,7 +103,7 @@ class ConversationService:
             config = create_langgraph_config(thread_id)
             state = await checkpointer.aget(config)
 
-            logger.debug("Getting chat history for , state type", extra={"data": {"thread_id": thread_id, "type": type(state)}})
+            logger.debug("Getting chat history", extra={"data": {"thread_id": thread_id, "state_type": str(type(state))}})
 
             if not state:
                 logger.debug("No state found for thread", extra={"data": {"thread_id": thread_id}})

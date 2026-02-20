@@ -295,7 +295,7 @@ class CalendarProcessor:
             if prep_exists and config.update_existing_tasks:
                 # Update existing prep meeting
                 # We'd need to get the existing prep meeting ID for this
-                logger.info("Prep meeting exists for , would update if we had event ID", extra={"data": {"meeting_id": str(meeting.meeting_id)}})
+                logger.info("Prep meeting exists, would update if we had event ID", extra={"data": {"meeting_id": str(meeting.meeting_id)}})
                 process_result["updated"] = True
                 
             elif not prep_exists and config.create_tasks:

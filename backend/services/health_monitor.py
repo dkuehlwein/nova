@@ -156,7 +156,7 @@ class HealthMonitorService:
         
         # Log results
         success_count = sum(1 for r in results if not isinstance(r, Exception))
-        logger.info("Health checks completed: / successful", extra={"data": {"success_count": success_count, "tasks_count": len(tasks)}})
+        logger.info("Health checks completed", extra={"data": {"success_count": success_count, "tasks_count": len(tasks)}})
     
     async def _check_http_service(self, service_name: str, config: Dict) -> bool:
         """Check HTTP-based service health."""
@@ -486,7 +486,7 @@ class HealthMonitorService:
             async def handle_mcp_event(event):
                 """Handle MCP server toggle events by refreshing MCP server status."""
                 if event.get("type") == "mcp_toggled":
-                    logger.info("MCP server toggled: ->", extra={"data": {"event": event.get('data', {}).get('server_name'), "event_2": event.get('data', {}).get('enabled')}})
+                    logger.info("MCP server toggled", extra={"data": {"server_name": event.get('data', {}).get('server_name'), "enabled": event.get('data', {}).get('enabled')}})
                     # Trigger immediate refresh of MCP servers status
                     await self._check_mcp_servers()
                     logger.info("MCP servers status refreshed after toggle")

@@ -174,7 +174,7 @@ class LLMModelService:
             if success and result:
                 existing_models = [model.get("model_name", "") for model in result.get("data", [])]
                 exists = model_name in existing_models
-                logger.debug("Model existence check for '': (found total models", extra={"data": {"model_name": model_name, "exists": exists, "existing_models_count": len(existing_models)}})
+                logger.debug("Model existence check completed", extra={"data": {"model_name": model_name, "exists": exists, "existing_models_count": len(existing_models)}})
                 return exists
             logger.warning("Failed to get model list for existence check", extra={"data": {"model_name": model_name}})
             return False

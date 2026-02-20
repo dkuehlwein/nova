@@ -221,7 +221,7 @@ async def create_chat_agent(checkpointer=None, pg_pool=None, use_cache=True, inc
 
         # Calculate approximate prompt size for logging
         prompt_chars = sum(len(str(m.content)) for m in messages)
-        logger.info("Invoking LLM with messages (~ chars", extra={"data": {"messages_count": len(messages), "prompt_chars": prompt_chars}})
+        logger.info("Invoking LLM", extra={"data": {"messages_count": len(messages), "prompt_chars": prompt_chars}})
 
         # Invoke LLM
         t0 = time.time()

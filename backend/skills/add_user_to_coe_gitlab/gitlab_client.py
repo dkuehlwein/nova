@@ -229,7 +229,7 @@ async def add_gitlab_member(
             basic_auth=basic_auth
         )
         if user_id:
-            logger.info("Found GitLab user by username: (ID", extra={"data": {"user_identifier": user_identifier, "user_id": str(user_id)}})
+            logger.info("Found GitLab user by username", extra={"data": {"user_identifier": user_identifier, "user_id": str(user_id)}})
 
     if not user_id:
         return {
@@ -353,12 +353,12 @@ async def create_gitlab_user(
                 user = response.json()
                 user_id = user["id"]
                 user_state = user.get("state", "unknown")
-                logger.info("Created GitLab user: (ID: , state", extra={"data": {"username": username, "user_id": str(user_id), "user_state": user_state}})
+                logger.info("Created GitLab user", extra={"data": {"username": username, "user_id": str(user_id), "user_state": user_state}})
 
                 # If user was created in blocked state, unblock them
                 # This can happen if GitLab has "User approval required" enabled
                 if user_state in ("blocked", "blocked_pending_approval"):
-                    logger.info("User created as , attempting to unblock...", extra={"data": {"username": username, "user_state": user_state}})
+                    logger.info("User created in blocked state, attempting to unblock", extra={"data": {"username": username, "user_state": user_state}})
                     unblock_response = await client.post(
                         f"{gitlab_url}/api/v4/users/{user_id}/unblock",
                         headers={"PRIVATE-TOKEN": token},
@@ -464,7 +464,7 @@ async def search_gitlab_projects(
                     "web_url": project.get("web_url", ""),
                 })
 
-            logger.info("Found projects matching ''", extra={"data": {"results_count": len(results), "search_query": search_query}})
+            logger.info("Found matching projects", extra={"data": {"results_count": len(results), "search_query": search_query}})
             return {"success": True, "projects": results}
 
         except httpx.HTTPStatusError as e:

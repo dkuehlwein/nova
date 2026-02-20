@@ -55,7 +55,7 @@ async def load_nova_system_prompt() -> str:
         current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S %Z")
     except pytz.UnknownTimeZoneError:
         # Fallback to UTC if timezone is invalid
-        logger.warning("Invalid timezone '', using UTC", extra={"data": {"user_timezone": user_timezone}})
+        logger.warning("Invalid timezone, using UTC", extra={"data": {"user_timezone": user_timezone}})
         current_time_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     
     # Build available skills section

@@ -198,7 +198,7 @@ async def get_unified_system_status(
         if include_history:
             response["history"] = await _get_health_history()
         
-        logger.debug("Unified system status: ' f'(/ healthy", extra={"data": {"overall_status_preview": overall_status['overall_status'], "overall_status_preview_2": overall_status['summary']['healthy_services'], "overall_status_preview_2": overall_status['summary']['total_services']}})
+        logger.debug("Unified system status", extra={"data": {"overall_status": overall_status['overall_status'], "healthy_services": overall_status['summary']['healthy_services'], "total_services": overall_status['summary']['total_services']}})
         
         return response
         

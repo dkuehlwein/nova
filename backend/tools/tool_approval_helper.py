@@ -154,14 +154,14 @@ def wrap_tools_for_approval(tools: list[BaseTool]) -> list[BaseTool]:
 
     for tool in tools:
         if permission_config.is_tool_denied(tool.name):
-            logger.info("Excluding denied tool ''", extra={"data": {"name": tool.name}})
+            logger.info("Excluding denied tool", extra={"data": {"name": tool.name}})
             denied_count += 1
         elif not permission_config.is_tool_allowed(tool.name):
-            logger.info("Wrapping tool '' for approval", extra={"data": {"name": tool.name}})
+            logger.info("Wrapping tool for approval", extra={"data": {"name": tool.name}})
             wrapped_tools.append(add_human_in_the_loop(tool))
             wrapped_count += 1
         else:
             wrapped_tools.append(tool)
 
-    logger.info("Tools: available ( wrapped for approval, denied/excluded", extra={"data": {"wrapped_tools_count": len(wrapped_tools), "wrapped_count": wrapped_count, "denied_count": denied_count}})
+    logger.info("Tool approval wrapping complete", extra={"data": {"available_count": len(wrapped_tools), "wrapped_count": wrapped_count, "denied_count": denied_count}})
     return wrapped_tools

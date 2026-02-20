@@ -54,7 +54,7 @@ async def validate_api_key(
         if not settings:
             settings = await UserSettingsService.create_user_settings(db_session)
 
-        logger.info("Performing fresh validation for (validation endpoint always validates", extra={"data": {"key_type": key_type}})
+        logger.info("Performing fresh API key validation", extra={"data": {"key_type": key_type}})
 
         if key_type not in VALIDATION_METHODS:
             raise HTTPException(status_code=400, detail=f"Unknown key_type: {key_type}")

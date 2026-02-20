@@ -315,7 +315,7 @@ class MCPClientManager:
         # Try to look up the UUID, fall back to using name directly
         server_id = await self.get_server_id_by_name(server_name)
         if not server_id:
-            logger.warning("Could not find server_id for , using name directly", extra={"data": {"server_name": server_name}})
+            logger.warning("Could not find server_id, using name directly", extra={"data": {"server_name": server_name}})
             server_id = server_name
 
         # LiteLLM routes tool calls by tool name (not server_id).
@@ -331,7 +331,7 @@ class MCPClientManager:
             # Auto-authenticate on MS Graph auth errors (NOV-123)
             auth_url = self._parse_auth_error(result)
             if auth_url:
-                logger.info("MS Graph auth required for , launching browser auth", extra={"data": {"tool_name": tool_name}})
+                logger.info("MS Graph auth required, launching browser auth", extra={"data": {"tool_name": tool_name}})
                 from utils.ms_graph_auth_browser import authenticate_ms_graph
 
                 auth_result = await authenticate_ms_graph(auth_url)
@@ -436,7 +436,7 @@ class MCPClientManager:
         self._tools_cache = langchain_tools
         self._tools_cache_timestamp = current_time
 
-        logger.info("Successfully loaded MCP tools from LiteLLM (cached for s", extra={"data": {"langchain_tools_count": len(langchain_tools), "_TOOLS_CACHE_TTL_SECONDS": _TOOLS_CACHE_TTL_SECONDS}})
+        logger.info("Successfully loaded MCP tools from LiteLLM", extra={"data": {"langchain_tools_count": len(langchain_tools), "cache_ttl_seconds": _TOOLS_CACHE_TTL_SECONDS}})
         return langchain_tools
 
     def clear_tools_cache(self):
